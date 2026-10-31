@@ -1,0 +1,257 @@
+# Tasks
+
+Each heading is one issue. Do them in order inside a phase. Acceptance criteria are the bullets under the heading. `docs/SPEC.md` is the behavior. `docs/PRIOR_ART.md` is the prior art. `CLAUDE.md` is the constraint list.
+
+Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screens, they do not relax read-only or the access-control test.
+
+## Phase 0 — Open a library on Linux and on macOS
+
+### P0.1 Record which Photos versions osxphotos supports
+
+- Install osxphotos in the Linux dev environment (Python 3.12).
+- Copy its README support table into a short comment or constant next to the version check, with the osxphotos version pin.
+- Acceptance: the note names the installed osxphotos version and the Photos generations it claims. An unknown `photos_version` is a distinct error string the admin UI can show, covered by a unit test that does not need a real library.
+
+### P0.2 Synthetic fixture
+
+- Add a tiny library the test suite can open on Linux. No personal photos, no `*.photoslibrary` from a real Mac, no thumbnail of a real person.
+- Build it in test setup under a temp directory. `*.sqlite` and `*.photoslibrary` are gitignored on purpose. Commit a fixture only behind a narrow `.gitignore` exception, after checking it contains no real library bytes.
+- Acceptance: `PhotosDB(dbfile=…)` on the fixture returns `db_version` and `photos_version` under `pytest` on Linux.
+
+### P0.3 Read-only open
+
+- Implement one function that opens a library for indexing.
+- It copies `Photos.sqlite` plus existing `-wal` and `-shm` to a temp directory outside the package, then calls `PhotosDB(dbfile=copy, library_path=package)`. If the copy path fails, try `mode=ro` or `immutable=1` and record which.
+- It never calls osxphotos repair/recover helpers.
+- Acceptance: a test snapshots the fixture directory (names, sizes, mtimes), opens it, and snapshots again. The snapshots match. The test runs on Linux.
+
+### P0.4 Version probe
+
+- A CLI or `python -m` entry prints library path, `db_version`, `photos_version`, asset count, and the open mode.
+- Unsupported versions exit non-zero with the P0.1 error string.
+- Acceptance: CI runs the probe on the fixture. `docs/MANUAL_MAC_TESTS.md` is filled in with a row per real library for macOS and for Linux (or "volume not mounted", which does not count as a pass).
+
+### P0.5 Linux import check
+
+- Acceptance: the server environment's installed packages do not include pyobjc or PhotoKit, and importing the reader on Linux does not import `osxphotos.photokit`. A test or a one-line CI step asserts that.
+
+### P0.6 osxphotos makes no outbound connection
+
+- Call `PhotosDB` and `PhotoInfo` only. Do not call `osxphotos.utils.get_latest_version`, `osxphotos.cli.common.check_version`, `osxphotos.cli.selfupdate`, `osxphotos.cli.version`, or `download_url_to_dir`, and do not run the osxphotos CLI. Those paths GET PyPI or an arbitrary URL. See `docs/PRIOR_ART.md`.
+- Set `OSXPHOTOS_NO_VERSION_CHECK=1` for the probe and for every later server process.
+- Acceptance: the probe test runs under `pytest-socket` with only localhost allowed. Any other connection fails the test. A comment next to the reader lists the forbidden osxphotos helpers.
+
+## Phase 1 — Sign in, administer, browse Library, download
+
+### P1.1 Project skeleton that actually runs
+
+- `pyproject.toml` at the repo root, package in `server/photos_viewer/`. Vite + React + TypeScript (`strict`) under `web/`.
+- `ruff`, `pytest`, and `npm test` run on Linux.
+- GitHub Actions on `ubuntu-latest` runs both. No macOS runner.
+- Acceptance: `GET /api/health` returns ok locally and in CI. `npm test` has a passing placeholder until P1.11.
+
+### P1.2 `app.db` schema
+
+- Tables for users, sessions, libraries, assignments, the asset index, thumbnail-cache rows, and the audit log. File lives outside any `.photoslibrary` (`PHOTOS_VIEWER_DATA_DIR`).
+- Acceptance: migrations apply on an empty directory. A test creates the file under `tmp_path` and never in the repo.
+
+### P1.3 Passwords, sessions, first admin
+
+- Argon2id password hashes. HttpOnly, Secure, SameSite=Strict session cookie. Configurable lifetimes, longer for the PWA, shorter for desktop, plus "Remember me".
+- Rate-limit login failures and lock out for a cool-off.
+- First-run screen creates the single admin, then disables itself.
+- Logout and session revoke work.
+- Acceptance: tests cover wrong password, lockout, logout, and cookie flags. No file in the repo has `token` or `credential` in its name.
+
+### P1.4 Optional tailnet allow-list
+
+- Setting: a list of Tailscale identities. When non-empty, requests must present a matching `Tailscale-User-Login` header.
+- Acceptance: empty list allows any session that is otherwise valid. A non-matching header is rejected. Test uses a fake header, no real tailnet.
+
+### P1.5 Library registry
+
+- Admin adds a library by path. Validate: path exists, name ends in `.photoslibrary`, probe from P0.4 succeeds, process can read it.
+- Display name, rename, remove. Remove deletes rows in `app.db` only.
+- Status: asset, video, and people counts, total size, last index time, pre-warm progress, warnings (Photos.app has it open, unsupported version, drive not mounted).
+- Acceptance: bad path, unsupported version, and a missing mount each produce a specific message. Removing a library leaves the package on disk (test on the fixture).
+
+### P1.6 Index into `app.db`
+
+- Walk osxphotos once per library and store the fields `docs/PRIOR_ART.md` lists (identity, dates, flags, people, albums, place, paths, derivative paths).
+- Place names and coordinates stored here come from `PhotoInfo.place` and `PhotoInfo.location` only. No geocoding client is imported.
+- Re-index when the sqlite file changes or an admin asks.
+- Do not keep `PhotosDB` as a process-wide singleton. Do not call `PhotosDB.query` on the request path.
+- Acceptance: indexing the fixture is idempotent. A second run with an unchanged sqlite does not duplicate rows. Request handlers read `app.db` only (assert with a test double, or by closing the library path after index).
+
+### P1.7 Media backend
+
+- One interface: given a source path and a size, return WebP or JPEG bytes.
+- Try `path_derivatives` first when a derivative is large enough for that size.
+- On Darwin, if `sips` or `qlmanage` exists, they may handle the file. Otherwise Pillow + pillow-heif. ffmpeg extracts a video still. rawpy is optional and used when installed for RAW.
+- Cache under the data dir, never inside the library. Sizes: grid ~300, grid2x ~600, preview ~1600.
+- Acceptance: CI generates a grid image from a synthetic HEIC or JPEG in the fixture without `sips`. A missing decoder returns a clear error for that asset and does not fail the process.
+
+### P1.8 Assignment guard
+
+- One dependency used by every `/api/libraries/{lib}/…` route. It loads the session, checks the assignment, and 404s otherwise.
+- Acceptance: the P1.16 test is wired to this dependency so a new route cannot forget it. A route added without the dependency fails a router audit test (every library route includes the dependency).
+
+### P1.9 Read API for Library
+
+- `GET /api/me`
+- `GET /api/libraries/{lib}/assets` with cursor and limit, plus `album`, `person`, `type`, `from`, `to` accepted even if album and person return empty until Phase 2.
+- `GET /api/libraries/{lib}/summary` (counts by year, month, day)
+- `GET /api/libraries/{lib}/assets/{id}`
+- `GET /api/libraries/{lib}/thumb/{id}?size=`
+- `GET /api/libraries/{lib}/original/{id}?version=original|edited&format=native|jpeg` with Range.
+- `GET /api/libraries/{lib}/livephoto/{id}/video`
+- `GET /api/health`
+- Acceptance: pagination is stable when new rows are inserted above the cursor. Original Range returns 206. Edited version 404s when `path_edited` is absent. JPEG format transcodes HEIC through the media backend.
+
+### P1.10 Admin UI
+
+- Desktop, System Settings-like sidebar: Libraries, Users, Sessions, Audit log, Settings.
+- Users: create, edit, disable, delete, set password, set role, one-time invite link that creates an account and then dies.
+- Access matrix: users × libraries, one checkbox each.
+- Sessions: user, device, last seen, revoke.
+- Audit log: filter by user, library, date. CSV export.
+- Settings: session lifetimes, tailnet allow-list, thumb size and quality, zip limit (stored now, honored in Phase 3), and map tiles: OpenStreetMap (online) / Local file / Off, plus an optional PMTiles path (stored now, used in P2.3). Default is OpenStreetMap.
+- Acceptance: a non-admin gets 403 on `/api/admin/*` and cannot open the screens. Checkbox changes persist and affect P1.8 immediately.
+
+### P1.11 Web shell, both layouts
+
+- Viewport width and pointer detection, with a per-user override.
+- Login: full-screen form on the mobile layout, centered card on desktop.
+- PWA manifest, service worker, standalone display, status-bar styling, original icons (not Apple's).
+- JS, CSS, and fonts ship in the build. No CDN script, no Google Fonts stylesheet, no analytics, telemetry, crash reporting, update check, or avatar host.
+- The service worker caches same-origin app requests only. It does not intercept, cache, or prefetch `tile.openstreetmap.org`. OSM tile caching is the browser HTTP cache, so `Cache-Control` from the tile server is what limits retention. A service-worker tile cache would outlive those headers and fill as the user pans.
+- Mobile tab bar shows Library, Albums, People, Map. Only Library is active. The other three are visible and disabled.
+- Desktop sidebar shows the spec's sections. Only Library is active.
+- Light and dark follow the system. Font is `system-ui` plus files bundled with the app.
+- Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks. A unit test shows the service worker caches a same-origin thumbnail URL and does not call `cache.put` for `https://tile.openstreetmap.org/0/0/0.png`.
+
+### P1.12 Mobile Library
+
+- Years, Months, Days, All Photos. Pinned date header while scrolling.
+- Square-cropped virtualized grid. Pinch changes column count.
+- Days can use a large leading cell plus a row of squares, as in `docs/design-refs/ios17-library-days.png`. All Photos is a uniform square grid.
+- Acceptance: a fixture of a few hundred indexed rows scrolls without loading originals (network or image-src assertion). Date header updates with the topmost group.
+
+### P1.13 Desktop Library
+
+- Toolbar: Years, Months, All Photos, zoom slider, search field (UI only until Phase 2), download, Info toggle.
+- Grid: aspect-ratio or square, date headers, hover heart (display of the favorite flag, not a write) and video duration.
+- Selection: click, modifier-click, shift-range, drag. Count in the toolbar.
+- Keyboard: arrows, Space/Enter open, Esc closes, ⌘A, ⌘F, +/−.
+- Acceptance: keyboard and selection tests on the desktop layout. Zoom changes the thumb size requested (`grid` vs `grid2x`).
+
+### P1.14 Viewer
+
+- Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line taken from the indexed place fields. The mini-map waits for Phase 2 and uses the same map-tiles setting as the Map tab.
+- Desktop: filmstrip, zoom and pan, right-hand info panel with the same fields plus file name and size.
+- Video plays inline. Live Photo plays on press (mobile) and inline (desktop).
+- No edit control, no delete control, no favorite write.
+- Acceptance: opening an item does not request the original until the viewer asks for the preview or the original. Live Photo video request is the live-photo route, not the original still.
+
+### P1.15 Downloads
+
+- iPhone: full image in an `<img>`, JPEG fallback when the browser cannot show HEIC. Document the long-press "Save to Photos" behavior. Multi-select uses `navigator.share({ files })`, splits large batches, and falls back to download links.
+- Desktop: one file, original or edited, from the viewer and the context menu. "Copy link" copies an in-app URL.
+- Every download writes an audit row (user, library, asset, version, time).
+- Acceptance: tests see the audit row. A download of library L2 by user A is 404 and writes no success row. Zip is not in this phase.
+
+### P1.16 Access-control test
+
+- The scenario in `CLAUDE.md`: user A / library L1, user B / library L2, every library route, thumbs, originals, live video.
+- Also: admin with no self-assignment, disabled user, revoked session.
+- Acceptance: the test is in CI and fails if any of those calls returns a body, a thumb, or a file.
+
+### P1.17 Packaging
+
+- `launchd` plist documented and checked in: uvicorn, data dir, KeepAlive, logs.
+- `Dockerfile` and `docker-compose.yml`: non-root user, library volumes mounted `:ro`, data volume read-write, temp dir for sqlite copies, ffmpeg and libheif available. Container root can be read-only if `/tmp` is a tmpfs.
+- No outbound egress from the container. Document both a compose network with no route to the public internet and a firewall rule that drops connections the container initiates. Inbound from the Tailscale address still works. The container must not reach a tile host, a package index, or an update server. The browser, not the container, fetches OSM tiles when the setting is OpenStreetMap. Mount an optional PMTiles file read-only for the Local file setting.
+- README sections: install on both OSes, Tailscale Serve, first admin, add library, assign access, install the PWA, read-only rules, the offline rule, Linux mount caveats, updating osxphotos (that update is a maintainer step on a network, not a runtime check).
+- Acceptance: `docker compose config` succeeds in CI. A compose comment or a test mounts a fixture read-only and the probe still runs. The image does not contain a real library. The README's egress section is specific enough that someone can block internet egress and still open the app from the tailnet.
+
+### P1.18 Content-Security-Policy
+
+- Every HTML response, and API responses, carry a Content-Security-Policy.
+- `default-src 'self'`. `font-src 'self'`. `script-src 'self'`. `style-src 'self'`. `img-src 'self' blob: data:`. `worker-src 'self' blob:` only if the map worker needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
+- The only external host is `https://tile.openstreetmap.org`. Put it on `connect-src` when MapLibre fetches tile bytes, or on `img-src` when the tiles are image requests. `connect-src` is otherwise `'self'`. No other external host on any directive.
+- Acceptance: a test loads `/` and one API response and checks those directives. Exactly one external host appears, and it is `tile.openstreetmap.org`.
+
+### P1.19 Suite-wide outbound-connection tests
+
+- The whole server test suite runs under `pytest-socket`, allowing only localhost (`127.0.0.1` and `::1`). The plugin stays on for every test module. `pip install` and `npm install` happen before the suite, outside the plugin.
+- After `npm run build`, a check scans `web/dist` JS, CSS, and HTML. The only absolute external URLs allowed are `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (the fetched tile template) and `https://www.openstreetmap.org/copyright` (the attribution `href`, never fetched). Any other external host fails the check. Localhost URLs are allowed.
+- Acceptance: CI runs both checks. A test that opens a socket to an external host fails. A hosted URL other than those two, left in the production bundle, fails. The copyright string is an `href` only.
+
+## Phase 2 — Albums, People, Map, search
+
+### P2.1 Albums
+
+- `GET /api/libraries/{lib}/albums` returns the folder tree from `folder_info` / `album_info`, plus smart albums built from index flags: Favorites, Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, RAW, Recently Added.
+- Mobile Albums tab and desktop Albums group, including the folder tree.
+- Acceptance: fixture albums round-trip parent folders. A smart album count matches a direct SQL count on the index. Still 404 across users.
+
+### P2.2 People
+
+- `GET …/people` and `…/people/{id}/assets`. Circular crops from face data where osxphotos provides it, names underneath.
+- Mobile People tab and desktop People section.
+- Acceptance: an unnamed face is omitted or grouped as untitled, consistently. Opening a person shows only their assets. No write API for renaming.
+
+### P2.3 Map
+
+- `GET …/map?bbox=&zoom=` returns clusters, not every point at low zoom. The server does not fetch tiles while handling it.
+- Default basemap is OpenStreetMap raster tiles at `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. MapLibre requests a tile only while a map view is mounted. Opening Library, Albums, or People does not request tiles.
+- Attribution "© OpenStreetMap contributors" is visible and links to `https://www.openstreetmap.org/copyright`. No bulk prefetch and no server-side tile cache. Policy: <https://operations.osmfoundation.org/policies/tiles/>, summarized in `docs/SPEC.md`.
+- Admin setting `Map tiles`: OpenStreetMap (online) / Local file / Off. Default OpenStreetMap. Local file serves a PMTiles archive from disk with HTTP Range, and the client then makes no request to `tile.openstreetmap.org`. Off, and a missing or unreadable local file, show clusters on a blank background and make no tile request. Local mode does not fall back to OSM.
+- Glyphs and sprites for our labels are bundled. The style is ours, not a MapLibre demo style.
+- Info panel gains a small map on the same setting, with the same attribution. Location edits are impossible. If OSM tiles fail to load, clusters remain on a blank background. The client does not try a second tile host.
+- Acceptance: an asset with null location is absent from clusters. Bounding-box queries stay inside the caller's library. A browser test in OSM mode sees tile requests only after the map view opens, and only to `tile.openstreetmap.org`. The same test in Local file mode and in Off mode sees none. The server socket test still passes during all three. A tiny local PMTiles fixture returns a range response from this app.
+
+### P2.4 Search
+
+- `GET …/search?q=` matches date, place name, person, album title, and camera fields stored in the index.
+- Place strings are the ones indexed in P1.6. Search does not geocode.
+- Desktop search field and optional mobile search.
+- Acceptance: a query cannot return another library's asset. Empty query returns an empty page, not the whole library. The search module imports no HTTP client.
+
+### P2.5 Place names stay inside the library
+
+- Display names on the map, in search, and on the info panel are `PhotoInfo.place` fields (name, address, country) copied into `app.db` at index time.
+- Acceptance: a photo with GPS and no place record shows coordinates or "Unknown place", and the test process makes no socket connection while rendering that label. A photo with a place record shows that record's text unchanged.
+
+## Phase 3 — Passkeys, zip, pre-warm, polish
+
+### P3.1 Passkeys
+
+- WebAuthn registration and login beside the password. Passwords still work.
+- Acceptance: a ceremony can be tested with a virtual authenticator. Session cookie flags match P1.3.
+
+### P3.2 Streamed zip
+
+- `POST /api/libraries/{lib}/zip` streams selected originals. Settings cap the total bytes. Progress is visible. HEIC-to-JPEG is an option.
+- Acceptance: over-limit is a 413 with no partial file left in the library package (zip is written to the response or to the data dir). Audit row per zip. Cross-user selection 404s.
+
+### P3.3 Pre-warm
+
+- Resumable background job per library, pause and resume, progress on the library status card, clear-cache action.
+- Acceptance: killing the process mid-job resumes without regenerating finished thumbs. Pause stops new work. Cache files live under the data dir.
+
+### P3.4 Polish
+
+- Motion on the tab bar, viewer dismiss, and desktop sidebar collapse, matched to the references in spirit and implemented with our own CSS.
+- Desktop keyboard path and focus rings audited. Alt text from title or date.
+- Accessibility pass and a layout check at a phone width and a desktop width.
+- Acceptance: the access-control test still passes. No Apple icons, fonts, or trademarks added.
+
+## Done means
+
+- Phase 0 probe recorded for the fixture in CI and for each real library on the manual checklist.
+- User A cannot read user B's libraries through any route.
+- A directory listing of each real `.photoslibrary` is unchanged after indexing, thumb generation, download, and zip.
+- `pytest` and `npm test` pass on Linux with no `sips` and no real library.
+- The server suite fails on any connection that is not localhost.
+- The production web build's only external URLs are the OSM tile template and the OSM copyright href, and responses send the Content-Security-Policy from P1.18.
