@@ -1,0 +1,48 @@
+# Apple Photos libraries and anything extracted from them.
+# The repo must never contain a real library or real photos.
+*.photoslibrary
+*.apdb
+
+# App database, sessions, and caches. These live outside the repo at runtime.
+# A synthetic Photos sqlite for tests is generated in tmp, not committed.
+# Adding a committed fixture means a specific negation of these rules, after review.
+app.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+cache/
+caches/
+thumbnails/
+previews/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+web/dist/
+.vite/
+coverage/
+
+# OS
+.DS_Store
+
+# Claude Code local state. These are machine-specific and must stay untracked.
+.claude-handoff.md
+.claude-session*
+.claude/
