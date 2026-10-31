@@ -159,6 +159,8 @@ Linux, from the osxphotos README on that clone:
 
 Memory: constructing `PhotosDB` builds large in-memory maps of every asset. That is acceptable for an index job. It is not acceptable as a per-request cache of several libraries. Drop the object when the index transaction commits, or keep at most a short-lived reader for the library currently being indexed.
 
+Network, from the same clone: the query API does not need the network, and this app must not give it one. `osxphotos.utils.get_latest_version` performs `requests.get` on `https://pypi.org/pypi/osxphotos/json`. `osxphotos.cli.common.check_version` calls that and tells the operator to set `OSXPHOTOS_NO_VERSION_CHECK=1`. `osxphotos.cli.version` and `osxphotos.cli.selfupdate` also contact PyPI. `download_url_to_dir` (used by template loading in `phototemplate.py` and `cli/param_types.py`) fetches an arbitrary URL. Do not import or call those paths. Do not shell out to the osxphotos CLI. Set `OSXPHOTOS_NO_VERSION_CHECK=1` on the server anyway. `crash_reporter.py` writes a local file for the CLI. Do not install it in this process. Phase 0 confirms an import of `PhotosDB` makes no socket connection off localhost.
+
 ## Rejected alternatives
 
 - Immich / PhotoPrism and similar: no direct `.photoslibrary` reading. They need `osxphotos export`, which doubles terabytes of storage and drops People names and albums unless those are written into metadata. Already rejected.
@@ -167,4 +169,4 @@ Memory: constructing `PhotosDB` builds large in-memory maps of every asset. That
 
 ## UI
 
-No polished iOS 17 Photos or macOS Sequoia Photos web clone turned up. The UI is our own work (TanStack Virtual grid, MapLibre map), matched to `docs/design-refs/` and `docs/SPEC.md`. xpoz's Svelte album viewer is not a reference for layout.
+No polished iOS 17 Photos or macOS Sequoia Photos web clone turned up. The UI is our own work (TanStack Virtual grid, MapLibre drawing a local PMTiles file served by this app), matched to `docs/design-refs/` and `docs/SPEC.md`. xpoz's Svelte album viewer is not a reference for layout. Do not point MapLibre at a hosted style or a tile CDN.

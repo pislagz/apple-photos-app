@@ -19,8 +19,21 @@ Both use the same login. Admins also get an admin panel to register library file
 - PhotoKit is not used. It only reaches the System Photo Library, and it does not exist on Linux. Libraries are read directly from disk with [osxphotos](https://github.com/RhetTbull/osxphotos), which opens any library by path on macOS and on Linux.
 - **Strictly read-only.** Never write to, migrate, repair, or open-for-write any library package or its database. Open the database read-only (`mode=ro`), immutable, or as a copy that lives outside the package. Detect when Photos.app has the same library open and show a warning.
 - Access only over the Tailscale tailnet, with HTTPS through Tailscale Serve. Nothing is exposed publicly.
+- **No outbound network at runtime.** The server and the browser client make zero outbound requests. They only serve clients that connect in over the LAN or Tailscale. See [No outbound network](#no-outbound-network).
 - No paid Apple Developer account, so the iPhone side is a PWA added from Safari, with no native app.
 - Out of scope: editing, deleting, uploading, public share links, Memories, Featured Photos.
+
+## No outbound network
+
+At runtime the app never connects to the internet on its own. That covers the Python server, background jobs, the web client, and the service worker. Installing packages during a build or a developer setup may use the network. A running process may not.
+
+- **Map.** No online tile servers and no CDN tiles. The basemap is a self-hosted offline vector file, a Protomaps PMTiles archive, read from disk and served by this server (HTTP Range). MapLibre GL JS is the renderer. Fonts, glyphs, and sprites are bundled with the app and served from the same origin. The admin sets the path to the PMTiles file. If that path is empty or the file is missing, the map still shows clustered photos from GPS stored in the library and can filter the grid, on a blank background, and it does not request tiles from anywhere else.
+- **Place names.** Labels come only from place data already in the libraries (`PhotoInfo.place` and related osxphotos fields). No online geocoding, and no call out to fill in a missing name.
+- **Web assets.** No CDNs, Google Fonts, analytics, telemetry, crash reporting, update checks, or external avatars. JavaScript, CSS, and fonts are bundled at build time.
+- **Content-Security-Policy.** `default-src 'self'`. Images may add `blob:` and `data:` where a preview or a decoded frame needs them. `connect-src` is `'self'` only, so a tile, glyph, API, or WebSocket target on another host cannot load. `font-src`, `script-src`, and `style-src` stay on `'self'`. `worker-src` may add `blob:` if the map library needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
+- **Service worker.** It caches same-origin requests only. A request to any other origin is not fetched and not stored.
+- **Python dependencies.** osxphotos is used as a library (`PhotosDB`, `PhotoInfo`), not via its CLI. Do not call its update check or download helpers (`get_latest_version`, `check_version`, `selfupdate`, `download_url_to_dir`). Set `OSXPHOTOS_NO_VERSION_CHECK=1` for the process. Do not add an optional dependency that performs network I/O when imported or while serving.
+- **Docker.** Document and support a run with outbound egress blocked (an internal Docker network, or a firewall rule that drops connections the container initiates). Clients on the tailnet can still open inbound connections. The app must be fully usable in that configuration, including the map when a local PMTiles file is mounted.
 
 ## Platforms
 
@@ -73,7 +86,7 @@ Every endpoint requires a session, and every request is checked against the libr
 - `GET /api/libraries/:lib/albums`: tree of folders and albums plus smart albums.
 - `GET /api/libraries/:lib/albums/:id/assets`
 - `GET /api/libraries/:lib/people` and `.../people/:id/assets`
-- `GET /api/libraries/:lib/map?bbox=&zoom=`: clustered GPS points.
+- `GET /api/libraries/:lib/map?bbox=&zoom=`: clustered GPS points. The basemap is not this response. It is a same-origin range read of the local PMTiles file.
 - `GET /api/libraries/:lib/search?q=`: by date, place, person, album name, or camera.
 - `POST /api/libraries/:lib/zip`: builds a zip of selected originals for desktop batch download and streams it.
 - `GET /api/health`
@@ -108,7 +121,7 @@ Every endpoint requires a session, and every request is checked against the libr
   - **Access matrix:** users as rows and libraries as columns, with a checkbox for each pair, to grant or revoke access quickly.
 - **Sessions:** list active sessions by user, device, and last seen, and revoke them.
 - **Audit log:** logins, failed logins, library access, and downloads, filterable by user, library, and date, with export to CSV.
-- **Settings:** session lifetimes, allowed tailnet identities, thumbnail sizes and quality, and the zip size limit.
+- **Settings:** session lifetimes, allowed tailnet identities, thumbnail sizes and quality, the zip size limit, and the path to the local PMTiles file.
 - **First run:** a one-time setup screen to create the admin account.
 - Styled to fit the macOS Sequoia look: a System Settings-like sidebar and grouped forms.
 
@@ -119,7 +132,7 @@ Every endpoint requires a session, and every request is checked against the libr
   - **Desktop layout** (macOS Sequoia style): used on wide screens with a pointer.
   - Detect by viewport width and pointer type, and let users override in settings.
 - Shared: API client, auth, virtualized grid engine (TanStack Virtual or similar) for tens of thousands of items, viewer logic, and Cache Storage for thumbnails.
-- PWA manifest and service worker, standalone mode, iOS status bar styling, and icons.
+- PWA manifest and service worker, standalone mode, iOS status bar styling, and icons. The service worker caches same-origin requests only. The server sends the Content-Security-Policy in [No outbound network](#no-outbound-network).
 - Follow system light and dark mode, using the `-apple-system` / `system-ui` font and SF Symbols-like icons (use a free icon set with a similar style, not Apple's assets).
 
 ### Mobile layout: iOS 17 Photos
@@ -133,7 +146,7 @@ Every endpoint requires a session, and every request is checked against the libr
   - Video streaming, and Live Photo playback on press.
 - Albums tab with My Albums, folders, and smart albums (Favorites, Videos, Selfies, Live Photos, Panoramas, Screenshots, Recently Added).
 - People tab with circular face thumbnails and names.
-- Map tab using MapLibre GL JS with OpenStreetMap-based tiles, showing clustered thumbnail pins.
+- Map tab using MapLibre GL JS and the local PMTiles basemap from [No outbound network](#no-outbound-network), showing clustered thumbnail pins. No online tiles.
 - Library switcher for users with several libraries, for example in the top bar or a profile sheet, plus logout.
 
 Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar is Library, Albums, People, Map. Match Apple's spacing and materials, and follow this spec for which tabs exist. For You, Memories, and Featured Photos are out of scope. Reference images are indexed in `docs/design-refs/README.md`.
@@ -163,7 +176,7 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
   - Left and right arrows in the viewer.
   - `+` and `-` to zoom.
 - **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums. Videos and Live Photos play inline.
-- **Map:** full content area with clustered thumbnails; clicking a cluster filters the grid.
+- **Map:** full content area with the same local PMTiles basemap and clustered thumbnails. Clicking a cluster filters the grid. The same blank-basemap fallback applies when no tile file is configured.
 - **People:** grid of circular faces with names, opening a person's photos.
 - **Right-click menu:** Download original, Download edited, Copy link (within the app only, never public), and Show in album.
 
@@ -192,7 +205,8 @@ Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots sho
   - Access control: user A can never reach user B's libraries through any endpoint, including thumbnails, originals, and zip.
   - Indexing against a small synthetic fixture library. CI runs on Linux.
   - Layout tests for both mobile and desktop.
-  - Optional manual pass on a real library on a Mac (`docs/MANUAL_MAC_TESTS.md`).
+  - Outbound network: the server suite fails if any socket connects to a host other than localhost (`pytest-socket`). The production web build fails if JS, CSS, or HTML contains an absolute `http://` or `https://` URL to an external host, and a test asserts the Content-Security-Policy header.
+  - Optional manual pass on a real library on a Mac (`docs/MANUAL_MAC_TESTS.md`), including a pass with internet egress blocked.
 
 ## Visual references
 
@@ -211,6 +225,7 @@ Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots sho
    - Adding libraries and assigning access.
    - Installing the PWA on the iPhone.
    - The read-only safety rules.
+   - The no-outbound-network rule, the PMTiles file, and how to run Docker with egress blocked.
    - Linux mount caveats (APFS, exFAT, HFS+, network share).
    - Updating osxphotos after macOS updates.
 4. Phased plan:

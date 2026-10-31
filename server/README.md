@@ -36,7 +36,7 @@ A plist in `deploy/`, loaded on the Mac that should run natively:
 
 - `ProgramArguments`: the venv's `uvicorn`, `photos_viewer.main:app`, bound to the tailnet address or to localhost behind Tailscale Serve.
 - `WorkingDirectory`: the checkout.
-- `EnvironmentVariables`: `PHOTOS_VIEWER_DATA_DIR` pointing outside the libraries.
+- `EnvironmentVariables`: `PHOTOS_VIEWER_DATA_DIR` pointing outside the libraries, and `OSXPHOTOS_NO_VERSION_CHECK=1`.
 - `KeepAlive`: true.
 - stdout and stderr to files under the data dir.
 
@@ -50,8 +50,9 @@ Linux and NAS deployments use `deploy/Dockerfile` and `deploy/docker-compose.yml
 - One named volume for `app.db`, thumbnails, and logs.
 - `/tmp` writable (tmpfs is fine) so sqlite copies have somewhere to go. The rest of the container filesystem can be read-only.
 - Do not publish the port on a public interface. Tailscale Serve terminates HTTPS on the tailnet.
+- No outbound egress at runtime. Publish the port on the Tailscale address (or bind localhost and let Tailscale Serve on the host proxy it). Drop connections the container initiates: either a Docker network with no route to the public internet, or a firewall rule on the container subnet. Established replies to inbound clients still flow. The running app must not resolve or contact a tile host, a font host, a package index, or an update server. Mount the PMTiles file the same way as the data volume, read-only.
 
-Example compose shape, to be made real in P1.17. Build context is the repo root, where the Dockerfile will live under `deploy/`:
+Example compose shape, to be made real in P1.17. Build context is the repo root, where the Dockerfile will live under `deploy/`. The `internal` flag below is the no-egress example. When Tailscale Serve runs on the host instead, drop `internal` and publish only on the tailnet address, and keep an egress drop in the host firewall:
 
 ```yaml
 services:
@@ -61,13 +62,19 @@ services:
       dockerfile: deploy/Dockerfile
     read_only: true
     tmpfs: [/tmp]
+    networks: [viewer]
     volumes:
       - /mnt/photos/Family.photoslibrary:/libraries/family.photoslibrary:ro
+      - /mnt/photos/map.pmtiles:/data/map.pmtiles:ro
       - viewer-data:/data
     environment:
       PHOTOS_VIEWER_DATA_DIR: /data
+      OSXPHOTOS_NO_VERSION_CHECK: "1"
 volumes:
   viewer-data:
+networks:
+  viewer:
+    internal: true
 ```
 
 ## Commands to grow into

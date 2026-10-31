@@ -25,6 +25,8 @@ Filenames must not contain `token` or `credential`.
 
 Phase 1 ships Library and the viewer on both layouts, login, and the admin screens. Albums, People, and Map are visible and disabled until Phase 2. Match `docs/design-refs/README.md` for spacing and hierarchy. Follow `docs/SPEC.md` when a screenshot disagrees with the product (tab bar, sidebar contents, anything that edits or deletes).
 
+The production build is self-contained. No CDN, no Google Fonts, no analytics. The server sends a Content-Security-Policy of `default-src 'self'`. The map, when it arrives in Phase 2, loads a PMTiles file from this same server.
+
 Icons are a free set. Font is `system-ui`. Do not import files from `docs/design-refs/` into the bundle.
 
 ```bash

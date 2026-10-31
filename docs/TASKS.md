@@ -35,6 +35,12 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 - Acceptance: the server environment's installed packages do not include pyobjc or PhotoKit, and importing the reader on Linux does not import `osxphotos.photokit`. A test or a one-line CI step asserts that.
 
+### P0.6 osxphotos makes no outbound connection
+
+- Call `PhotosDB` and `PhotoInfo` only. Do not call `osxphotos.utils.get_latest_version`, `osxphotos.cli.common.check_version`, `osxphotos.cli.selfupdate`, `osxphotos.cli.version`, or `download_url_to_dir`, and do not run the osxphotos CLI. Those paths GET PyPI or an arbitrary URL. See `docs/PRIOR_ART.md`.
+- Set `OSXPHOTOS_NO_VERSION_CHECK=1` for the probe and for every later server process.
+- Acceptance: the probe test runs under `pytest-socket` with only localhost allowed. Any other connection fails the test. A comment next to the reader lists the forbidden osxphotos helpers.
+
 ## Phase 1 — Sign in, administer, browse Library, download
 
 ### P1.1 Project skeleton that actually runs
@@ -72,6 +78,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 ### P1.6 Index into `app.db`
 
 - Walk osxphotos once per library and store the fields `docs/PRIOR_ART.md` lists (identity, dates, flags, people, albums, place, paths, derivative paths).
+- Place names and coordinates stored here come from `PhotoInfo.place` and `PhotoInfo.location` only. No geocoding client is imported.
 - Re-index when the sqlite file changes or an admin asks.
 - Do not keep `PhotosDB` as a process-wide singleton. Do not call `PhotosDB.query` on the request path.
 - Acceptance: indexing the fixture is idempotent. A second run with an unchanged sqlite does not duplicate rows. Request handlers read `app.db` only (assert with a test double, or by closing the library path after index).
@@ -108,7 +115,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Access matrix: users × libraries, one checkbox each.
 - Sessions: user, device, last seen, revoke.
 - Audit log: filter by user, library, date. CSV export.
-- Settings: session lifetimes, tailnet allow-list, thumb size and quality, zip limit (stored now, honored in Phase 3).
+- Settings: session lifetimes, tailnet allow-list, thumb size and quality, zip limit (stored now, honored in Phase 3), and the PMTiles path (stored now, used in P2.3).
 - Acceptance: a non-admin gets 403 on `/api/admin/*` and cannot open the screens. Checkbox changes persist and affect P1.8 immediately.
 
 ### P1.11 Web shell, both layouts
@@ -116,10 +123,12 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Viewport width and pointer detection, with a per-user override.
 - Login: full-screen form on the mobile layout, centered card on desktop.
 - PWA manifest, service worker, standalone display, status-bar styling, original icons (not Apple's).
+- JS, CSS, and fonts ship in the build. No CDN script, no Google Fonts stylesheet, no analytics, telemetry, crash reporting, update check, or avatar host.
+- The service worker caches same-origin requests only.
 - Mobile tab bar shows Library, Albums, People, Map. Only Library is active. The other three are visible and disabled.
 - Desktop sidebar shows the spec's sections. Only Library is active.
-- Light and dark follow the system. Font is `system-ui`.
-- Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks.
+- Light and dark follow the system. Font is `system-ui` plus files bundled with the app.
+- Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks. A unit test shows the service worker ignores a cross-origin URL and will cache a same-origin thumbnail URL.
 
 ### P1.12 Mobile Library
 
@@ -138,7 +147,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 ### P1.14 Viewer
 
-- Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line. Map tiles can wait for Phase 2.
+- Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line taken from the indexed place fields. The mini-map waits for Phase 2 and uses the same local tiles.
 - Desktop: filmstrip, zoom and pan, right-hand info panel with the same fields plus file name and size.
 - Video plays inline. Live Photo plays on press (mobile) and inline (desktop).
 - No edit control, no delete control, no favorite write.
@@ -161,8 +170,21 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 - `launchd` plist documented and checked in: uvicorn, data dir, KeepAlive, logs.
 - `Dockerfile` and `docker-compose.yml`: non-root user, library volumes mounted `:ro`, data volume read-write, temp dir for sqlite copies, ffmpeg and libheif available. Container root can be read-only if `/tmp` is a tmpfs.
-- README sections: install on both OSes, Tailscale Serve, first admin, add library, assign access, install the PWA, read-only rules, Linux mount caveats, updating osxphotos.
-- Acceptance: `docker compose config` succeeds in CI. A compose comment or a test mounts a fixture read-only and the probe still runs. The image does not contain a real library.
+- No outbound egress. Document both a compose network with no route to the public internet and a firewall rule that drops connections the container initiates. Inbound from the Tailscale address still works (publish on that address, or terminate Tailscale Serve on the host). Do not give the container a path to a tile host, a package index, or an update server at runtime.
+- README sections: install on both OSes, Tailscale Serve, first admin, add library, assign access, install the PWA, read-only rules, the offline rule, Linux mount caveats, updating osxphotos (that update is a maintainer step on a network, not a runtime check).
+- Acceptance: `docker compose config` succeeds in CI. A compose comment or a test mounts a fixture read-only and the probe still runs. The image does not contain a real library. The README's egress section is specific enough that someone can block internet egress and still open the app from the tailnet.
+
+### P1.18 Content-Security-Policy
+
+- Every HTML response, and API responses, carry a Content-Security-Policy.
+- `default-src 'self'`. `connect-src 'self'`. `font-src 'self'`. `script-src 'self'`. `style-src 'self'`. `img-src 'self' blob: data:`. `worker-src 'self' blob:` only if the map worker needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
+- Acceptance: a test loads `/` and one API response and checks those directives. `connect-src` lists no host other than `'self'`.
+
+### P1.19 Suite-wide outbound-connection tests
+
+- The whole server test suite runs under `pytest-socket`, allowing only localhost (`127.0.0.1` and `::1`). The plugin stays on for every test module. `pip install` and `npm install` happen before the suite, outside the plugin.
+- After `npm run build`, a check scans `web/dist` JS, CSS, and HTML and fails on an absolute `http://` or `https://` URL whose host is not localhost.
+- Acceptance: CI runs both checks. A test that opens a socket to an external host fails. A hosted URL left in the production bundle fails.
 
 ## Phase 2 — Albums, People, Map, search
 
@@ -181,15 +203,22 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 ### P2.3 Map
 
 - `GET …/map?bbox=&zoom=` returns clusters, not every point at low zoom.
-- MapLibre, OSM-style tiles, in the mobile Map tab and the desktop content area. Choosing a cluster filters the grid.
-- Info panel gains a small map. Location edits are impossible.
-- Acceptance: an asset with null location is absent from clusters. Bounding-box queries stay inside the caller's library.
+- Basemap is a Protomaps PMTiles file. The admin sets its path in settings. The server serves that file from disk with HTTP Range. MapLibre GL JS uses a style whose sources, glyphs, and sprites are same-origin URLs. Glyphs and sprites are files shipped with the app.
+- No tile CDN, no hosted style, and no fallback host. If the path is unset or the file is missing, the map shows clusters on a blank background, explains that no tile file is configured, and still filters the grid. It does not request tiles.
+- Info panel gains a small map that uses the same style. Location edits are impossible.
+- Acceptance: an asset with null location is absent from clusters. Bounding-box queries stay inside the caller's library. With the tile path empty, the browser test's requests are all same-origin and include no tile request. With a tiny local PMTiles fixture, a tile range request is served by the app and the socket test still passes.
 
 ### P2.4 Search
 
 - `GET …/search?q=` matches date, place name, person, album title, and camera fields stored in the index.
+- Place strings are the ones indexed in P1.6. Search does not geocode.
 - Desktop search field and optional mobile search.
-- Acceptance: a query cannot return another library's asset. Empty query returns an empty page, not the whole library.
+- Acceptance: a query cannot return another library's asset. Empty query returns an empty page, not the whole library. The search module imports no HTTP client.
+
+### P2.5 Place names stay inside the library
+
+- Display names on the map, in search, and on the info panel are `PhotoInfo.place` fields (name, address, country) copied into `app.db` at index time.
+- Acceptance: a photo with GPS and no place record shows coordinates or "Unknown place", and the test process makes no socket connection while rendering that label. A photo with a place record shows that record's text unchanged.
 
 ## Phase 3 — Passkeys, zip, pre-warm, polish
 
@@ -221,3 +250,5 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - User A cannot read user B's libraries through any route.
 - A directory listing of each real `.photoslibrary` is unchanged after indexing, thumb generation, download, and zip.
 - `pytest` and `npm test` pass on Linux with no `sips` and no real library.
+- The server suite fails on any connection that is not localhost.
+- The production web build has no absolute URL to an external host, and responses send the Content-Security-Policy from P1.18.

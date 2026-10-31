@@ -26,3 +26,4 @@ Also, once Phase 1 exists, on the Mac only:
 - Download one original and one edited file. The package listing is still unchanged.
 - Generate a grid thumb. The new file is under the data dir, not inside the library.
 - "Drive not mounted" shows the admin warning when the volume is ejected.
+- With the host blocked from the internet, the grid, a download, and (once Phase 2 exists) the map still load. The browser shows only same-origin requests. Place labels match the library. No tile request leaves the machine.
