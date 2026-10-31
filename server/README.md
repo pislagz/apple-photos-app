@@ -50,7 +50,7 @@ Linux and NAS deployments use `deploy/Dockerfile` and `deploy/docker-compose.yml
 - One named volume for `app.db`, thumbnails, and logs.
 - `/tmp` writable (tmpfs is fine) so sqlite copies have somewhere to go. The rest of the container filesystem can be read-only.
 - Do not publish the port on a public interface. Tailscale Serve terminates HTTPS on the tailnet.
-- No outbound egress at runtime. Publish the port on the Tailscale address (or bind localhost and let Tailscale Serve on the host proxy it). Drop connections the container initiates: either a Docker network with no route to the public internet, or a firewall rule on the container subnet. Established replies to inbound clients still flow. The running app must not resolve or contact a tile host, a font host, a package index, or an update server. Mount the PMTiles file the same way as the data volume, read-only.
+- No outbound egress from the container. Publish the port on the Tailscale address (or bind localhost and let Tailscale Serve on the host proxy it). Drop connections the container initiates: either a Docker network with no route to the public internet, or a firewall rule on the container subnet. Established replies to inbound clients still flow. The container must not resolve or contact a tile host, a font host, a package index, or an update server. OSM tiles are fetched by the user's browser, not by this process. Mount an optional PMTiles file read-only for the Local file map setting.
 
 Example compose shape, to be made real in P1.17. Build context is the repo root, where the Dockerfile will live under `deploy/`. The `internal` flag below is the no-egress example. When Tailscale Serve runs on the host instead, drop `internal` and publish only on the tailnet address, and keep an egress drop in the host firewall:
 
@@ -65,6 +65,7 @@ services:
     networks: [viewer]
     volumes:
       - /mnt/photos/Family.photoslibrary:/libraries/family.photoslibrary:ro
+      # Optional. Used only when the admin sets Map tiles to Local file.
       - /mnt/photos/map.pmtiles:/data/map.pmtiles:ro
       - viewer-data:/data
     environment:

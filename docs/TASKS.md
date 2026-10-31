@@ -115,7 +115,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Access matrix: users × libraries, one checkbox each.
 - Sessions: user, device, last seen, revoke.
 - Audit log: filter by user, library, date. CSV export.
-- Settings: session lifetimes, tailnet allow-list, thumb size and quality, zip limit (stored now, honored in Phase 3), and the PMTiles path (stored now, used in P2.3).
+- Settings: session lifetimes, tailnet allow-list, thumb size and quality, zip limit (stored now, honored in Phase 3), and map tiles: OpenStreetMap (online) / Local file / Off, plus an optional PMTiles path (stored now, used in P2.3). Default is OpenStreetMap.
 - Acceptance: a non-admin gets 403 on `/api/admin/*` and cannot open the screens. Checkbox changes persist and affect P1.8 immediately.
 
 ### P1.11 Web shell, both layouts
@@ -124,11 +124,11 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Login: full-screen form on the mobile layout, centered card on desktop.
 - PWA manifest, service worker, standalone display, status-bar styling, original icons (not Apple's).
 - JS, CSS, and fonts ship in the build. No CDN script, no Google Fonts stylesheet, no analytics, telemetry, crash reporting, update check, or avatar host.
-- The service worker caches same-origin requests only.
+- The service worker caches same-origin app requests only. It does not intercept, cache, or prefetch `tile.openstreetmap.org`. OSM tile caching is the browser HTTP cache, so `Cache-Control` from the tile server is what limits retention. A service-worker tile cache would outlive those headers and fill as the user pans.
 - Mobile tab bar shows Library, Albums, People, Map. Only Library is active. The other three are visible and disabled.
 - Desktop sidebar shows the spec's sections. Only Library is active.
 - Light and dark follow the system. Font is `system-ui` plus files bundled with the app.
-- Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks. A unit test shows the service worker ignores a cross-origin URL and will cache a same-origin thumbnail URL.
+- Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks. A unit test shows the service worker caches a same-origin thumbnail URL and does not call `cache.put` for `https://tile.openstreetmap.org/0/0/0.png`.
 
 ### P1.12 Mobile Library
 
@@ -147,7 +147,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 ### P1.14 Viewer
 
-- Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line taken from the indexed place fields. The mini-map waits for Phase 2 and uses the same local tiles.
+- Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line taken from the indexed place fields. The mini-map waits for Phase 2 and uses the same map-tiles setting as the Map tab.
 - Desktop: filmstrip, zoom and pan, right-hand info panel with the same fields plus file name and size.
 - Video plays inline. Live Photo plays on press (mobile) and inline (desktop).
 - No edit control, no delete control, no favorite write.
@@ -170,21 +170,22 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 - `launchd` plist documented and checked in: uvicorn, data dir, KeepAlive, logs.
 - `Dockerfile` and `docker-compose.yml`: non-root user, library volumes mounted `:ro`, data volume read-write, temp dir for sqlite copies, ffmpeg and libheif available. Container root can be read-only if `/tmp` is a tmpfs.
-- No outbound egress. Document both a compose network with no route to the public internet and a firewall rule that drops connections the container initiates. Inbound from the Tailscale address still works (publish on that address, or terminate Tailscale Serve on the host). Do not give the container a path to a tile host, a package index, or an update server at runtime.
+- No outbound egress from the container. Document both a compose network with no route to the public internet and a firewall rule that drops connections the container initiates. Inbound from the Tailscale address still works. The container must not reach a tile host, a package index, or an update server. The browser, not the container, fetches OSM tiles when the setting is OpenStreetMap. Mount an optional PMTiles file read-only for the Local file setting.
 - README sections: install on both OSes, Tailscale Serve, first admin, add library, assign access, install the PWA, read-only rules, the offline rule, Linux mount caveats, updating osxphotos (that update is a maintainer step on a network, not a runtime check).
 - Acceptance: `docker compose config` succeeds in CI. A compose comment or a test mounts a fixture read-only and the probe still runs. The image does not contain a real library. The README's egress section is specific enough that someone can block internet egress and still open the app from the tailnet.
 
 ### P1.18 Content-Security-Policy
 
 - Every HTML response, and API responses, carry a Content-Security-Policy.
-- `default-src 'self'`. `connect-src 'self'`. `font-src 'self'`. `script-src 'self'`. `style-src 'self'`. `img-src 'self' blob: data:`. `worker-src 'self' blob:` only if the map worker needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
-- Acceptance: a test loads `/` and one API response and checks those directives. `connect-src` lists no host other than `'self'`.
+- `default-src 'self'`. `font-src 'self'`. `script-src 'self'`. `style-src 'self'`. `img-src 'self' blob: data:`. `worker-src 'self' blob:` only if the map worker needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
+- The only external host is `https://tile.openstreetmap.org`. Put it on `connect-src` when MapLibre fetches tile bytes, or on `img-src` when the tiles are image requests. `connect-src` is otherwise `'self'`. No other external host on any directive.
+- Acceptance: a test loads `/` and one API response and checks those directives. Exactly one external host appears, and it is `tile.openstreetmap.org`.
 
 ### P1.19 Suite-wide outbound-connection tests
 
 - The whole server test suite runs under `pytest-socket`, allowing only localhost (`127.0.0.1` and `::1`). The plugin stays on for every test module. `pip install` and `npm install` happen before the suite, outside the plugin.
-- After `npm run build`, a check scans `web/dist` JS, CSS, and HTML and fails on an absolute `http://` or `https://` URL whose host is not localhost.
-- Acceptance: CI runs both checks. A test that opens a socket to an external host fails. A hosted URL left in the production bundle fails.
+- After `npm run build`, a check scans `web/dist` JS, CSS, and HTML. The only absolute external URLs allowed are `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (the fetched tile template) and `https://www.openstreetmap.org/copyright` (the attribution `href`, never fetched). Any other external host fails the check. Localhost URLs are allowed.
+- Acceptance: CI runs both checks. A test that opens a socket to an external host fails. A hosted URL other than those two, left in the production bundle, fails. The copyright string is an `href` only.
 
 ## Phase 2 — Albums, People, Map, search
 
@@ -202,11 +203,13 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 ### P2.3 Map
 
-- `GET …/map?bbox=&zoom=` returns clusters, not every point at low zoom.
-- Basemap is a Protomaps PMTiles file. The admin sets its path in settings. The server serves that file from disk with HTTP Range. MapLibre GL JS uses a style whose sources, glyphs, and sprites are same-origin URLs. Glyphs and sprites are files shipped with the app.
-- No tile CDN, no hosted style, and no fallback host. If the path is unset or the file is missing, the map shows clusters on a blank background, explains that no tile file is configured, and still filters the grid. It does not request tiles.
-- Info panel gains a small map that uses the same style. Location edits are impossible.
-- Acceptance: an asset with null location is absent from clusters. Bounding-box queries stay inside the caller's library. With the tile path empty, the browser test's requests are all same-origin and include no tile request. With a tiny local PMTiles fixture, a tile range request is served by the app and the socket test still passes.
+- `GET …/map?bbox=&zoom=` returns clusters, not every point at low zoom. The server does not fetch tiles while handling it.
+- Default basemap is OpenStreetMap raster tiles at `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. MapLibre requests a tile only while a map view is mounted. Opening Library, Albums, or People does not request tiles.
+- Attribution "© OpenStreetMap contributors" is visible and links to `https://www.openstreetmap.org/copyright`. No bulk prefetch and no server-side tile cache. Policy: <https://operations.osmfoundation.org/policies/tiles/>, summarized in `docs/SPEC.md`.
+- Admin setting `Map tiles`: OpenStreetMap (online) / Local file / Off. Default OpenStreetMap. Local file serves a PMTiles archive from disk with HTTP Range, and the client then makes no request to `tile.openstreetmap.org`. Off, and a missing or unreadable local file, show clusters on a blank background and make no tile request. Local mode does not fall back to OSM.
+- Glyphs and sprites for our labels are bundled. The style is ours, not a MapLibre demo style.
+- Info panel gains a small map on the same setting, with the same attribution. Location edits are impossible. If OSM tiles fail to load, clusters remain on a blank background. The client does not try a second tile host.
+- Acceptance: an asset with null location is absent from clusters. Bounding-box queries stay inside the caller's library. A browser test in OSM mode sees tile requests only after the map view opens, and only to `tile.openstreetmap.org`. The same test in Local file mode and in Off mode sees none. The server socket test still passes during all three. A tiny local PMTiles fixture returns a range response from this app.
 
 ### P2.4 Search
 
@@ -251,4 +254,4 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - A directory listing of each real `.photoslibrary` is unchanged after indexing, thumb generation, download, and zip.
 - `pytest` and `npm test` pass on Linux with no `sips` and no real library.
 - The server suite fails on any connection that is not localhost.
-- The production web build has no absolute URL to an external host, and responses send the Content-Security-Policy from P1.18.
+- The production web build's only external URLs are the OSM tile template and the OSM copyright href, and responses send the Content-Security-Policy from P1.18.

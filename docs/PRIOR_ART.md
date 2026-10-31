@@ -169,4 +169,4 @@ Network, from the same clone: the query API does not need the network, and this 
 
 ## UI
 
-No polished iOS 17 Photos or macOS Sequoia Photos web clone turned up. The UI is our own work (TanStack Virtual grid, MapLibre drawing a local PMTiles file served by this app), matched to `docs/design-refs/` and `docs/SPEC.md`. xpoz's Svelte album viewer is not a reference for layout. Do not point MapLibre at a hosted style or a tile CDN.
+No polished iOS 17 Photos or macOS Sequoia Photos web clone turned up. The UI is our own work (TanStack Virtual grid, MapLibre), matched to `docs/design-refs/` and `docs/SPEC.md`. xpoz's Svelte album viewer is not a reference for layout. The only remote tiles are OpenStreetMap rasters from `tile.openstreetmap.org`, fetched by the browser. Do not point MapLibre at a demo style or any other tile host. A local PMTiles file is the admin's offline alternative.

@@ -17,18 +17,22 @@ The libraries are not the macOS System Photo Library. iCloud is off. Optimize St
 - PhotoKit is out. It only sees the System Photo Library, and it does not exist on Linux. Do not import pyobjc, photoscript, or `osxphotos.photokit`.
 - The server runs on macOS and on Linux. Linux, including Docker on a NAS, is a primary target, not a later port. Details are in `docs/SPEC.md` under Platforms.
 - Nothing is exposed off the tailnet. HTTPS is Tailscale Serve.
-- **No outbound network at runtime.** The server and the web client make zero outbound requests. They only accept clients on the LAN or Tailscale. `pip` and `npm` may use the network at install or build time. A running process, the test suite, and the Docker container may not. Full rules are in the next section and in `docs/SPEC.md`.
+- **No outbound connections except browser-side OSM map tiles.** The server makes zero outbound requests. The only permitted external connection is the browser fetching OpenStreetMap raster tiles from `tile.openstreetmap.org` while a map view is open. `pip` and `npm` may use the network at install or build time. The server process, the test suite, and the Docker container may not. Full rules are in the next section and in `docs/SPEC.md`.
 - Out of scope: editing, deleting, uploading, public share links, Memories, Featured Photos, writing favorites.
 
 ## Offline at runtime
 
-- Map tiles are a Protomaps PMTiles file the admin points at. This server reads that file and serves it. MapLibre GL JS draws it. Glyphs and sprites are files we bundle and serve ourselves. There is no tile server, no tile CDN, and no MapLibre demo style. With no tile file configured, the map still shows clusters from library GPS and can filter the grid, and it does not try another host.
+No outbound connections except browser-side OSM map tiles.
+
+- The default map uses OpenStreetMap raster tiles, `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, fetched by the browser only when a user opens a map view. MapLibre GL JS draws them. Show "© OpenStreetMap contributors" linking to `https://www.openstreetmap.org/copyright`. Follow the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/): no bulk prefetch, no server-side proxy, and no cache beyond the browser's normal HTTP cache. The policy is written out in `docs/SPEC.md`.
+- Admin setting `Map tiles`: OpenStreetMap (online) / Local file / Off. Default is OpenStreetMap. Local file is an optional Protomaps PMTiles archive this server reads from disk. When Local file or Off is selected, the client makes no OSM requests. Off, and a missing local file, still show GPS clusters on a blank background.
+- That OSM tile fetch is the only permitted external connection. It is client-side only. The server still makes zero outbound requests.
 - Place names come from osxphotos place info already in the library. No online geocoding.
-- No CDNs, Google Fonts, analytics, telemetry, crash reporting, update checks, or external avatars. JS, CSS, and fonts are bundled at build time. Font stack is `system-ui` plus those bundled files.
-- Content-Security-Policy is strict: `default-src 'self'`. Add `blob:` and `data:` only on the directives that need them for images (and a worker, if MapLibre requires one). `connect-src` is `'self'` and nothing else.
-- The service worker caches same-origin requests only.
+- No CDNs, Google Fonts, analytics, telemetry, crash reporting, update checks, or external avatars. JS, CSS, and fonts are bundled at build time. Font stack is `system-ui` plus those bundled files. Glyphs and sprites for our own map labels are bundled too. Do not load a MapLibre demo style.
+- Content-Security-Policy: `default-src 'self'`. The only external host is `https://tile.openstreetmap.org`, on `connect-src` if MapLibre fetches the tiles, or on `img-src` if they are real image requests. `connect-src` is otherwise `'self'`. `blob:` and `data:` only where images or a map worker need them.
+- The service worker caches same-origin app assets. It does not intercept, cache, or prefetch OSM tiles. The browser HTTP cache is enough, and it honors the tile server's `Cache-Control`.
 - Do not call osxphotos code that uses the network. On the clone reviewed for `docs/PRIOR_ART.md`, that is `osxphotos.utils.get_latest_version` (GET `https://pypi.org/pypi/osxphotos/json`), `osxphotos.cli.common.check_version`, `osxphotos.cli.selfupdate`, `osxphotos.cli.version`, and `download_url_to_dir` / template URL loading. Set `OSXPHOTOS_NO_VERSION_CHECK=1` in the server and in tests. Use `PhotosDB` and `PhotoInfo` only. Any optional dependency that performs network I/O at runtime is forbidden.
-- Docker runs with no outbound egress (an internal network or a firewall rule). Inbound from the tailnet still works. The app must function with internet access blocked.
+- The Docker container has no outbound egress. Inbound from the tailnet still works. The grid and downloads work with the server's internet blocked. The default basemap needs the user's browser to reach `tile.openstreetmap.org`. A fully offline basemap is the Local file setting.
 
 ## Privacy
 
@@ -56,7 +60,7 @@ Decisions already made in `docs/SPEC.md`, plus one choice the spec left open:
 | Images | Platform interface. Derivatives first. Then `sips`/`qlmanage` on Mac, otherwise Pillow, pillow-heif, optional rawpy, ffmpeg |
 | Web | TypeScript, Vite, React. The spec allows Svelte. Use React so TanStack Virtual stays in its primary ecosystem. Decide nothing else and do not mix frameworks. |
 | Grid | TanStack Virtual |
-| Map (Phase 2) | MapLibre GL JS, local Protomaps PMTiles served by this app. Glyphs and sprites bundled. No online tiles. |
+| Map (Phase 2) | MapLibre GL JS. Default basemap is browser-fetched OSM raster tiles. Optional local PMTiles. Glyphs for our labels are bundled. |
 | Auth | Argon2id passwords, HttpOnly SameSite=Strict session cookies. Passkeys in Phase 3. |
 | Hosting | `launchd` on macOS. Docker with read-only library mounts on Linux. Tailscale Serve in front of both. |
 
@@ -142,7 +146,7 @@ pytest
 cd web && npm test
 ```
 
-`GET /api/health` is the liveness check. Point the synthetic fixture at the suite with an environment variable such as `PHOTOS_VIEWER_FIXTURE` once the fixture exists. CI is GitHub Actions on `ubuntu-latest` only. A macOS runner is not required. `pytest` runs under `pytest-socket` with only localhost allowed, and the production web build is grepped for absolute URLs to external hosts. Set `OSXPHOTOS_NO_VERSION_CHECK=1` in the server environment.
+`GET /api/health` is the liveness check. Point the synthetic fixture at the suite with an environment variable such as `PHOTOS_VIEWER_FIXTURE` once the fixture exists. CI is GitHub Actions on `ubuntu-latest` only. A macOS runner is not required. `pytest` runs under `pytest-socket` with only localhost allowed, because the server never dials out. The production web build may contain the OSM tile URL and the OSM copyright href, and no other absolute external URL. Set `OSXPHOTOS_NO_VERSION_CHECK=1` in the server environment.
 
 Tailscale Serve, launchd, and docker-compose are documented as the server gains them. See `server/README.md` for the packaging plan.
 
