@@ -33,8 +33,7 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
             return 1
         session_auth.clear_login_failures(conn, username)
         if args.clear_ip_limits:
-            conn.execute("DELETE FROM ip_login_failures")
-            conn.commit()
+            session_auth.clear_ip_login_failures(conn)
         app_db.write_audit_log(
             conn,
             "unlock_user",

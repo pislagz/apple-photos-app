@@ -11,6 +11,7 @@ import time
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from photos_viewer import app_db, session_auth
 from photos_viewer.main import create_app
@@ -42,6 +43,46 @@ def loopback_client(tmp_path):
     app.dependency_overrides[session_auth.get_db] = lambda: conn
     try:
         yield TestClient(app, base_url="https://testserver", client=("127.0.0.1", 51000))
+    finally:
+        conn.close()
+
+
+def _proxied_client(tmp_path, *, peer_host):
+    """Wraps the app in uvicorn's own `ProxyHeadersMiddleware` -- the real
+    mechanism `uvicorn photos_viewer.main:app` installs by default (see
+    `session_auth`'s module docstring) -- instead of a hand-rolled stand-in
+    for it, so the tests using this exercise what actually runs behind
+    `tailscale serve`. `base_url` is plain `http://` so a test can tell
+    "scheme rewritten by the middleware" apart from "scheme the direct
+    connection already had"."""
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    proxied = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1", "::1"])
+    return conn, TestClient(proxied, base_url="http://testserver", client=(peer_host, 51000))
+
+
+@pytest.fixture
+def proxied_client(tmp_path):
+    """Same wiring as `loopback_client`, but through a real
+    `ProxyHeadersMiddleware` instead of relying on this module to read
+    forwarded headers itself -- the direct peer is loopback, same as every
+    `tailscale serve` connection."""
+    conn, test_client = _proxied_client(tmp_path, peer_host="127.0.0.1")
+    try:
+        yield test_client
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def proxied_client_untrusted_peer(tmp_path):
+    """Same as `proxied_client`, but the direct peer is not loopback -- what
+    a caller who can merely reach the port, without also being the trusted
+    reverse proxy, looks like to `ProxyHeadersMiddleware`."""
+    conn, test_client = _proxied_client(tmp_path, peer_host="203.0.113.5")
+    try:
+        yield test_client
     finally:
         conn.close()
 
@@ -638,60 +679,122 @@ def test_an_unlisted_origin_is_still_rejected_with_public_origins_configured(cli
     assert response.status_code == 403
 
 
-def test_forwarded_headers_from_a_loopback_client_establish_the_public_origin(loopback_client):
-    """Issue #14 A: with no `PHOTOS_VIEWER_PUBLIC_ORIGINS` configured, a
-    reverse proxy connecting from loopback (what `tailscale serve` always
-    does) can establish the public origin via `X-Forwarded-Proto` /
-    `X-Forwarded-Host`, so the login POST that triggered this issue works
-    in the proxied case."""
-    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+def test_public_origins_env_warns_on_each_invalid_entry_and_keeps_the_valid_ones(monkeypatch, caplog):
+    """Issue #16 B: a typo'd entry (e.g. missing its `scheme://`) must not
+    silently vanish -- the admin needs to see, in the server's own log,
+    which entry and which variable."""
+    monkeypatch.setenv(
+        "PHOTOS_VIEWER_PUBLIC_ORIGINS",
+        "https://box.tailxyz.ts.net, not-a-url, https://second.tailxyz.ts.net",
+    )
 
-    response = loopback_client.post(
+    with caplog.at_level("WARNING"):
+        origins = session_auth._public_origins_from_env()
+
+    assert origins == {
+        session_auth._parse_origin("https://box.tailxyz.ts.net"),
+        session_auth._parse_origin("https://second.tailxyz.ts.net"),
+    }
+    assert any(
+        "PHOTOS_VIEWER_PUBLIC_ORIGINS" in record.message and "not-a-url" in record.message
+        for record in caplog.records
+    )
+
+
+def test_public_origins_env_with_a_valid_entry_does_not_fail_startup(monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net")
+
+    create_app()
+
+
+def test_public_origins_env_with_only_invalid_entries_fails_startup(monkeypatch):
+    """Issue #16 B: if every entry is invalid, the var is indistinguishable
+    from unset from the CSRF check's point of view -- except the admin
+    thinks they've configured an override. Fail loudly instead."""
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "not-a-url, also-not-one")
+
+    with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_PUBLIC_ORIGINS"):
+        create_app()
+
+
+def test_login_succeeds_through_the_real_proxy_headers_middleware_from_loopback(proxied_client):
+    """Issue #16 A: the documented deployment is plain `uvicorn
+    photos_viewer.main:app` behind `tailscale serve`, which connects from
+    loopback. uvicorn's own `ProxyHeadersMiddleware` (on by default,
+    trusting `127.0.0.1`/`::1` by default) rewrites the scheme from
+    `X-Forwarded-Proto` before any code in this module runs, so the
+    browser's `https://` Origin matches the request's own (now-https)
+    origin with no forwarded-header parsing in `session_auth.py` itself."""
+    proxied_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = proxied_client.post(
         "/api/auth/login",
         json={"username": "admin", "password": VALID_PASSWORD},
-        headers={
-            "origin": "https://box.tailxyz.ts.net",
-            "x-forwarded-proto": "https",
-            "x-forwarded-host": "box.tailxyz.ts.net",
-        },
+        headers={"origin": "https://testserver", "x-forwarded-proto": "https"},
     )
 
     assert response.status_code == 200
 
 
-def test_forwarded_headers_from_a_loopback_client_still_reject_a_mismatched_origin(loopback_client):
-    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+def test_login_still_rejects_a_mismatched_origin_through_the_real_proxy_headers_middleware(proxied_client):
+    proxied_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
-    response = loopback_client.post(
+    response = proxied_client.post(
         "/api/auth/login",
         json={"username": "admin", "password": VALID_PASSWORD},
-        headers={
-            "origin": "https://evil.example",
-            "x-forwarded-proto": "https",
-            "x-forwarded-host": "box.tailxyz.ts.net",
-        },
+        headers={"origin": "https://evil.example", "x-forwarded-proto": "https"},
     )
 
     assert response.status_code == 403
 
 
-def test_forwarded_headers_from_a_non_loopback_client_are_ignored(client):
-    """Issue #14 A: `client`'s direct peer is httpx's default
-    (`testclient`), not loopback, so these headers must not be trusted --
-    otherwise any caller could forge its way past the origin check."""
-    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+def test_forwarded_proto_from_an_untrusted_peer_is_ignored_by_the_real_proxy_headers_middleware(
+    proxied_client_untrusted_peer,
+):
+    """Issue #16 A: only a loopback peer is trusted by default
+    (`--forwarded-allow-ips`). A non-loopback caller's claimed
+    `X-Forwarded-Proto: https` must not upgrade the request's own (plain
+    http, in this test) scheme, so an Origin that only matches the claimed
+    scheme is still rejected -- the origin check runs against the real
+    scheme, not the forwarded one."""
+    proxied_client_untrusted_peer.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
-    response = client.post(
+    response = proxied_client_untrusted_peer.post(
         "/api/auth/login",
         json={"username": "admin", "password": VALID_PASSWORD},
-        headers={
-            "origin": "https://box.tailxyz.ts.net",
-            "x-forwarded-proto": "https",
-            "x-forwarded-host": "box.tailxyz.ts.net",
-        },
+        headers={"origin": "https://testserver", "x-forwarded-proto": "https"},
     )
 
     assert response.status_code == 403
+
+
+def test_ip_lockout_key_is_the_forwarded_address_through_the_real_proxy_headers_middleware(proxied_client):
+    """Issue #16 A: once a trusted peer's `X-Forwarded-For` has rewritten
+    `request.client`, that's the real per-device tailnet address
+    `_ip_lockout_key` keys on -- two different forwarded addresses must not
+    share a lockout counter."""
+    proxied_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        proxied_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{i}", "password": "whatever-password"},
+            headers={"x-forwarded-for": "100.64.1.1", "x-forwarded-proto": "https"},
+        )
+
+    device_a_locked_out = proxied_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://testserver", "x-forwarded-for": "100.64.1.1", "x-forwarded-proto": "https"},
+    )
+    assert device_a_locked_out.status_code == 429
+
+    device_b_still_ok = proxied_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://testserver", "x-forwarded-for": "100.64.1.2", "x-forwarded-proto": "https"},
+    )
+    assert device_b_still_ok.status_code == 200
 
 
 def test_login_does_not_enforce_the_setup_minimum_password_length(client):
@@ -794,6 +897,33 @@ def test_admin_unlock_writes_an_audit_row_with_the_admin_as_actor(client, tmp_pa
     assert row["actor"] == "admin"
     assert row["user_id"] == bob_id
     assert row["detail"] == "ip_limits_cleared=false"
+
+
+def test_admin_unlock_with_clear_ip_limits_also_clears_the_per_ip_counter(client, tmp_path):
+    """Issue #16, optional nit: `ip_limits_cleared` in the audit log must
+    reflect what the caller actually asked for, not a hard-coded `false` --
+    and asking for it must actually clear `ip_login_failures`, the same
+    counter the CLI's `--clear-ip-limits` clears."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        client.post("/api/auth/login", json={"username": f"nobody-{i}", "password": "whatever-password"})
+    ip_locked_out = client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    assert ip_locked_out.status_code == 429
+
+    response = client.post("/api/admin/users/admin/unlock", json={"clear_ip_limits": True})
+    assert response.status_code == 200
+
+    conn = app_db.connect(tmp_path)
+    try:
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'unlock_user'").fetchone()
+    finally:
+        conn.close()
+    assert row["detail"] == "ip_limits_cleared=true"
+
+    unlocked_login = client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    assert unlocked_login.status_code == 200
 
 
 def test_env_seconds_falls_back_to_the_default_on_a_bad_value(monkeypatch, caplog):

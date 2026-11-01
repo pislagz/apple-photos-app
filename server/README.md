@@ -36,23 +36,25 @@ Session cookies are marked `Secure` by default (`PHOTOS_VIEWER_COOKIE_SECURE=tru
 
 ## CSRF and `tailscale serve`
 
-Every state-changing request (including login) is rejected unless its `Origin` header matches the server's own origin. `tailscale serve` breaks the naive version of that check: it terminates HTTPS and renames Host to the tailnet name, so the browser's Origin (`https://<machine>.<tailnet>.ts.net`) never matches what the server sees on its plain-HTTP loopback socket. Two ways to fix it, in order of robustness:
+Every state-changing request (including login) is rejected unless its `Origin` header matches the server's own origin. `tailscale serve` breaks the naive version of that check: it terminates HTTPS and renames Host to the tailnet name, so the browser's Origin (`https://<machine>.<tailnet>.ts.net`) never matches what the server would see on its plain-HTTP loopback socket -- unless the scheme gets fixed up first.
+
+uvicorn's `--proxy-headers` is on by default, and by default it trusts exactly the peer `tailscale serve` connects from (`--forwarded-allow-ips=127.0.0.1,::1`). That means plain, no-flags `uvicorn photos_viewer.main:app` already does the right thing on bare metal:
 
 ```bash
-# 1. Tell the server its own public origin (works no matter what headers the
-#    proxy does or doesn't send; recommended for Docker):
 tailscale serve --bg 8000
-PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net \
-  uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000
-
-# 2. Or let the server learn it from forwarded headers, trusted only because
-#    tailscale serve always connects from loopback:
-tailscale serve --bg 8000
-uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000 \
-  --proxy-headers --forwarded-allow-ips=127.0.0.1
+uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000
 ```
 
-In Docker, `tailscale serve` runs on the host and proxies to the container's published port, so option 2's `--forwarded-allow-ips` would need to list whatever address that proxy connects from on the container's network (not necessarily `127.0.0.1`) -- option 1 avoids that entirely and is the one `deploy/docker-compose.yml` should set.
+uvicorn's own `ProxyHeadersMiddleware` rewrites the request's scheme from `X-Forwarded-Proto` before any of this app's code runs; `tailscale serve` forwards the original Host header unchanged, so `request.url` already reads as the real `https://<machine>.ts.net` origin. This is the recommended mechanism -- nothing in `session_auth.py` has to parse a forwarded header itself.
+
+In Docker, `tailscale serve` runs on the host and proxies to the container's published port, typically from the Docker bridge gateway rather than loopback, so the above does *not* apply unmodified -- that peer isn't trusted by default and its address isn't fixed across hosts. Use the explicit override instead:
+
+```bash
+PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net \
+  uvicorn photos_viewer.main:app --host 0.0.0.0 --port 8000
+```
+
+`PHOTOS_VIEWER_PUBLIC_ORIGINS` (comma-separated `scheme://host[:port]`) is validated at startup: an entry that fails to parse logs a `WARNING` naming the variable and the bad value and is dropped; if every entry fails to parse, the app refuses to start rather than silently falling back to same-origin-only checking.
 
 ## Locked-out admin: the `admin` CLI
 
