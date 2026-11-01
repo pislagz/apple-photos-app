@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import pathlib
 import plistlib
+import shutil
 import sqlite3
 
 # osxphotos._constants._PHOTOS_5_MODEL_VERSION == [13000, 13999]: the Core
@@ -245,6 +246,34 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
     _build_search_index(database_dir / "search")
 
     return package_path
+
+
+def build_closed_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
+    """Like `build_fixture_library`, but shaped like a library Photos.app has
+    actually closed: no `-wal`/`-shm` sidecars next to `Photos.sqlite`.
+
+    `build_fixture_library` keeps its own connection open on the `-wal` file
+    for the life of the test process (see `_WAL_ONLY_CONNECTIONS` below), so
+    those sidecars always already exist there -- which hides a bug where
+    opening the database recreates them, since nothing new gets created.
+    Building a separate copy and checkpointing it is the only way to get a
+    package with no sidecar files at all, which is what a real closed
+    library on disk looks like.
+    """
+    open_path = build_fixture_library(dest_dir / "open")
+    closed_path = dest_dir / "Synthetic.photoslibrary"
+    shutil.copytree(open_path, closed_path)
+
+    sqlite_path = closed_path / "database" / "Photos.sqlite"
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
+    for suffix in ("-wal", "-shm"):
+        sqlite_path.with_name(sqlite_path.name + suffix).unlink(missing_ok=True)
+
+    return closed_path
 
 
 # Connections kept alive here, never closed, for the life of the test
