@@ -165,6 +165,17 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE ip_login_failures ADD COLUMN peer_ip TEXT NOT NULL DEFAULT ''",
         "CREATE INDEX idx_ip_login_failures_peer_ip ON ip_login_failures(peer_ip, occurred_at)",
     ],
+    # 7: admin-configurable settings (P1.4's tailnet allow-list is the first
+    # one), outside every `.photoslibrary` and outside the environment, so
+    # P1.10's admin UI has somewhere durable to write them.
+    [
+        """
+        CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """,
+    ],
 ]
 
 
@@ -231,6 +242,19 @@ def migrate(conn: sqlite3.Connection) -> None:
         raise
     else:
         conn.commit()
+
+
+def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
 
 
 def write_audit_log(

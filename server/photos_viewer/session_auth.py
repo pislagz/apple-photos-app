@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import json
 import logging
 import os
 import pathlib
@@ -196,6 +197,21 @@ def _is_trusted_proxy(host: str) -> bool:
     except ValueError:
         return False
     return any(addr in network for network in _trusted_proxies())
+
+
+_TAILNET_ALLOWLIST_SETTING_KEY = "allowed_tailnet_identities"
+
+
+def get_allowed_tailnet_identities(conn: sqlite3.Connection) -> list[str]:
+    """P1.4's optional extra layer (`docs/SPEC.md` line ~116): a list of
+    Tailscale identities, empty by default, meaning "no extra restriction"."""
+    raw = app_db.get_setting(conn, _TAILNET_ALLOWLIST_SETTING_KEY)
+    return json.loads(raw) if raw is not None else []
+
+
+def set_allowed_tailnet_identities(conn: sqlite3.Connection, identities: list[str]) -> None:
+    app_db.set_setting(conn, _TAILNET_ALLOWLIST_SETTING_KEY, json.dumps(list(identities)))
+
 
 # Pinned explicitly rather than left at argon2-cffi's defaults, so a future
 # library upgrade that changes its defaults can't silently weaken (or just
@@ -674,10 +690,42 @@ def get_db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def _trusted_tailscale_user_login(request: Request) -> str | None:
+    """The `Tailscale-User-Login` header, but only when it could actually
+    have been set by `tailscale serve` -- i.e. the direct peer is loopback
+    or a configured `PHOTOS_VIEWER_TRUSTED_PROXIES` entry, the same trust
+    boundary `_ip_lockout_key` uses (see its docstring and CLAUDE.md). A
+    header from any other peer is ignored outright, not just distrusted for
+    lockout accounting: otherwise any LAN client reaching this port could
+    set the header itself and walk straight through the allow-list below.
+    """
+    host = _client_ip(request)
+    if host not in _LOOPBACK_HOSTS and not _is_trusted_proxy(host):
+        return None
+    return request.headers.get(_TAILSCALE_USER_LOGIN_HEADER)
+
+
+def _enforce_tailnet_allowlist(request: Request, db: sqlite3.Connection = Depends(get_db)) -> None:
+    """FastAPI dependency: 403 unless the caller's trusted
+    `Tailscale-User-Login` header is in the configured allow-list. A no-op
+    when the list is empty (the default) -- this is an *optional* extra
+    layer, not a replacement for the session cookie. Used alongside
+    `require_session` (via `require_session` itself) and explicitly on
+    login and first-run setup, which run before a session exists."""
+    allowed = get_allowed_tailnet_identities(db)
+    if not allowed:
+        return
+    login = _trusted_tailscale_user_login(request)
+    if login is None or login not in allowed:
+        raise HTTPException(status_code=403, detail="tailnet identity not allowed")
+
+
 def require_session(request: Request, db: sqlite3.Connection = Depends(get_db)) -> sqlite3.Row:
     """FastAPI dependency: the caller's session row, or 401. Use on every
     route that needs "who is asking" -- the P1.8 per-library assignment
-    guard builds on top of this."""
+    guard builds on top of this. Also enforces the P1.4 tailnet allow-list,
+    so every route built on this one gets it for free."""
+    _enforce_tailnet_allowlist(request, db)
     raw_token = request.cookies.get(COOKIE_NAME)
     session = lookup_session(db, raw_token) if raw_token else None
     if session is None:
@@ -731,7 +779,7 @@ class AuthUserResponse(BaseModel):
     "/api/setup/admin",
     status_code=201,
     response_model=AuthUserResponse,
-    dependencies=[Depends(_reject_cross_site_requests)],
+    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
 )
 def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     """Create the single admin account. Disables itself the moment any user
@@ -760,7 +808,11 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
     return AuthUserResponse(username=payload.username, role="admin")
 
 
-@router.post("/api/auth/login", response_model=AuthUserResponse, dependencies=[Depends(_reject_cross_site_requests)])
+@router.post(
+    "/api/auth/login",
+    response_model=AuthUserResponse,
+    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
+)
 def login(payload: LoginRequest, request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     _prune_old_login_failures(db)
     peer_ip = _client_ip(request)
@@ -867,3 +919,41 @@ def unlock_user(
         detail=f"ip_limits_cleared={'true' if payload.clear_ip_limits else 'false'}",
     )
     return UnlockResponse(username=normalized)
+
+
+class TailnetAllowlistResponse(BaseModel):
+    identities: list[str]
+
+
+class TailnetAllowlistRequest(BaseModel):
+    identities: list[str]
+
+
+@router.get("/api/admin/settings/tailnet-allowlist", response_model=TailnetAllowlistResponse)
+def read_tailnet_allowlist(
+    admin: sqlite3.Row = Depends(require_admin), db: sqlite3.Connection = Depends(get_db)
+) -> TailnetAllowlistResponse:
+    return TailnetAllowlistResponse(identities=get_allowed_tailnet_identities(db))
+
+
+@router.put(
+    "/api/admin/settings/tailnet-allowlist",
+    response_model=TailnetAllowlistResponse,
+    dependencies=[Depends(_reject_cross_site_requests)],
+)
+def write_tailnet_allowlist(
+    payload: TailnetAllowlistRequest,
+    admin: sqlite3.Row = Depends(require_admin),
+    db: sqlite3.Connection = Depends(get_db),
+) -> TailnetAllowlistResponse:
+    """Admin-only, API-only for now (P1.10's admin UI will add a form for
+    this). Setting a non-empty list takes effect immediately, including for
+    the admin's own next request -- see `_enforce_tailnet_allowlist`."""
+    set_allowed_tailnet_identities(db, payload.identities)
+    app_db.write_audit_log(
+        db,
+        "set_tailnet_allowlist",
+        actor=admin["username"],
+        detail=f"count={len(payload.identities)}",
+    )
+    return TailnetAllowlistResponse(identities=get_allowed_tailnet_identities(db))
