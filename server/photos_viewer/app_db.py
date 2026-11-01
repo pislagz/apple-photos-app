@@ -152,6 +152,19 @@ _MIGRATIONS: list[list[str]] = [
         "DROP INDEX idx_login_failures_username",
         "CREATE INDEX idx_login_failures_username ON login_failures(username, user_exists, occurred_at)",
     ],
+    # 6: `peer_ip` is the direct TCP peer that made the request -- the same
+    # value for every `client_ip` bucket sharing one trusted proxy, whether
+    # that bucket is a `Tailscale-User-Login` header value or the peer-IP
+    # fallback. It backs the coarse per-peer ceiling in `is_ip_locked_out`
+    # (issue #20 A): rotating the header from a trusted peer changes
+    # `client_ip` but not `peer_ip`, so it can't buy an unlimited number of
+    # fresh buckets. Existing rows get '' -- they age out of the 15-minute
+    # window long before this migration ships, so backfilling them is not
+    # worth a second pass over the table.
+    [
+        "ALTER TABLE ip_login_failures ADD COLUMN peer_ip TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX idx_ip_login_failures_peer_ip ON ip_login_failures(peer_ip, occurred_at)",
+    ],
 ]
 
 

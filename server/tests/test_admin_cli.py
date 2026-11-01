@@ -67,7 +67,7 @@ def test_unlock_clear_ip_limits_also_clears_the_per_client_counters(data_dir):
     _create_user(data_dir, "bob")
     conn = app_db.connect(data_dir)
     try:
-        session_auth.record_ip_login_failure(conn, "tailscale-user:alice")
+        session_auth.record_ip_login_failure(conn, "tailscale-user:alice", "172.17.0.1")
         (before,) = conn.execute("SELECT COUNT(*) FROM ip_login_failures").fetchone()
         assert before == 1
     finally:
@@ -88,7 +88,7 @@ def test_unlock_without_clear_ip_limits_leaves_the_per_client_counters_alone(dat
     _create_user(data_dir, "bob")
     conn = app_db.connect(data_dir)
     try:
-        session_auth.record_ip_login_failure(conn, "tailscale-user:alice")
+        session_auth.record_ip_login_failure(conn, "tailscale-user:alice", "172.17.0.1")
     finally:
         conn.close()
 

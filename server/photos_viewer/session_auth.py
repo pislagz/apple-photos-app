@@ -98,6 +98,17 @@ LOCKOUT_WINDOW_SECONDS = 15 * 60
 MAX_FAILED_LOGIN_ATTEMPTS_PER_IP = 30
 IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 
+# A trusted proxy (see `_is_trusted_proxy`) is reachable by more than the
+# proxy itself -- a host-level client, or a LAN client on a published port --
+# and anything that reaches it can set its own `Tailscale-User-Login` value.
+# Without this, rotating that header would buy a fresh
+# MAX_FAILED_LOGIN_ATTEMPTS_PER_IP-try bucket on every attempt. This ceiling
+# is deliberately much looser, since it has to cover every real user sharing
+# one trusted proxy, not just one: it caps the *sum* of failures across every
+# `client_ip` bucket (every header value, plus the peer-IP fallback) that
+# shares one trusted proxy's direct peer address -- see `is_ip_locked_out`.
+MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER = MAX_FAILED_LOGIN_ATTEMPTS_PER_IP * 10
+
 _TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
 _TRUSTED_PROXIES_ENV = "PHOTOS_VIEWER_TRUSTED_PROXIES"
@@ -144,37 +155,37 @@ def _trusted_proxies() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     `_ip_lockout_key`'s loopback treatment: keyed on `Tailscale-User-Login`
     instead of its own (shared-by-everyone-behind-the-proxy) address.
 
-    Parsed once and cached; `validate_trusted_proxies_env`, called at app
-    startup, is what refuses to start on an entry that doesn't parse, so
-    this never has to.
+    Parses and validates in one place, regardless of how this is reached:
+    directly (e.g. `_is_trusted_proxy`, on the first request) or via
+    `validate_trusted_proxies_env` at app startup. Unlike
+    `PHOTOS_VIEWER_PUBLIC_ORIGINS`, an invalid entry here is never dropped
+    with a warning: a typo'd address or CIDR that silently never matches
+    the real proxy would look like it's working right up until the first
+    burst of failed logins locks out the whole tailnet, so this raises
+    instead -- on whichever call reaches an invalid entry first, not only
+    when `validate_trusted_proxies_env` happens to run first.
     """
     global _trusted_proxies_cache
     if _trusted_proxies_cache is _UNSET:
         raw = os.environ.get(_TRUSTED_PROXIES_ENV)
-        valid, _invalid = _parse_trusted_proxies_env(raw) if raw and raw.strip() else ([], [])
-        _trusted_proxies_cache = valid
+        if raw is None or not raw.strip():
+            _trusted_proxies_cache = []
+        else:
+            valid, invalid = _parse_trusted_proxies_env(raw)
+            if invalid:
+                raise RuntimeError(
+                    f"{_TRUSTED_PROXIES_ENV} has invalid entries "
+                    f"(expected an IP address or CIDR, e.g. 172.17.0.1 or 172.18.0.0/16): {invalid!r}"
+                )
+            _trusted_proxies_cache = valid
     return _trusted_proxies_cache
 
 
 def validate_trusted_proxies_env() -> None:
-    """Called once at app startup, alongside `validate_public_origins_env`.
-
-    Unlike `PHOTOS_VIEWER_PUBLIC_ORIGINS`, an invalid entry here is not
-    dropped with a warning: a typo'd address or CIDR that silently never
-    matches the real proxy would look like it's working right up until
-    the first burst of failed logins locks out the whole tailnet, so
-    refuse to start instead.
-    """
-    raw = os.environ.get(_TRUSTED_PROXIES_ENV)
-    if raw is None or not raw.strip():
-        return
-    _valid, invalid = _parse_trusted_proxies_env(raw)
-    if invalid:
-        raise RuntimeError(
-            f"{_TRUSTED_PROXIES_ENV} has invalid entries "
-            f"(expected an IP address or CIDR, e.g. 172.17.0.1 or 172.18.0.0/16): {invalid!r}"
-        )
-    _trusted_proxies()  # parse and cache now, at startup
+    """Called once at app startup, alongside `validate_public_origins_env`,
+    so an invalid entry fails startup instead of surfacing on the first
+    request that happens to need `_trusted_proxies()`."""
+    _trusted_proxies()
 
 
 def _is_trusted_proxy(host: str) -> bool:
@@ -363,18 +374,37 @@ def is_locked_out(conn: sqlite3.Connection, username: str, *, user_exists: bool)
     return count >= MAX_FAILED_LOGIN_ATTEMPTS
 
 
-def record_ip_login_failure(conn: sqlite3.Connection, client_ip: str) -> None:
-    conn.execute("INSERT INTO ip_login_failures (client_ip) VALUES (?)", (client_ip,))
+def record_ip_login_failure(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> None:
+    """`client_ip` is `_ip_lockout_key`'s bucket (a header value or a raw
+    address); `peer_ip` is always the direct TCP peer, so a trusted proxy's
+    distinct `client_ip` buckets stay findable as one group by `peer_ip` --
+    see `is_ip_locked_out`'s coarse check."""
+    conn.execute(
+        "INSERT INTO ip_login_failures (client_ip, peer_ip) VALUES (?, ?)",
+        (client_ip, peer_ip),
+    )
     conn.commit()
 
 
-def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str) -> bool:
+def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> bool:
+    """True once either the fine-grained `client_ip` bucket, or the coarse
+    ceiling across every bucket sharing `peer_ip` (see
+    `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`), has tripped. For a direct,
+    non-trusted-proxy caller `client_ip == peer_ip`, so the coarse check is
+    counting the same rows the fine one already did and never trips first."""
     count = conn.execute(
         "SELECT COUNT(*) FROM ip_login_failures "
         "WHERE client_ip = ? AND occurred_at >= datetime('now', ?)",
         (client_ip, f"-{IP_LOCKOUT_WINDOW_SECONDS} seconds"),
     ).fetchone()[0]
-    return count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_IP
+    if count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_IP:
+        return True
+    peer_count = conn.execute(
+        "SELECT COUNT(*) FROM ip_login_failures "
+        "WHERE peer_ip = ? AND occurred_at >= datetime('now', ?)",
+        (peer_ip, f"-{IP_LOCKOUT_WINDOW_SECONDS} seconds"),
+    ).fetchone()[0]
+    return peer_count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
 
 
 def clear_ip_login_failures(conn: sqlite3.Connection) -> None:
@@ -406,15 +436,24 @@ def _ip_lockout_key(request: Request) -> str | None:
     `PHOTOS_VIEWER_TRUSTED_PROXIES` extends that same loopback treatment to
     other known-safe peers -- typically the Docker bridge gateway, when
     `--forwarded-allow-ips` can't be pointed at it directly. With no such
-    header there is no way to distinguish loopback callers, so the
-    per-client limit is skipped for this request; the per-username lockout
-    above still applies regardless.
+    header, a bare loopback peer can't be distinguished from any other
+    caller behind it, so the per-client limit is skipped for this request
+    (the per-username lockout above still applies regardless). A configured
+    `PHOTOS_VIEWER_TRUSTED_PROXIES` entry is different: unlike loopback, it
+    can be reached by more than the proxy itself (issue #20 A), so instead
+    of skipping the limit outright, it falls back to the peer's own address
+    as the bucket -- still subject to `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s
+    coarse ceiling (see `is_ip_locked_out`) if that address also happens to
+    be shared by header-bearing callers.
     """
     host = _client_ip(request)
-    if host not in _LOOPBACK_HOSTS and not _is_trusted_proxy(host):
+    trusted_proxy = _is_trusted_proxy(host)
+    if host not in _LOOPBACK_HOSTS and not trusted_proxy:
         return host
     login = request.headers.get(_TAILSCALE_USER_LOGIN_HEADER)
-    return f"tailscale-user:{login}" if login else None
+    if login:
+        return f"tailscale-user:{login}"
+    return host if trusted_proxy else None
 
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -497,14 +536,25 @@ def reset_public_origins_cache() -> None:
 
 def _ensure_logger_has_a_handler() -> None:
     """uvicorn configures its own loggers but never attaches a handler to
-    the root logger, so a bare `logger.warning(...)` on this module's
-    logger prints with no "WARNING:" label and is easy to miss. Give it
-    its own handler, once, the first time there's something to warn
-    about. `propagate` stays `True` (the default), so this doesn't break
-    `caplog` in tests, which captures via the root logger.
+    the root logger, so a bare `logger.warning(...)` has nowhere to go and
+    is easy to miss -- *unless* something else already configured the root
+    logger (e.g. uvicorn's own `--log-config`, or the host app's logging
+    setup), in which case this module's record already reaches a handler
+    via propagation, and adding a second one here would print it twice.
+
+    So: walk up to the nearest ancestor (following `propagate`, same as
+    logging itself would when dispatching a record) and only attach a
+    handler, and only force `WARNING`, if nothing in that chain -- this
+    logger included -- has one. An explicitly configured level anywhere in
+    the chain is left alone either way; this never raises or lowers one.
     """
-    if logger.handlers:
-        return
+    logger_or_ancestor: logging.Logger | None = logger
+    while logger_or_ancestor is not None:
+        if logger_or_ancestor.handlers:
+            return
+        if not logger_or_ancestor.propagate:
+            break
+        logger_or_ancestor = logger_or_ancestor.parent
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
     logger.addHandler(handler)
@@ -706,12 +756,13 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
 @router.post("/api/auth/login", response_model=AuthUserResponse, dependencies=[Depends(_reject_cross_site_requests)])
 def login(payload: LoginRequest, request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     _prune_old_login_failures(db)
+    peer_ip = _client_ip(request)
     ip_key = _ip_lockout_key(request)
 
     user = db.execute("SELECT * FROM users WHERE username = ?", (payload.username,)).fetchone()
     user_exists = user is not None
 
-    if (ip_key is not None and is_ip_locked_out(db, ip_key)) or is_locked_out(
+    if (ip_key is not None and is_ip_locked_out(db, ip_key, peer_ip)) or is_locked_out(
         db, payload.username, user_exists=user_exists
     ):
         raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
@@ -728,7 +779,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: sqlit
     if not password_ok:
         record_login_failure(db, payload.username, user_exists=user_exists)
         if ip_key is not None:
-            record_ip_login_failure(db, ip_key)
+            record_ip_login_failure(db, ip_key, peer_ip)
         raise HTTPException(status_code=401, detail="invalid username or password")
 
     clear_login_failures(db, payload.username)

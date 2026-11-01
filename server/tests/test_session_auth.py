@@ -5,6 +5,8 @@ with `get_db` overridden to a connection under `tmp_path` so nothing touches
 the repo or the default `./data`.
 """
 
+import contextlib
+import logging
 import threading
 import time
 
@@ -1032,6 +1034,33 @@ def test_public_origins_env_warning_is_logged_once_not_once_per_request(monkeypa
     assert len(warnings) == 1
 
 
+@contextlib.contextmanager
+def _bare_root_logger():
+    """Save and restore both the root logger's handlers and this module's
+    own, so a test can simulate "nothing has configured logging yet" (the
+    production default under plain `uvicorn photos_viewer.main:app`)
+    without leaking state into other tests.
+
+    This is a plain context manager, not a pytest fixture: pytest's own
+    logging plugin re-attaches a fresh capture handler to the root logger
+    for each test phase (setup/call/teardown), so clearing in a fixture's
+    pre-yield setup code -- which runs during the *setup* phase -- would
+    already be undone by the time the test body runs in the *call* phase.
+    Entering this as a `with` block inside the test body clears it live,
+    during that same call phase, so it actually sticks for the assertions.
+    """
+    root = logging.getLogger()
+    saved_root_handlers = root.handlers[:]
+    saved_own_handlers = session_auth.logger.handlers[:]
+    root.handlers[:] = []
+    session_auth.logger.handlers[:] = []
+    try:
+        yield root
+    finally:
+        root.handlers[:] = saved_root_handlers
+        session_auth.logger.handlers[:] = saved_own_handlers
+
+
 def test_invalid_public_origin_warning_goes_through_a_handler_with_a_level_label(monkeypatch):
     """uvicorn's own logging config never attaches a handler to the root
     logger, so a bare `logger.warning(...)` prints with no "WARNING:"
@@ -1039,12 +1068,44 @@ def test_invalid_public_origin_warning_goes_through_a_handler_with_a_level_label
     needs its own handler, with a formatter that includes the level."""
     monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "not-a-url")
 
-    session_auth._public_origins_from_env()
+    with _bare_root_logger():
+        session_auth._public_origins_from_env()
 
-    assert session_auth.logger.handlers
-    formatter = session_auth.logger.handlers[-1].formatter
-    assert formatter is not None
-    assert "%(levelname)s" in formatter._fmt
+        assert session_auth.logger.handlers
+        formatter = session_auth.logger.handlers[-1].formatter
+        assert formatter is not None
+        assert "%(levelname)s" in formatter._fmt
+
+
+# -- Issue #20 C: don't double up on an already-configured root logger --
+
+
+def test_ensure_logger_has_a_handler_skips_when_root_already_has_one():
+    """A root handler configured elsewhere (uvicorn `--log-config`, or the
+    host app's own logging setup) means this module's warnings already
+    reach a handler via propagation; adding a second one here would print
+    every warning twice."""
+    with _bare_root_logger() as root:
+        seen = []
+        probe = logging.Handler()
+        probe.emit = seen.append
+        root.addHandler(probe)
+
+        session_auth._ensure_logger_has_a_handler()
+
+        assert session_auth.logger.handlers == []
+        session_auth.logger.warning("boom")
+        assert len(seen) == 1
+
+
+def test_ensure_logger_has_a_handler_adds_one_when_nothing_configured():
+    """Mirrors `test_invalid_public_origin_warning_goes_through_a_handler_with_a_level_label`
+    directly against the helper: with no handler anywhere in the chain, a
+    bare `logger.warning(...)` has nowhere to go, so this adds one."""
+    with _bare_root_logger():
+        session_auth._ensure_logger_has_a_handler()
+
+        assert len(session_auth.logger.handlers) == 1
 
 
 def test_reset_public_origins_cache_allows_a_fresh_parse(monkeypatch):
@@ -1114,6 +1175,95 @@ def test_docker_gateway_lockout_is_shared_across_users_when_not_trusted(untruste
     assert bob_also_locked_out.status_code == 429
 
 
+# -- Issue #20 A: a trusted peer can't buy unlimited tries by rotating its
+# `Tailscale-User-Login` header --
+
+
+def test_rotating_the_header_from_a_trusted_peer_hits_the_coarse_per_peer_ceiling(docker_gateway_client, monkeypatch):
+    """Only the proxy itself is supposed to set `Tailscale-User-Login`, but
+    anything else that can reach a trusted peer's address (a host-level
+    client, or a LAN client on a published port) can set its own value and,
+    without this ceiling, buy a fresh `MAX_FAILED_LOGIN_ATTEMPTS_PER_IP`-try
+    bucket on every rotation. `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER` caps the
+    sum across every header value (and the peer-IP fallback) sharing one
+    trusted peer, regardless of how finely the header is rotated. The
+    limits are monkeypatched down so the test doesn't pay for dozens of
+    real Argon2 dummy-password verifications."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 9)
+    docker_gateway_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for user in range(9):
+        docker_gateway_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{user}", "password": "whatever-password"},
+            headers={"tailscale-user-login": f"rotating-{user}"},
+        )
+
+    still_locked_out = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "rotating-9"},
+    )
+    assert still_locked_out.status_code == 429
+
+
+def test_distinct_users_behind_a_trusted_peer_stay_separate_below_the_ceiling(docker_gateway_client, monkeypatch):
+    """The coarse per-peer ceiling is deliberately far looser than the
+    per-client one, so it must not trip for ordinary use: several distinct,
+    real users behind one trusted peer, each well under their own
+    `MAX_FAILED_LOGIN_ATTEMPTS_PER_IP` limit."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 9)
+    docker_gateway_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    tries_per_user = session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP - 1
+    for user in range(3):
+        for i in range(tries_per_user):
+            docker_gateway_client.post(
+                "/api/auth/login",
+                json={"username": f"nobody-{user}-{i}", "password": "whatever-password"},
+                headers={"tailscale-user-login": f"user-{user}"},
+            )
+
+    assert 3 * tries_per_user < session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+
+    still_ok = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "user-0"},
+    )
+    assert still_ok.status_code == 200
+
+
+def test_trusted_peer_with_no_header_falls_back_to_the_peer_ip_bucket(docker_gateway_client, monkeypatch):
+    """A trusted peer is reachable by more than the reverse proxy, so a
+    request with no `Tailscale-User-Login` header at all can't be assumed
+    to be the loopback-like safe case either -- it gets its own bucket,
+    keyed on the peer's address, same as an untrusted direct caller."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
+    docker_gateway_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(3):
+        docker_gateway_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{i}", "password": "whatever-password"},
+        )
+
+    headerless_locked_out = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+    )
+    assert headerless_locked_out.status_code == 429
+
+    alice_still_ok = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    assert alice_still_ok.status_code == 200
+
+
 def test_trusted_proxies_env_accepts_ips_and_cidrs(monkeypatch):
     monkeypatch.setenv("PHOTOS_VIEWER_TRUSTED_PROXIES", "172.17.0.1, 172.18.0.0/16")
 
@@ -1132,6 +1282,19 @@ def test_trusted_proxies_env_with_an_invalid_entry_fails_startup(monkeypatch):
 
     with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_TRUSTED_PROXIES"):
         create_app()
+
+
+def test_trusted_proxies_env_with_an_invalid_entry_fails_the_same_way_reached_directly(monkeypatch):
+    """Issue #20 D: `_trusted_proxies()` parses and validates in one place,
+    so an invalid entry raises the same `RuntimeError` whether it's reached
+    through `validate_trusted_proxies_env()` at startup (the case above) or
+    through `_is_trusted_proxy()`/`_ip_lockout_key()` on an ordinary
+    request, before startup validation ever runs -- not dropped silently
+    on one path and refused on the other."""
+    monkeypatch.setenv("PHOTOS_VIEWER_TRUSTED_PROXIES", "not-an-address")
+
+    with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_TRUSTED_PROXIES"):
+        session_auth._is_trusted_proxy("172.17.0.1")
 
 
 # -- Issue #18 C: a malformed port is an invalid origin, not a crash --
