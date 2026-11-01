@@ -146,6 +146,7 @@ Not blocking; pick up when convenient.
 
 - Viewport width and pointer detection, with a per-user override.
 - Login: full-screen form on the mobile layout, centered card on desktop.
+- Handle a 403 "tailnet identity not allowed" (P1.4 allow-list) with a clear refused-access message on the login screen and app shell, not a generic error. Same for a 429 lockout.
 - PWA manifest, service worker, standalone display, status-bar styling, original icons (not Apple's).
 - JS, CSS, and fonts ship in the build. No CDN script, no Google Fonts stylesheet, no analytics, telemetry, crash reporting, update check, or avatar host.
 - The service worker caches same-origin app requests only. It does not intercept, cache, or prefetch `tile.openstreetmap.org`. OSM tile caching is the browser HTTP cache, so `Cache-Control` from the tile server is what limits retention. A service-worker tile cache would outlive those headers and fill as the user pans.
