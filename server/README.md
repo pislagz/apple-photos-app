@@ -47,14 +47,26 @@ uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000
 
 uvicorn's own `ProxyHeadersMiddleware` rewrites the request's scheme from `X-Forwarded-Proto` before any of this app's code runs; `tailscale serve` forwards the original Host header unchanged, so `request.url` already reads as the real `https://<machine>.ts.net` origin. This is the recommended mechanism -- nothing in `session_auth.py` has to parse a forwarded header itself.
 
-In Docker, `tailscale serve` runs on the host and proxies to the container's published port, typically from the Docker bridge gateway rather than loopback, so the above does *not* apply unmodified -- that peer isn't trusted by default and its address isn't fixed across hosts. Use the explicit override instead:
+In Docker, `tailscale serve` runs on the host and proxies to the container's published port, typically from the Docker bridge gateway rather than loopback, so the above does *not* apply unmodified -- that peer isn't trusted by default and its address isn't fixed across hosts. Use the explicit override for the CSRF Origin check, and tell uvicorn to trust the gateway so `X-Forwarded-For` is honored:
 
 ```bash
 PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net \
-  uvicorn photos_viewer.main:app --host 0.0.0.0 --port 8000
+  uvicorn photos_viewer.main:app --host 0.0.0.0 --port 8000 --forwarded-allow-ips=172.17.0.1
 ```
 
+`172.17.0.1` is Docker's default bridge gateway; check `docker network inspect bridge` (or your compose network) for the real address, since it is not guaranteed across hosts. `--forwarded-allow-ips` also accepts `*` to trust whatever peer connects, which is safe only when the container has no other inbound route (see "Docker" below -- published only on the tailnet address, no public port). `--forwarded-allow-ips` has an env-var equivalent (`UVICORN_FORWARDED_ALLOW_IPS`) for compose files that prefer `environment:` over `command:`.
+
 `PHOTOS_VIEWER_PUBLIC_ORIGINS` (comma-separated `scheme://host[:port]`) is validated at startup: an entry that fails to parse logs a `WARNING` naming the variable and the bad value and is dropped; if every entry fails to parse, the app refuses to start rather than silently falling back to same-origin-only checking.
+
+### The per-client login-lockout bucket, and `PHOTOS_VIEWER_TRUSTED_PROXIES`
+
+Separately from the CSRF check, the login route also tracks failed attempts per client (`MAX_FAILED_LOGIN_ATTEMPTS_PER_IP`), to slow down a flood of guesses from one caller without touching the per-username lockout everyone else's login still depends on. That counter is keyed on `request.client.host` -- which `--forwarded-allow-ips` is what makes equal to the real tailnet device's address, same as above.
+
+If `--forwarded-allow-ips` is *not* pointed at the Docker bridge gateway (the out-of-the-box default, since the gateway's address isn't known in advance), every request looks like it comes from that one gateway address, and the per-client bucket becomes shared: 30 failed logins from any one device lock out everyone else behind the proxy for 15 minutes. This is the same problem loopback already has by default -- solved there by keying on the `Tailscale-User-Login` header instead, when the direct peer is loopback.
+
+`PHOTOS_VIEWER_TRUSTED_PROXIES` (comma-separated IPs and/or CIDRs, e.g. `172.17.0.1` or `172.18.0.0/16`) extends that same `Tailscale-User-Login`-keyed treatment to other peers this server should treat as "the known reverse proxy, not a real caller" -- a code-level safety net for the Docker case above when `--forwarded-allow-ips` isn't set to the gateway's actual address (or can't be, e.g. it varies at deploy time). Unlike `PHOTOS_VIEWER_PUBLIC_ORIGINS`, *any* invalid entry here fails startup outright, not just "every entry invalid": a typo'd address would otherwise look like it's working right up until the first burst of failed logins locks out the whole tailnet.
+
+Configuring neither is the documented "it still works, just coarser" case: logins succeed, but the per-client bucket is shared across every device behind the gateway. Configuring `--forwarded-allow-ips` correctly is the complete fix (also corrects the CSRF Origin check's and the audit log's idea of the caller's address) and is the default this doc recommends; `PHOTOS_VIEWER_TRUSTED_PROXIES` is for when that isn't possible.
 
 ## Locked-out admin: the `admin` CLI
 
@@ -111,6 +123,11 @@ services:
     environment:
       PHOTOS_VIEWER_DATA_DIR: /data
       OSXPHOTOS_NO_VERSION_CHECK: "1"
+      # tailscale serve on the host reaches this container from the Docker
+      # bridge gateway, not loopback -- see "CSRF and tailscale serve"
+      # above for both of these and why they default to unset otherwise.
+      PHOTOS_VIEWER_PUBLIC_ORIGINS: https://myhost.tailxyz.ts.net
+      UVICORN_FORWARDED_ALLOW_IPS: 172.17.0.1
 volumes:
   viewer-data:
 networks:

@@ -19,6 +19,20 @@ from photos_viewer.main import create_app
 VALID_PASSWORD = "correct-horse-battery"
 
 
+@pytest.fixture(autouse=True)
+def _reset_env_derived_caches():
+    """`PHOTOS_VIEWER_PUBLIC_ORIGINS` and `PHOTOS_VIEWER_TRUSTED_PROXIES`
+    are parsed once and cached at startup (not re-parsed per request), so
+    without this a cache populated by one test (or by a `client` fixture's
+    `create_app()`, which runs before a test's own `monkeypatch.setenv`)
+    would leak into the next."""
+    session_auth.reset_public_origins_cache()
+    session_auth.reset_trusted_proxies_cache()
+    yield
+    session_auth.reset_public_origins_cache()
+    session_auth.reset_trusted_proxies_cache()
+
+
 @pytest.fixture
 def client(tmp_path):
     app = create_app()
@@ -81,6 +95,43 @@ def proxied_client_untrusted_peer(tmp_path):
     a caller who can merely reach the port, without also being the trusted
     reverse proxy, looks like to `ProxyHeadersMiddleware`."""
     conn, test_client = _proxied_client(tmp_path, peer_host="203.0.113.5")
+    try:
+        yield test_client
+    finally:
+        conn.close()
+
+
+def _gateway_client(tmp_path, *, peer_host):
+    """`request.client.host` is a fixed non-loopback address, standing in
+    for the Docker bridge gateway `tailscale serve` on the host connects
+    through -- distinct from `proxied_client`, which exercises uvicorn's
+    own `ProxyHeadersMiddleware`; this tests `_ip_lockout_key`'s own
+    `PHOTOS_VIEWER_TRUSTED_PROXIES` handling directly."""
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    return conn, TestClient(app, base_url="https://testserver", client=(peer_host, 51000))
+
+
+@pytest.fixture
+def docker_gateway_client(tmp_path, monkeypatch):
+    """The documented Docker default: the bridge-gateway address is listed
+    in `PHOTOS_VIEWER_TRUSTED_PROXIES`, so it gets the same
+    `Tailscale-User-Login`-keyed lockout treatment as a loopback peer."""
+    monkeypatch.setenv("PHOTOS_VIEWER_TRUSTED_PROXIES", "172.17.0.1")
+    conn, test_client = _gateway_client(tmp_path, peer_host="172.17.0.1")
+    try:
+        yield test_client
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def untrusted_gateway_client(tmp_path):
+    """Same gateway peer, but `PHOTOS_VIEWER_TRUSTED_PROXIES` left unset --
+    the documented behavior when it isn't configured: every caller behind
+    the gateway shares one per-client lockout bucket."""
+    conn, test_client = _gateway_client(tmp_path, peer_host="172.17.0.1")
     try:
         yield test_client
     finally:
@@ -655,6 +706,7 @@ def test_a_tailnet_origin_is_accepted_when_listed_in_public_origins(client, monk
     `PHOTOS_VIEWER_PUBLIC_ORIGINS` must let the (otherwise same-origin,
     non-proxied) request through."""
     monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net")
+    session_auth.reset_public_origins_cache()
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
     response = client.post(
@@ -668,6 +720,7 @@ def test_a_tailnet_origin_is_accepted_when_listed_in_public_origins(client, monk
 
 def test_an_unlisted_origin_is_still_rejected_with_public_origins_configured(client, monkeypatch):
     monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net")
+    session_auth.reset_public_origins_cache()
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
     response = client.post(
@@ -948,3 +1001,193 @@ def test_cookie_secure_can_be_disabled_for_plain_http_dev(monkeypatch):
     monkeypatch.setenv("PHOTOS_VIEWER_COOKIE_SECURE", "false")
 
     assert session_auth._cookie_secure() is False
+
+
+# -- Issue #18 A: PUBLIC_ORIGINS parsed/warned once at startup, not per request --
+
+
+def test_public_origins_env_warning_is_logged_once_not_once_per_request(monkeypatch, caplog, tmp_path):
+    """A re-parse (and re-warning) on every state-changing request would be
+    both wasted work and log spam; `validate_public_origins_env` must do
+    the one parse at startup, and later requests must reuse the cache."""
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "not-a-url, https://box.tailxyz.ts.net")
+
+    with caplog.at_level("WARNING"):
+        app = create_app()
+        conn = app_db.connect(tmp_path)
+        app.dependency_overrides[session_auth.get_db] = lambda: conn
+        try:
+            test_client = TestClient(app, base_url="https://testserver")
+            test_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+            for _ in range(3):
+                test_client.post(
+                    "/api/auth/login",
+                    json={"username": "admin", "password": VALID_PASSWORD},
+                    headers={"origin": "https://box.tailxyz.ts.net"},
+                )
+        finally:
+            conn.close()
+
+    warnings = [record for record in caplog.records if "not-a-url" in record.message]
+    assert len(warnings) == 1
+
+
+def test_invalid_public_origin_warning_goes_through_a_handler_with_a_level_label(monkeypatch):
+    """uvicorn's own logging config never attaches a handler to the root
+    logger, so a bare `logger.warning(...)` prints with no "WARNING:"
+    label under `uvicorn photos_viewer.main:app`. This module's logger
+    needs its own handler, with a formatter that includes the level."""
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "not-a-url")
+
+    session_auth._public_origins_from_env()
+
+    assert session_auth.logger.handlers
+    formatter = session_auth.logger.handlers[-1].formatter
+    assert formatter is not None
+    assert "%(levelname)s" in formatter._fmt
+
+
+def test_reset_public_origins_cache_allows_a_fresh_parse(monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://first.tailxyz.ts.net")
+    first = session_auth._public_origins_from_env()
+    assert first == {session_auth._parse_origin("https://first.tailxyz.ts.net")}
+
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://second.tailxyz.ts.net")
+    assert session_auth._public_origins_from_env() == first, "still cached -- env change not yet observed"
+
+    session_auth.reset_public_origins_cache()
+
+    assert session_auth._public_origins_from_env() == {session_auth._parse_origin("https://second.tailxyz.ts.net")}
+
+
+# -- Issue #18 B: trusted reverse-proxy addresses for the per-client lockout --
+
+
+def test_docker_gateway_lockout_is_keyed_on_the_tailscale_user_login_header_when_trusted(docker_gateway_client):
+    """With the bridge-gateway address listed in
+    `PHOTOS_VIEWER_TRUSTED_PROXIES`, it gets the same treatment loopback
+    gets by default: distinct `Tailscale-User-Login` values don't share a
+    lockout bucket."""
+    docker_gateway_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        docker_gateway_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{i}", "password": "whatever-password"},
+            headers={"tailscale-user-login": "alice"},
+        )
+
+    alice_locked_out = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    assert alice_locked_out.status_code == 429
+
+    bob_still_ok = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "bob"},
+    )
+    assert bob_still_ok.status_code == 200
+
+
+def test_docker_gateway_lockout_is_shared_across_users_when_not_trusted(untrusted_gateway_client):
+    """Documented behavior when `PHOTOS_VIEWER_TRUSTED_PROXIES` isn't
+    configured: the gateway address is keyed like any other non-loopback
+    peer, so every caller behind it shares one bucket -- distinct
+    `Tailscale-User-Login` headers don't help."""
+    untrusted_gateway_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        untrusted_gateway_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{i}", "password": "whatever-password"},
+            headers={"tailscale-user-login": "alice"},
+        )
+
+    bob_also_locked_out = untrusted_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "bob"},
+    )
+    assert bob_also_locked_out.status_code == 429
+
+
+def test_trusted_proxies_env_accepts_ips_and_cidrs(monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_TRUSTED_PROXIES", "172.17.0.1, 172.18.0.0/16")
+
+    create_app()  # must not raise
+
+    assert session_auth._is_trusted_proxy("172.17.0.1") is True
+    assert session_auth._is_trusted_proxy("172.18.5.9") is True
+    assert session_auth._is_trusted_proxy("203.0.113.5") is False
+
+
+def test_trusted_proxies_env_with_an_invalid_entry_fails_startup(monkeypatch):
+    """A typo'd address or CIDR that silently never matches the real proxy
+    would look like it's working right up until the first burst of failed
+    logins locks out the whole tailnet -- refuse to start instead."""
+    monkeypatch.setenv("PHOTOS_VIEWER_TRUSTED_PROXIES", "not-an-address")
+
+    with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_TRUSTED_PROXIES"):
+        create_app()
+
+
+# -- Issue #18 C: a malformed port is an invalid origin, not a crash --
+
+
+def test_post_with_a_malformed_port_in_origin_header_is_rejected_not_500(client):
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://box.ts.net:abc"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_public_origins_env_entry_with_a_malformed_port_is_invalid_not_a_crash(monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.ts.net:abc")
+
+    with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_PUBLIC_ORIGINS"):
+        create_app()
+
+
+# -- Issue #18 D: only http/https, and only a bare origin --
+
+
+def test_post_with_a_non_http_scheme_origin_is_rejected(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "ftp://testserver"},
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "ftp://box.tailxyz.ts.net",
+        "https://box.tailxyz.ts.net/app",
+        "https://box.tailxyz.ts.net?x=1",
+        "https://box.tailxyz.ts.net#frag",
+    ],
+)
+def test_public_origins_env_entry_with_a_bad_scheme_path_query_or_fragment_is_invalid(monkeypatch, entry):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", entry)
+
+    with pytest.raises(RuntimeError, match="PHOTOS_VIEWER_PUBLIC_ORIGINS"):
+        create_app()
+
+
+def test_public_origins_env_entry_with_a_trailing_slash_is_accepted(monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net/")
+
+    create_app()  # must not raise
+
+    assert session_auth._parse_origin("https://box.tailxyz.ts.net/") == ("https", "box.tailxyz.ts.net", 443)

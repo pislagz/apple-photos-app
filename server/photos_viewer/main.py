@@ -11,11 +11,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .session_auth import router as auth_router
-from .session_auth import validate_public_origins_env
+from .session_auth import validate_public_origins_env, validate_trusted_proxies_env
 
 
 def create_app() -> FastAPI:
     validate_public_origins_env()
+    validate_trusted_proxies_env()
     app = FastAPI()
     app.include_router(auth_router)
 
