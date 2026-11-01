@@ -1548,15 +1548,21 @@ def test_tailnet_allowlist_allows_a_matching_header(loopback_client):
     assert response.status_code == 200
 
 
-def test_tailnet_allowlist_ignores_a_header_from_an_untrusted_peer(client):
+def test_tailnet_allowlist_ignores_a_header_from_an_untrusted_peer(client, tmp_path):
     """`client` (unlike `loopback_client`) is not loopback and not a
     `PHOTOS_VIEWER_TRUSTED_PROXIES` entry, so even a header that matches the
     allow-list exactly must not satisfy it -- otherwise any LAN caller that
     can merely reach the port could set its own `Tailscale-User-Login` and
-    walk straight through."""
+    walk straight through. Set up via the DB directly, not the PUT route --
+    `client` has no trusted identity of its own, so issue #26's self-lockout
+    guard would refuse this exact list from this exact caller."""
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
     client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
-    client.put("/api/admin/settings/tailnet-allowlist", json={"identities": ["evil"]})
+    conn = app_db.connect(tmp_path)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["evil"])
+    finally:
+        conn.close()
 
     response = client.get("/api/auth/me", headers={"tailscale-user-login": "evil"})
 
@@ -1645,3 +1651,106 @@ def test_tailnet_allowlist_admin_api_is_401_with_no_session(client):
     assert response.status_code == 401
 
     assert session_auth._parse_origin("https://box.tailxyz.ts.net/") == ("https", "box.tailxyz.ts.net", 443)
+
+
+# -- Issue #26: self-lockout guard and normalisation on save --
+
+
+def test_normalize_tailnet_identities_strips_dedupes_and_lowercases():
+    result = session_auth.normalize_tailnet_identities([" Alice@Example.com ", "alice@example.com", "", "   ", "Bob"])
+
+    assert result == ["alice@example.com", "bob"]
+
+
+def test_tailnet_allowlist_put_rejects_a_list_missing_the_callers_own_identity(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    response = loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["bob"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    assert response.status_code == 400
+    still_empty = loopback_client.get(
+        "/api/admin/settings/tailnet-allowlist", headers={"tailscale-user-login": "alice"}
+    )
+    assert still_empty.json() == {"identities": []}
+
+
+def test_tailnet_allowlist_put_accepts_a_list_containing_the_callers_own_identity(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    response = loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["alice", "bob"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"identities": ["alice", "bob"]}
+
+
+def test_tailnet_allowlist_put_rejects_a_non_empty_list_from_a_caller_with_no_trusted_identity(client):
+    """`client` is neither loopback nor a trusted proxy, so it has no
+    trusted `Tailscale-User-Login` identity at all -- a non-empty list
+    would lock out every caller, including this one."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.put("/api/admin/settings/tailnet-allowlist", json={"identities": ["alice"]})
+
+    assert response.status_code == 400
+
+
+def test_tailnet_allowlist_put_always_accepts_an_empty_list(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.put("/api/admin/settings/tailnet-allowlist", json={"identities": []})
+
+    assert response.status_code == 200
+    assert response.json() == {"identities": []}
+
+
+def test_tailnet_allowlist_put_normalizes_whitespace_case_and_duplicates(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice@example.com"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice@example.com"},
+    )
+
+    response = loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": [" Alice@Example.com ", "alice@example.com", "bob", "  "]},
+        headers={"tailscale-user-login": "alice@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"identities": ["alice@example.com", "bob"]}
+
+    allowed = loopback_client.get("/api/auth/me", headers={"tailscale-user-login": "ALICE@EXAMPLE.COM"})
+    assert allowed.status_code == 200

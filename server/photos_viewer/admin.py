@@ -7,25 +7,40 @@ under `PHOTOS_VIEWER_DATA_DIR`, so it also works inside the Docker/OrbStack
 container with no server running:
 
     docker exec <container> python -m photos_viewer.admin unlock <username>
+
+Issue #26: the same problem applies to the P1.4 tailnet allow-list -- an
+admin who saves a list that doesn't include their own identity has no way
+to call `PUT /api/admin/settings/tailnet-allowlist` either, since
+`_enforce_tailnet_allowlist` runs ahead of every session route. `allowlist
+clear` is the recovery:
+
+    docker exec <container> python -m photos_viewer.admin allowlist clear
 """
 
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 from collections.abc import Sequence
 
 from . import app_db, session_auth
 
 
-def _cmd_unlock(args: argparse.Namespace) -> int:
-    username = args.username.strip().lower()
+def _open_db_or_none(command: str) -> sqlite3.Connection | None:
     data_dir = app_db.data_dir_from_env()
     db_path = app_db.db_path(data_dir)
     if not db_path.exists():
-        print(f"unlock: no app.db at {db_path} -- check PHOTOS_VIEWER_DATA_DIR", file=sys.stderr)
+        print(f"{command}: no app.db at {db_path} -- check PHOTOS_VIEWER_DATA_DIR", file=sys.stderr)
+        return None
+    return app_db.connect(data_dir)
+
+
+def _cmd_unlock(args: argparse.Namespace) -> int:
+    username = args.username.strip().lower()
+    conn = _open_db_or_none("unlock")
+    if conn is None:
         return 1
-    conn = app_db.connect(data_dir)
     try:
         user = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         if user is None:
@@ -47,6 +62,35 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
         conn.close()
 
 
+def _cmd_allowlist_show(args: argparse.Namespace) -> int:
+    conn = _open_db_or_none("allowlist")
+    if conn is None:
+        return 1
+    try:
+        identities = session_auth.get_allowed_tailnet_identities(conn)
+        if not identities:
+            print("(empty -- everyone allowed)")
+        else:
+            for identity in identities:
+                print(identity)
+        return 0
+    finally:
+        conn.close()
+
+
+def _cmd_allowlist_clear(args: argparse.Namespace) -> int:
+    conn = _open_db_or_none("allowlist")
+    if conn is None:
+        return 1
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, [])
+        app_db.write_audit_log(conn, "set_tailnet_allowlist", actor="cli", detail="count=0")
+        print("allow-list cleared (everyone allowed)")
+        return 0
+    finally:
+        conn.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m photos_viewer.admin")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -62,6 +106,18 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     unlock.set_defaults(func=_cmd_unlock)
+
+    allowlist = subparsers.add_parser("allowlist", help="Inspect or reset the tailnet allow-list (P1.4).")
+    allowlist_subparsers = allowlist.add_subparsers(dest="allowlist_command", required=True)
+
+    allowlist_show = allowlist_subparsers.add_parser("show", help="Print the current allow-list.")
+    allowlist_show.set_defaults(func=_cmd_allowlist_show)
+
+    allowlist_clear = allowlist_subparsers.add_parser(
+        "clear",
+        help="Empty the allow-list (= allow everyone). Recovers an admin locked out by their own saved list.",
+    )
+    allowlist_clear.set_defaults(func=_cmd_allowlist_clear)
 
     return parser
 
