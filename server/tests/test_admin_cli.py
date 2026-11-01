@@ -55,6 +55,8 @@ def test_unlock_normalizes_the_username(data_dir):
 
 
 def test_unlock_exits_non_zero_for_an_unknown_user(data_dir, capsys):
+    app_db.connect(data_dir).close()
+
     exit_code = admin.main(["unlock", "nobody"])
 
     assert exit_code != 0
@@ -98,3 +100,31 @@ def test_unlock_without_clear_ip_limits_leaves_the_per_client_counters_alone(dat
         assert count == 1
     finally:
         conn.close()
+
+
+def test_unlock_refuses_to_run_against_a_data_dir_with_no_app_db(data_dir, capsys):
+    """Issue #14 B: a wrong or unset `PHOTOS_VIEWER_DATA_DIR` must not look
+    like "no such user" -- `connect()` would silently create a fresh,
+    empty `app.db` and migrate it before the user lookup ever runs."""
+    exit_code = admin.main(["unlock", "bob"])
+
+    assert exit_code != 0
+    err = capsys.readouterr().err
+    assert str(app_db.db_path(data_dir)) in err
+    assert list(data_dir.glob("*")) == []
+
+
+def test_unlock_writes_an_audit_row_with_the_cli_actor(data_dir):
+    _create_user(data_dir, "bob")
+
+    admin.main(["unlock", "bob", "--clear-ip-limits"])
+
+    conn = app_db.connect(data_dir)
+    try:
+        bob_id = conn.execute("SELECT id FROM users WHERE username = 'bob'").fetchone()["id"]
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'unlock_user'").fetchone()
+    finally:
+        conn.close()
+    assert row["actor"] == "cli"
+    assert row["user_id"] == bob_id
+    assert row["detail"] == "ip_limits_cleared=true"

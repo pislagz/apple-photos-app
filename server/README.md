@@ -34,6 +34,26 @@ Filenames must not contain `token` or `credential`. The runner cannot read those
 
 Session cookies are marked `Secure` by default (`PHOTOS_VIEWER_COOKIE_SECURE=true`), so the browser refuses to send one over plain HTTP. The deployed server is expected to sit behind HTTPS: Tailscale Serve (`tailscale serve`) or a certificate from `tailscale cert`. For local plain-HTTP development only, set `PHOTOS_VIEWER_COOKIE_SECURE=false`. The flag is never inferred from the request, since a reverse proxy can make an HTTP request look like anything.
 
+## CSRF and `tailscale serve`
+
+Every state-changing request (including login) is rejected unless its `Origin` header matches the server's own origin. `tailscale serve` breaks the naive version of that check: it terminates HTTPS and renames Host to the tailnet name, so the browser's Origin (`https://<machine>.<tailnet>.ts.net`) never matches what the server sees on its plain-HTTP loopback socket. Two ways to fix it, in order of robustness:
+
+```bash
+# 1. Tell the server its own public origin (works no matter what headers the
+#    proxy does or doesn't send; recommended for Docker):
+tailscale serve --bg 8000
+PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net \
+  uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000
+
+# 2. Or let the server learn it from forwarded headers, trusted only because
+#    tailscale serve always connects from loopback:
+tailscale serve --bg 8000
+uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000 \
+  --proxy-headers --forwarded-allow-ips=127.0.0.1
+```
+
+In Docker, `tailscale serve` runs on the host and proxies to the container's published port, so option 2's `--forwarded-allow-ips` would need to list whatever address that proxy connects from on the container's network (not necessarily `127.0.0.1`) -- option 1 avoids that entirely and is the one `deploy/docker-compose.yml` should set.
+
 ## Locked-out admin: the `admin` CLI
 
 `python -m photos_viewer.admin unlock <username>` clears that username's login lockout. It opens `app.db` under `PHOTOS_VIEWER_DATA_DIR` directly, with no server running, so it works even when the admin is the one locked out and the web UI's own unlock button (`POST /api/admin/users/{username}/unlock`) is unreachable:

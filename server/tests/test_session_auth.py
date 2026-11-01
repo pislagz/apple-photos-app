@@ -608,6 +608,92 @@ def test_post_with_a_same_host_but_different_scheme_origin_is_rejected(client):
     assert response.status_code == 403
 
 
+def test_a_tailnet_origin_is_accepted_when_listed_in_public_origins(client, monkeypatch):
+    """Issue #14 A: behind `tailscale serve`, the browser's Origin is the
+    tailnet `ts.net` name, which never matches `request.url`. Listing it in
+    `PHOTOS_VIEWER_PUBLIC_ORIGINS` must let the (otherwise same-origin,
+    non-proxied) request through."""
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net")
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://box.tailxyz.ts.net"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_an_unlisted_origin_is_still_rejected_with_public_origins_configured(client, monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://box.tailxyz.ts.net")
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://evil.example"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_forwarded_headers_from_a_loopback_client_establish_the_public_origin(loopback_client):
+    """Issue #14 A: with no `PHOTOS_VIEWER_PUBLIC_ORIGINS` configured, a
+    reverse proxy connecting from loopback (what `tailscale serve` always
+    does) can establish the public origin via `X-Forwarded-Proto` /
+    `X-Forwarded-Host`, so the login POST that triggered this issue works
+    in the proxied case."""
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={
+            "origin": "https://box.tailxyz.ts.net",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "box.tailxyz.ts.net",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+def test_forwarded_headers_from_a_loopback_client_still_reject_a_mismatched_origin(loopback_client):
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={
+            "origin": "https://evil.example",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "box.tailxyz.ts.net",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_forwarded_headers_from_a_non_loopback_client_are_ignored(client):
+    """Issue #14 A: `client`'s direct peer is httpx's default
+    (`testclient`), not loopback, so these headers must not be trusted --
+    otherwise any caller could forge its way past the origin check."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={
+            "origin": "https://box.tailxyz.ts.net",
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "box.tailxyz.ts.net",
+        },
+    )
+
+    assert response.status_code == 403
+
+
 def test_login_does_not_enforce_the_setup_minimum_password_length(client):
     """Issue #12 F: a short wrong password at login must go through the
     same lockout accounting and Argon2 verify as any other wrong password
@@ -680,6 +766,34 @@ def test_admin_unlock_404s_for_an_unknown_user(client):
     response = client.post("/api/admin/users/nobody/unlock", json={})
 
     assert response.status_code == 404
+
+
+def test_admin_unlock_writes_an_audit_row_with_the_admin_as_actor(client, tmp_path):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('bob', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.commit()
+        bob_id = conn.execute("SELECT id FROM users WHERE username = 'bob'").fetchone()["id"]
+    finally:
+        conn.close()
+
+    response = client.post("/api/admin/users/bob/unlock", json={})
+    assert response.status_code == 200
+
+    conn = app_db.connect(tmp_path)
+    try:
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'unlock_user'").fetchone()
+    finally:
+        conn.close()
+    assert row["actor"] == "admin"
+    assert row["user_id"] == bob_id
+    assert row["detail"] == "ip_limits_cleared=false"
 
 
 def test_env_seconds_falls_back_to_the_default_on_a_bad_value(monkeypatch, caplog):
