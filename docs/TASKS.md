@@ -52,9 +52,10 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 ### P1.1 Project skeleton that actually runs
 
-- `pyproject.toml` at the repo root, package in `server/photos_viewer/`. Vite + React + TypeScript (`strict`) under `web/`.
+- Python packaging stays in `server/pyproject.toml` (created in Phase 0), package in `server/photos_viewer/`. Add a `[build-system]` so `pip install -e "./server[dev]"` works from the repo root, and add FastAPI, Uvicorn and the other server deps there. Don't add a root `pyproject.toml`; the root `pytest.ini` mirrors the server pytest config (socket ban) for runs from the repo root, so keep the two in sync.
+- Vite + React + TypeScript (`strict`) under `web/`.
 - `ruff`, `pytest`, and `npm test` run on Linux.
-- GitHub Actions on `ubuntu-latest` runs both. No macOS runner.
+- Extend the existing `.github/workflows/ci.yml`: keep the `server` job on `ubuntu-latest` and `macos-latest` (tests + probe), and add a `web` job on `ubuntu-latest` for `npm ci`, `npm test` and the build, plus the check that the build output has no external URLs except the OSM tile host and copyright link.
 - Acceptance: `GET /api/health` returns ok locally and in CI. `npm test` has a passing placeholder until P1.11.
 
 ### P1.2 `app.db` schema

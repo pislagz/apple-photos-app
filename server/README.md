@@ -1,8 +1,8 @@
 # Server
 
-Python 3.12 package. FastAPI and Uvicorn. Not created yet. Phase 0 and Phase 1 in `docs/TASKS.md` build it. Behavior is `docs/SPEC.md`. The reader follows `docs/PRIOR_ART.md`.
+Python 3.12 package. FastAPI and Uvicorn. Phase 0 (read-only library opening, probe CLI, tests) is done; Phase 1 in `docs/TASKS.md` builds the rest. Behavior is `docs/SPEC.md`. The reader follows `docs/PRIOR_ART.md`.
 
-`pyproject.toml` lives at the repo root so `pip install -e ".[dev]"` works from a fresh clone. The package itself lives here:
+`pyproject.toml` lives here in `server/`, so `pip install -e "server[dev]"` works from a fresh clone. The package itself lives here:
 
 ```
 server/photos_viewer/
@@ -82,7 +82,7 @@ networks:
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e "./server[dev]"   # from the repo root
 uvicorn photos_viewer.main:app --reload
 pytest
 ```

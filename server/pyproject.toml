@@ -21,8 +21,8 @@ dev = [
 target-version = "py312"
 
 [tool.pytest.ini_options]
-# server/ is not an installed package yet (Phase 1 adds the root
-# pyproject.toml and `pip install -e`). conftest.py puts this directory on
+# server/ is not installable yet (P1.1 adds a [build-system] here so
+# `pip install -e ./server` works; there is no root pyproject.toml). conftest.py puts this directory on
 # sys.path so `import photos_viewer` resolves without an install step.
 testpaths = ["tests"]
 # The server makes zero outbound requests (see CLAUDE.md "Offline at

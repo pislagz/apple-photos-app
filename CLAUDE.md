@@ -2,7 +2,7 @@
 
 Read this file first. Then read `docs/SPEC.md` (product and technical source of truth), `docs/PRIOR_ART.md` (what to borrow, with file paths), and `docs/TASKS.md` (the order of work). Visual targets are in `docs/design-refs/README.md`.
 
-This repository is the handoff. The app is not implemented yet. `server/` and `web/` are placeholders. Do not start Phase 1 until Phase 0 has opened a library read-only on Linux.
+This repository is the handoff. Phase 0 is done: `server/photos_viewer/` opens libraries read-only (temp copy of the database) on Linux and macOS, with tests and CI. The rest of the app is not implemented yet, and `web/` is a placeholder.
 
 ## Project
 
@@ -77,7 +77,8 @@ This is a tooling rule. It is independent of the product. Prior art discusses ot
 ```
 CLAUDE.md                 this handoff
 README.md                 overview for humans
-pyproject.toml            added in Phase 1, at the repo root
+pytest.ini                mirrors server pytest config (socket ban) for runs from the repo root
+.github/workflows/ci.yml  server tests + probe on ubuntu-latest and macos-latest
 .env.example              variable names only
 .editorconfig
 .gitignore
@@ -86,14 +87,16 @@ docs/PRIOR_ART.md         file-level borrow/avoid notes
 docs/TASKS.md             phase checklist with acceptance criteria
 docs/MANUAL_MAC_TESTS.md  real-library checklist, not part of CI
 docs/design-refs/         iOS 17 and Sequoia screenshots, plus an index
+server/pyproject.toml     Python packaging and pytest config
 server/photos_viewer/     Python package, added in Phase 0 and Phase 1
+server/tests/             pytest suite and the synthetic fixture library
 server/README.md          packaging plan
 web/                      Vite app, added in Phase 1
 web/README.md
 deploy/                   Dockerfile, compose, launchd plist, added in Phase 1
 ```
 
-There is no application code yet. `pyproject.toml` goes at the repo root. The import package is `server/photos_viewer/`. The web app stays under `web/`. Build output is served by the server. Data directories (`data/`, thumbnail cache, temp sqlite copies) stay outside the libraries and outside git.
+Python packaging lives in `server/pyproject.toml`; there is no root `pyproject.toml`. The import package is `server/photos_viewer/`. The web app stays under `web/`. Build output is served by the server. Data directories (`data/`, thumbnail cache, temp sqlite copies) stay outside the libraries and outside git.
 
 ## Phases
 
@@ -132,10 +135,10 @@ Before any UI:
 These commands are the contract to make true. They do not work yet.
 
 ```bash
-# Server, from the repo root once the package exists
+# Server, from the repo root
 python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e "./server[dev]"
 uvicorn photos_viewer.main:app --reload --host 127.0.0.1 --port 8000
 
 # Web
@@ -146,7 +149,7 @@ pytest
 cd web && npm test
 ```
 
-`GET /api/health` is the liveness check. Point the synthetic fixture at the suite with an environment variable such as `PHOTOS_VIEWER_FIXTURE` once the fixture exists. CI is GitHub Actions on `ubuntu-latest` only. A macOS runner is not required. `pytest` runs under `pytest-socket` with only localhost allowed, because the server never dials out. The production web build may contain the OSM tile URL and the OSM copyright href, and no other absolute external URL. Set `OSXPHOTOS_NO_VERSION_CHECK=1` in the server environment.
+`GET /api/health` is the liveness check. Point the synthetic fixture at the suite with an environment variable such as `PHOTOS_VIEWER_FIXTURE` once the fixture exists. CI is GitHub Actions (`.github/workflows/ci.yml`): the server job runs on `ubuntu-latest` and `macos-latest`; web jobs can be Linux only. `pytest` runs under `pytest-socket` with only localhost allowed, because the server never dials out. The production web build may contain the OSM tile URL and the OSM copyright href, and no other absolute external URL. Set `OSXPHOTOS_NO_VERSION_CHECK=1` in the server environment.
 
 Tailscale Serve, launchd, and docker-compose are documented as the server gains them. See `server/README.md` for the packaging plan.
 
