@@ -85,6 +85,11 @@ Not blocking; pick up when convenient.
 - Trim the long per-peer-ceiling paragraph in `server/README.md`; it duplicates `docs/SPEC.md`.
 - Make the per-peer ceiling (`MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`) configurable instead of a hard-coded 10x the per-IP limit.
 - Watch `test_ip_lockout_key_is_the_forwarded_address_through_the_real_proxy_headers_middleware` for flakiness (it failed once with 200 instead of 429).
+- P1.5 (PR #29 review): resolve library paths (`Path.resolve()`) before the duplicate check in `library_admin.py`, so `.../x/../Lib.photoslibrary` can't register the same library twice.
+- P1.5: `_total_size_bytes` walks the whole package on every `GET .../status`; cache it or take it from the P1.6 index.
+- P1.5: a folder named `X.photoslibrary` that isn't a real library gets the probe's raw "could not open ... as a Photos library: <exception>" message; give it a friendlier one.
+- P1.5: `library_admin.py` imports the private `session_auth._reject_cross_site_requests`; make it public.
+- P1.5: fixture `.photoslibrary` temp dirs are left behind in `/tmp` after tests or live runs; clean them up.
 
 ### P1.4 Optional tailnet allow-list
 
