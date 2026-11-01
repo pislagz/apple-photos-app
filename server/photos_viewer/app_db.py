@@ -12,8 +12,11 @@ against an already-migrated file is a no-op.
 
 from __future__ import annotations
 
+import os
 import pathlib
 import sqlite3
+
+_DATA_DIR_ENV = "PHOTOS_VIEWER_DATA_DIR"
 
 # Each migration is a list of complete, individually-executed statements,
 # not one `executescript` blob: `executescript` issues an implicit COMMIT
@@ -124,7 +127,21 @@ _MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX idx_ip_login_failures_client_ip ON ip_login_failures(client_ip, occurred_at)",
     ],
+    # 3: split login-failure rows by whether the attempted username existed
+    # at insert time, so a flood of guesses against a not-yet-created name
+    # can never carry over and lock out a real account later created with
+    # that name (see session_auth.py's `record_login_failure`/`is_locked_out`).
+    [
+        "ALTER TABLE login_failures ADD COLUMN user_exists INTEGER NOT NULL DEFAULT 1",
+    ],
 ]
+
+
+def data_dir_from_env() -> pathlib.Path:
+    """`$PHOTOS_VIEWER_DATA_DIR`, or `./data` -- the one place that default
+    lives, shared by the server (`session_auth.get_db`) and the `admin` CLI
+    so both ever agree on which `app.db` they are looking at."""
+    return pathlib.Path(os.environ.get(_DATA_DIR_ENV, "data"))
 
 
 def db_path(data_dir: str | pathlib.Path) -> pathlib.Path:
@@ -156,13 +173,19 @@ def connect(data_dir: str | pathlib.Path) -> sqlite3.Connection:
 def migrate(conn: sqlite3.Connection) -> None:
     """Apply any migration in `_MIGRATIONS` not yet applied to `conn`.
 
-    The whole run -- every pending migration plus the final `PRAGMA
-    user_version` -- is one `BEGIN IMMEDIATE` transaction, so a crash or
-    error partway through leaves both the schema and the recorded version
-    exactly as they were. `user_version` is re-read only after the write
-    lock is held, in case another connection migrated the file between an
-    earlier, lock-free read and this one.
+    `PRAGMA user_version` is a plain read with no lock. On the overwhelming
+    majority of calls -- every `connect()` after the first on an
+    already-current `app.db` -- that read alone shows nothing pending, and
+    this returns without ever taking the write lock. Only when a migration
+    looks pending does it escalate to `BEGIN IMMEDIATE` and re-read
+    `user_version`, in case another connection finished migrating between
+    that first lock-free read and this one. The whole run from there --
+    every pending migration plus the final `PRAGMA user_version` bump -- is
+    one transaction, so a crash or error partway through leaves both the
+    schema and the recorded version exactly as they were.
     """
+    if conn.execute("PRAGMA user_version").fetchone()[0] >= len(_MIGRATIONS):
+        return
     conn.execute("BEGIN IMMEDIATE")
     try:
         current = conn.execute("PRAGMA user_version").fetchone()[0]

@@ -34,6 +34,20 @@ Filenames must not contain `token` or `credential`. The runner cannot read those
 
 Session cookies are marked `Secure` by default (`PHOTOS_VIEWER_COOKIE_SECURE=true`), so the browser refuses to send one over plain HTTP. The deployed server is expected to sit behind HTTPS: Tailscale Serve (`tailscale serve`) or a certificate from `tailscale cert`. For local plain-HTTP development only, set `PHOTOS_VIEWER_COOKIE_SECURE=false`. The flag is never inferred from the request, since a reverse proxy can make an HTTP request look like anything.
 
+## Locked-out admin: the `admin` CLI
+
+`python -m photos_viewer.admin unlock <username>` clears that username's login lockout. It opens `app.db` under `PHOTOS_VIEWER_DATA_DIR` directly, with no server running, so it works even when the admin is the one locked out and the web UI's own unlock button (`POST /api/admin/users/{username}/unlock`) is unreachable:
+
+```bash
+# On the host, server stopped or not:
+PHOTOS_VIEWER_DATA_DIR=/path/to/data python -m photos_viewer.admin unlock myusername
+
+# Inside the Docker/OrbStack container, server running:
+docker exec <container> python -m photos_viewer.admin unlock myusername
+```
+
+Add `--clear-ip-limits` to also clear the per-client failed-login counters (shared by every caller behind `tailscale serve`, not just this one username) when the per-IP limit, not just the per-username one, is what's tripped. Exits non-zero with a message on stderr for an unknown username.
+
 ## launchd
 
 A plist in `deploy/`, loaded on the Mac that should run natively:

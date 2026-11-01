@@ -32,6 +32,20 @@ def client(tmp_path):
         conn.close()
 
 
+@pytest.fixture
+def loopback_client(tmp_path):
+    """Same as `client`, but `request.client.host` is `127.0.0.1` -- what
+    every request looks like behind `tailscale serve` -- instead of
+    httpx's default `testclient`, for the per-IP lockout tests below."""
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    try:
+        yield TestClient(app, base_url="https://testserver", client=("127.0.0.1", 51000))
+    finally:
+        conn.close()
+
+
 def test_first_run_creates_the_admin(client):
     response = client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
@@ -217,6 +231,42 @@ def test_failures_against_unknown_usernames_do_not_lock_out_a_real_account(clien
     assert still_ok.status_code == 200
 
 
+def test_unknown_username_gets_429_after_the_same_number_of_failures_as_a_real_user(client):
+    """Issue #12 C: an unknown name must be locked out after the same
+    `MAX_FAILED_LOGIN_ATTEMPTS` as a real account -- a 429 on attempt N+1
+    (rather than an immediate, cheap rejection) must not be a way to learn
+    the username doesn't exist."""
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+        client.post("/api/auth/login", json={"username": "ghost", "password": "whatever-password"})
+
+    locked_out = client.post("/api/auth/login", json={"username": "ghost", "password": "whatever-password"})
+
+    assert locked_out.status_code == 429
+
+
+def test_failures_against_an_unknown_name_do_not_carry_over_once_it_becomes_a_real_account(client, tmp_path):
+    """Issue #12 C: unknown-username failures are counted in a separate row
+    set (`user_exists = 0`) from a real account's, so a flood of guesses
+    against a not-yet-created name can never lock out an account later
+    created with that same name."""
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS * 2):
+        client.post("/api/auth/login", json={"username": "charlie", "password": "whatever-password"})
+
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('charlie', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.post("/api/auth/login", json={"username": "charlie", "password": VALID_PASSWORD})
+
+    assert response.status_code == 200
+
+
 def test_per_ip_lockout_trips_even_across_different_usernames(client):
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
@@ -226,6 +276,50 @@ def test_per_ip_lockout_trips_even_across_different_usernames(client):
     locked_out = client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
 
     assert locked_out.status_code == 429
+
+
+def test_loopback_with_no_tailscale_header_does_not_lock_out_other_users(loopback_client):
+    """Issue #12 A: behind `tailscale serve`, every request arrives from
+    `127.0.0.1`. Without a `Tailscale-User-Login` header there is no way to
+    tell callers apart, so the per-client limit must be skipped entirely --
+    otherwise many wrong passwords from one real user would lock out
+    everyone else on the tailnet."""
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP * 2):
+        loopback_client.post("/api/auth/login", json={"username": f"nobody-{i}", "password": "whatever-password"})
+
+    still_ok = loopback_client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    assert still_ok.status_code == 200
+
+
+def test_loopback_per_client_lockout_is_keyed_on_the_tailscale_user_login_header(loopback_client):
+    """With a `Tailscale-User-Login` header present, loopback callers are
+    distinguishable again, and the per-client limit applies per header
+    value: flooding as "alice" must not lock out "bob"."""
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        loopback_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{i}", "password": "whatever-password"},
+            headers={"tailscale-user-login": "alice"},
+        )
+
+    alice_locked_out = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    assert alice_locked_out.status_code == 429
+
+    bob_still_ok = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "bob"},
+    )
+    assert bob_still_ok.status_code == 200
 
 
 def test_a_successful_login_clears_the_failure_count(client):
@@ -374,6 +468,35 @@ def test_lookup_session_only_touches_last_seen_at_after_the_throttle_window(tmp_
         conn.close()
 
 
+def test_prune_expired_sessions_is_throttled_to_about_once_a_minute(tmp_path, monkeypatch):
+    """Issue #12 B: pruning is a DELETE plus commit on every call unless
+    throttled. Inside the throttle window it must do nothing at all, even
+    though `lookup_session`'s own WHERE clause would already reject the
+    stale row regardless of whether this ran."""
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute("INSERT INTO users (username, password_hash, role) VALUES ('admin', 'h', 'admin')")
+        conn.commit()
+        (user_id,) = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, expires_at) VALUES ('stale', ?, datetime('now', '-1 hour'))",
+            (user_id,),
+        )
+        conn.commit()
+
+        monkeypatch.setattr(session_auth, "_last_session_prune_at", time.monotonic())
+        session_auth._prune_expired_sessions(conn)
+        (still_there,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
+        assert still_there == 1
+
+        monkeypatch.setattr(session_auth, "_last_session_prune_at", 0.0)
+        session_auth._prune_expired_sessions(conn)
+        (pruned,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
+        assert pruned == 0
+    finally:
+        conn.close()
+
+
 def test_get_auth_me_returns_the_current_user(client):
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
     client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
@@ -457,6 +580,106 @@ def test_post_with_a_same_host_origin_header_is_accepted(client):
     )
 
     assert response.status_code == 200
+
+
+def test_post_with_a_same_host_but_different_port_origin_is_rejected(client):
+    """Issue #12 E: the CSRF origin check must compare scheme, host, *and*
+    port -- a same-host Origin on a different port is not same-origin."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "https://testserver:8443"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_post_with_a_same_host_but_different_scheme_origin_is_rejected(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"origin": "http://testserver"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_login_does_not_enforce_the_setup_minimum_password_length(client):
+    """Issue #12 F: a short wrong password at login must go through the
+    same lockout accounting and Argon2 verify as any other wrong password
+    (401), not get turned away early by a 422 -- which would itself be a
+    way to learn something about the real password's length."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post("/api/auth/login", json={"username": "admin", "password": "short"})
+
+    assert response.status_code == 401
+
+
+def test_login_still_rejects_a_password_over_the_maximum_length(client):
+    response = client.post("/api/auth/login", json={"username": "admin", "password": "a" * 1025})
+
+    assert response.status_code == 422
+
+
+def test_admin_unlock_clears_the_lockout_and_the_user_can_log_in_again(client, tmp_path):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('bob', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+        client.post("/api/auth/login", json={"username": "bob", "password": "wrong-password-1"})
+    locked_out = client.post("/api/auth/login", json={"username": "bob", "password": VALID_PASSWORD})
+    assert locked_out.status_code == 429
+
+    unlock = client.post("/api/admin/users/bob/unlock", json={})
+    assert unlock.status_code == 200
+    assert unlock.json() == {"username": "bob"}
+
+    unlocked_login = client.post("/api/auth/login", json={"username": "bob", "password": VALID_PASSWORD})
+    assert unlocked_login.status_code == 200
+
+
+def test_admin_unlock_is_403_for_a_non_admin(client, tmp_path):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('bob', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client.post("/api/auth/login", json={"username": "bob", "password": VALID_PASSWORD})
+
+    response = client.post("/api/admin/users/bob/unlock", json={})
+
+    assert response.status_code == 403
+
+
+def test_admin_unlock_404s_for_an_unknown_user(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post("/api/admin/users/nobody/unlock", json={})
+
+    assert response.status_code == 404
 
 
 def test_env_seconds_falls_back_to_the_default_on_a_bad_value(monkeypatch, caplog):
