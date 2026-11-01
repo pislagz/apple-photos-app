@@ -90,6 +90,7 @@ Not blocking; pick up when convenient.
 
 - Setting: a list of Tailscale identities. When non-empty, requests must present a matching `Tailscale-User-Login` header.
 - Acceptance: empty list allows any session that is otherwise valid. A non-matching header is rejected. Test uses a fake header, no real tailnet.
+- Done: `app_db.py` migration 7 adds a generic `settings` key/value table (`get_setting`/`set_setting`). `session_auth.py`: `get_allowed_tailnet_identities`/`set_allowed_tailnet_identities` store the list as JSON under `allowed_tailnet_identities`; `_trusted_tailscale_user_login` only reads the header from a loopback or `PHOTOS_VIEWER_TRUSTED_PROXIES` peer, reusing the P1.3 trust boundary, so an untrusted peer's header can never satisfy the list; `_enforce_tailnet_allowlist` (403 on a non-matching or missing header, no-op when the list is empty) runs inside `require_session` (so every route built on it, including `require_admin`, is covered) and is added explicitly to `/api/setup/admin` and `/api/auth/login`, which run before a session exists. `/api/health` is untouched and stays open. New admin-only, API-only `GET`/`PUT /api/admin/settings/tailnet-allowlist` (P1.10's admin UI will add the form). Tests in `server/tests/test_session_auth.py` use a fake `tailscale-user-login` header, no real tailnet.
 
 ### P1.5 Library registry
 

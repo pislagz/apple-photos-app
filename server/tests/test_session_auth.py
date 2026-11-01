@@ -1458,4 +1458,190 @@ def test_public_origins_env_entry_with_a_trailing_slash_is_accepted(monkeypatch)
 
     create_app()  # must not raise
 
+
+# -- P1.4: optional tailnet identity allow-list --
+
+
+def test_tailnet_allowlist_is_empty_by_default_and_admin_get_reflects_that(loopback_client):
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    loopback_client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = loopback_client.get("/api/admin/settings/tailnet-allowlist")
+
+    assert response.status_code == 200
+    assert response.json() == {"identities": []}
+
+
+def test_tailnet_allowlist_empty_allows_a_request_with_no_header_at_all(loopback_client):
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    loopback_client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = loopback_client.get("/api/auth/me")
+
+    assert response.status_code == 200
+
+
+def test_tailnet_allowlist_rejects_a_missing_header_once_the_list_is_non_empty(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    put = loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["alice"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+    assert put.status_code == 200
+
+    response = loopback_client.get("/api/auth/me")
+
+    assert response.status_code == 403
+
+
+def test_tailnet_allowlist_rejects_a_non_matching_header(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["alice"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    response = loopback_client.get("/api/auth/me", headers={"tailscale-user-login": "bob"})
+
+    assert response.status_code == 403
+
+
+def test_tailnet_allowlist_allows_a_matching_header(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["alice"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    response = loopback_client.get("/api/auth/me", headers={"tailscale-user-login": "alice"})
+
+    assert response.status_code == 200
+
+
+def test_tailnet_allowlist_ignores_a_header_from_an_untrusted_peer(client):
+    """`client` (unlike `loopback_client`) is not loopback and not a
+    `PHOTOS_VIEWER_TRUSTED_PROXIES` entry, so even a header that matches the
+    allow-list exactly must not satisfy it -- otherwise any LAN caller that
+    can merely reach the port could set its own `Tailscale-User-Login` and
+    walk straight through."""
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    client.put("/api/admin/settings/tailnet-allowlist", json={"identities": ["evil"]})
+
+    response = client.get("/api/auth/me", headers={"tailscale-user-login": "evil"})
+
+    assert response.status_code == 403
+
+
+def test_tailnet_allowlist_rejects_login_with_a_non_matching_header(loopback_client):
+    loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "alice"},
+    )
+    loopback_client.put(
+        "/api/admin/settings/tailnet-allowlist",
+        json={"identities": ["alice"]},
+        headers={"tailscale-user-login": "alice"},
+    )
+
+    response = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "bob"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_tailnet_allowlist_rejects_first_run_setup_with_a_non_matching_header(loopback_client, tmp_path):
+    conn = app_db.connect(tmp_path)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["alice"])
+    finally:
+        conn.close()
+
+    response = loopback_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "bob"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_health_stays_open_when_the_tailnet_allowlist_is_non_empty(client, tmp_path):
+    conn = app_db.connect(tmp_path)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["alice"])
+    finally:
+        conn.close()
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+
+
+def test_tailnet_allowlist_admin_api_is_403_for_a_non_admin(client, tmp_path):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    conn = app_db.connect(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('bob', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client.post("/api/auth/login", json={"username": "bob", "password": VALID_PASSWORD})
+
+    get_response = client.get("/api/admin/settings/tailnet-allowlist")
+    put_response = client.put("/api/admin/settings/tailnet-allowlist", json={"identities": ["alice"]})
+
+    assert get_response.status_code == 403
+    assert put_response.status_code == 403
+
+
+def test_tailnet_allowlist_admin_api_is_401_with_no_session(client):
+    response = client.get("/api/admin/settings/tailnet-allowlist")
+
+    assert response.status_code == 401
+
     assert session_auth._parse_origin("https://box.tailxyz.ts.net/") == ("https", "box.tailxyz.ts.net", 443)
