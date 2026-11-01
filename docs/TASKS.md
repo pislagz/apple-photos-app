@@ -58,13 +58,13 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - `ruff`, `pytest`, and `npm test` run on Linux.
 - Extend the existing `.github/workflows/ci.yml`: keep the `server` job on `ubuntu-latest` and `macos-latest` (tests + probe), and add a `web` job on `ubuntu-latest` for `npm ci`, `npm test` and the build, plus the check that the build output has no external URLs except the OSM tile host and copyright link.
 - Acceptance: `GET /api/health` returns ok locally and in CI. `npm test` has a passing placeholder until P1.11.
-- Done: `server/pyproject.toml` has `[build-system]` and the new deps; `web/` is a Vite + React + TS (`strict`) skeleton with a passing `App.test.tsx` placeholder; `.github/workflows/ci.yml` has a `web` job (`npm ci`, `npm test`, build, external-URL check) alongside the existing `server` job, which now also runs `ruff check .`. Known gap: `pip install -e "./server[dev]"` crashes in this dev sandbox before it ever reaches our code -- see the note at the end of this file.
+- Done: `server/pyproject.toml` has `[build-system]` and the new deps; `web/` is a Vite + React + TS (`strict`) skeleton with a passing `App.test.tsx` placeholder; `.github/workflows/ci.yml` has a `web` job (`npm ci`, `npm test`, build, external-URL check via `scripts/check_external_urls.mjs`) alongside the existing `server` job, which now also runs `ruff check .` and upgrades `pip` before `pip install -e "./server[dev]"` (issue #10: an old `pip` crashed on osxphotos' `platform_release` markers on some kernels).
 
 ### P1.2 `app.db` schema
 
 - Tables for users, sessions, libraries, assignments, the asset index, thumbnail-cache rows, and the audit log. File lives outside any `.photoslibrary` (`PHOTOS_VIEWER_DATA_DIR`).
 - Acceptance: migrations apply on an empty directory. A test creates the file under `tmp_path` and never in the repo.
-- Done: `server/photos_viewer/app_db.py` (`connect()`, `migrate()`, `_MIGRATIONS`); `server/tests/test_app_db.py`.
+- Done: `server/photos_viewer/app_db.py` (`connect()`, `migrate()`, `_MIGRATIONS`); `server/tests/test_app_db.py`. Issue #10 follow-up: each migration (plus the `PRAGMA user_version` bump) runs inside one `BEGIN IMMEDIATE` transaction, rolled back whole on any error, with `user_version` re-read after the lock is held.
 
 ### P1.3 Passwords, sessions, first admin
 
@@ -73,7 +73,8 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - First-run screen creates the single admin, then disables itself.
 - Logout and session revoke work.
 - Acceptance: tests cover wrong password, lockout, logout, and cookie flags. No file in the repo has `token` or `credential` in its name.
-- Done: `server/photos_viewer/session_auth.py`; `server/tests/test_session_auth.py`. New env vars (`PHOTOS_VIEWER_DATA_DIR`, `PHOTOS_VIEWER_SESSION_LIFETIME_DESKTOP_SECONDS`, `PHOTOS_VIEWER_SESSION_LIFETIME_PWA_SECONDS`, `PHOTOS_VIEWER_REMEMBER_ME_LIFETIME_SECONDS`) still need adding to `.env.example` as a follow-up -- that file was not reachable from this session.
+- Done: `server/photos_viewer/session_auth.py`; `server/tests/test_session_auth.py`. New env vars (`PHOTOS_VIEWER_DATA_DIR`, `PHOTOS_VIEWER_SESSION_LIFETIME_DESKTOP_SECONDS`, `PHOTOS_VIEWER_SESSION_LIFETIME_PWA_SECONDS`, `PHOTOS_VIEWER_REMEMBER_ME_LIFETIME_SECONDS`, `PHOTOS_VIEWER_COOKIE_SECURE`) still need adding to `.env.example` as a follow-up -- that file was not reachable from this session.
+- Issue #10 follow-up (PR #9 review): first-run admin setup is one `BEGIN IMMEDIATE` transaction; usernames and passwords have pydantic length limits and usernames are case-normalized; a missing or disabled username still runs an Argon2 verify against a fixed dummy hash (no timing tell); lockout only counts failures for usernames that exist, plus a looser per-IP limit, both pruned by age; `require_session` dependency and `GET /api/auth/me`; `lookup_session` joins `users`, rejects disabled accounts, prunes expired sessions, and throttles `last_seen_at` writes; CSRF guard (`application/json` + same-host `Origin`) on every POST route; Argon2id parameters pinned with rehash-on-login.
 
 ### P1.4 Optional tailnet allow-list
 
