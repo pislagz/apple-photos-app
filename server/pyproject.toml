@@ -1,0 +1,32 @@
+[project]
+name = "photos-viewer"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    # Pinned to the version installed and exercised on the Linux dev box.
+    # osxphotos README (as of this pin) claims read support for Photos
+    # databases from macOS 10.15 Catalina (Photos 5) through macOS 26/27
+    # (Photos 12); see photos_viewer/libraries.py for the version table
+    # this server actually accepts.
+    "osxphotos==0.77.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-socket",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.pytest.ini_options]
+# server/ is not an installed package yet (Phase 1 adds the root
+# pyproject.toml and `pip install -e`). conftest.py puts this directory on
+# sys.path so `import photos_viewer` resolves without an install step.
+testpaths = ["tests"]
+# The server makes zero outbound requests (see CLAUDE.md "Offline at
+# runtime"). Enforce that for the whole suite, not just test_no_network.py's
+# socket.socket.connect guard: only loopback is reachable, everything else
+# raises pytest_socket.SocketBlockedError.
+addopts = "--disable-socket --allow-hosts=127.0.0.1,::1"
