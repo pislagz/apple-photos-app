@@ -66,6 +66,19 @@ def test_copy_replays_a_real_uncheckpointed_wal_change(tmp_path):
     # the new value.
     package_path = build_fixture_library(tmp_path)
 
+    # Prove the premise: a copy of `Photos.sqlite` on its own (no `-wal`/
+    # `-shm`) still has the old value. Otherwise the assertion below -- that
+    # the copy step's inclusion of `-wal` is what changes the answer -- would
+    # be checking nothing.
+    sqlite_only_copy = tmp_path / "Photos-sqlite-only.sqlite"
+    shutil.copy2(package_path / "database" / "Photos.sqlite", sqlite_only_copy)
+    conn = sqlite3.connect(str(sqlite_only_copy))
+    try:
+        favorite = conn.execute("SELECT ZFAVORITE FROM ZGENERICASSET WHERE Z_PK = 1").fetchone()[0]
+    finally:
+        conn.close()
+    assert favorite == 0
+
     before = _snapshot(package_path)
     with open_library_readonly(package_path) as opened:
         assert opened.open_mode == "copy"
@@ -106,9 +119,11 @@ def test_photosdb_error_on_a_made_copy_is_not_swallowed_into_fallback(tmp_path):
         if pathlib.Path(dst).name == "Photos.sqlite":
             pathlib.Path(dst).write_bytes(b"not a sqlite database")
 
-    with unittest.mock.patch.object(libraries.shutil, "copy2", side_effect=corrupt_the_copy):
-        with pytest.raises(sqlite3.DatabaseError, match="file is not a database"):
-            open_library_readonly(package_path)
+    with (
+        unittest.mock.patch.object(libraries.shutil, "copy2", side_effect=corrupt_the_copy),
+        pytest.raises(sqlite3.DatabaseError, match="file is not a database"),
+    ):
+        open_library_readonly(package_path)
 
     assert _leaked_tempdirs() == before
 

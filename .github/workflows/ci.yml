@@ -2,8 +2,9 @@ name: CI
 
 # Phase 0 gate (see CLAUDE.md, docs/TASKS.md P0.4): the server tests and the
 # probe CLI must both pass against the synthetic fixture on Linux and on
-# macOS. There's no root pyproject.toml or web/ yet (those land in Phase 1),
-# so this workflow only covers server/.
+# macOS. Phase 1 (P1.1) adds the web job: Linux only, npm test plus a check
+# that the production bundle has no external URL besides the OSM tile host
+# and its copyright link (see CLAUDE.md "Offline at runtime").
 
 on:
   push:
@@ -27,7 +28,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install server dependencies
-        run: pip install osxphotos==0.77.2 pytest pytest-socket
+        run: pip install osxphotos==0.77.2 pytest pytest-socket fastapi uvicorn argon2-cffi httpx ruff
+
+      - name: Lint
+        working-directory: server
+        run: ruff check .
 
       - name: Run server tests
         working-directory: server
@@ -52,3 +57,42 @@ jobs:
 
           sys.exit(exit_code)
           PY
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Run web tests
+        working-directory: web
+        run: npm test
+
+      - name: Build the production bundle
+        working-directory: web
+        run: npm run build
+
+      - name: Check the build has no unexpected external URL
+        working-directory: web
+        # Only the OSM tile template and its copyright link may appear; see
+        # CLAUDE.md "Offline at runtime". Grep every build artifact for an
+        # absolute external URL and fail on anything outside that allow-list.
+        run: |
+          found=$(grep -rhoE 'https?://[^"'"'"'() <>]+' dist \
+            | grep -Ev '^https://tile\.openstreetmap\.org(/|$)' \
+            | grep -Ev '^https://www\.openstreetmap\.org/copyright' \
+            || true)
+          if [ -n "$found" ]; then
+            echo "Unexpected external URL(s) in the production build:"
+            echo "$found"
+            exit 1
+          fi
