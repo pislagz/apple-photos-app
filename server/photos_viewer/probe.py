@@ -27,12 +27,13 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    db = opened.db
-    print(f"library_path: {opened.library_path}")
-    print(f"db_version: {db.db_version}")
-    print(f"photos_version: {db.photos_version}")
-    print(f"asset_count: {len(db)}")
-    print(f"open_mode: {opened.open_mode}")
+    with opened:
+        db = opened.db
+        print(f"library_path: {opened.library_path}")
+        print(f"db_version: {db.db_version}")
+        print(f"photos_version: {db.photos_version}")
+        print(f"asset_count: {len(db)}")
+        print(f"open_mode: {opened.open_mode}")
     return 0
 
 

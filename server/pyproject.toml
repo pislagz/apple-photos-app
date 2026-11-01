@@ -25,3 +25,8 @@ target-version = "py312"
 # pyproject.toml and `pip install -e`). conftest.py puts this directory on
 # sys.path so `import photos_viewer` resolves without an install step.
 testpaths = ["tests"]
+# The server makes zero outbound requests (see CLAUDE.md "Offline at
+# runtime"). Enforce that for the whole suite, not just test_no_network.py's
+# socket.socket.connect guard: only loopback is reachable, everything else
+# raises pytest_socket.SocketBlockedError.
+addopts = "--disable-socket --allow-hosts=127.0.0.1,::1"

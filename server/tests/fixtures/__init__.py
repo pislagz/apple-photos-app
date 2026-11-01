@@ -7,14 +7,24 @@ and the per-module `_process_*` helpers it calls, plus
 `osxphotos._constants._DB_TABLE_NAMES[5]`), closely enough for `PhotosDB` to
 open the library without error.
 
-`ZGENERICASSET` (the asset table) has zero rows, so every query joined
-through it returns zero rows no matter what's in the tables it joins to:
-only the *schema* has to match, not the data. The two exceptions are
-`Z_METADATA`, which needs one row with a plist osxphotos can read the Photos
-model version out of, and `ZGENERICALBUM`, which needs exactly one "root
-folder" row (`ZKIND` = the root-folder sentinel, `ZPARENTFOLDER` = NULL) —
-`PhotosDB.__init__` looks that row up unconditionally and raises if it's
-missing or not unique.
+`ZGENERICASSET` has one real asset row, with a matching file under
+`originals/` and a `ZADDITIONALASSETATTRIBUTES` row, so `len(PhotosDB(...))`
+and the asset-scoped routes have something to return. Every *other* row this
+asset's processing could join to (`ZMOMENT`, `ZUNMANAGEDADJUSTMENT`,
+`ZASSETDESCRIPTION`, `ZCLOUDMASTER`, ...) is deliberately left absent --
+those joins are plain `JOIN`s in `_process_database5`, so an asset with no
+matching row in them just gets `NULL` for that enrichment, not an error. The
+two rows that matter regardless of asset count are `Z_METADATA`, which needs
+a plist osxphotos can read the Photos model version out of, and
+`ZGENERICALBUM`, which needs exactly one "root folder" row (`ZKIND` = the
+root-folder sentinel, `ZPARENTFOLDER` = NULL) -- `PhotosDB.__init__` looks
+that row up unconditionally and raises if it's missing or not unique.
+
+`search/psi.sqlite` has the three tables `_process_psi_searchinfo` joins
+(`ga`, `groups`, `assets`), all empty, so osxphotos finds a search index
+instead of logging "could not find search db" -- see `_copy_search_index` in
+`photos_viewer/libraries.py` for why the copy has to land next to the copied
+database, not next to the package's own `database/search/`.
 """
 
 from __future__ import annotations
@@ -135,11 +145,39 @@ CREATE TABLE ZCLOUDSHAREDCOMMENT (
 # a bare `try/except Exception` by PhotosDB itself.
 
 
+_ASSET_UUID = "A1B2C3D4-0000-0000-0000-000000000001"
+_ASSET_FILENAME = "IMG_0001.HEIC"
+
+_SEARCH_INDEX_SCHEMA = """
+CREATE TABLE ga (groupid, assetid);
+CREATE TABLE groups (
+    category, owning_groupid, content_string, normalized_string,
+    lookup_identifier
+);
+CREATE TABLE assets (uuid_0, uuid_1);
+"""
+
+
+def _build_search_index(search_dir: pathlib.Path) -> None:
+    search_dir.mkdir(parents=True)
+    conn = sqlite3.connect(str(search_dir / "psi.sqlite"))
+    try:
+        conn.executescript(_SEARCH_INDEX_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
     """Create a `.photoslibrary`-shaped directory under `dest_dir` and return its path."""
     package_path = dest_dir / "Synthetic.photoslibrary"
     database_dir = package_path / "database"
     database_dir.mkdir(parents=True)
+
+    originals_dir = package_path / "originals" / "0"
+    originals_dir.mkdir(parents=True)
+    asset_bytes = b"not a real photo, just fixture bytes"
+    (originals_dir / _ASSET_FILENAME).write_bytes(asset_bytes)
 
     sqlite_path = database_dir / "Photos.sqlite"
     conn = sqlite3.connect(str(sqlite_path))
@@ -157,8 +195,47 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
             """,
             (_ROOT_FOLDER_KIND,),
         )
+        conn.execute(
+            """
+            INSERT INTO ZGENERICASSET (
+                Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
+                ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
+                ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER, ZKINDSUBTYPE,
+                ZTRASHEDSTATE, ZHEIGHT, ZWIDTH, ZORIENTATION, ZDEPTHSTATES,
+                ZVISIBILITYSTATE, ZSAVEDASSETTYPE, ZADDEDDATE
+            )
+            VALUES (
+                1, ?, 700000000.0, 700000000.0, 0,
+                0, 'originals/0', ?, NULL, NULL,
+                0, 0, 'public.heic', 0,
+                0, 100, 100, 1, 0,
+                0, 3, 700000000.0
+            )
+            """,
+            (_ASSET_UUID, _ASSET_FILENAME),
+        )
+        conn.execute(
+            """
+            INSERT INTO ZADDITIONALASSETATTRIBUTES (
+                Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
+                ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
+                ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
+                ZORIGINALORIENTATION, ZORIGINALFILESIZE
+            )
+            VALUES (1, 1, ?, 0, 0, 'UTC', 0, 0, 100, 100, 1, ?)
+            """,
+            (_ASSET_FILENAME, len(asset_bytes)),
+        )
         conn.commit()
     finally:
         conn.close()
+
+    # A real library can have these sidecars next to Photos.sqlite whenever
+    # Photos.app or photoanalysisd holds the database open; the copy step in
+    # `open_library_readonly` has to pick them up too, not just the main file.
+    sqlite_path.with_name(sqlite_path.name + "-wal").write_bytes(b"")
+    sqlite_path.with_name(sqlite_path.name + "-shm").write_bytes(b"")
+
+    _build_search_index(database_dir / "search")
 
     return package_path

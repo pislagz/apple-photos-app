@@ -13,6 +13,8 @@ importing it is what must fail here, not merely locating it.
 import importlib
 import sys
 
+import pytest
+
 import photos_viewer.libraries  # noqa: F401  (import under test)
 
 
@@ -23,8 +25,11 @@ def test_pyobjc_is_not_installed():
         )
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="osxphotos.photokit imports cleanly on macOS; this guard is Linux-only",
+)
 def test_osxphotos_photokit_is_not_importable_on_linux():
-    assert sys.platform != "darwin"
     try:
         importlib.import_module("osxphotos.photokit")
     except Exception:
