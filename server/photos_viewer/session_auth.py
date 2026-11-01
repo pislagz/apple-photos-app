@@ -23,12 +23,16 @@ so the request's URL ends up reading exactly as the public
 typically does not connect from loopback (e.g. the Docker bridge gateway
 instead), so that rewriting needs `--forwarded-allow-ips` set to the
 proxy's actual address, or does not happen at all -- `PHOTOS_VIEWER_PUBLIC_ORIGINS`
-is the explicit, proxy-header-independent override for that case.
+is the explicit, proxy-header-independent override for CSRF's Origin check,
+and `PHOTOS_VIEWER_TRUSTED_PROXIES` is the equivalent for the per-client
+login-lockout bucket (see `_ip_lockout_key`), for an admin who can't set
+`--forwarded-allow-ips` to the real proxy address.
 """
 
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import logging
 import os
 import pathlib
@@ -96,6 +100,89 @@ IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 
 _TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
+_TRUSTED_PROXIES_ENV = "PHOTOS_VIEWER_TRUSTED_PROXIES"
+
+
+class _Unset:
+    """Sentinel for "not parsed yet", distinct from a legitimately cached
+    `None` or empty value -- used by every `PHOTOS_VIEWER_*` cache below."""
+
+
+_UNSET = _Unset()
+
+_trusted_proxies_cache: list[ipaddress.IPv4Network | ipaddress.IPv6Network] | _Unset = _UNSET
+
+
+def reset_trusted_proxies_cache() -> None:
+    """Test hook: clear the cached parse of `PHOTOS_VIEWER_TRUSTED_PROXIES`,
+    so a test that changes the env with `monkeypatch` observes a fresh
+    parse instead of a previous test's cached result."""
+    global _trusted_proxies_cache
+    _trusted_proxies_cache = _UNSET
+
+
+def _parse_trusted_proxies_env(raw: str) -> tuple[list[ipaddress.IPv4Network | ipaddress.IPv6Network], list[str]]:
+    valid: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    invalid: list[str] = []
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        try:
+            valid.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            invalid.append(entry)
+    return valid, invalid
+
+
+def _trusted_proxies() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """`PHOTOS_VIEWER_TRUSTED_PROXIES`: IPs or CIDRs (comma-separated) of
+    reverse proxies this process should treat the same way it already
+    treats the loopback peer `tailscale serve` connects from on bare metal
+    -- typically the Docker bridge gateway, when `--forwarded-allow-ips`
+    isn't (or can't be) pointed at it. A direct client in this list gets
+    `_ip_lockout_key`'s loopback treatment: keyed on `Tailscale-User-Login`
+    instead of its own (shared-by-everyone-behind-the-proxy) address.
+
+    Parsed once and cached; `validate_trusted_proxies_env`, called at app
+    startup, is what refuses to start on an entry that doesn't parse, so
+    this never has to.
+    """
+    global _trusted_proxies_cache
+    if _trusted_proxies_cache is _UNSET:
+        raw = os.environ.get(_TRUSTED_PROXIES_ENV)
+        valid, _invalid = _parse_trusted_proxies_env(raw) if raw and raw.strip() else ([], [])
+        _trusted_proxies_cache = valid
+    return _trusted_proxies_cache
+
+
+def validate_trusted_proxies_env() -> None:
+    """Called once at app startup, alongside `validate_public_origins_env`.
+
+    Unlike `PHOTOS_VIEWER_PUBLIC_ORIGINS`, an invalid entry here is not
+    dropped with a warning: a typo'd address or CIDR that silently never
+    matches the real proxy would look like it's working right up until
+    the first burst of failed logins locks out the whole tailnet, so
+    refuse to start instead.
+    """
+    raw = os.environ.get(_TRUSTED_PROXIES_ENV)
+    if raw is None or not raw.strip():
+        return
+    _valid, invalid = _parse_trusted_proxies_env(raw)
+    if invalid:
+        raise RuntimeError(
+            f"{_TRUSTED_PROXIES_ENV} has invalid entries "
+            f"(expected an IP address or CIDR, e.g. 172.17.0.1 or 172.18.0.0/16): {invalid!r}"
+        )
+    _trusted_proxies()  # parse and cache now, at startup
+
+
+def _is_trusted_proxy(host: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(addr in network for network in _trusted_proxies())
 
 # Pinned explicitly rather than left at argon2-cffi's defaults, so a future
 # library upgrade that changes its defaults can't silently weaken (or just
@@ -316,12 +403,15 @@ def _ip_lockout_key(request: Request) -> str | None:
     connects from, and keying on it would turn a handful of wrong passwords
     from one real user into a lockout for everyone behind it. In that case,
     key on the `Tailscale-User-Login` header Tailscale Serve adds instead.
-    With no such header there is no way to distinguish loopback callers, so
-    the per-client limit is skipped for this request; the per-username
-    lockout above still applies regardless.
+    `PHOTOS_VIEWER_TRUSTED_PROXIES` extends that same loopback treatment to
+    other known-safe peers -- typically the Docker bridge gateway, when
+    `--forwarded-allow-ips` can't be pointed at it directly. With no such
+    header there is no way to distinguish loopback callers, so the
+    per-client limit is skipped for this request; the per-username lockout
+    above still applies regardless.
     """
     host = _client_ip(request)
-    if host not in _LOOPBACK_HOSTS:
+    if host not in _LOOPBACK_HOSTS and not _is_trusted_proxy(host):
         return host
     login = request.headers.get(_TAILSCALE_USER_LOGIN_HEADER)
     return f"tailscale-user:{login}" if login else None
@@ -341,14 +431,31 @@ def _effective_port(scheme: str, port: int | None) -> int | None:
     return port if port is not None else _DEFAULT_PORTS.get(scheme.lower())
 
 
+_ALLOWED_ORIGIN_SCHEMES = {"http", "https"}
+
+
 def _parse_origin(origin: str) -> _Origin | None:
+    """Parse a bare `scheme://host[:port]` origin -- from an `Origin` header
+    or a `PHOTOS_VIEWER_PUBLIC_ORIGINS` entry -- into the `(scheme, host,
+    port)` tuple `_request_origin` compares against.
+
+    Only `http`/`https` and a bare origin are accepted: a path other than
+    "" or "/", a query, or a fragment aren't part of an origin, and
+    silently dropping them would compare against the wrong thing instead
+    of rejecting. `parsed.port` raises `ValueError` on a non-numeric port
+    (e.g. `https://box.ts.net:abc`); that's just an invalid origin too, not
+    a crash.
+    """
     try:
         parsed = urlsplit(origin)
+        port = parsed.port
     except ValueError:
         return None
-    if not parsed.hostname or not parsed.scheme:
+    if parsed.scheme.lower() not in _ALLOWED_ORIGIN_SCHEMES or not parsed.hostname:
         return None
-    return (parsed.scheme.lower(), parsed.hostname.lower(), _effective_port(parsed.scheme, parsed.port))
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        return None
+    return (parsed.scheme.lower(), parsed.hostname.lower(), _effective_port(parsed.scheme, port))
 
 
 def _request_origin(request: Request) -> _Origin:
@@ -377,22 +484,60 @@ def _split_public_origins_env(raw: str) -> tuple[set[_Origin], list[str]]:
     return valid, invalid
 
 
+_public_origins_cache: set[_Origin] | None | _Unset = _UNSET
+
+
+def reset_public_origins_cache() -> None:
+    """Test hook: clear the cached parse of `PHOTOS_VIEWER_PUBLIC_ORIGINS`,
+    so a test that changes the env with `monkeypatch` observes a fresh
+    parse (and fresh warnings) instead of a previous test's cached result."""
+    global _public_origins_cache
+    _public_origins_cache = _UNSET
+
+
+def _ensure_logger_has_a_handler() -> None:
+    """uvicorn configures its own loggers but never attaches a handler to
+    the root logger, so a bare `logger.warning(...)` on this module's
+    logger prints with no "WARNING:" label and is easy to miss. Give it
+    its own handler, once, the first time there's something to warn
+    about. `propagate` stays `True` (the default), so this doesn't break
+    `caplog` in tests, which captures via the root logger.
+    """
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+
+
 def _public_origins_from_env() -> set[_Origin] | None:
     """`PHOTOS_VIEWER_PUBLIC_ORIGINS`: the exact origin(s) this server is
     reachable at from a browser's point of view (e.g. the `ts.net` name
     `tailscale serve` exposes), comma-separated. Unset by default, since a
     bare-metal or Docker install with no reverse proxy needs nothing extra.
 
-    An entry that fails to parse (e.g. missing its `scheme://`) is dropped
-    and logged -- `validate_public_origins_env` is what refuses to start the
-    app if that leaves nothing valid, so this function never has to.
+    Parsed once and cached: this is called from `_reject_cross_site_requests`
+    on every state-changing request, and re-parsing (and re-warning about
+    the same invalid entry) on each one would be both wasted work and log
+    spam. `validate_public_origins_env`, called once at app startup,
+    populates the cache -- and is what refuses to start the app if an
+    invalid entry leaves nothing valid -- so in practice this only parses
+    once, at startup, not on first request.
     """
+    global _public_origins_cache
+    if _public_origins_cache is not _UNSET:
+        return _public_origins_cache
     raw = os.environ.get(_PUBLIC_ORIGINS_ENV)
     if raw is None or not raw.strip():
+        _public_origins_cache = None
         return None
     valid, invalid = _split_public_origins_env(raw)
+    if invalid:
+        _ensure_logger_has_a_handler()
     for entry in invalid:
         logger.warning("%s: ignoring invalid origin %r (expected scheme://host[:port])", _PUBLIC_ORIGINS_ENV, entry)
+    _public_origins_cache = valid
     return valid
 
 
@@ -412,6 +557,7 @@ def validate_public_origins_env() -> None:
             f"{_PUBLIC_ORIGINS_ENV} is set but every entry is invalid "
             f"(expected scheme://host[:port], e.g. https://box.ts.net): {invalid!r}"
         )
+    _public_origins_from_env()  # parse (and warn about any invalid entries) now, at startup
 
 
 def _reject_cross_site_requests(request: Request) -> None:
