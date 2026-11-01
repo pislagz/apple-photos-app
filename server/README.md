@@ -86,6 +86,23 @@ docker exec <container> python -m photos_viewer.admin unlock myusername
 
 Add `--clear-ip-limits` to also clear the per-client failed-login counters (shared by every caller behind `tailscale serve`, not just this one username) when the per-IP limit, not just the per-username one, is what's tripped -- including the per-peer ceiling above, since it's the same table. The admin panel's unlock route takes the same option as `clear_ip_limits` in the request body. Exits non-zero with a message on stderr for an unknown username.
 
+## Locked-out admin: the tailnet allow-list
+
+`PUT /api/admin/settings/tailnet-allowlist` (P1.4) refuses to save a non-empty list that omits the caller's own `Tailscale-User-Login` identity, so the API itself can't lock the saving admin out. If `app.db` already has a list that locks out every admin -- hand-edited, or saved before that guard existed -- the same `admin` CLI recovers it, with no server running:
+
+```bash
+# Show the current list:
+PHOTOS_VIEWER_DATA_DIR=/path/to/data python -m photos_viewer.admin allowlist show
+
+# Empty it (= allow everyone), on the host:
+PHOTOS_VIEWER_DATA_DIR=/path/to/data python -m photos_viewer.admin allowlist clear
+
+# Inside the Docker/OrbStack container, server running:
+docker exec <container> python -m photos_viewer.admin allowlist clear
+```
+
+`allowlist clear` writes an audit log row (`set_tailnet_allowlist`, `actor="cli"`), the same as the API route. Exits non-zero with a message on stderr if `app.db` is missing, same check as `unlock`.
+
 ## launchd
 
 A plist in `deploy/`, loaded on the Mac that should run natively:

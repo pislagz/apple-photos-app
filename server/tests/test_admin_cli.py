@@ -153,3 +153,84 @@ def test_unlock_writes_an_audit_row_with_the_cli_actor(data_dir):
     assert row["actor"] == "cli"
     assert row["user_id"] == bob_id
     assert row["detail"] == "ip_limits_cleared=true"
+
+
+# Issue #26: `allowlist show`/`allowlist clear`, the recovery for an admin
+# locked out by their own saved tailnet allow-list.
+
+
+def test_allowlist_show_prints_the_current_list(data_dir, capsys):
+    conn = app_db.connect(data_dir)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["alice", "bob"])
+    finally:
+        conn.close()
+
+    exit_code = admin.main(["allowlist", "show"])
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "alice" in out
+    assert "bob" in out
+
+
+def test_allowlist_show_prints_a_placeholder_when_empty(data_dir, capsys):
+    app_db.connect(data_dir).close()
+
+    exit_code = admin.main(["allowlist", "show"])
+
+    assert exit_code == 0
+    assert "empty" in capsys.readouterr().out.lower()
+
+
+def test_allowlist_clear_empties_a_non_empty_list(data_dir):
+    conn = app_db.connect(data_dir)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["alice"])
+    finally:
+        conn.close()
+
+    exit_code = admin.main(["allowlist", "clear"])
+
+    assert exit_code == 0
+    conn = app_db.connect(data_dir)
+    try:
+        assert session_auth.get_allowed_tailnet_identities(conn) == []
+    finally:
+        conn.close()
+
+
+def test_allowlist_clear_writes_an_audit_row_with_the_cli_actor(data_dir):
+    conn = app_db.connect(data_dir)
+    try:
+        session_auth.set_allowed_tailnet_identities(conn, ["alice"])
+    finally:
+        conn.close()
+
+    admin.main(["allowlist", "clear"])
+
+    conn = app_db.connect(data_dir)
+    try:
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'set_tailnet_allowlist'").fetchone()
+    finally:
+        conn.close()
+    assert row["actor"] == "cli"
+    assert row["detail"] == "count=0"
+
+
+def test_allowlist_show_refuses_to_run_against_a_data_dir_with_no_app_db(data_dir, capsys):
+    exit_code = admin.main(["allowlist", "show"])
+
+    assert exit_code != 0
+    err = capsys.readouterr().err
+    assert str(app_db.db_path(data_dir)) in err
+    assert list(data_dir.glob("*")) == []
+
+
+def test_allowlist_clear_refuses_to_run_against_a_data_dir_with_no_app_db(data_dir, capsys):
+    exit_code = admin.main(["allowlist", "clear"])
+
+    assert exit_code != 0
+    err = capsys.readouterr().err
+    assert str(app_db.db_path(data_dir)) in err
+    assert list(data_dir.glob("*")) == []

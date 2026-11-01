@@ -40,7 +40,7 @@ import pathlib
 import secrets
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -202,6 +202,22 @@ def _is_trusted_proxy(host: str) -> bool:
 _TAILNET_ALLOWLIST_SETTING_KEY = "allowed_tailnet_identities"
 
 
+def normalize_tailnet_identities(identities: Iterable[str]) -> list[str]:
+    """Strip whitespace, drop empty entries and duplicates, and lower-case --
+    stored identities are compared case-insensitively against the
+    `Tailscale-User-Login` header, which Tailscale does not guarantee a
+    fixed case for."""
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in identities:
+        value = raw.strip().lower()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
 def get_allowed_tailnet_identities(conn: sqlite3.Connection) -> list[str]:
     """P1.4's optional extra layer (`docs/SPEC.md` line ~116): a list of
     Tailscale identities, empty by default, meaning "no extra restriction"."""
@@ -209,8 +225,10 @@ def get_allowed_tailnet_identities(conn: sqlite3.Connection) -> list[str]:
     return json.loads(raw) if raw is not None else []
 
 
-def set_allowed_tailnet_identities(conn: sqlite3.Connection, identities: list[str]) -> None:
-    app_db.set_setting(conn, _TAILNET_ALLOWLIST_SETTING_KEY, json.dumps(list(identities)))
+def set_allowed_tailnet_identities(conn: sqlite3.Connection, identities: Iterable[str]) -> None:
+    app_db.set_setting(
+        conn, _TAILNET_ALLOWLIST_SETTING_KEY, json.dumps(normalize_tailnet_identities(identities))
+    )
 
 
 # Pinned explicitly rather than left at argon2-cffi's defaults, so a future
@@ -716,7 +734,7 @@ def _enforce_tailnet_allowlist(request: Request, db: sqlite3.Connection = Depend
     if not allowed:
         return
     login = _trusted_tailscale_user_login(request)
-    if login is None or login not in allowed:
+    if login is None or login.strip().lower() not in allowed:
         raise HTTPException(status_code=403, detail="tailnet identity not allowed")
 
 
@@ -943,17 +961,29 @@ def read_tailnet_allowlist(
 )
 def write_tailnet_allowlist(
     payload: TailnetAllowlistRequest,
+    request: Request,
     admin: sqlite3.Row = Depends(require_admin),
     db: sqlite3.Connection = Depends(get_db),
 ) -> TailnetAllowlistResponse:
     """Admin-only, API-only for now (P1.10's admin UI will add a form for
     this). Setting a non-empty list takes effect immediately, including for
-    the admin's own next request -- see `_enforce_tailnet_allowlist`."""
-    set_allowed_tailnet_identities(db, payload.identities)
+    the admin's own next request -- see `_enforce_tailnet_allowlist`. Issue
+    #26: a non-empty list that would lock the caller themselves out is
+    refused outright, since the only recovery from that is the CLI's
+    `allowlist clear` run inside the container (see `admin.py`)."""
+    normalized = normalize_tailnet_identities(payload.identities)
+    if normalized:
+        caller = _trusted_tailscale_user_login(request)
+        if caller is None or caller.strip().lower() not in normalized:
+            raise HTTPException(
+                status_code=400,
+                detail="allow-list must include your own tailnet identity, or you would be locked out",
+            )
+    set_allowed_tailnet_identities(db, normalized)
     app_db.write_audit_log(
         db,
         "set_tailnet_allowlist",
         actor=admin["username"],
-        detail=f"count={len(payload.identities)}",
+        detail=f"count={len(normalized)}",
     )
     return TailnetAllowlistResponse(identities=get_allowed_tailnet_identities(db))
