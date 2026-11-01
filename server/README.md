@@ -30,6 +30,10 @@ Filenames must not contain `token` or `credential`. The runner cannot read those
 
 `media.py` hides the platform. On macOS it may call `sips` or `qlmanage` when they exist. On Linux, and when they do not, it uses Pillow, pillow-heif, optional rawpy, and ffmpeg. Development and CI are Linux, so the Pillow path is the one tests hit. Usable files in `resources/derivatives` (`PhotoInfo.path_derivatives`) are preferred to a transcode. Cache files go under `PHOTOS_VIEWER_DATA_DIR`.
 
+## Sessions
+
+Session cookies are marked `Secure` by default (`PHOTOS_VIEWER_COOKIE_SECURE=true`), so the browser refuses to send one over plain HTTP. The deployed server is expected to sit behind HTTPS: Tailscale Serve (`tailscale serve`) or a certificate from `tailscale cert`. For local plain-HTTP development only, set `PHOTOS_VIEWER_COOKIE_SECURE=false`. The flag is never inferred from the request, since a reverse proxy can make an HTTP request look like anything.
+
 ## launchd
 
 A plist in `deploy/`, loaded on the Mac that should run natively:

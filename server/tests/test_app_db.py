@@ -4,6 +4,10 @@ The file lives under a caller-supplied directory, never inside the repo --
 every test here points at `tmp_path`.
 """
 
+import sqlite3
+
+import pytest
+
 from photos_viewer import app_db
 
 
@@ -55,5 +59,33 @@ def test_migrate_on_an_already_open_connection_does_not_recreate_tables(tmp_path
     conn = app_db.connect(tmp_path)
     try:
         app_db.migrate(conn)  # must not raise "table already exists"
+    finally:
+        conn.close()
+
+
+def test_connecting_twice_on_the_same_directory_works(tmp_path):
+    first = app_db.connect(tmp_path)
+    first.close()
+
+    second = app_db.connect(tmp_path)
+    second.close()
+
+
+def test_a_failing_migration_leaves_the_version_and_schema_unchanged(tmp_path, monkeypatch):
+    app_db.connect(tmp_path).close()
+    broken_migrations = [*app_db._MIGRATIONS, ["CREATE TABLE this_is_fine (id INTEGER)", "NOT VALID SQL"]]
+    monkeypatch.setattr(app_db, "_MIGRATIONS", broken_migrations)
+
+    conn = sqlite3.connect(app_db.db_path(tmp_path))
+    conn.execute("PRAGMA busy_timeout = 5000")
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            app_db.migrate(conn)
+
+        (version,) = conn.execute("PRAGMA user_version").fetchone()
+        assert version == len(app_db._MIGRATIONS) - 1
+
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        assert "this_is_fine" not in tables
     finally:
         conn.close()
