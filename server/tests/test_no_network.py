@@ -26,6 +26,5 @@ def test_opening_the_fixture_makes_no_non_local_connections(tmp_path, monkeypatc
 
     monkeypatch.setattr(socket.socket, "connect", guarded_connect)
 
-    opened = open_library_readonly(package_path)
-
-    assert opened.db.photos_version == 5
+    with open_library_readonly(package_path) as opened:
+        assert opened.db.photos_version == 5

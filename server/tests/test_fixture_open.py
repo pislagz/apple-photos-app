@@ -13,4 +13,4 @@ def test_fixture_reports_version_and_opens(tmp_path):
 
     assert db.db_version == "5001"
     assert db.photos_version == 5
-    assert len(db) == 0  # the fixture has no asset rows
+    assert len(db) == 1  # the fixture's one asset row
