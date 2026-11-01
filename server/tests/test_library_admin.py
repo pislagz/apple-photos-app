@@ -1,0 +1,284 @@
+"""P1.5: admin-only library registry -- add, list, rename, remove, status."""
+
+import shutil
+
+from fastapi.testclient import TestClient
+
+from photos_viewer import app_db, libraries, session_auth
+from photos_viewer.main import create_app
+from tests.fixtures import build_fixture_library
+
+VALID_PASSWORD = "correct-horse-battery"
+
+
+def _client(tmp_path):
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    return conn, TestClient(app, base_url="https://testserver")
+
+
+def _admin_client(tmp_path):
+    conn, client = _client(tmp_path)
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    return conn, client
+
+
+def _non_admin_client(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES ('bob', ?, 'user')",
+        (session_auth.hash_password(VALID_PASSWORD),),
+    )
+    conn.commit()
+    client.post("/api/auth/login", json={"username": "bob", "password": VALID_PASSWORD})
+    return conn, client
+
+
+def test_add_library_with_a_bad_path(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        missing = tmp_path / "Nope.photoslibrary"
+
+        response = client.post("/api/admin/libraries", json={"path": str(missing)})
+
+        assert response.status_code == 400
+        assert str(missing) in response.json()["detail"]
+        assert "mounted" not in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_add_library_with_a_missing_mount(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        unmounted = tmp_path / "Volumes" / "ExternalDrive" / "Photos.photoslibrary"
+
+        response = client.post("/api/admin/libraries", json={"path": str(unmounted)})
+
+        assert response.status_code == 400
+        assert "mounted" in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_add_library_with_an_unsupported_version(tmp_path, monkeypatch):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        monkeypatch.setattr(libraries, "SUPPORTED_PHOTOS_VERSIONS", frozenset({12}))
+
+        response = client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        assert response.status_code == 400
+        assert "version" in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_add_library_succeeds_and_defaults_the_display_name(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+
+        response = client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["display_name"] == "Synthetic"
+        assert body["path"] == str(package_path)
+        assert isinstance(body["id"], int)
+    finally:
+        conn.close()
+
+
+def test_add_library_honors_an_explicit_display_name(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+
+        response = client.post(
+            "/api/admin/libraries", json={"path": str(package_path), "display_name": "Family Photos"}
+        )
+
+        assert response.status_code == 201
+        assert response.json()["display_name"] == "Family Photos"
+    finally:
+        conn.close()
+
+
+def test_add_library_twice_at_the_same_path_is_a_conflict(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        response = client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        assert response.status_code == 409
+    finally:
+        conn.close()
+
+
+def test_add_library_writes_an_audit_row(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        row = conn.execute("SELECT action, actor, detail FROM audit_log WHERE action = 'add_library'").fetchone()
+
+        assert row["actor"] == "admin"
+        assert str(package_path) in row["detail"]
+    finally:
+        conn.close()
+
+
+def test_list_libraries(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        client.post("/api/admin/libraries", json={"path": str(package_path)})
+
+        response = client.get("/api/admin/libraries")
+
+        assert response.status_code == 200
+        assert [row["path"] for row in response.json()] == [str(package_path)]
+    finally:
+        conn.close()
+
+
+def test_rename_library(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        response = client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "Renamed"})
+
+        assert response.status_code == 200
+        assert response.json()["display_name"] == "Renamed"
+        listed = client.get("/api/admin/libraries").json()
+        assert listed[0]["display_name"] == "Renamed"
+    finally:
+        conn.close()
+
+
+def test_rename_unknown_library_is_404(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        response = client.patch("/api/admin/libraries/999", json={"display_name": "Renamed"})
+
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_remove_library_deletes_the_row_but_leaves_the_package_on_disk(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        sqlite_path = package_path / "database" / "Photos.sqlite"
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        response = client.delete(
+            f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"}
+        )
+
+        assert response.status_code == 204
+        assert client.get("/api/admin/libraries").json() == []
+        assert package_path.is_dir()
+        assert sqlite_path.is_file()
+    finally:
+        conn.close()
+
+
+def test_remove_unknown_library_is_404(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        response = client.delete("/api/admin/libraries/999", headers={"content-type": "application/json"})
+
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_remove_library_writes_an_audit_row(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+
+        row = conn.execute("SELECT actor, detail FROM audit_log WHERE action = 'remove_library'").fetchone()
+        assert row["actor"] == "admin"
+        assert str(package_path) in row["detail"]
+    finally:
+        conn.close()
+
+
+def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        response = client.get(f"/api/admin/libraries/{added['id']}/status")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_size_bytes"] > 0
+        assert body["asset_count"] is None
+        assert body["video_count"] is None
+        assert body["people_count"] is None
+        assert body["last_indexed_at"] is None
+        assert body["prewarm_progress"] is None
+        assert body["warnings"] == []
+    finally:
+        conn.close()
+
+
+def test_library_status_warns_when_the_drive_is_unmounted(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        shutil.rmtree(package_path)
+
+        response = client.get(f"/api/admin/libraries/{added['id']}/status")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_size_bytes"] is None
+        assert [w["code"] for w in body["warnings"]] == ["drive_not_mounted"]
+    finally:
+        conn.close()
+
+
+def test_library_status_unknown_library_is_404(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        response = client.get("/api/admin/libraries/999/status")
+
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_non_admin_is_403_on_every_library_admin_route(tmp_path):
+    conn, client = _non_admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+
+        assert client.post("/api/admin/libraries", json={"path": str(package_path)}).status_code == 403
+        assert client.get("/api/admin/libraries").status_code == 403
+        assert client.patch("/api/admin/libraries/1", json={"display_name": "x"}).status_code == 403
+        assert (
+            client.delete("/api/admin/libraries/1", headers={"content-type": "application/json"}).status_code
+            == 403
+        )
+        assert client.get("/api/admin/libraries/1/status").status_code == 403
+    finally:
+        conn.close()

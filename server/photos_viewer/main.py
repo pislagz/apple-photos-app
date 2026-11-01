@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from .library_admin import router as library_admin_router
 from .session_auth import router as auth_router
 from .session_auth import validate_public_origins_env, validate_trusted_proxies_env
 
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     validate_trusted_proxies_env()
     app = FastAPI()
     app.include_router(auth_router)
+    app.include_router(library_admin_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

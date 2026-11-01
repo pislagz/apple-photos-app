@@ -105,6 +105,7 @@ Not blocking; pick up when convenient.
 - Display name, rename, remove. Remove deletes rows in `app.db` only.
 - Status: asset, video, and people counts, total size, last index time, pre-warm progress, warnings (Photos.app has it open, unsupported version, drive not mounted).
 - Acceptance: bad path, unsupported version, and a missing mount each produce a specific message. Removing a library leaves the package on disk (test on the fixture).
+- Done: `server/photos_viewer/library_admin.py` -- admin-only, API-only `POST`/`GET`/`PATCH`/`DELETE /api/admin/libraries[/{id}]` and `GET /api/admin/libraries/{id}/status`, all behind `session_auth.require_admin`. Add validates the path (exists, drive-mounted check via the parent directory, `.photoslibrary` suffix, readable, opens with the P0.4 probe) before inserting; remove only deletes the `app.db` row (`ON DELETE CASCADE` drops its assignments/assets/thumbnail-cache rows too) and never touches the package. `libraries.library_is_locked()` (new, wraps osxphotos' own `sqlite_db_is_locked`) backs the "Photos.app has it open" status warning; it is always `False` on Linux, where nothing else opens a `.photoslibrary`. Status's `asset_count`/`video_count`/`people_count`/`last_indexed_at` (P1.6) and `prewarm_progress` (P3.3) are always `null` until those land; `total_size_bytes` and `warnings` are live. Every write goes through `app_db.write_audit_log`. Tests in `server/tests/test_library_admin.py`. No `.env.example` changes -- libraries are added via this API, not configuration.
 
 ### P1.6 Index into `app.db`
 
