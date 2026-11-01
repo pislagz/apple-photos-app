@@ -66,6 +66,8 @@ If `--forwarded-allow-ips` is *not* pointed at the Docker bridge gateway (the ou
 
 `PHOTOS_VIEWER_TRUSTED_PROXIES` (comma-separated IPs and/or CIDRs, e.g. `172.17.0.1` or `172.18.0.0/16`) extends that same `Tailscale-User-Login`-keyed treatment to other peers this server should treat as "the known reverse proxy, not a real caller" -- a code-level safety net for the Docker case above when `--forwarded-allow-ips` isn't set to the gateway's actual address (or can't be, e.g. it varies at deploy time). Unlike `PHOTOS_VIEWER_PUBLIC_ORIGINS`, *any* invalid entry here fails startup outright, not just "every entry invalid": a typo'd address would otherwise look like it's working right up until the first burst of failed logins locks out the whole tailnet.
 
+**A trusted peer must not be reachable by anything else.** Trusting an address for `Tailscale-User-Login` means *any* request that arrives from that address is treated as "the proxy forwarding a real tailnet user," header and all. If the container's published port is also reachable from the host's own LAN (or from any process on the host), that caller can set `Tailscale-User-Login` to whatever it wants and get its own lockout bucket -- same risk as the `--forwarded-allow-ips=*` case above, and the same fix: publish the port only on `127.0.0.1` (when `tailscale serve` runs on the host and proxies to the container) or on the tailnet interface's own address, never on `0.0.0.0` or a LAN-reachable interface, so `tailscale serve` is the only route in. In compose or `docker run` terms, that is the host-address-qualified ports form, e.g. `127.0.0.1:8000:8000`, not a bare `8000:8000`. As a second layer, `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER` caps the *combined* failed-login count across every `Tailscale-User-Login` value (and the no-header fallback, see below) seen from one trusted peer's address within the lockout window, ten times looser than the per-client limit -- so even a caller that can reach a trusted peer and rotates the header on every attempt eventually trips a ceiling, instead of buying an unlimited number of fresh buckets. A trusted peer's request with *no* `Tailscale-User-Login` header at all is not given loopback's "skip the per-client limit entirely" treatment either, since (unlike loopback) it can be reached by more than the proxy -- it gets its own bucket keyed on the peer's address, still subject to that same per-peer ceiling.
+
 Configuring neither is the documented "it still works, just coarser" case: logins succeed, but the per-client bucket is shared across every device behind the gateway. Configuring `--forwarded-allow-ips` correctly is the complete fix (also corrects the CSRF Origin check's and the audit log's idea of the caller's address) and is the default this doc recommends; `PHOTOS_VIEWER_TRUSTED_PROXIES` is for when that isn't possible.
 
 ## Locked-out admin: the `admin` CLI
@@ -104,7 +106,9 @@ Linux and NAS deployments use `deploy/Dockerfile` and `deploy/docker-compose.yml
 - Do not publish the port on a public interface. Tailscale Serve terminates HTTPS on the tailnet.
 - No outbound egress from the container. Publish the port on the Tailscale address (or bind localhost and let Tailscale Serve on the host proxy it). Drop connections the container initiates: either a Docker network with no route to the public internet, or a firewall rule on the container subnet. Established replies to inbound clients still flow. The container must not resolve or contact a tile host, a font host, a package index, or an update server. OSM tiles are fetched by the user's browser, not by this process. Mount an optional PMTiles file read-only for the Local file map setting.
 
-Example compose shape, to be made real in P1.17. Build context is the repo root, where the Dockerfile will live under `deploy/`. The `internal` flag below is the no-egress example. When Tailscale Serve runs on the host instead, drop `internal` and publish only on the tailnet address, and keep an egress drop in the host firewall:
+Example compose shape, to be made real in P1.17. Build context is the repo root, where the Dockerfile will live under `deploy/`. The `internal` flag below is the no-egress example. When Tailscale Serve runs on the host instead, drop `internal`, publish the port host-address-qualified as shown commented out below (never a bare `8000:8000`, which would also publish on the LAN -- see the trusted-peer warning above), and keep an egress drop in the host firewall.
+
+`172.17.0.1` (used above, and in `PHOTOS_VIEWER_TRUSTED_PROXIES`'s own example) is only the *default* bridge network's gateway. A compose file that names its own network, like `viewer` below, gets a different, host-dependent subnet unless pinned -- so this example pins one with `ipam` and points `UVICORN_FORWARDED_ALLOW_IPS` at that subnet's gateway, not at `172.17.0.1`. Run `docker network inspect <project>_viewer` to confirm the actual gateway if you don't pin it yourself.
 
 ```yaml
 services:
@@ -115,6 +119,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     networks: [viewer]
+    # ports: ["127.0.0.1:8000:8000"]  # only when tailscale serve runs on the host, not in the no-egress example above
     volumes:
       - /mnt/photos/Family.photoslibrary:/libraries/family.photoslibrary:ro
       # Optional. Used only when the admin sets Map tiles to Local file.
@@ -126,13 +131,19 @@ services:
       # tailscale serve on the host reaches this container from the Docker
       # bridge gateway, not loopback -- see "CSRF and tailscale serve"
       # above for both of these and why they default to unset otherwise.
+      # 172.28.0.1 is the gateway of the `viewer` network's pinned subnet
+      # below, not the default bridge's 172.17.0.1 (see the note above).
       PHOTOS_VIEWER_PUBLIC_ORIGINS: https://myhost.tailxyz.ts.net
-      UVICORN_FORWARDED_ALLOW_IPS: 172.17.0.1
+      UVICORN_FORWARDED_ALLOW_IPS: 172.28.0.1
 volumes:
   viewer-data:
 networks:
   viewer:
     internal: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1
 ```
 
 ## Commands to grow into
