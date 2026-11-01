@@ -33,11 +33,11 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import shutil
+import sqlite3
 import tempfile
 from typing import Literal, Self
 
 from osxphotos import PhotosDB
-from osxphotos.sqlite_utils import sqlite_db_is_locked
 
 # Mirrors osxphotos._constants._DB_TABLE_NAMES keys for 0.77.2: the Photos
 # database generations this installed osxphotos release has table mappings
@@ -107,15 +107,34 @@ class OpenLibrary:
 
 def library_is_locked(package_path: str | pathlib.Path) -> bool:
     """True if another process (Photos.app, `photoanalysisd`) currently
-    holds `database/Photos.sqlite` open for writing -- reuses osxphotos' own
-    check (`sqlite_open_ro` plus a trial query) rather than re-implementing
-    it. False if the file doesn't exist yet, and in practice always False on
-    Linux, where nothing else ever opens a `.photoslibrary`.
+    holds `database/Photos.sqlite` open for writing.
+
+    This is a best-effort admin-panel warning, not a safety check -- actual
+    reads go through `open_library_readonly`'s temp copy. It cannot reuse
+    osxphotos' own `sqlite_db_is_locked`: that opens the file with plain
+    `mode=ro`, and on a WAL-mode database that still needs a `-shm`/`-wal`
+    pair to exist for the shared-memory WAL index, so SQLite creates them if
+    neither is present -- a write into the package on every status check.
+    `immutable=1` tells SQLite nobody else will modify the file, so it skips
+    the WAL and all locking entirely and reads the main db file directly,
+    never touching `-shm`/`-wal`. The tradeoff is this can't detect every
+    lock a plain `mode=ro` open would (immutable skips OS-level locking
+    too), only a main db file left transiently inconsistent by an in-progress
+    write.
     """
     sqlite_path = pathlib.Path(package_path) / "database" / "Photos.sqlite"
     if not sqlite_path.exists():
         return False
-    return sqlite_db_is_locked(sqlite_path)
+    uri = f"{sqlite_path.resolve().as_uri()}?mode=ro&immutable=1"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=1)
+        try:
+            conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;").fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return True
+    return False
 
 
 def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:

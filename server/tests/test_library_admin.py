@@ -1,5 +1,6 @@
 """P1.5: admin-only library registry -- add, list, rename, remove, status."""
 
+import pathlib
 import shutil
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,15 @@ from photos_viewer.main import create_app
 from tests.fixtures import build_fixture_library
 
 VALID_PASSWORD = "correct-horse-battery"
+
+
+def _snapshot(package_path: pathlib.Path) -> dict:
+    snapshot = {}
+    for path in sorted(package_path.rglob("*")):
+        rel = str(path.relative_to(package_path))
+        stat = path.stat()
+        snapshot[rel] = ("dir", stat.st_mtime_ns) if path.is_dir() else (stat.st_size, stat.st_mtime_ns)
+    return snapshot
 
 
 def _client(tmp_path):
@@ -236,6 +246,35 @@ def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_p
         assert body["last_indexed_at"] is None
         assert body["prewarm_progress"] is None
         assert body["warnings"] == []
+    finally:
+        conn.close()
+
+
+def test_library_status_does_not_write_into_the_package(tmp_path):
+    # library_is_locked is called on every status request; on a WAL-mode
+    # database, opening it with plain `mode=ro` (as opposed to `immutable=1`)
+    # creates a `-shm`/`-wal` pair if neither already exists, which is a
+    # write into the package -- forbidden even for an admin-only status
+    # check. Add/rename/remove exercise the same package, each with their
+    # own status read in between.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+
+        before = _snapshot(package_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        status_response = client.get(f"/api/admin/libraries/{added['id']}/status")
+        assert status_response.status_code == 200
+        assert status_response.json()["warnings"] == []
+
+        client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
+        client.get(f"/api/admin/libraries/{added['id']}/status")
+        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+
+        after = _snapshot(package_path)
+        assert set(after) - set(before) == set(), "status check created a new file or directory"
+        assert after == before, "status check changed an existing file's size or mtime"
     finally:
         conn.close()
 
