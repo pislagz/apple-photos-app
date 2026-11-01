@@ -111,7 +111,7 @@ Every endpoint requires a session, and every request is checked against the libr
 
 - Username and password, hashed with Argon2id. Passkeys (WebAuthn) in a later phase.
 - Secure, HttpOnly, SameSite=Strict session cookies. Long lifetime for the installed PWA, shorter for desktop by default (configurable). "Remember me" and logout.
-- Rate-limit logins and lock out temporarily after repeated failures. The lockout is keyed on the username, not on who is asking, plus a looser per-client-IP limit; trade-off: knowing a real username is enough to lock that account out for the cool-off window.
+- Rate-limit logins and lock out temporarily after repeated failures. The lockout is keyed on the username, not on who is asking, plus a looser per-client limit keyed on the `Tailscale-User-Login` header when the request is loopback (everyone behind `tailscale serve` otherwise shares one IP); trade-off: knowing a real username is enough to lock that account out for the cool-off window. An unknown username locks out the same way, in a separate counter, so a 429 never reveals which usernames are real. An admin can clear a user's lockout from the admin panel (`POST /api/admin/users/{username}/unlock`) or, with no server running, via `python -m photos_viewer.admin unlock <username>` directly against `app.db` -- the fallback for an admin who is themselves locked out.
 - Never trust library ids from the client without checking the session's assignments.
 - Optional extra layer: allow only listed tailnet identities, using the `Tailscale-User-Login` header.
 - Login screen styled to match the platform: a centered card on desktop and a full-screen form on iPhone.

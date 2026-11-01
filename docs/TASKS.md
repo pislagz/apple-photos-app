@@ -65,6 +65,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Tables for users, sessions, libraries, assignments, the asset index, thumbnail-cache rows, and the audit log. File lives outside any `.photoslibrary` (`PHOTOS_VIEWER_DATA_DIR`).
 - Acceptance: migrations apply on an empty directory. A test creates the file under `tmp_path` and never in the repo.
 - Done: `server/photos_viewer/app_db.py` (`connect()`, `migrate()`, `_MIGRATIONS`); `server/tests/test_app_db.py`. Issue #10 follow-up: each migration (plus the `PRAGMA user_version` bump) runs inside one `BEGIN IMMEDIATE` transaction, rolled back whole on any error, with `user_version` re-read after the lock is held.
+- Issue #12 follow-up (PR #11 review, D): `migrate()` reads `user_version` without a lock first and returns immediately when nothing is pending; `BEGIN IMMEDIATE` only runs, with a re-read, when a migration actually needs to apply. `data_dir_from_env()` is the one place `PHOTOS_VIEWER_DATA_DIR` is read, shared by `session_auth.get_db` and the new `admin` CLI (P1.3).
 
 ### P1.3 Passwords, sessions, first admin
 
@@ -75,6 +76,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - Acceptance: tests cover wrong password, lockout, logout, and cookie flags. No file in the repo has `token` or `credential` in its name.
 - Done: `server/photos_viewer/session_auth.py`; `server/tests/test_session_auth.py`. New env vars (`PHOTOS_VIEWER_DATA_DIR`, `PHOTOS_VIEWER_SESSION_LIFETIME_DESKTOP_SECONDS`, `PHOTOS_VIEWER_SESSION_LIFETIME_PWA_SECONDS`, `PHOTOS_VIEWER_REMEMBER_ME_LIFETIME_SECONDS`, `PHOTOS_VIEWER_COOKIE_SECURE`) still need adding to `.env.example` as a follow-up -- that file was not reachable from this session.
 - Issue #10 follow-up (PR #9 review): first-run admin setup is one `BEGIN IMMEDIATE` transaction; usernames and passwords have pydantic length limits and usernames are case-normalized; a missing or disabled username still runs an Argon2 verify against a fixed dummy hash (no timing tell); lockout only counts failures for usernames that exist, plus a looser per-IP limit, both pruned by age; `require_session` dependency and `GET /api/auth/me`; `lookup_session` joins `users`, rejects disabled accounts, prunes expired sessions, and throttles `last_seen_at` writes; CSRF guard (`application/json` + same-host `Origin`) on every POST route; Argon2id parameters pinned with rehash-on-login.
+- Issue #12 follow-up (PR #11 review, A-H): per-client lockout keys on the `Tailscale-User-Login` header when the request is loopback (every request behind `tailscale serve`), and is skipped for loopback with no such header, so one shared tailnet address can no longer lock out everyone (A). Expired-session pruning is throttled to about once a minute via a module-level timestamp instead of running on every request (B). Unknown usernames get the same lockout mechanics as real ones but in a separate row set (`login_failures.user_exists`), so probing a made-up name can never later lock out a real account created with that name, and a 429 doesn't disclose which case it is (C). `app_db.migrate()` reads `user_version` lock-free first and only takes `BEGIN IMMEDIATE` when a migration is actually pending (D, see P1.2). The CSRF `Origin` check compares scheme, host, and port (E). Login validates only the 1024-char maximum, not the 12-char setup minimum, so a short wrong password is rejected the same way (401, via lockout + Argon2) as any other (F). New admin-only `POST /api/admin/users/{username}/unlock` clears a username's lockout (G) -- P1.10's admin UI should add an "Unlock" button that calls it (see P1.10). New `python -m photos_viewer.admin unlock <username> [--clear-ip-limits]` CLI (`server/photos_viewer/admin.py`) works directly on `app.db`, no server needed, for an admin locked out of the UI itself (H); see `server/README.md` for the `docker exec` form. Tests: `server/tests/test_session_auth.py`, `server/tests/test_app_db.py`, `server/tests/test_admin_cli.py`.
 
 ### P1.4 Optional tailnet allow-list
 
@@ -124,7 +126,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 ### P1.10 Admin UI
 
 - Desktop, System Settings-like sidebar: Libraries, Users, Sessions, Audit log, Settings.
-- Users: create, edit, disable, delete, set password, set role, one-time invite link that creates an account and then dies.
+- Users: create, edit, disable, delete, set password, set role, one-time invite link that creates an account and then dies. Unlock: an "Unlock" action on a locked-out user, calling `POST /api/admin/users/{username}/unlock` (server-side done, issue #12 G) -- the UI button itself is still to do.
 - Access matrix: users × libraries, one checkbox each.
 - Sessions: user, device, last seen, revoke.
 - Audit log: filter by user, library, date. CSV export.

@@ -18,6 +18,7 @@ import os
 import pathlib
 import secrets
 import sqlite3
+import time
 from collections.abc import Iterator
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -52,6 +53,15 @@ _DEFAULT_REMEMBER_ME_LIFETIME_SECONDS = 180 * 24 * 3600
 # scrolling the grid doesn't turn every request into a write.
 _LAST_SEEN_THROTTLE_SECONDS = 60
 
+# Expired-session cleanup is a DELETE plus commit; throttling it to about
+# once a minute (module-level, not per-connection) keeps a server under
+# constant request load from turning every single request into a write.
+# A session past its `expires_at` is already rejected by `lookup_session`'s
+# WHERE clause regardless of whether this has run yet -- this only reclaims
+# the row.
+_SESSION_PRUNE_INTERVAL_SECONDS = 60
+_last_session_prune_at = 0.0
+
 # Login lockout: a sliding window of recent failures per username, not per
 # IP, since several users can share one tailnet address behind Tailscale.
 MAX_FAILED_LOGIN_ATTEMPTS = 5
@@ -60,9 +70,14 @@ LOCKOUT_WINDOW_SECONDS = 15 * 60
 # Looser than the per-username limit: a client hammering many different
 # usernames from one address should still be slowed down, but one shared
 # tailnet address serving several real users must not lock them all out
-# together just because they share an IP.
+# together just because they share an IP. Behind `tailscale serve`, every
+# request arrives from loopback, so "one address" is otherwise the whole
+# server -- see `_ip_lockout_key`.
 MAX_FAILED_LOGIN_ATTEMPTS_PER_IP = 30
 IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
+
+_TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
 
 # Pinned explicitly rather than left at argon2-cffi's defaults, so a future
 # library upgrade that changes its defaults can't silently weaken (or just
@@ -146,6 +161,11 @@ def create_session(
 
 
 def _prune_expired_sessions(conn: sqlite3.Connection) -> None:
+    global _last_session_prune_at
+    now = time.monotonic()
+    if now - _last_session_prune_at < _SESSION_PRUNE_INTERVAL_SECONDS:
+        return
+    _last_session_prune_at = now
     conn.execute("DELETE FROM sessions WHERE expires_at <= datetime('now')")
     conn.commit()
 
@@ -199,8 +219,14 @@ def _prune_old_login_failures(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def record_login_failure(conn: sqlite3.Connection, username: str) -> None:
-    conn.execute("INSERT INTO login_failures (username) VALUES (?)", (username,))
+def record_login_failure(conn: sqlite3.Connection, username: str, *, user_exists: bool) -> None:
+    """`user_exists` is whether `username` matched a row at the time of this
+    attempt, stored alongside the failure so an unknown name's attempts
+    never share a counter with a real account's -- see `is_locked_out`."""
+    conn.execute(
+        "INSERT INTO login_failures (username, user_exists) VALUES (?, ?)",
+        (username, int(user_exists)),
+    )
     conn.commit()
 
 
@@ -209,17 +235,25 @@ def clear_login_failures(conn: sqlite3.Connection, username: str) -> None:
     conn.commit()
 
 
-def is_locked_out(conn: sqlite3.Connection, username: str) -> bool:
+def is_locked_out(conn: sqlite3.Connection, username: str, *, user_exists: bool) -> bool:
     """Trade-off: this lockout is keyed on the username alone, not on who is
     typing it, so someone who merely knows a real username can lock that
     account out for the cool-off window by sending wrong passwords. The
     per-IP limit below is deliberately looser and is not a substitute for
     this -- it exists only to slow down one client guessing many usernames,
-    not to protect any one account."""
+    not to protect any one account.
+
+    `user_exists` must match the caller's current knowledge of whether the
+    username is real: an unknown name is given the same lockout mechanics
+    (so probing it is still slowed down and a 429 doesn't disclose whether
+    the account exists), but counted in a separate row set (`user_exists =
+    0`), so a flood of guesses against a not-yet-created username can never
+    carry over and lock out a real account later created with that name.
+    """
     count = conn.execute(
         "SELECT COUNT(*) FROM login_failures "
-        "WHERE username = ? AND occurred_at >= datetime('now', ?)",
-        (username, f"-{LOCKOUT_WINDOW_SECONDS} seconds"),
+        "WHERE username = ? AND user_exists = ? AND occurred_at >= datetime('now', ?)",
+        (username, int(user_exists), f"-{LOCKOUT_WINDOW_SECONDS} seconds"),
     ).fetchone()[0]
     return count >= MAX_FAILED_LOGIN_ATTEMPTS
 
@@ -243,12 +277,43 @@ def _client_ip(request: Request) -> str:
     return client.host if client is not None else "unknown"
 
 
-def _is_same_host(origin: str, request: Request) -> bool:
+def _ip_lockout_key(request: Request) -> str | None:
+    """Key for the per-client failed-login counter, or None to skip it
+    entirely for this request.
+
+    Behind `tailscale serve`, every request arrives from loopback, so the
+    connecting address alone can't tell callers apart -- keying on it would
+    turn a handful of wrong passwords from one real user into a lockout for
+    everyone on the tailnet. When the request is loopback, key on the
+    `Tailscale-User-Login` header Tailscale Serve adds instead. With no such
+    header there is no way to distinguish loopback callers, so the per-client
+    limit is skipped for this request; the per-username lockout above still
+    applies regardless.
+    """
+    host = _client_ip(request)
+    if host not in _LOOPBACK_HOSTS:
+        return host
+    login = request.headers.get(_TAILSCALE_USER_LOGIN_HEADER)
+    return f"tailscale-user:{login}" if login else None
+
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _effective_port(scheme: str, port: int | None) -> int | None:
+    return port if port is not None else _DEFAULT_PORTS.get(scheme.lower())
+
+
+def _is_same_origin(origin: str, request: Request) -> bool:
     try:
         parsed = urlsplit(origin)
     except ValueError:
         return False
-    return bool(parsed.hostname) and parsed.hostname.lower() == (request.url.hostname or "").lower()
+    if not parsed.hostname or parsed.hostname.lower() != (request.url.hostname or "").lower():
+        return False
+    if parsed.scheme.lower() != request.url.scheme.lower():
+        return False
+    return _effective_port(parsed.scheme, parsed.port) == _effective_port(request.url.scheme, request.url.port)
 
 
 def _reject_cross_site_requests(request: Request) -> None:
@@ -258,20 +323,21 @@ def _reject_cross_site_requests(request: Request) -> None:
     `Content-Type`, only a handful of "simple" values that exclude
     `application/json` -- requiring it blocks that vector outright. The
     `Origin` check is a second layer for clients that can set headers (e.g.
-    a `fetch` from another site); a same-host or absent Origin is allowed,
-    since same-origin requests and some non-browser clients don't send one.
+    a `fetch` from another site); a same-origin (scheme, host, and port) or
+    absent Origin is allowed, since same-origin requests and some
+    non-browser clients don't send one.
     """
     content_type = request.headers.get("content-type", "")
     if not content_type.split(";", 1)[0].strip().lower() == "application/json":
         raise HTTPException(status_code=415, detail="Content-Type must be application/json")
 
     origin = request.headers.get("origin")
-    if origin is not None and not _is_same_host(origin, request):
+    if origin is not None and not _is_same_origin(origin, request):
         raise HTTPException(status_code=403, detail="cross-origin request rejected")
 
 
 def _data_dir() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("PHOTOS_VIEWER_DATA_DIR", "data"))
+    return app_db.data_dir_from_env()
 
 
 def get_db() -> Iterator[sqlite3.Connection]:
@@ -296,6 +362,14 @@ def require_session(request: Request, db: sqlite3.Connection = Depends(get_db)) 
     return session
 
 
+def require_admin(session: sqlite3.Row = Depends(require_session)) -> sqlite3.Row:
+    """FastAPI dependency: the caller's session row, or 403 if it is not an
+    admin's. Use on every `/api/admin/*` route."""
+    if session["role"] != "admin":
+        raise HTTPException(status_code=403, detail="admin only")
+    return session
+
+
 router = APIRouter()
 
 
@@ -305,6 +379,12 @@ def _normalize_username(value: object) -> object:
 
 Username = Annotated[str, BeforeValidator(_normalize_username), Field(min_length=1, max_length=64)]
 Password = Annotated[str, Field(min_length=12, max_length=1024)]
+# Login must not apply the 12-character minimum: a short wrong password has
+# to go through the same lockout accounting and Argon2 verify as any other
+# wrong password, not get turned away early by validation (which would also
+# make a 422-vs-401 split another way to probe password length). The
+# minimum still applies at setup and user creation, via `Password` above.
+LoginPassword = Annotated[str, Field(max_length=1024)]
 
 
 class AdminSetupRequest(BaseModel):
@@ -314,7 +394,7 @@ class AdminSetupRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     username: Username
-    password: Password
+    password: LoginPassword
     remember_me: bool = False
     client: Literal["desktop", "pwa"] = "desktop"
 
@@ -360,12 +440,16 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
 @router.post("/api/auth/login", response_model=AuthUserResponse, dependencies=[Depends(_reject_cross_site_requests)])
 def login(payload: LoginRequest, request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     _prune_old_login_failures(db)
-    client_ip = _client_ip(request)
-
-    if is_ip_locked_out(db, client_ip) or is_locked_out(db, payload.username):
-        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+    ip_key = _ip_lockout_key(request)
 
     user = db.execute("SELECT * FROM users WHERE username = ?", (payload.username,)).fetchone()
+    user_exists = user is not None
+
+    if (ip_key is not None and is_ip_locked_out(db, ip_key)) or is_locked_out(
+        db, payload.username, user_exists=user_exists
+    ):
+        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+
     if user is None or user["disabled"]:
         # Always verify against something, even for a missing or disabled
         # user, so the response takes the same time either way and a
@@ -376,9 +460,9 @@ def login(payload: LoginRequest, request: Request, response: Response, db: sqlit
         password_ok = verify_password(user["password_hash"], payload.password)
 
     if not password_ok:
-        if user is not None:
-            record_login_failure(db, payload.username)
-        record_ip_login_failure(db, client_ip)
+        record_login_failure(db, payload.username, user_exists=user_exists)
+        if ip_key is not None:
+            record_ip_login_failure(db, ip_key)
         raise HTTPException(status_code=401, detail="invalid username or password")
 
     clear_login_failures(db, payload.username)
@@ -418,3 +502,28 @@ def logout(request: Request, response: Response, db: sqlite3.Connection = Depend
 @router.get("/api/auth/me", response_model=AuthUserResponse)
 def read_current_user(session: sqlite3.Row = Depends(require_session)) -> AuthUserResponse:
     return AuthUserResponse(username=session["username"], role=session["role"])
+
+
+class UnlockResponse(BaseModel):
+    username: str
+
+
+@router.post(
+    "/api/admin/users/{username}/unlock",
+    response_model=UnlockResponse,
+    dependencies=[Depends(_reject_cross_site_requests)],
+)
+def unlock_user(
+    username: str,
+    admin: sqlite3.Row = Depends(require_admin),
+    db: sqlite3.Connection = Depends(get_db),
+) -> UnlockResponse:
+    """Clear a username's lockout counter. The P1.10 admin UI doesn't exist
+    yet; this is the API it will call for its "Unlock" action."""
+    del admin
+    normalized = _normalize_username(username)
+    user = db.execute("SELECT id FROM users WHERE username = ?", (normalized,)).fetchone()
+    if user is None:
+        raise HTTPException(status_code=404, detail="not found")
+    clear_login_failures(db, normalized)
+    return UnlockResponse(username=normalized)
