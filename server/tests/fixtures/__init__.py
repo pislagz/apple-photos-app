@@ -25,6 +25,11 @@ that row up unconditionally and raises if it's missing or not unique.
 instead of logging "could not find search db" -- see `_copy_search_index` in
 `photos_viewer/libraries.py` for why the copy has to land next to the copied
 database, not next to the package's own `database/search/`.
+
+The asset's favorite flag is flipped on afterwards through a real,
+uncheckpointed WAL write (see `_write_uncheckpointed_wal_change` below), so
+`-wal` holds genuine committed-but-unmerged content, not an empty
+placeholder, for tests that exercise WAL replay through the copy step.
 """
 
 from __future__ import annotations
@@ -230,12 +235,32 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
     finally:
         conn.close()
 
-    # A real library can have these sidecars next to Photos.sqlite whenever
-    # Photos.app or photoanalysisd holds the database open; the copy step in
-    # `open_library_readonly` has to pick them up too, not just the main file.
-    sqlite_path.with_name(sqlite_path.name + "-wal").write_bytes(b"")
-    sqlite_path.with_name(sqlite_path.name + "-shm").write_bytes(b"")
+    # A real library can have a non-empty `-wal`/`-shm` next to Photos.sqlite
+    # whenever Photos.app or photoanalysisd holds the database open, with a
+    # change committed to the WAL but not yet checkpointed into the main
+    # file; the copy step in `open_library_readonly` has to pick up and
+    # replay that too, not just copy the main file.
+    _write_uncheckpointed_wal_change(sqlite_path)
 
     _build_search_index(database_dir / "search")
 
     return package_path
+
+
+# Connections kept alive here, never closed, for the life of the test
+# process. Closing the last connection to a WAL database runs an automatic
+# checkpoint that would merge the row below back into the main db file,
+# which would leave the fixture's `-wal` empty and defeat the point of
+# testing a real, unmerged WAL change.
+_WAL_ONLY_CONNECTIONS: list[sqlite3.Connection] = []
+
+
+def _write_uncheckpointed_wal_change(sqlite_path: pathlib.Path) -> None:
+    """Flip the fixture asset's favorite flag via a WAL-mode write that is
+    deliberately left uncheckpointed, so the main db file keeps the old
+    value and only the `-wal` file holds the new one."""
+    conn = sqlite3.connect(str(sqlite_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("UPDATE ZGENERICASSET SET ZFAVORITE = 1 WHERE Z_PK = 1")
+    conn.commit()
+    _WAL_ONLY_CONNECTIONS.append(conn)
