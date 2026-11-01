@@ -34,6 +34,7 @@ import dataclasses
 import pathlib
 import shutil
 import tempfile
+from typing import Literal
 
 from osxphotos import PhotosDB
 
@@ -87,7 +88,7 @@ def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> No
 class OpenLibrary:
     db: PhotosDB
     library_path: pathlib.Path
-    open_mode: str  # "copy" or "ro"
+    open_mode: Literal["copy", "ro"]
     _tempdir: str | None = dataclasses.field(default=None, repr=False)
 
     def close(self) -> None:

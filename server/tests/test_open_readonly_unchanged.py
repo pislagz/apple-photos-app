@@ -11,6 +11,7 @@ propagate instead).
 
 import pathlib
 import shutil
+import sqlite3
 import tempfile
 import unittest.mock
 
@@ -57,6 +58,25 @@ def test_package_unchanged_after_open_via_copy(tmp_path):
     assert before == after
 
 
+def test_copy_replays_a_real_uncheckpointed_wal_change(tmp_path):
+    # The fixture's `-wal` holds a real, committed-but-unmerged change (see
+    # `tests.fixtures._write_uncheckpointed_wal_change`): the main db file
+    # alone still says `favorite=False`, and only a reader that also has the
+    # `-wal` -- which the copy step copies alongside `Photos.sqlite` -- sees
+    # the new value.
+    package_path = build_fixture_library(tmp_path)
+
+    before = _snapshot(package_path)
+    with open_library_readonly(package_path) as opened:
+        assert opened.open_mode == "copy"
+        photos = opened.db.photos()
+        assert len(photos) == 1
+        assert photos[0].favorite is True
+        after = _snapshot(package_path)
+
+    assert before == after
+
+
 def test_package_unchanged_after_open_via_fallback(tmp_path, monkeypatch):
     package_path = build_fixture_library(tmp_path)
 
@@ -77,6 +97,7 @@ def test_photosdb_error_on_a_made_copy_is_not_swallowed_into_fallback(tmp_path):
     # A failure *after* the copy succeeds (a bad PhotosDB open) is not a copy
     # failure -- it must propagate, not trigger the in-place fallback and
     # silently open the original instead.
+    before = _leaked_tempdirs()
     package_path = build_fixture_library(tmp_path)
     copy_of_copy2 = shutil.copy2
 
@@ -86,8 +107,10 @@ def test_photosdb_error_on_a_made_copy_is_not_swallowed_into_fallback(tmp_path):
             pathlib.Path(dst).write_bytes(b"not a sqlite database")
 
     with unittest.mock.patch.object(libraries.shutil, "copy2", side_effect=corrupt_the_copy):
-        with pytest.raises(Exception):
+        with pytest.raises(sqlite3.DatabaseError, match="file is not a database"):
             open_library_readonly(package_path)
+
+    assert _leaked_tempdirs() == before
 
 
 def test_no_leaked_tempdir_after_close(tmp_path):

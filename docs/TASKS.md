@@ -21,7 +21,8 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 ### P0.3 Read-only open
 
 - Implement one function that opens a library for indexing.
-- It copies `Photos.sqlite` plus existing `-wal` and `-shm` to a temp directory outside the package, then calls `PhotosDB(dbfile=copy, library_path=package)`. If the copy path fails, try `mode=ro` or `immutable=1` and record which.
+- It copies `Photos.sqlite` plus existing `-wal` and `-shm` to a temp directory outside the package, then calls `PhotosDB(dbfile=copy, library_path=package)`. If the copy path fails, fall back to `mode=ro` directly against the package and record which mode was used.
+- `immutable=1` was considered and dropped: osxphotos' `sqlite_open_ro` always resolves `dbfile` to a path and builds its own `mode=ro` URI from it, so a caller of `PhotosDB(dbfile=...)` has no way to ask it for `immutable=1`. There is no third tier; see the docstring in `photos_viewer/libraries.py`.
 - It never calls osxphotos repair/recover helpers.
 - Acceptance: a test snapshots the fixture directory (names, sizes, mtimes), opens it, and snapshots again. The snapshots match. The test runs on Linux.
 
