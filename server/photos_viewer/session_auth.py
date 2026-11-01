@@ -8,6 +8,22 @@ The cookie value is a random, unguessable string (`secrets.token_urlsafe`),
 never a bearer secret shared across users (contrast `photokit-api`, see
 `docs/PRIOR_ART.md`). Only its SHA-256 is stored in `app.db`'s `sessions`
 table, so a leak of that file alone does not hand out working cookies.
+
+Module docs, referenced from several functions below: this server is meant
+to run behind `tailscale serve` (or an equivalent reverse proxy), started
+plainly as `uvicorn photos_viewer.main:app`. uvicorn's `--proxy-headers` is
+on by default and, also by default, trusts only `127.0.0.1`/`::1` as the
+proxy's address (`--forwarded-allow-ips`). Tailscale Serve connects to the
+local port from loopback, so with no extra flags uvicorn's own
+`ProxyHeadersMiddleware` already rewrites each request's client address
+(from `X-Forwarded-For`) and scheme (from `X-Forwarded-Proto`) before any
+code in this module runs; it forwards the original `Host` header unchanged,
+so the request's URL ends up reading exactly as the public
+`https://<machine>.ts.net` origin the browser used. In Docker, the proxy
+typically does not connect from loopback (e.g. the Docker bridge gateway
+instead), so that rewriting needs `--forwarded-allow-ips` set to the
+proxy's actual address, or does not happen at all -- `PHOTOS_VIEWER_PUBLIC_ORIGINS`
+is the explicit, proxy-header-independent override for that case.
 """
 
 from __future__ import annotations
@@ -70,9 +86,11 @@ LOCKOUT_WINDOW_SECONDS = 15 * 60
 # Looser than the per-username limit: a client hammering many different
 # usernames from one address should still be slowed down, but one shared
 # tailnet address serving several real users must not lock them all out
-# together just because they share an IP. Behind `tailscale serve`, every
-# request arrives from loopback, so "one address" is otherwise the whole
-# server -- see `_ip_lockout_key`.
+# together just because they share an IP. uvicorn's `--proxy-headers`
+# (default on, trusting `127.0.0.1`/`::1` by default -- see module docs)
+# normally rewrites the per-request client to the real tailnet address
+# before this code ever runs; "one address" is only the whole server when
+# that rewriting doesn't happen -- see `_ip_lockout_key`.
 MAX_FAILED_LOGIN_ATTEMPTS_PER_IP = 30
 IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 
@@ -272,6 +290,13 @@ def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str) -> bool:
     return count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_IP
 
 
+def clear_ip_login_failures(conn: sqlite3.Connection) -> None:
+    """Clear every per-client counter, not just one -- there is no per-IP
+    username to scope this to (see `_ip_lockout_key`)."""
+    conn.execute("DELETE FROM ip_login_failures")
+    conn.commit()
+
+
 def _client_ip(request: Request) -> str:
     client = request.client
     return client.host if client is not None else "unknown"
@@ -281,14 +306,19 @@ def _ip_lockout_key(request: Request) -> str | None:
     """Key for the per-client failed-login counter, or None to skip it
     entirely for this request.
 
-    Behind `tailscale serve`, every request arrives from loopback, so the
-    connecting address alone can't tell callers apart -- keying on it would
-    turn a handful of wrong passwords from one real user into a lockout for
-    everyone on the tailnet. When the request is loopback, key on the
-    `Tailscale-User-Login` header Tailscale Serve adds instead. With no such
-    header there is no way to distinguish loopback callers, so the per-client
-    limit is skipped for this request; the per-username lockout above still
-    applies regardless.
+    With uvicorn's `--proxy-headers` trusting the proxy (the default --
+    see module docs), `request.client` is already the real tailnet address
+    by the time this runs, so keying on it tells callers apart correctly.
+    The loopback case below only matters when that rewriting didn't happen
+    (proxy headers disabled, or the proxy's address isn't in
+    `--forwarded-allow-ips`, e.g. a Docker bridge gateway by default): then
+    every request looks like it comes from the one address the proxy
+    connects from, and keying on it would turn a handful of wrong passwords
+    from one real user into a lockout for everyone behind it. In that case,
+    key on the `Tailscale-User-Login` header Tailscale Serve adds instead.
+    With no such header there is no way to distinguish loopback callers, so
+    the per-client limit is skipped for this request; the per-username
+    lockout above still applies regardless.
     """
     host = _client_ip(request)
     if host not in _LOOPBACK_HOSTS:
@@ -329,46 +359,59 @@ def _request_origin(request: Request) -> _Origin:
     )
 
 
+def _split_public_origins_env(raw: str) -> tuple[set[_Origin], list[str]]:
+    """Parse `PHOTOS_VIEWER_PUBLIC_ORIGINS`'s comma-separated value into the
+    origins that parsed and the raw entries (e.g. `box.ts.net`, missing its
+    `https://`) that didn't."""
+    valid: set[_Origin] = set()
+    invalid: list[str] = []
+    for part in raw.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        parsed = _parse_origin(entry)
+        if parsed is None:
+            invalid.append(entry)
+        else:
+            valid.add(parsed)
+    return valid, invalid
+
+
 def _public_origins_from_env() -> set[_Origin] | None:
     """`PHOTOS_VIEWER_PUBLIC_ORIGINS`: the exact origin(s) this server is
     reachable at from a browser's point of view (e.g. the `ts.net` name
     `tailscale serve` exposes), comma-separated. Unset by default, since a
     bare-metal or Docker install with no reverse proxy needs nothing extra.
+
+    An entry that fails to parse (e.g. missing its `scheme://`) is dropped
+    and logged -- `validate_public_origins_env` is what refuses to start the
+    app if that leaves nothing valid, so this function never has to.
     """
     raw = os.environ.get(_PUBLIC_ORIGINS_ENV)
     if raw is None or not raw.strip():
         return None
-    origins = set()
-    for part in raw.split(","):
-        parsed = _parse_origin(part.strip()) if part.strip() else None
-        if parsed is not None:
-            origins.add(parsed)
-    return origins
+    valid, invalid = _split_public_origins_env(raw)
+    for entry in invalid:
+        logger.warning("%s: ignoring invalid origin %r (expected scheme://host[:port])", _PUBLIC_ORIGINS_ENV, entry)
+    return valid
 
 
-def _forwarded_origin(request: Request) -> _Origin | None:
-    """The origin `X-Forwarded-Proto`/`X-Forwarded-Host` claim, or `None` if
-    they're absent or not trustworthy.
-
-    These headers are only trusted when the direct TCP peer is loopback: a
-    reverse proxy that terminates TLS or renames the Host header for this
-    server (`tailscale serve` does both -- see module docs) always connects
-    from `127.0.0.1`/`::1`. Any other direct peer could set these headers
-    itself to spoof an allowed origin, so they're ignored unless
-    `PHOTOS_VIEWER_PUBLIC_ORIGINS` is configured instead (that path never
-    calls this function).
+def validate_public_origins_env() -> None:
+    """Called once at app startup. A `PHOTOS_VIEWER_PUBLIC_ORIGINS` that is
+    set but parses to nothing is indistinguishable, from the CSRF check's
+    point of view, from it being unset -- except that the admin thinks
+    they've configured the override. Fail loudly instead of falling back to
+    same-origin-only checking silently.
     """
-    if _client_ip(request) not in _LOOPBACK_HOSTS:
-        return None
-    forwarded_host = request.headers.get("x-forwarded-host")
-    if not forwarded_host:
-        return None
-    forwarded_proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host, _, port_text = forwarded_host.partition(":")
-    port = int(port_text) if port_text.isdigit() else None
-    if not host:
-        return None
-    return (forwarded_proto.lower(), host.lower(), _effective_port(forwarded_proto, port))
+    raw = os.environ.get(_PUBLIC_ORIGINS_ENV)
+    if raw is None or not raw.strip():
+        return
+    valid, invalid = _split_public_origins_env(raw)
+    if invalid and not valid:
+        raise RuntimeError(
+            f"{_PUBLIC_ORIGINS_ENV} is set but every entry is invalid "
+            f"(expected scheme://host[:port], e.g. https://box.ts.net): {invalid!r}"
+        )
 
 
 def _reject_cross_site_requests(request: Request) -> None:
@@ -381,17 +424,17 @@ def _reject_cross_site_requests(request: Request) -> None:
     a `fetch` from another site); a same-origin or absent Origin is allowed,
     since same-origin requests and some non-browser clients don't send one.
 
-    "Same-origin" is not simply "matches `request.url`": behind
+    "Same-origin" is not simply "this process's own loopback socket": behind
     `tailscale serve`, the browser's Origin is the tailnet `ts.net` name
-    over https, while this process only ever sees plain http on
-    `127.0.0.1`. Two ways to bridge that, in priority order:
-
-    1. `PHOTOS_VIEWER_PUBLIC_ORIGINS` set -- the Origin must match one of
-       its entries, or the request's own origin. Exact and explicit; works
-       regardless of what headers the proxy does or doesn't add.
-    2. Unset -- fall back to `X-Forwarded-Proto`/`X-Forwarded-Host`, but
-       only when the direct connection is loopback (see
-       `_forwarded_origin`), matching `tailscale serve`'s own behavior.
+    over https. uvicorn's `--proxy-headers` (on by default, trusting
+    `127.0.0.1`/`::1` by default -- see module docs) already rewrites
+    `request.url.scheme` from `X-Forwarded-Proto` before this code runs, and
+    `tailscale serve` forwards the original Host header unchanged, so
+    `request.url` already reads as that same public origin with no extra
+    header-parsing needed here. `PHOTOS_VIEWER_PUBLIC_ORIGINS` is the
+    explicit override for setups where that rewriting doesn't happen (proxy
+    headers disabled, or the proxy's address isn't in
+    `--forwarded-allow-ips`, e.g. a Docker bridge gateway by default).
     """
     content_type = request.headers.get("content-type", "")
     if not content_type.split(";", 1)[0].strip().lower() == "application/json":
@@ -408,10 +451,6 @@ def _reject_cross_site_requests(request: Request) -> None:
     public_origins = _public_origins_from_env()
     if public_origins is not None:
         allowed |= public_origins
-    else:
-        forwarded = _forwarded_origin(request)
-        if forwarded is not None:
-            allowed.add(forwarded)
 
     if parsed_origin not in allowed:
         raise HTTPException(status_code=403, detail="cross-origin request rejected")
@@ -585,6 +624,12 @@ def read_current_user(session: sqlite3.Row = Depends(require_session)) -> AuthUs
     return AuthUserResponse(username=session["username"], role=session["role"])
 
 
+class UnlockRequest(BaseModel):
+    # Mirrors the CLI's `--clear-ip-limits` (see `admin.py`): also clear the
+    # shared per-client counter, not just this one username's.
+    clear_ip_limits: bool = False
+
+
 class UnlockResponse(BaseModel):
     username: str
 
@@ -596,21 +641,25 @@ class UnlockResponse(BaseModel):
 )
 def unlock_user(
     username: str,
+    payload: UnlockRequest | None = None,
     admin: sqlite3.Row = Depends(require_admin),
     db: sqlite3.Connection = Depends(get_db),
 ) -> UnlockResponse:
     """Clear a username's lockout counter. The P1.10 admin UI doesn't exist
     yet; this is the API it will call for its "Unlock" action."""
+    payload = payload or UnlockRequest()
     normalized = _normalize_username(username)
     user = db.execute("SELECT id FROM users WHERE username = ?", (normalized,)).fetchone()
     if user is None:
         raise HTTPException(status_code=404, detail="not found")
     clear_login_failures(db, normalized)
+    if payload.clear_ip_limits:
+        clear_ip_login_failures(db)
     app_db.write_audit_log(
         db,
         "unlock_user",
         user_id=user["id"],
         actor=admin["username"],
-        detail="ip_limits_cleared=false",
+        detail=f"ip_limits_cleared={'true' if payload.clear_ip_limits else 'false'}",
     )
     return UnlockResponse(username=normalized)
