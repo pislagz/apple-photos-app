@@ -44,6 +44,12 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 
 ## Phase 1 — Sign in, administer, browse Library, download
 
+### P1.0 Phase 0 leftovers (from the PR #7 review)
+
+- `docs/MANUAL_MAC_TESTS.md`: before the before/after snapshot, tell the tester to quit Photos.app (and wait a minute so `photoanalysisd` settles). Say that a difference only in `Photos.sqlite-wal`/`-shm` while Photos was running does not count against the viewer.
+- `server/tests/test_open_readonly_unchanged.py` (`test_copy_replays_a_real_uncheckpointed_wal_change`): also open a copy of `Photos.sqlite` alone (no `-wal`/`-shm`) and assert `ZFAVORITE == 0`, proving the change lives only in the WAL.
+- Acceptance: both changes in; the suite still passes with sockets disabled.
+
 ### P1.1 Project skeleton that actually runs
 
 - `pyproject.toml` at the repo root, package in `server/photos_viewer/`. Vite + React + TypeScript (`strict`) under `web/`.
