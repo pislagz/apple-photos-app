@@ -40,7 +40,7 @@ def test_pyobjc_is_not_installed():
 def test_osxphotos_photokit_is_not_importable_on_linux():
     try:
         importlib.import_module("osxphotos.photokit")
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 -- any error is the pass case; which one is pyobjc's to pick
         pass
     else:
         raise AssertionError("osxphotos.photokit must not import cleanly on Linux")

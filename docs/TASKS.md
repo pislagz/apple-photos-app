@@ -49,6 +49,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - `docs/MANUAL_MAC_TESTS.md`: before the before/after snapshot, tell the tester to quit Photos.app (and wait a minute so `photoanalysisd` settles). Say that a difference only in `Photos.sqlite-wal`/`-shm` while Photos was running does not count against the viewer.
 - `server/tests/test_open_readonly_unchanged.py` (`test_copy_replays_a_real_uncheckpointed_wal_change`): also open a copy of `Photos.sqlite` alone (no `-wal`/`-shm`) and assert `ZFAVORITE == 0`, proving the change lives only in the WAL.
 - Acceptance: both changes in; the suite still passes with sockets disabled.
+- Done: `docs/MANUAL_MAC_TESTS.md` has the quit-Photos.app step; `test_copy_replays_a_real_uncheckpointed_wal_change` in `server/tests/test_open_readonly_unchanged.py` also opens the lone copied `Photos.sqlite` and asserts `ZFAVORITE == 0`.
 
 ### P1.1 Project skeleton that actually runs
 
@@ -57,11 +58,13 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - `ruff`, `pytest`, and `npm test` run on Linux.
 - Extend the existing `.github/workflows/ci.yml`: keep the `server` job on `ubuntu-latest` and `macos-latest` (tests + probe), and add a `web` job on `ubuntu-latest` for `npm ci`, `npm test` and the build, plus the check that the build output has no external URLs except the OSM tile host and copyright link.
 - Acceptance: `GET /api/health` returns ok locally and in CI. `npm test` has a passing placeholder until P1.11.
+- Done: `server/pyproject.toml` has `[build-system]` and the new deps; `web/` is a Vite + React + TS (`strict`) skeleton with a passing `App.test.tsx` placeholder; `.github/workflows/ci.yml` has a `web` job (`npm ci`, `npm test`, build, external-URL check) alongside the existing `server` job, which now also runs `ruff check .`. Known gap: `pip install -e "./server[dev]"` crashes in this dev sandbox before it ever reaches our code -- see the note at the end of this file.
 
 ### P1.2 `app.db` schema
 
 - Tables for users, sessions, libraries, assignments, the asset index, thumbnail-cache rows, and the audit log. File lives outside any `.photoslibrary` (`PHOTOS_VIEWER_DATA_DIR`).
 - Acceptance: migrations apply on an empty directory. A test creates the file under `tmp_path` and never in the repo.
+- Done: `server/photos_viewer/app_db.py` (`connect()`, `migrate()`, `_MIGRATIONS`); `server/tests/test_app_db.py`.
 
 ### P1.3 Passwords, sessions, first admin
 
@@ -70,6 +73,7 @@ Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screen
 - First-run screen creates the single admin, then disables itself.
 - Logout and session revoke work.
 - Acceptance: tests cover wrong password, lockout, logout, and cookie flags. No file in the repo has `token` or `credential` in its name.
+- Done: `server/photos_viewer/session_auth.py`; `server/tests/test_session_auth.py`. New env vars (`PHOTOS_VIEWER_DATA_DIR`, `PHOTOS_VIEWER_SESSION_LIFETIME_DESKTOP_SECONDS`, `PHOTOS_VIEWER_SESSION_LIFETIME_PWA_SECONDS`, `PHOTOS_VIEWER_REMEMBER_ME_LIFETIME_SECONDS`) still need adding to `.env.example` as a follow-up -- that file was not reachable from this session.
 
 ### P1.4 Optional tailnet allow-list
 

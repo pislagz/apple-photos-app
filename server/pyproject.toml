@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["photos_viewer*"]
+
 [project]
 name = "photos-viewer"
 version = "0.0.0"
@@ -9,21 +16,31 @@ dependencies = [
     # (Photos 12); see photos_viewer/libraries.py for the version table
     # this server actually accepts.
     "osxphotos==0.77.2",
+    "fastapi",
+    "uvicorn",
+    "argon2-cffi",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-socket",
+    "httpx",
+    "ruff",
 ]
 
 [tool.ruff]
 target-version = "py312"
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency injection is `param: X = Depends(...)` by design: the
+# call builds a sentinel FastAPI resolves at request time, it never runs at
+# import time. This is FastAPI's own documented B008 exception.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body", "fastapi.Path"]
+
 [tool.pytest.ini_options]
-# server/ is not installable yet (P1.1 adds a [build-system] here so
-# `pip install -e ./server` works; there is no root pyproject.toml). conftest.py puts this directory on
-# sys.path so `import photos_viewer` resolves without an install step.
+# conftest.py also puts this directory on sys.path, so `import
+# photos_viewer` resolves even without the `pip install -e` below.
 testpaths = ["tests"]
 # The server makes zero outbound requests (see CLAUDE.md "Offline at
 # runtime"). Enforce that for the whole suite, not just test_no_network.py's

@@ -1,6 +1,6 @@
 import os
-import sys
 import pathlib
+import sys
 
 # server/ is not installed (Phase 1 adds the root pyproject.toml and
 # `pip install -e`). Put it on sys.path so `import photos_viewer` resolves

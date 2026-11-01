@@ -1,8 +1,8 @@
 # Web
 
-Vite, React, and TypeScript. Not created yet. One app, two layouts, chosen by viewport and pointer, with a setting to override. The spec allows Svelte; this handoff uses React. See `CLAUDE.md`.
+Vite, React, and TypeScript. One app, two layouts, chosen by viewport and pointer, with a setting to override. The spec allows Svelte; this handoff uses React. See `CLAUDE.md`.
 
-Planned shape:
+P1.1 created the skeleton below: `index.html`, `package.json`, `tsconfig.json` (`strict`), `vite.config.ts` (Vitest config lives here too), and `src/main.tsx` / `src/App.tsx` with a placeholder `App.test.tsx`. Everything past `App.tsx` is still planned, landing with the layouts, admin screens, and viewer in later P1.x issues:
 
 ```
 web/
@@ -11,6 +11,8 @@ web/
   vite.config.ts
   src/
     main.tsx
+    App.tsx             placeholder root; P1.11 replaces it with the real shell
+    test-setup.ts
     api.ts              session cookie client
     auth/
     layouts/
@@ -33,6 +35,7 @@ Icons are a free set. Font is `system-ui`. Do not import files from `docs/design
 npm install
 npm run dev
 npm test
+npm run build
 ```
 
-These do not work until P1.1. Tests run on Linux and do not need a real library.
+These work now. Tests run on Linux and do not need a real library.

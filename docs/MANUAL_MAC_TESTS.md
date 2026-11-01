@@ -2,6 +2,8 @@
 
 CI does not run this file. CI uses the synthetic fixture on Linux. Do this when a Mac with the real libraries is available, and again on Linux once that volume is mounted there.
 
+On macOS, quit Photos.app before the before/after snapshot, and wait a minute for `photoanalysisd` to settle -- it can keep writing to `-wal`/`-shm` for a short while after Photos.app itself has quit. A diff that only touches `Photos.sqlite-wal` or `-shm` while Photos.app (or `photoanalysisd`) was still running does not count against the viewer: that write is Photos' own background activity, not something this server did. If the diff shows anything else -- a changed mtime on `Photos.sqlite` itself, a new journal file, a new file or directory anywhere in the package -- that is still a failure regardless of what else was running.
+
 Leave every `.photoslibrary` unchanged. Before the probe, record `find` output (paths, sizes, mtimes) for the *whole* package, not just `database/` -- the probe isn't trusted to only touch the database, so the snapshot shouldn't assume it either. After the probe, diff it. A new `-wal`, `-shm`, journal, new file, new directory, or mtime change is a failure.
 
 `stat -f %m` only has 1-second resolution, so a write that lands inside the same second as the snapshot could be missed. `database/*.sqlite*` is small enough to also hash: `shasum -a 256 "LIBRARY"/database/*.sqlite* > /tmp/before.sha256`, repeat after, and diff that too, as a check `stat`'s resolution can't give you.

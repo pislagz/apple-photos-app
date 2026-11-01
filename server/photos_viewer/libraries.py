@@ -34,7 +34,7 @@ import dataclasses
 import pathlib
 import shutil
 import tempfile
-from typing import Literal
+from typing import Literal, Self
 
 from osxphotos import PhotosDB
 
@@ -53,7 +53,7 @@ class UnsupportedPhotosVersionError(Exception):
     """A library's Photos database generation isn't one this osxphotos pin supports."""
 
 
-def unsupported_version_message(photos_version: int | float) -> str:
+def unsupported_version_message(photos_version: float) -> str:
     """Admin-facing text for an unsupported `photos_version`."""
     return (
         f"This library's Photos database version ({photos_version!r}) isn't "
@@ -62,7 +62,7 @@ def unsupported_version_message(photos_version: int | float) -> str:
     )
 
 
-def check_supported_version(photos_version: int | float) -> None:
+def check_supported_version(photos_version: float) -> None:
     """Raise UnsupportedPhotosVersionError if osxphotos can't read this generation."""
     if photos_version not in SUPPORTED_PHOTOS_VERSIONS:
         raise UnsupportedPhotosVersionError(unsupported_version_message(photos_version))
@@ -97,7 +97,7 @@ class OpenLibrary:
             shutil.rmtree(self._tempdir, ignore_errors=True)
             self._tempdir = None
 
-    def __enter__(self) -> OpenLibrary:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
