@@ -1,5 +1,6 @@
 """P1.5: admin-only library registry -- add, list, rename, remove, status."""
 
+import hashlib
 import pathlib
 import shutil
 
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from photos_viewer import app_db, libraries, session_auth
 from photos_viewer.main import create_app
-from tests.fixtures import build_fixture_library
+from tests.fixtures import build_closed_fixture_library, build_fixture_library
 
 VALID_PASSWORD = "correct-horse-battery"
 
@@ -18,6 +19,23 @@ def _snapshot(package_path: pathlib.Path) -> dict:
         rel = str(path.relative_to(package_path))
         stat = path.stat()
         snapshot[rel] = ("dir", stat.st_mtime_ns) if path.is_dir() else (stat.st_size, stat.st_mtime_ns)
+    return snapshot
+
+
+def _full_snapshot(package_path: pathlib.Path) -> dict:
+    """Stronger than `_snapshot`: covers the package root's own mtime (which
+    `rglob` never visits) and the sha256 of every file's content, not just
+    its size, so a rewrite that happens to leave size and mtime alone still
+    gets caught.
+    """
+    snapshot = {}
+    for path in (package_path, *package_path.rglob("*")):
+        rel = "." if path == package_path else str(path.relative_to(package_path))
+        stat = path.stat()
+        if path.is_dir():
+            snapshot[rel] = ("dir", stat.st_mtime_ns)
+        else:
+            snapshot[rel] = ("file", stat.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest())
     return snapshot
 
 
@@ -275,6 +293,42 @@ def test_library_status_does_not_write_into_the_package(tmp_path):
         after = _snapshot(package_path)
         assert set(after) - set(before) == set(), "status check created a new file or directory"
         assert after == before, "status check changed an existing file's size or mtime"
+    finally:
+        conn.close()
+
+
+def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
+    # A real closed library (Photos.app not running) has no `-wal`/`-shm`
+    # next to Photos.sqlite -- unlike the open-WAL fixture used above, which
+    # already has them from its own kept-open connection and so can't catch
+    # a status check that would *create* them. `sqlite_db_is_locked`-style
+    # plain `mode=ro` opens do create them on a WAL-mode database with
+    # neither present, which is a write into the package. Snapshotting every
+    # file's content (not just size) and every directory's mtime, including
+    # the package root, catches a rewrite that a size/mtime-only check could
+    # miss too.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_closed_fixture_library(tmp_path)
+        assert not list(package_path.glob("database/Photos.sqlite-wal"))
+        assert not list(package_path.glob("database/Photos.sqlite-shm"))
+
+        before = _full_snapshot(package_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        for _ in range(3):
+            status_response = client.get(f"/api/admin/libraries/{added['id']}/status")
+            assert status_response.status_code == 200
+            assert status_response.json()["warnings"] == []
+
+        client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
+        client.get(f"/api/admin/libraries/{added['id']}/status")
+        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+
+        after = _full_snapshot(package_path)
+        new_paths = set(after) - set(before)
+        assert new_paths == set(), f"status check created new paths: {new_paths}"
+        assert after == before, "status check changed an existing file or directory's content/mtime"
     finally:
         conn.close()
 
