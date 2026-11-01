@@ -416,6 +416,32 @@ def test_loopback_per_client_lockout_is_keyed_on_the_tailscale_user_login_header
     assert bob_still_ok.status_code == 200
 
 
+def test_rotating_the_header_from_loopback_hits_the_coarse_per_peer_ceiling(loopback_client, monkeypatch):
+    """Issue #22 A: the coarse `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER` ceiling
+    is not limited to `PHOTOS_VIEWER_TRUSTED_PROXIES` peers -- loopback's
+    own header-keyed buckets (see `test_loopback_per_client_lockout_is_keyed_...`
+    above) share loopback's one `peer_ip` exactly the same way a trusted
+    proxy's do, and anything else on the host can rotate the header there
+    too. Mirrors `test_rotating_the_header_from_a_trusted_peer_hits_the_coarse_per_peer_ceiling`."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 9)
+    loopback_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    for user in range(9):
+        loopback_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{user}", "password": "whatever-password"},
+            headers={"tailscale-user-login": f"rotating-{user}"},
+        )
+
+    still_locked_out = loopback_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "rotating-9"},
+    )
+    assert still_locked_out.status_code == 429
+
+
 def test_a_successful_login_clears_the_failure_count(client):
     client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
@@ -981,6 +1007,56 @@ def test_admin_unlock_with_clear_ip_limits_also_clears_the_per_ip_counter(client
     assert unlocked_login.status_code == 200
 
 
+def test_admin_unlock_with_clear_ip_limits_restores_login_after_the_per_peer_ceiling_trips(
+    docker_gateway_client, monkeypatch
+):
+    """Issue #22 B: the recovery path for `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s
+    shared lockout (see `server/README.md`) is the same `clear_ip_limits`
+    unlock used for the fine-grained per-IP limit, since both counters live
+    in `ip_login_failures`."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 9)
+    docker_gateway_client.post(
+        "/api/setup/admin",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "admin-device"},
+    )
+    login = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "admin-device"},
+    )
+    assert login.status_code == 200
+
+    for user in range(9):
+        docker_gateway_client.post(
+            "/api/auth/login",
+            json={"username": f"nobody-{user}", "password": "whatever-password"},
+            headers={"tailscale-user-login": f"rotating-{user}"},
+        )
+
+    ceiling_tripped = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "rotating-9"},
+    )
+    assert ceiling_tripped.status_code == 429
+
+    unlock = docker_gateway_client.post(
+        "/api/admin/users/admin/unlock",
+        json={"clear_ip_limits": True},
+        headers={"tailscale-user-login": "admin-device"},
+    )
+    assert unlock.status_code == 200
+
+    restored_login = docker_gateway_client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers={"tailscale-user-login": "rotating-9"},
+    )
+    assert restored_login.status_code == 200
+
+
 def test_env_seconds_falls_back_to_the_default_on_a_bad_value(monkeypatch, caplog):
     monkeypatch.setenv("PHOTOS_VIEWER_SESSION_LIFETIME_DESKTOP_SECONDS", "not-a-number")
 
@@ -1262,6 +1338,35 @@ def test_trusted_peer_with_no_header_falls_back_to_the_peer_ip_bucket(docker_gat
         headers={"tailscale-user-login": "alice"},
     )
     assert alice_still_ok.status_code == 200
+
+
+def test_ordinary_peers_do_not_share_the_coarse_per_peer_ceiling(tmp_path, monkeypatch):
+    """Issue #22 A: the coarse ceiling is scoped to one shared `peer_ip`.
+    An ordinary, non-loopback, non-trusted-proxy caller has no header-keyed
+    bucket at all -- `client_ip == peer_ip` (see `is_ip_locked_out`) -- so
+    two such callers at different addresses must never be combined into one
+    ceiling just because their failures sum past it."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 100)
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 5)
+    conn_a, client_a = _gateway_client(tmp_path, peer_host="203.0.113.5")
+    client_a.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    conn_b, client_b = _gateway_client(tmp_path, peer_host="203.0.113.9")
+    try:
+        for i in range(3):
+            client_a.post("/api/auth/login", json={"username": f"nobody-a-{i}", "password": "whatever-password"})
+        for i in range(3):
+            client_b.post("/api/auth/login", json={"username": f"nobody-b-{i}", "password": "whatever-password"})
+        # 6 combined failures would trip a ceiling of 5 if it were global;
+        # each peer only has 3 of its own, well under it.
+
+        a_still_ok = client_a.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+        assert a_still_ok.status_code == 200
+
+        b_still_ok = client_b.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+        assert b_still_ok.status_code == 200
+    finally:
+        conn_a.close()
+        conn_b.close()
 
 
 def test_trusted_proxies_env_accepts_ips_and_cidrs(monkeypatch):
