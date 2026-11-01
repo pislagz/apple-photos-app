@@ -115,6 +115,12 @@ Every endpoint requires a session, and every request is checked against the libr
 - Never trust library ids from the client without checking the session's assignments.
 - Optional extra layer: allow only listed tailnet identities, using the `Tailscale-User-Login` header.
 - Login screen styled to match the platform: a centered card on desktop and a full-screen form on iPhone.
+- **CSRF and `tailscale serve`.** Every state-changing request is checked for a same-origin or absent `Origin` header. `tailscale serve` reverse-proxies to the local port, preserves the Host header as the tailnet `ts.net` name, and connects from loopback -- so the browser's Origin (`https://<machine>.<tailnet>.ts.net`) never matches what the server sees on its own socket (`http://127.0.0.1:<port>`) unless one of the two is told about the other:
+  - Set `PHOTOS_VIEWER_PUBLIC_ORIGINS` (comma-separated `scheme://host[:port]`, e.g. `https://box.tailxyz.ts.net`) to the exact origin(s) the server is reachable at. Robust regardless of what headers the proxy sends; recommended for the Docker deployment.
+  - Or leave it unset and run the server so it learns its public origin from `X-Forwarded-Proto` / `X-Forwarded-Host`, trusted only when they come from a loopback peer (what `tailscale serve` always is):
+    - Bare metal: `tailscale serve --bg 8000` in front of `uvicorn photos_viewer.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1`.
+    - Docker: same `uvicorn` flags inside the container (`tailscale serve` runs on the host, proxying to the container's published port); `--forwarded-allow-ips` must list the address `tailscale serve` connects from, which is loopback on the host network and the Docker bridge gateway otherwise.
+  - A missing `X-Forwarded-Proto` (some proxies only set `X-Forwarded-Host`) falls back to the request's own scheme; `PHOTOS_VIEWER_PUBLIC_ORIGINS` is the robust choice if that happens in practice.
 
 ### Admin panel (desktop-first web UI, admin role only)
 

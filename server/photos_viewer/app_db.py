@@ -134,6 +134,24 @@ _MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE login_failures ADD COLUMN user_exists INTEGER NOT NULL DEFAULT 1",
     ],
+    # 4: `audit_log.user_id` identifies who an entry is *about* (the user who
+    # logged in, downloaded, ...). An admin action like unlocking another
+    # user's account has a second party -- who performed it -- that doesn't
+    # fit that column, and for the CLI (issue #12 H) isn't a `users` row at
+    # all. `actor` is free text (an admin's username, or "cli") for that
+    # second party; `detail` is free text for anything else worth recording
+    # (e.g. whether an unlock also cleared the shared per-IP counters).
+    [
+        "ALTER TABLE audit_log ADD COLUMN actor TEXT",
+        "ALTER TABLE audit_log ADD COLUMN detail TEXT",
+    ],
+    # 5: `is_locked_out` filters on (username, user_exists, occurred_at);
+    # the migration-3 index only covers (username, occurred_at), so SQLite
+    # still scans every row for a username to apply the `user_exists` filter.
+    [
+        "DROP INDEX idx_login_failures_username",
+        "CREATE INDEX idx_login_failures_username ON login_failures(username, user_exists, occurred_at)",
+    ],
 ]
 
 
@@ -200,3 +218,27 @@ def migrate(conn: sqlite3.Connection) -> None:
         raise
     else:
         conn.commit()
+
+
+def write_audit_log(
+    conn: sqlite3.Connection,
+    action: str,
+    *,
+    user_id: int | None = None,
+    library_id: int | None = None,
+    asset_id: int | None = None,
+    actor: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """Record one `audit_log` row and commit it.
+
+    `user_id` is the user the action is *about* (whose lockout was cleared,
+    who downloaded something); `actor` is who performed it, for the admin
+    and CLI actions where that's a different party (see migration 4 above).
+    """
+    conn.execute(
+        "INSERT INTO audit_log (user_id, library_id, asset_id, action, actor, detail) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, library_id, asset_id, action, actor, detail),
+    )
+    conn.commit()

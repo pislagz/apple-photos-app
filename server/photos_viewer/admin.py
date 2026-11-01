@@ -20,7 +20,12 @@ from . import app_db, session_auth
 
 def _cmd_unlock(args: argparse.Namespace) -> int:
     username = args.username.strip().lower()
-    conn = app_db.connect(app_db.data_dir_from_env())
+    data_dir = app_db.data_dir_from_env()
+    db_path = app_db.db_path(data_dir)
+    if not db_path.exists():
+        print(f"unlock: no app.db at {db_path} -- check PHOTOS_VIEWER_DATA_DIR", file=sys.stderr)
+        return 1
+    conn = app_db.connect(data_dir)
     try:
         user = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         if user is None:
@@ -30,6 +35,13 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
         if args.clear_ip_limits:
             conn.execute("DELETE FROM ip_login_failures")
             conn.commit()
+        app_db.write_audit_log(
+            conn,
+            "unlock_user",
+            user_id=user["id"],
+            actor="cli",
+            detail=f"ip_limits_cleared={'true' if args.clear_ip_limits else 'false'}",
+        )
         print(f"unlocked {username!r}")
         return 0
     finally:

@@ -60,7 +60,7 @@ _LAST_SEEN_THROTTLE_SECONDS = 60
 # WHERE clause regardless of whether this has run yet -- this only reclaims
 # the row.
 _SESSION_PRUNE_INTERVAL_SECONDS = 60
-_last_session_prune_at = 0.0
+_last_session_prune_at = float("-inf")
 
 # Login lockout: a sliding window of recent failures per username, not per
 # IP, since several users can share one tailnet address behind Tailscale.
@@ -299,21 +299,76 @@ def _ip_lockout_key(request: Request) -> str | None:
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
+_PUBLIC_ORIGINS_ENV = "PHOTOS_VIEWER_PUBLIC_ORIGINS"
+
+# Origin tuple: (scheme, hostname, effective port). Ports are normalized to
+# the scheme's default (80/443) so "https://x.ts.net" and
+# "https://x.ts.net:443" compare equal.
+_Origin = tuple[str, str, int | None]
+
 
 def _effective_port(scheme: str, port: int | None) -> int | None:
     return port if port is not None else _DEFAULT_PORTS.get(scheme.lower())
 
 
-def _is_same_origin(origin: str, request: Request) -> bool:
+def _parse_origin(origin: str) -> _Origin | None:
     try:
         parsed = urlsplit(origin)
     except ValueError:
-        return False
-    if not parsed.hostname or parsed.hostname.lower() != (request.url.hostname or "").lower():
-        return False
-    if parsed.scheme.lower() != request.url.scheme.lower():
-        return False
-    return _effective_port(parsed.scheme, parsed.port) == _effective_port(request.url.scheme, request.url.port)
+        return None
+    if not parsed.hostname or not parsed.scheme:
+        return None
+    return (parsed.scheme.lower(), parsed.hostname.lower(), _effective_port(parsed.scheme, parsed.port))
+
+
+def _request_origin(request: Request) -> _Origin:
+    return (
+        request.url.scheme.lower(),
+        (request.url.hostname or "").lower(),
+        _effective_port(request.url.scheme, request.url.port),
+    )
+
+
+def _public_origins_from_env() -> set[_Origin] | None:
+    """`PHOTOS_VIEWER_PUBLIC_ORIGINS`: the exact origin(s) this server is
+    reachable at from a browser's point of view (e.g. the `ts.net` name
+    `tailscale serve` exposes), comma-separated. Unset by default, since a
+    bare-metal or Docker install with no reverse proxy needs nothing extra.
+    """
+    raw = os.environ.get(_PUBLIC_ORIGINS_ENV)
+    if raw is None or not raw.strip():
+        return None
+    origins = set()
+    for part in raw.split(","):
+        parsed = _parse_origin(part.strip()) if part.strip() else None
+        if parsed is not None:
+            origins.add(parsed)
+    return origins
+
+
+def _forwarded_origin(request: Request) -> _Origin | None:
+    """The origin `X-Forwarded-Proto`/`X-Forwarded-Host` claim, or `None` if
+    they're absent or not trustworthy.
+
+    These headers are only trusted when the direct TCP peer is loopback: a
+    reverse proxy that terminates TLS or renames the Host header for this
+    server (`tailscale serve` does both -- see module docs) always connects
+    from `127.0.0.1`/`::1`. Any other direct peer could set these headers
+    itself to spoof an allowed origin, so they're ignored unless
+    `PHOTOS_VIEWER_PUBLIC_ORIGINS` is configured instead (that path never
+    calls this function).
+    """
+    if _client_ip(request) not in _LOOPBACK_HOSTS:
+        return None
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if not forwarded_host:
+        return None
+    forwarded_proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host, _, port_text = forwarded_host.partition(":")
+    port = int(port_text) if port_text.isdigit() else None
+    if not host:
+        return None
+    return (forwarded_proto.lower(), host.lower(), _effective_port(forwarded_proto, port))
 
 
 def _reject_cross_site_requests(request: Request) -> None:
@@ -323,16 +378,42 @@ def _reject_cross_site_requests(request: Request) -> None:
     `Content-Type`, only a handful of "simple" values that exclude
     `application/json` -- requiring it blocks that vector outright. The
     `Origin` check is a second layer for clients that can set headers (e.g.
-    a `fetch` from another site); a same-origin (scheme, host, and port) or
-    absent Origin is allowed, since same-origin requests and some
-    non-browser clients don't send one.
+    a `fetch` from another site); a same-origin or absent Origin is allowed,
+    since same-origin requests and some non-browser clients don't send one.
+
+    "Same-origin" is not simply "matches `request.url`": behind
+    `tailscale serve`, the browser's Origin is the tailnet `ts.net` name
+    over https, while this process only ever sees plain http on
+    `127.0.0.1`. Two ways to bridge that, in priority order:
+
+    1. `PHOTOS_VIEWER_PUBLIC_ORIGINS` set -- the Origin must match one of
+       its entries, or the request's own origin. Exact and explicit; works
+       regardless of what headers the proxy does or doesn't add.
+    2. Unset -- fall back to `X-Forwarded-Proto`/`X-Forwarded-Host`, but
+       only when the direct connection is loopback (see
+       `_forwarded_origin`), matching `tailscale serve`'s own behavior.
     """
     content_type = request.headers.get("content-type", "")
     if not content_type.split(";", 1)[0].strip().lower() == "application/json":
         raise HTTPException(status_code=415, detail="Content-Type must be application/json")
 
     origin = request.headers.get("origin")
-    if origin is not None and not _is_same_origin(origin, request):
+    if origin is None:
+        return
+    parsed_origin = _parse_origin(origin)
+    if parsed_origin is None:
+        raise HTTPException(status_code=403, detail="cross-origin request rejected")
+
+    allowed = {_request_origin(request)}
+    public_origins = _public_origins_from_env()
+    if public_origins is not None:
+        allowed |= public_origins
+    else:
+        forwarded = _forwarded_origin(request)
+        if forwarded is not None:
+            allowed.add(forwarded)
+
+    if parsed_origin not in allowed:
         raise HTTPException(status_code=403, detail="cross-origin request rejected")
 
 
@@ -520,10 +601,16 @@ def unlock_user(
 ) -> UnlockResponse:
     """Clear a username's lockout counter. The P1.10 admin UI doesn't exist
     yet; this is the API it will call for its "Unlock" action."""
-    del admin
     normalized = _normalize_username(username)
     user = db.execute("SELECT id FROM users WHERE username = ?", (normalized,)).fetchone()
     if user is None:
         raise HTTPException(status_code=404, detail="not found")
     clear_login_failures(db, normalized)
+    app_db.write_audit_log(
+        db,
+        "unlock_user",
+        user_id=user["id"],
+        actor=admin["username"],
+        detail="ip_limits_cleared=false",
+    )
     return UnlockResponse(username=normalized)
