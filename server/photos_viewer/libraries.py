@@ -37,6 +37,7 @@ import tempfile
 from typing import Literal, Self
 
 from osxphotos import PhotosDB
+from osxphotos.sqlite_utils import sqlite_db_is_locked
 
 # Mirrors osxphotos._constants._DB_TABLE_NAMES keys for 0.77.2: the Photos
 # database generations this installed osxphotos release has table mappings
@@ -102,6 +103,19 @@ class OpenLibrary:
 
     def __exit__(self, *exc_info: object) -> None:
         self.close()
+
+
+def library_is_locked(package_path: str | pathlib.Path) -> bool:
+    """True if another process (Photos.app, `photoanalysisd`) currently
+    holds `database/Photos.sqlite` open for writing -- reuses osxphotos' own
+    check (`sqlite_open_ro` plus a trial query) rather than re-implementing
+    it. False if the file doesn't exist yet, and in practice always False on
+    Linux, where nothing else ever opens a `.photoslibrary`.
+    """
+    sqlite_path = pathlib.Path(package_path) / "database" / "Photos.sqlite"
+    if not sqlite_path.exists():
+        return False
+    return sqlite_db_is_locked(sqlite_path)
 
 
 def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
