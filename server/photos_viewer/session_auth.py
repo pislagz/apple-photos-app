@@ -98,15 +98,17 @@ LOCKOUT_WINDOW_SECONDS = 15 * 60
 MAX_FAILED_LOGIN_ATTEMPTS_PER_IP = 30
 IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 
-# A trusted proxy (see `_is_trusted_proxy`) is reachable by more than the
-# proxy itself -- a host-level client, or a LAN client on a published port --
-# and anything that reaches it can set its own `Tailscale-User-Login` value.
-# Without this, rotating that header would buy a fresh
+# Anything that can reach a peer this module trusts to carry
+# `Tailscale-User-Login` -- loopback by default, or a `_is_trusted_proxy`
+# entry -- can set that header to whatever it likes: a host-level client, a
+# LAN client on a published port, or (for loopback) any other process on the
+# same machine. Without this, rotating the header would buy a fresh
 # MAX_FAILED_LOGIN_ATTEMPTS_PER_IP-try bucket on every attempt. This ceiling
 # is deliberately much looser, since it has to cover every real user sharing
-# one trusted proxy, not just one: it caps the *sum* of failures across every
-# `client_ip` bucket (every header value, plus the peer-IP fallback) that
-# shares one trusted proxy's direct peer address -- see `is_ip_locked_out`.
+# one such peer, not just one: it caps the *sum* of failures across every
+# `client_ip` bucket (every header value, plus the peer-IP fallback used when
+# a trusted, non-loopback proxy sends no header) that shares one direct peer
+# address, loopback included -- see `is_ip_locked_out`.
 MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER = MAX_FAILED_LOGIN_ATTEMPTS_PER_IP * 10
 
 _TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
@@ -390,8 +392,12 @@ def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> 
     """True once either the fine-grained `client_ip` bucket, or the coarse
     ceiling across every bucket sharing `peer_ip` (see
     `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`), has tripped. For a direct,
-    non-trusted-proxy caller `client_ip == peer_ip`, so the coarse check is
-    counting the same rows the fine one already did and never trips first."""
+    non-loopback, non-trusted-proxy caller `client_ip == peer_ip`, so the
+    coarse check is counting the same rows the fine one already did and
+    never trips first. A loopback or trusted-proxy caller using the
+    `Tailscale-User-Login`-keyed bucket (see `_ip_lockout_key`) is where the
+    two differ: `peer_ip` is the one shared address, so the coarse ceiling
+    is what catches header rotation across many such callers."""
     count = conn.execute(
         "SELECT COUNT(*) FROM ip_login_failures "
         "WHERE client_ip = ? AND occurred_at >= datetime('now', ?)",
@@ -433,18 +439,24 @@ def _ip_lockout_key(request: Request) -> str | None:
     connects from, and keying on it would turn a handful of wrong passwords
     from one real user into a lockout for everyone behind it. In that case,
     key on the `Tailscale-User-Login` header Tailscale Serve adds instead.
-    `PHOTOS_VIEWER_TRUSTED_PROXIES` extends that same loopback treatment to
-    other known-safe peers -- typically the Docker bridge gateway, when
-    `--forwarded-allow-ips` can't be pointed at it directly. With no such
-    header, a bare loopback peer can't be distinguished from any other
-    caller behind it, so the per-client limit is skipped for this request
-    (the per-username lockout above still applies regardless). A configured
-    `PHOTOS_VIEWER_TRUSTED_PROXIES` entry is different: unlike loopback, it
-    can be reached by more than the proxy itself (issue #20 A), so instead
-    of skipping the limit outright, it falls back to the peer's own address
-    as the bucket -- still subject to `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s
-    coarse ceiling (see `is_ip_locked_out`) if that address also happens to
-    be shared by header-bearing callers.
+    That header-keyed bucket is still, deliberately, subject to
+    `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s coarse ceiling (see
+    `is_ip_locked_out`): every such bucket shares loopback's one `peer_ip`,
+    and anything else on the same host can set its own
+    `Tailscale-User-Login` value too (issue #22 A) -- the ceiling is what
+    stops that from buying unlimited tries the same way it does for a
+    trusted proxy below. `PHOTOS_VIEWER_TRUSTED_PROXIES` extends that same
+    loopback treatment to other known-safe peers -- typically the Docker
+    bridge gateway, when `--forwarded-allow-ips` can't be pointed at it
+    directly. With no such header, a bare loopback peer can't be
+    distinguished from any other caller behind it, so the per-client limit
+    is skipped for this request (the per-username lockout above still
+    applies regardless). A configured `PHOTOS_VIEWER_TRUSTED_PROXIES` entry
+    is different: unlike loopback, it can be reached by more than the proxy
+    itself (issue #20 A), so instead of skipping the limit outright, it
+    falls back to the peer's own address as the bucket -- still subject to
+    the same coarse ceiling if that address also happens to be shared by
+    header-bearing callers.
     """
     host = _client_ip(request)
     trusted_proxy = _is_trusted_proxy(host)
@@ -542,19 +554,14 @@ def _ensure_logger_has_a_handler() -> None:
     setup), in which case this module's record already reaches a handler
     via propagation, and adding a second one here would print it twice.
 
-    So: walk up to the nearest ancestor (following `propagate`, same as
-    logging itself would when dispatching a record) and only attach a
+    So: `Logger.hasHandlers()` walks the same chain (following `propagate`)
+    that logging itself would when dispatching a record, and only attach a
     handler, and only force `WARNING`, if nothing in that chain -- this
     logger included -- has one. An explicitly configured level anywhere in
     the chain is left alone either way; this never raises or lowers one.
     """
-    logger_or_ancestor: logging.Logger | None = logger
-    while logger_or_ancestor is not None:
-        if logger_or_ancestor.handlers:
-            return
-        if not logger_or_ancestor.propagate:
-            break
-        logger_or_ancestor = logger_or_ancestor.parent
+    if logger.hasHandlers():
+        return
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
     logger.addHandler(handler)

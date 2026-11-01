@@ -84,6 +84,31 @@ def test_unlock_clear_ip_limits_also_clears_the_per_client_counters(data_dir):
         conn.close()
 
 
+def test_unlock_clear_ip_limits_restores_login_after_hitting_the_coarse_per_peer_ceiling(data_dir, monkeypatch):
+    """Issue #22 B: `--clear-ip-limits` is also the recovery for
+    `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s shared lockout (see
+    `server/README.md`), not just the fine per-client limit -- both counters
+    live in the same `ip_login_failures` table."""
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER", 9)
+    _create_user(data_dir, "bob")
+    conn = app_db.connect(data_dir)
+    try:
+        for user in range(9):
+            session_auth.record_ip_login_failure(conn, f"tailscale-user:rotating-{user}", "172.17.0.1")
+        assert session_auth.is_ip_locked_out(conn, "tailscale-user:rotating-9", "172.17.0.1") is True
+    finally:
+        conn.close()
+
+    exit_code = admin.main(["unlock", "bob", "--clear-ip-limits"])
+
+    assert exit_code == 0
+    conn = app_db.connect(data_dir)
+    try:
+        assert session_auth.is_ip_locked_out(conn, "tailscale-user:rotating-9", "172.17.0.1") is False
+    finally:
+        conn.close()
+
+
 def test_unlock_without_clear_ip_limits_leaves_the_per_client_counters_alone(data_dir):
     _create_user(data_dir, "bob")
     conn = app_db.connect(data_dir)
