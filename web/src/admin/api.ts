@@ -1,71 +1,10 @@
-// Thin fetch wrapper for the P1.10 admin API (`admin_panel.py`,
-// `session_auth.py`, `library_admin.py`). No client library, no CDN --
-// just `fetch` against same-origin paths, matching the server's CSRF check
-// (`_reject_cross_site_requests`): every mutating call gets a JSON
-// Content-Type, even with no body.
+// Admin-only endpoints (`admin_panel.py`, `session_auth.py`,
+// `library_admin.py`). The fetch wrapper, session/login calls, and shared
+// types live in `../api`, since the P1.11 shell needs them too; re-exported
+// here so the existing admin screen imports (`from "./api"`) don't change.
 
-export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, detail: string) {
-    super(detail);
-    this.status = status;
-  }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, credentials: "include" });
-  if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = await response.json();
-      if (typeof body?.detail === "string") detail = body.detail;
-    } catch {
-      // no JSON body; fall back to statusText
-    }
-    throw new ApiError(response.status, detail);
-  }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
-}
-
-function mutate<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return request<T>(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-}
-
-export type Role = "admin" | "user";
-
-export interface MeResponse {
-  username: string;
-  role: Role;
-  libraries: { id: number; display_name: string }[];
-}
-
-export interface AuthUserResponse {
-  username: string;
-  role: Role;
-}
-
-export function getMe(): Promise<MeResponse> {
-  return request<MeResponse>("/api/me");
-}
-
-export function login(username: string, password: string, rememberMe = false): Promise<AuthUserResponse> {
-  return mutate<AuthUserResponse>("POST", "/api/auth/login", {
-    username,
-    password,
-    remember_me: rememberMe,
-    client: "desktop",
-  });
-}
-
-export function logout(): Promise<void> {
-  return mutate<void>("POST", "/api/auth/logout");
-}
+export { ApiError, type Role, type MeResponse, type AuthUserResponse, getMe, login, logout } from "../api";
+import { mutate, request, type Role } from "../api";
 
 // -- Libraries -------------------------------------------------------------
 

@@ -1,0 +1,86 @@
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { useLayout } from "./useLayout";
+
+function setViewport(width: number, { finePointer = true, standalone = false } = {}) {
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  window.matchMedia = ((query: string) => ({
+    matches: query === "(pointer: fine)" ? finePointer : query === "(display-mode: standalone)" ? standalone : false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
+}
+
+describe("useLayout", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("detects desktop on a wide screen with a fine pointer", () => {
+    setViewport(1200, { finePointer: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("desktop");
+  });
+
+  it("detects mobile on a narrow screen", () => {
+    setViewport(400, { finePointer: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("mobile");
+  });
+
+  it("detects mobile on a wide screen with a coarse (touch) pointer", () => {
+    setViewport(1200, { finePointer: false });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("mobile");
+  });
+
+  it("detects mobile when installed as a standalone PWA, even on a wide screen", () => {
+    setViewport(1200, { finePointer: true, standalone: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("mobile");
+  });
+
+  it("switches layout when the viewport resizes", () => {
+    setViewport(1200, { finePointer: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("desktop");
+
+    act(() => {
+      setViewport(400, { finePointer: true });
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.layout).toBe("mobile");
+  });
+
+  it("sticks to an override across a resize, and clears back to auto", () => {
+    setViewport(1200, { finePointer: true });
+    const { result } = renderHook(() => useLayout());
+
+    act(() => result.current.setOverride("mobile"));
+    expect(result.current.layout).toBe("mobile");
+    expect(window.localStorage.getItem("photos-viewer:layout-override")).toBe("mobile");
+
+    act(() => {
+      setViewport(400, { finePointer: true });
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current.layout).toBe("mobile");
+
+    act(() => result.current.setOverride("auto"));
+    expect(result.current.layout).toBe("mobile");
+    expect(window.localStorage.getItem("photos-viewer:layout-override")).toBeNull();
+  });
+
+  it("reads a previously stored override on mount", () => {
+    window.localStorage.setItem("photos-viewer:layout-override", "desktop");
+    setViewport(400, { finePointer: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("desktop");
+    expect(result.current.override).toBe("desktop");
+  });
+});

@@ -1,0 +1,10 @@
+/* SPEC.md "Front end": system-ui font, light and dark follow the system.
+   `color-scheme` alone makes form controls and scrollbars follow it too. */
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
