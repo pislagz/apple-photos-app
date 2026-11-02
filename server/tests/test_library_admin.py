@@ -6,7 +6,7 @@ import shutil
 
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, libraries, session_auth
+from photos_viewer import app_db, indexer, libraries, session_auth
 from photos_viewer.main import create_app
 from tests.fixtures import build_closed_fixture_library, build_fixture_library
 
@@ -258,10 +258,10 @@ def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_p
         assert response.status_code == 200
         body = response.json()
         assert body["total_size_bytes"] > 0
-        assert body["asset_count"] is None
-        assert body["video_count"] is None
-        assert body["people_count"] is None
-        assert body["last_indexed_at"] is None
+        assert body["asset_count"] == 1
+        assert body["video_count"] == 0
+        assert body["people_count"] == 0
+        assert body["last_indexed_at"] is not None
         assert body["prewarm_progress"] is None
         assert body["warnings"] == []
     finally:
@@ -314,12 +314,20 @@ def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
         assert not list(package_path.glob("database/Photos.sqlite-shm"))
 
         before = _full_snapshot(package_path)
+        # add_library indexes the fixture (P1.6); the status loop below and
+        # the explicit reindex must not touch the package either.
         added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        assert added is not None
 
         for _ in range(3):
             status_response = client.get(f"/api/admin/libraries/{added['id']}/status")
             assert status_response.status_code == 200
             assert status_response.json()["warnings"] == []
+            assert status_response.json()["asset_count"] == 1
+
+        reindex_response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
+        assert reindex_response.status_code == 200
+        assert reindex_response.json()["asset_count"] == 1
 
         client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
         client.get(f"/api/admin/libraries/{added['id']}/status")
@@ -360,6 +368,98 @@ def test_library_status_unknown_library_is_404(tmp_path):
         conn.close()
 
 
+def test_indexing_the_fixture_is_idempotent(tmp_path):
+    # add_library already indexes once; a second forced re-index of an
+    # unchanged sqlite file must replace, not duplicate, the asset/people rows.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        first = indexer.index_library(conn, added["id"], package_path)
+        assert first is False, "unchanged sqlite file should skip the walk entirely"
+        asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
+        assert asset_rows == 1
+
+        second = indexer.index_library(conn, added["id"], package_path, force=True)
+        assert second is True
+        asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
+        assert asset_rows == 1
+    finally:
+        conn.close()
+
+
+def test_reindex_endpoint_forces_a_fresh_walk_and_is_audit_logged(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        first_indexed_at = conn.execute(
+            "SELECT last_indexed_at FROM libraries WHERE id = ?", (added["id"],)
+        ).fetchone()["last_indexed_at"]
+
+        response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["asset_count"] == 1
+        assert conn.execute(
+            "SELECT last_indexed_at FROM libraries WHERE id = ?", (added["id"],)
+        ).fetchone()["last_indexed_at"] >= first_indexed_at
+        row = conn.execute("SELECT actor, detail FROM audit_log WHERE action = 'reindex_library'").fetchone()
+        assert row["actor"] == "admin"
+        assert str(package_path) in row["detail"]
+    finally:
+        conn.close()
+
+
+def test_reindex_unknown_library_is_404(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        response = client.post("/api/admin/libraries/999/reindex", json={})
+
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_reindex_an_unmounted_library_is_400(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        shutil.rmtree(package_path)
+
+        response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
+
+        assert response.status_code == 400
+        assert "mounted" in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_library_status_reads_only_app_db_once_indexed(tmp_path):
+    # Remove the package after indexing so a correct asset_count/video_count/
+    # people_count/last_indexed_at can only have come from app.db, not from
+    # opening the (now-gone) library again.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        shutil.rmtree(package_path)
+
+        response = client.get(f"/api/admin/libraries/{added['id']}/status")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["asset_count"] == 1
+        assert body["video_count"] == 0
+        assert body["people_count"] == 0
+        assert body["last_indexed_at"] is not None
+    finally:
+        conn.close()
+
+
 def test_non_admin_is_403_on_every_library_admin_route(tmp_path):
     conn, client = _non_admin_client(tmp_path)
     try:
@@ -373,5 +473,9 @@ def test_non_admin_is_403_on_every_library_admin_route(tmp_path):
             == 403
         )
         assert client.get("/api/admin/libraries/1/status").status_code == 403
+        assert (
+            client.post("/api/admin/libraries/1/reindex", headers={"content-type": "application/json"}).status_code
+            == 403
+        )
     finally:
         conn.close()

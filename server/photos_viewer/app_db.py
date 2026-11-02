@@ -176,6 +176,83 @@ _MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 8: the P1.6 asset index. `assets` gains the rest of the fields
+    # `docs/PRIOR_ART.md` lists for `PhotoInfo` (migration 1's columns were
+    # only ever a placeholder -- status counts stayed null until this
+    # landed); `place`, already there, becomes that place's display name,
+    # alongside the two new columns for the rest of `PlaceInfo`. `people`
+    # (library-wide, from `PhotosDB.person_info`) and `albums` (from
+    # `PhotosDB.album_info`) are their own tables because both are shared by
+    # many assets; `asset_people`/`asset_albums` are the join tables.
+    # `libraries.last_indexed_at`/`last_indexed_signature` (see
+    # `indexer.sqlite_signature`) are how `indexer.index_library` tells an
+    # unchanged library apart from one that needs re-walking.
+    [
+        "ALTER TABLE assets ADD COLUMN title TEXT",
+        "ALTER TABLE assets ADD COLUMN description TEXT",
+        "ALTER TABLE assets ADD COLUMN original_filename TEXT",
+        "ALTER TABLE assets ADD COLUMN date_added TEXT",
+        "ALTER TABLE assets ADD COLUMN date_modified TEXT",
+        "ALTER TABLE assets ADD COLUMN is_screenshot INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_selfie INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_portrait INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_panorama INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_hdr INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_slow_mo INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN is_burst INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE assets ADD COLUMN width INTEGER",
+        "ALTER TABLE assets ADD COLUMN height INTEGER",
+        "ALTER TABLE assets ADD COLUMN original_filesize INTEGER",
+        "ALTER TABLE assets ADD COLUMN uti TEXT",
+        "ALTER TABLE assets ADD COLUMN uti_original TEXT",
+        "ALTER TABLE assets ADD COLUMN path_raw TEXT",
+        "ALTER TABLE assets ADD COLUMN path_live_photo TEXT",
+        "ALTER TABLE assets ADD COLUMN path_edited_live_photo TEXT",
+        "ALTER TABLE assets ADD COLUMN place_country_code TEXT",
+        "ALTER TABLE assets ADD COLUMN place_address TEXT",
+        "ALTER TABLE libraries ADD COLUMN last_indexed_at TEXT",
+        "ALTER TABLE libraries ADD COLUMN last_indexed_signature TEXT",
+        """
+        CREATE TABLE people (
+            id INTEGER PRIMARY KEY,
+            library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+            uuid TEXT NOT NULL,
+            name TEXT,
+            display_name TEXT,
+            face_count INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (library_id, uuid)
+        )
+        """,
+        "CREATE INDEX idx_people_library_id ON people(library_id)",
+        """
+        CREATE TABLE asset_people (
+            asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+            person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+            PRIMARY KEY (asset_id, person_id)
+        )
+        """,
+        "CREATE INDEX idx_asset_people_person_id ON asset_people(person_id)",
+        """
+        CREATE TABLE albums (
+            id INTEGER PRIMARY KEY,
+            library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+            uuid TEXT NOT NULL,
+            title TEXT,
+            folder_names TEXT,
+            UNIQUE (library_id, uuid)
+        )
+        """,
+        "CREATE INDEX idx_albums_library_id ON albums(library_id)",
+        """
+        CREATE TABLE asset_albums (
+            asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+            album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (asset_id, album_id)
+        )
+        """,
+        "CREATE INDEX idx_asset_albums_album_id ON asset_albums(album_id)",
+    ],
 ]
 
 
