@@ -697,6 +697,14 @@ def _data_dir() -> pathlib.Path:
     return app_db.data_dir_from_env()
 
 
+def get_media_cache_dir() -> pathlib.Path:
+    """Where P1.9's thumb/original routes ask `media.get_or_generate()` to
+    cache generated images. A dependency, like `get_db` below, so tests can
+    override it to a `tmp_path` instead of touching `$PHOTOS_VIEWER_DATA_DIR`
+    or `./data`."""
+    return app_db.media_cache_dir(_data_dir())
+
+
 def get_db() -> Iterator[sqlite3.Connection]:
     """Request-scoped `app.db` connection. Tests override this dependency
     with one pointed at `tmp_path`, so the default (`$PHOTOS_VIEWER_DATA_DIR`,

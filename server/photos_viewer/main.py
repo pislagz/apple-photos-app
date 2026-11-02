@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .library_admin import router as library_admin_router
+from .library_assets import router as library_assets_router
 from .session_auth import router as auth_router
 from .session_auth import validate_public_origins_env, validate_trusted_proxies_env
 
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
     app = FastAPI()
     app.include_router(auth_router)
     app.include_router(library_admin_router)
+    app.include_router(library_assets_router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

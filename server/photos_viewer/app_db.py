@@ -267,6 +267,12 @@ def db_path(data_dir: str | pathlib.Path) -> pathlib.Path:
     return pathlib.Path(data_dir) / "app.db"
 
 
+def media_cache_dir(data_dir: str | pathlib.Path) -> pathlib.Path:
+    """Where `media.get_or_generate()` writes generated thumbnails -- under
+    the data dir, like `app.db` itself, and never inside a `.photoslibrary`."""
+    return pathlib.Path(data_dir) / "media_cache"
+
+
 def connect(data_dir: str | pathlib.Path) -> sqlite3.Connection:
     """Open `app.db` under `data_dir`, migrating it first if needed."""
     data_dir = pathlib.Path(data_dir)
