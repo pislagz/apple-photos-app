@@ -111,6 +111,7 @@ Not blocking; pick up when convenient.
 
 ### P1.6 Index into `app.db`
 
+- Status: **done**. PR #35 (issue #34), merged 2026-11-02.
 - Walk osxphotos once per library and store the fields `docs/PRIOR_ART.md` lists (identity, dates, flags, people, albums, place, paths, derivative paths).
 - Place names and coordinates stored here come from `PhotoInfo.place` and `PhotoInfo.location` only. No geocoding client is imported.
 - Re-index when the sqlite file changes or an admin asks.
@@ -120,6 +121,7 @@ Not blocking; pick up when convenient.
 
 ### P1.7 Media backend
 
+- Status: **done**. PRs #37, #39 (issues #36, #38), merged 2026-11-02.
 - One interface: given a source path and a size, return WebP or JPEG bytes.
 - Try `path_derivatives` first when a derivative is large enough for that size.
 - On Darwin, if `sips` or `qlmanage` exists, they may handle the file. Otherwise Pillow + pillow-heif. ffmpeg extracts a video still. rawpy is optional and used when installed for RAW.
@@ -129,12 +131,14 @@ Not blocking; pick up when convenient.
 
 ### P1.8 Assignment guard
 
+- Status: **done**. PRs #41, #43 (issues #40, #42), merged 2026-11-02.
 - One dependency used by every `/api/libraries/{library_id}/…` route. It loads the session, checks the assignment, and 404s otherwise.
-- Acceptance: the P1.16 test is wired to this dependency so a new route cannot forget it. A route added without the dependency fails a router audit test (every library route includes the dependency).
-- Done: `server/photos_viewer/session_auth.py` -- `require_library_assignment(library_id, session=Depends(require_session), db=Depends(get_db))` runs one query joining `libraries` to `library_assignments` for the caller, so a nonexistent library id and a library the caller isn't assigned to (including an admin who hasn't assigned it to themselves) both 404 the same way, matching the no-session/disabled/revoked-session 401 that `require_session` already gives. `unguarded_library_routes(app)` walks every registered route whose path starts with `/api/libraries/{`, follows each route's `Dependant` tree (direct and nested `Depends`) for `require_library_assignment`, and returns the paths that don't reach it -- the P1.16 router audit calls this and fails if it's non-empty. FastAPI 0.162's `app.include_router(...)` stores included routes lazily (as a wrapper that only exposes real paths/dependants through `effective_candidates()`, recursively for routers nested inside routers); `_leaf_routes()` resolves that before the audit inspects anything, so the audit actually sees routes added the normal way, not just ones registered directly on `app`. No real `/api/libraries/{library_id}/...` route exists yet (P1.9), so `server/tests/test_library_assignment_guard.py` proves the guard and the audit against a test-only probe route, and proves the audit fails on a deliberately unguarded route registered the same `include_router` way P1.9's routes will be. Follow-up (issue #42): `require_library_assignment`'s `library_id` is now pinned to `Path(...)`, so it only ever binds from the path, never from a same-named query-string parameter. `unguarded_library_routes(app)` additionally flags any `/api/libraries/{` route whose path parameter isn't spelled literally `{library_id}` (e.g. `{lib}`) -- P1.9+ routes must spell it `{library_id}`, not `{lib}`, or the audit fails CI.
+- Acceptance: the P1.18 test is wired to this dependency so a new route cannot forget it. A route added without the dependency fails a router audit test (every library route includes the dependency).
+- Done: `server/photos_viewer/session_auth.py` -- `require_library_assignment(library_id, session=Depends(require_session), db=Depends(get_db))` runs one query joining `libraries` to `library_assignments` for the caller, so a nonexistent library id and a library the caller isn't assigned to (including an admin who hasn't assigned it to themselves) both 404 the same way, matching the no-session/disabled/revoked-session 401 that `require_session` already gives. `unguarded_library_routes(app)` walks every registered route whose path starts with `/api/libraries/{`, follows each route's `Dependant` tree (direct and nested `Depends`) for `require_library_assignment`, and returns the paths that don't reach it -- the P1.18 router audit calls this and fails if it's non-empty. FastAPI 0.162's `app.include_router(...)` stores included routes lazily (as a wrapper that only exposes real paths/dependants through `effective_candidates()`, recursively for routers nested inside routers); `_leaf_routes()` resolves that before the audit inspects anything, so the audit actually sees routes added the normal way, not just ones registered directly on `app`. No real `/api/libraries/{library_id}/...` route exists yet (P1.9), so `server/tests/test_library_assignment_guard.py` proves the guard and the audit against a test-only probe route, and proves the audit fails on a deliberately unguarded route registered the same `include_router` way P1.9's routes will be. Follow-up (issue #42): `require_library_assignment`'s `library_id` is now pinned to `Path(...)`, so it only ever binds from the path, never from a same-named query-string parameter. `unguarded_library_routes(app)` additionally flags any `/api/libraries/{` route whose path parameter isn't spelled literally `{library_id}` (e.g. `{lib}`) -- P1.9+ routes must spell it `{library_id}`, not `{lib}`, or the audit fails CI.
 
 ### P1.9 Read API for Library
 
+- Status: **done**. PR #45 (issue #44), merged 2026-11-02.
 - `GET /api/me`
 - `GET /api/libraries/{library_id}/assets` with cursor and limit, plus `album`, `person`, `type`, `from`, `to` accepted even if album and person return empty until Phase 2.
 - `GET /api/libraries/{library_id}/summary` (counts by year, month, day)
@@ -144,10 +148,11 @@ Not blocking; pick up when convenient.
 - `GET /api/libraries/{library_id}/livephoto/{id}/video`
 - `GET /api/health`
 - Acceptance: pagination is stable when new rows are inserted above the cursor. Original Range returns 206. Edited version 404s when `path_edited` is absent. JPEG format transcodes HEIC through the media backend.
-- Done: `server/photos_viewer/library_assets.py` -- all eight routes, each `{library_id}`-guarded via `Depends(session_auth.require_library_assignment)` so the P1.16 router audit passes. Asset identity in the URL is `assets.uuid`, not the integer `assets.id` (stable across a P1.6 re-index). `GET /assets` cursor is a base64 encoding of `(date_created, id)`, ordered `DESC, DESC`, so a row inserted above the cursor during a later page fetch can't shift already-returned rows -- `album`/`person` short-circuit to an empty page per Phase 2 scope; `type`/`from`/`to` filter the same indexed columns P1.6 writes. `GET /summary` buckets `date_created` by `substr` length (4/7/10) for year/month/day. `GET /assets/{id}` adds `people`/`albums` by joining the P1.6 `asset_people`/`asset_albums` tables. `thumb`/`original`/`livephoto` resolve the path recorded in the index through `_resolve_within_library()`, which rejects anything outside the library's own registered root before `media.py` or `FileResponse` ever opens it -- defense in depth, since the path always comes from this library's own index row, never the request. `original` native uses Starlette's `FileResponse` for native Range/206 support; `format=jpeg` adds `media.to_jpeg()` (full-res decode, uncached by design -- caching full-size transcodes was judged not worth the cache-dir growth for terabyte libraries); `version=edited` 404s when `path_edited` is NULL. `thumb` falls back to a derivative as the source when `path_original` is NULL, mirroring `media.py`'s own fallback for an iCloud-optimized asset. Added `session_auth.get_media_cache_dir()` (mirrors `get_db`'s override pattern so tests can redirect the cache to `tmp_path`) and `app_db.media_cache_dir(data_dir)`. Tests in `server/tests/test_library_assets.py`: pagination stability against inserts, summary buckets, asset detail people/albums, thumb happy path and 404s, original Range->206, edited-missing 404, format=jpeg HEIC transcode, live-photo video, cross-library and foreign-uuid 404 on every route, anonymous 401, unassigned-user 404, and `/api/me`'s library list.
+- Done: `server/photos_viewer/library_assets.py` -- all eight routes, each `{library_id}`-guarded via `Depends(session_auth.require_library_assignment)` so the P1.18 router audit passes. Asset identity in the URL is `assets.uuid`, not the integer `assets.id` (stable across a P1.6 re-index). `GET /assets` cursor is a base64 encoding of `(date_created, id)`, ordered `DESC, DESC`, so a row inserted above the cursor during a later page fetch can't shift already-returned rows -- `album`/`person` short-circuit to an empty page per Phase 2 scope; `type`/`from`/`to` filter the same indexed columns P1.6 writes. `GET /summary` buckets `date_created` by `substr` length (4/7/10) for year/month/day. `GET /assets/{id}` adds `people`/`albums` by joining the P1.6 `asset_people`/`asset_albums` tables. `thumb`/`original`/`livephoto` resolve the path recorded in the index through `_resolve_within_library()`, which rejects anything outside the library's own registered root before `media.py` or `FileResponse` ever opens it -- defense in depth, since the path always comes from this library's own index row, never the request. `original` native uses Starlette's `FileResponse` for native Range/206 support; `format=jpeg` adds `media.to_jpeg()` (full-res decode, uncached by design -- caching full-size transcodes was judged not worth the cache-dir growth for terabyte libraries); `version=edited` 404s when `path_edited` is NULL. `thumb` falls back to a derivative as the source when `path_original` is NULL, mirroring `media.py`'s own fallback for an iCloud-optimized asset. Added `session_auth.get_media_cache_dir()` (mirrors `get_db`'s override pattern so tests can redirect the cache to `tmp_path`) and `app_db.media_cache_dir(data_dir)`. Tests in `server/tests/test_library_assets.py`: pagination stability against inserts, summary buckets, asset detail people/albums, thumb happy path and 404s, original Range->206, edited-missing 404, format=jpeg HEIC transcode, live-photo video, cross-library and foreign-uuid 404 on every route, anonymous 401, unassigned-user 404, and `/api/me`'s library list.
 
 ### P1.10 Admin UI
 
+- Status: **done**. PR #47 (issue #46), merged 2026-11-02.
 - Desktop, System Settings-like sidebar: Libraries, Users, Sessions, Audit log, Settings.
 - Users: create, edit, disable, delete, set password, set role, one-time invite link that creates an account and then dies. Unlock: an "Unlock" action on a locked-out user, calling `POST /api/admin/users/{username}/unlock` (server-side done, issue #12 G) -- the UI button itself is still to do.
 - Access matrix: users × libraries, one checkbox each.
@@ -160,6 +165,7 @@ Not blocking; pick up when convenient.
 
 ### P1.11 Web shell, both layouts
 
+- Status: **done**. PRs #49, #51 (issues #48, #50), merged 2026-11-02.
 - Viewport width and pointer detection, with a per-user override.
 - Login: full-screen form on the mobile layout, centered card on desktop.
 - Handle a 403 "tailnet identity not allowed" (P1.4 allow-list) with a clear refused-access message on the login screen and app shell, not a generic error. Same for a 429 lockout.
@@ -172,14 +178,61 @@ Not blocking; pick up when convenient.
 - Acceptance: a layout test (or a component test with a mocked viewport) renders both shells. Resizing switches layout. The override sticks. A unit test shows the service worker caches a same-origin thumbnail URL and does not call `cache.put` for `https://tile.openstreetmap.org/0/0/0.png`.
 - Done: `web/src/shell/` -- `useLayout.ts` (`MOBILE_BREAKPOINT_PX`, `pointer: fine`, `display-mode: standalone`, and a `localStorage`-backed `LayoutOverride` of `"auto"|"mobile"|"desktop"`) drives `AppShell.tsx`, which calls `GET /api/me`, shows `LoginScreen.tsx` (full-screen on mobile, centered card on desktop) when signed out, `AccessRefused.tsx` on a 403 `tailnet identity not allowed` from either `/api/me` or login, a lockout message on a 429 from login, and otherwise `MobileShell.tsx` (bottom tab bar: Library enabled, Albums/People/Map disabled) or `DesktopShell.tsx` (sidebar: Library enabled, the rest disabled) around `LibraryPlaceholder.tsx`. `AccountMenu.tsx` and `LayoutOverrideControl.tsx` hold the logout button and the layout override picker in both shells. `web/src/api.ts` is the fetch wrapper and session calls shared with `web/src/admin/`, which now re-exports from it instead of duplicating it. `main.tsx` routes `/admin` to the existing `AdminApp`, everything else to `AppShell`, and registers `public/sw.js` (same-origin GET-only cache-first; checked by `src/sw.test.ts` against the real file, including that it never touches `tile.openstreetmap.org`). Issue #50 follow-up: the service worker never intercepts or caches `/api/*` (a cached `/api/me` or asset listing would survive logout, a revoked session, or an admin unassign, and leak to the next user of the same browser); it is network-first for navigations/`index.html`/the manifest with a cache fallback when offline, and cache-first only for hashed `/assets/*` and `/icons/*`; `cache.put` only stores a full `200` (never a `206` Range response or an opaque cross-origin one), wrapped so a rejected put can't crash the fetch handler; `activate` deletes any cache name other than the current `CACHE_NAME`, which is bumped so existing installs drop whatever `/api/*` data an old cache held. `public/manifest.webmanifest` and `public/icons/*.svg` (original, not Apple's) add `standalone` display; `index.html` adds the manifest link, apple PWA meta tags, and light/dark `theme-color`. Component tests: `useLayout.test.ts`, `AppShell.test.tsx`.
 
-### P1.12 Mobile Library
+### P1.12 Hardening (from the P1.6–P1.11 reviews)
+
+Fix the non-blocking review notes before the Library UI and Phase 2 build on them. Split into two issues.
+
+#### P1.12A Data and robustness
+
+- Stable asset ids: re-index upserts by `(library_id, uuid)` and deletes only assets that are gone, instead of delete + reinsert. `assets.id` stays the same for an unchanged asset, so `thumbnail_cache` rows survive, `audit_log.asset_id` isn't nulled, and the P1.9 cursor (which carries `assets.id`) stays valid across a re-index.
+- Indexing runs as a background job, not inside the request: library add, `GET .../status` on a sqlite/WAL change (e.g. while Photos.app is open), and reindex return quickly and report progress/state; one job per library at a time; no long `app.db` write lock held by a request.
+- `add_library`: an indexing failure after the INSERT gives a clean 4xx with a message (or a library row with an index-error state), never a 500 from the rollback.
+- Consistent date storage: `date_created`, `date_added`, `date_modified` use one documented format (currently UTC vs local offset mix).
+- Summary days/months/years bucket by the photo's local date, not the UTC date, so a late-evening photo isn't on the next day. `from`/`to` filters use the same rule.
+- Media cache: atomic writes (temp file in the same dir + `os.replace`), so a concurrent request never reads a half-written file. Add eviction/size cap for the media cache (using or retiring the unused `thumbnail_cache` table). The cache key includes the source file's mtime and the encoder settings (size/quality), so a quality change invalidates.
+- Thumb size/quality settings from the admin panel are honored by `media.py` instead of its constants.
+- `_pick_source`: catch Pillow `DecompressionBombError` (and other decode errors) as a clean `MediaBackendError`; don't open every derivative just to probe its size; probe derivatives once per request (not once for the key and again in `generate()`).
+- Missing original and only too-small derivatives: fall back to the largest available derivative instead of raising.
+- Videos: use the JPEG poster derivative from `path_derivatives` when present, ffmpeg only as fallback.
+- Faster decode for grid sizes: `Image.draft`/`reduce` for big originals (48MP HEIC) instead of a full decode.
+- `format=jpeg`: cache the full-res conversion (bounded by the eviction above) or otherwise avoid a full uncached decode per request; quote-escape the `Content-Disposition` filename; thumb decode errors map to a clearer status than 404 (415/500, documented).
+- Pagination: don't return `next_cursor` when the page is exactly full and there's nothing more (no extra empty fetch).
+- `GET .../status`: `_total_size_bytes` is cached or taken from the index instead of walking the whole package on every call.
+- Tests: a changed `Photos.sqlite` triggers a re-index on status; re-index keeps ids stable and cache rows; extend the synthetic fixture with people and albums so the people/album/join-table paths are tested; atomic cache write; local-date buckets; DecompressionBomb; poster derivative; largest-derivative fallback.
+- Acceptance: all of the above have tests; the closed-library SHA-256 snapshot stays byte-identical; `pytest` (sockets disabled), `ruff check server`, `npm --prefix web ci/test/run build` pass.
+
+#### P1.12B Security and polish
+
+- Admin password reset (and a user's own password change) revokes that user's existing sessions.
+- `Cache-Control: no-store` on `/api/me`, `/api/auth/*`, `/api/setup/*` and admin JSON responses.
+- Audit log `to` date includes the whole end day (`date_to=2026-11-02` includes that day's entries).
+- CSV export guards against spreadsheet formula injection (prefix cells starting with `=`, `+`, `-`, `@`, tab or CR).
+- Layout override is stored per user on the server (SPEC: "per-user override"), with the localStorage value only as a fast default.
+- PNG `apple-touch-icon` (180×180) and PNG manifest icons alongside the SVGs, so iOS shows a real home-screen icon.
+- The server serves the built web app: `web/dist` at `/` with SPA fallback for client routes (`/admin`, ...), correct `sw.js`/manifest headers, `/api/*` 404s stay JSON. Today `GET /` is 404, so the PWA is only reachable via Vite.
+- Optional logout cache clear in the service worker (postMessage / `caches.delete`).
+- Tailnet 403 detection in the web app uses a machine-readable error code, not the exact detail string `tailnet identity not allowed`.
+- Session list doesn't expose the session id hash; use an opaque id.
+- Router-audit edge: the `{library_id}` audit rejects odd variants such as `{library_id}x`, and is run at startup/CI (P1.18) so a misnamed route fails early.
+- Access matrix: optionally its own sidebar item in the admin UI.
+- Acceptance: tests for each item (session revoke on reset, headers, audit date filter, CSV guard, per-user override, `GET /` serves `index.html` and `/admin` falls back to it, `/api/unknown` stays JSON 404); all checks pass.
+
+### P1.13 Hidden album
+
+- Hidden assets (Photos' hidden flag, already indexed in P1.6) are excluded from the Library feed, Days/Months/Years summaries, People, Albums, Map, search, and every count or summary (including `/api/me` and admin status counts if they count visible photos).
+- They are visible only in a dedicated Hidden section: `GET /api/libraries/{library_id}/hidden` (same cursor/filters as `/assets`, `{library_id}`-guarded) and a "Hidden" entry in the mobile Albums list / desktop sidebar under Utilities, like Apple Photos.
+- Asset detail, thumb, original and live-photo routes still work for a hidden asset by uuid (so the Hidden view can open it), but no list other than Hidden returns it.
+- Recently Deleted / trashed assets stay excluded everywhere.
+- Acceptance: fixture has at least one hidden asset; tests prove it's absent from `/assets`, `/summary`, album/person/map/search results and counts, and present in `/hidden`; web test shows the Hidden entry and view; all checks pass.
+
+### P1.14 Mobile Library
 
 - Years, Months, Days, All Photos. Pinned date header while scrolling.
 - Square-cropped virtualized grid. Pinch changes column count.
 - Days can use a large leading cell plus a row of squares, as in `docs/design-refs/ios17-library-days.png`. All Photos is a uniform square grid.
 - Acceptance: a fixture of a few hundred indexed rows scrolls without loading originals (network or image-src assertion). Date header updates with the topmost group.
 
-### P1.13 Desktop Library
+### P1.15 Desktop Library
 
 - Toolbar: Years, Months, All Photos, zoom slider, search field (UI only until Phase 2), download, Info toggle.
 - Grid: aspect-ratio or square, date headers, hover heart (display of the favorite flag, not a write) and video duration.
@@ -187,7 +240,7 @@ Not blocking; pick up when convenient.
 - Keyboard: arrows, Space/Enter open, Esc closes, ⌘A, ⌘F, +/−.
 - Acceptance: keyboard and selection tests on the desktop layout. Zoom changes the thumb size requested (`grid` vs `grid2x`).
 
-### P1.14 Viewer
+### P1.16 Viewer
 
 - Mobile: swipe between items, pinch and double-tap zoom, swipe down to dismiss. Filmstrip as in the iOS 17 reference. Info sheet with date, camera, people names, albums, and a location line taken from the indexed place fields. The mini-map waits for Phase 2 and uses the same map-tiles setting as the Map tab.
 - Desktop: filmstrip, zoom and pan, right-hand info panel with the same fields plus file name and size.
@@ -195,20 +248,20 @@ Not blocking; pick up when convenient.
 - No edit control, no delete control, no favorite write.
 - Acceptance: opening an item does not request the original until the viewer asks for the preview or the original. Live Photo video request is the live-photo route, not the original still.
 
-### P1.15 Downloads
+### P1.17 Downloads
 
 - iPhone: full image in an `<img>`, JPEG fallback when the browser cannot show HEIC. Document the long-press "Save to Photos" behavior. Multi-select uses `navigator.share({ files })`, splits large batches, and falls back to download links.
 - Desktop: one file, original or edited, from the viewer and the context menu. "Copy link" copies an in-app URL.
 - Every download writes an audit row (user, library, asset, version, time).
 - Acceptance: tests see the audit row. A download of library L2 by user A is 404 and writes no success row. Zip is not in this phase.
 
-### P1.16 Access-control test
+### P1.18 Access-control test
 
 - The scenario in `CLAUDE.md`: user A / library L1, user B / library L2, every library route, thumbs, originals, live video.
 - Also: admin with no self-assignment, disabled user, revoked session.
 - Acceptance: the test is in CI and fails if any of those calls returns a body, a thumb, or a file.
 
-### P1.17 Packaging
+### P1.19 Packaging
 
 - `launchd` plist documented and checked in: uvicorn, data dir, KeepAlive, logs.
 - `Dockerfile` and `docker-compose.yml`: non-root user, library volumes mounted `:ro`, data volume read-write, temp dir for sqlite copies, ffmpeg and libheif available. Container root can be read-only if `/tmp` is a tmpfs.
@@ -216,14 +269,14 @@ Not blocking; pick up when convenient.
 - README sections: install on both OSes, Tailscale Serve, first admin, add library, assign access, install the PWA, read-only rules, the offline rule, Linux mount caveats, updating osxphotos (that update is a maintainer step on a network, not a runtime check).
 - Acceptance: `docker compose config` succeeds in CI. A compose comment or a test mounts a fixture read-only and the probe still runs. The image does not contain a real library. The README's egress section is specific enough that someone can block internet egress and still open the app from the tailnet.
 
-### P1.18 Content-Security-Policy
+### P1.20 Content-Security-Policy
 
 - Every HTML response, and API responses, carry a Content-Security-Policy.
 - `default-src 'self'`. `font-src 'self'`. `script-src 'self'`. `style-src 'self'`. `img-src 'self' blob: data:`. `worker-src 'self' blob:` only if the map worker needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
 - The only external host is `https://tile.openstreetmap.org`. Put it on `connect-src` when MapLibre fetches tile bytes, or on `img-src` when the tiles are image requests. `connect-src` is otherwise `'self'`. No other external host on any directive.
 - Acceptance: a test loads `/` and one API response and checks those directives. Exactly one external host appears, and it is `tile.openstreetmap.org`.
 
-### P1.19 Suite-wide outbound-connection tests
+### P1.21 Suite-wide outbound-connection tests
 
 - The whole server test suite runs under `pytest-socket`, allowing only localhost (`127.0.0.1` and `::1`). The plugin stays on for every test module. `pip install` and `npm install` happen before the suite, outside the plugin.
 - After `npm run build`, a check scans `web/dist` JS, CSS, and HTML. The only absolute external URLs allowed are `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (the fetched tile template) and `https://www.openstreetmap.org/copyright` (the attribution `href`, never fetched). Any other external host fails the check. Localhost URLs are allowed.
@@ -296,4 +349,4 @@ Not blocking; pick up when convenient.
 - A directory listing of each real `.photoslibrary` is unchanged after indexing, thumb generation, download, and zip.
 - `pytest` and `npm test` pass on Linux with no `sips` and no real library.
 - The server suite fails on any connection that is not localhost.
-- The production web build's only external URLs are the OSM tile template and the OSM copyright href, and responses send the Content-Security-Policy from P1.18.
+- The production web build's only external URLs are the OSM tile template and the OSM copyright href, and responses send the Content-Security-Policy from P1.20.
