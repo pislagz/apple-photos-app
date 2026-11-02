@@ -7,13 +7,20 @@ public functions (`open_library_readonly`, `library_is_locked`) rather than
 opening anything itself. `total_size_bytes` is the one exception -- it walks
 the package directory for file sizes, not its database.
 
-Asset/video/people counts, last-index time, and pre-warm progress all depend
-on the asset index (P1.6) and pre-warm (P3.3), neither of which exists yet;
-they are always `null` until those land.
+Asset/video/people counts and last-index time come from the P1.6 index in
+`app.db`, via `indexer.index_library`; pre-warm progress depends on P3.3 and
+is always `null` until that lands.
+
+A status check also re-indexes a library whose underlying sqlite file has
+changed since the last index -- the "re-index when the sqlite file changes"
+half of P1.6. `indexer.index_library` makes that cheap: it's a handful of
+`stat()` calls, not a walk, whenever nothing has actually changed. The
+"re-index when an admin asks" half is `POST .../reindex` below.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 import sqlite3
@@ -21,8 +28,10 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import app_db, libraries, session_auth
+from . import app_db, indexer, libraries, session_auth
 from .libraries import UnsupportedPhotosVersionError, open_library_readonly
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -143,14 +152,45 @@ def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
     return warnings
 
 
-def _build_status(row: sqlite3.Row) -> LibraryStatusResponse:
+def _maybe_reindex(db: sqlite3.Connection, row: sqlite3.Row, path: pathlib.Path) -> None:
+    """Re-index if the sqlite file changed since the last index. A no-op,
+    including on a missing/unreadable library, stays silent here --
+    `_warnings_for` already opens the library itself and surfaces any
+    "unreadable"/"unsupported_version" problem as a status warning."""
+    if not path.exists():
+        return
+    try:
+        indexer.index_library(db, row["id"], path)
+    except Exception:
+        # Also surfaced by _warnings_for's own open attempt; logged here so it
+        # isn't silent, but it must not turn a status read into a 500.
+        logger.warning("background re-index of library %s (%s) failed", row["id"], path, exc_info=True)
+
+
+def _index_counts(db: sqlite3.Connection, library_id: int, last_indexed_at: str | None) -> dict:
+    if last_indexed_at is None:
+        return {"asset_count": None, "video_count": None, "people_count": None}
+    return {
+        "asset_count": db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0],
+        "video_count": db.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND is_video = 1", (library_id,)
+        ).fetchone()[0],
+        "people_count": db.execute("SELECT COUNT(*) FROM people WHERE library_id = ?", (library_id,)).fetchone()[0],
+    }
+
+
+def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResponse:
     path = pathlib.Path(row["path"])
+    _maybe_reindex(db, row, path)
+    row = _get_library_or_404(db, row["id"])
     return LibraryStatusResponse(
         id=row["id"],
         display_name=row["display_name"],
         path=row["path"],
         total_size_bytes=_total_size_bytes(path),
+        last_indexed_at=row["last_indexed_at"],
         warnings=_warnings_for(path),
+        **_index_counts(db, row["id"], row["last_indexed_at"]),
     )
 
 
@@ -176,6 +216,7 @@ def add_library(
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="this path is already registered") from exc
     library_id = cursor.lastrowid
+    indexer.index_library(db, library_id, path)
     app_db.write_audit_log(db, "add_library", library_id=library_id, actor=admin["username"], detail=str(path))
     return _to_response(_get_library_or_404(db, library_id))
 
@@ -233,4 +274,30 @@ def library_status(
     library_id: int, admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
 ) -> LibraryStatusResponse:
     row = _get_library_or_404(db, library_id)
-    return _build_status(row)
+    return _build_status(db, row)
+
+
+@router.post(
+    "/api/admin/libraries/{library_id}/reindex",
+    response_model=LibraryStatusResponse,
+    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+)
+def reindex_library(
+    library_id: int,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> LibraryStatusResponse:
+    """The "or when an admin asks" half of P1.6 -- forces a fresh walk even
+    if the sqlite signature hasn't changed since the last index."""
+    row = _get_library_or_404(db, library_id)
+    path = pathlib.Path(row["path"])
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"{path} is not reachable -- is the drive mounted?")
+    try:
+        indexer.index_library(db, library_id, path, force=True)
+    except UnsupportedPhotosVersionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"could not re-index {path}: {exc}") from exc
+    app_db.write_audit_log(db, "reindex_library", library_id=library_id, actor=admin["username"], detail=str(path))
+    return _build_status(db, _get_library_or_404(db, library_id))
