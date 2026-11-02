@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
+import HiddenView from "./HiddenView";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import type { LayoutOverride } from "./useLayout";
 
@@ -9,6 +11,9 @@ import type { LayoutOverride } from "./useLayout";
 const SECTIONS = ["Favorites", "Recently Added", "Map", "People"];
 const MEDIA_TYPES = ["Videos", "Selfies", "Live Photos", "Portrait", "Panoramas", "Screenshots", "RAW"];
 const SMART_ALBUMS = ["Favorites", "Videos", "Selfies", "Live Photos", "Panoramas", "Screenshots", "Recently Added"];
+// Sequoia Photos' "Utilities" group. Only "Hidden" (P1.13) has a real screen
+// behind it; "Imports" and "Recently Deleted" stay disabled chrome.
+const UTILITIES = ["Imports", "Recently Deleted"];
 
 export default function DesktopShell({
   me,
@@ -22,6 +27,8 @@ export default function DesktopShell({
   onLogout: () => void;
 }) {
   const libraryName = me.libraries[0]?.display_name ?? "Library";
+  const libraryId = me.libraries[0]?.id;
+  const [view, setView] = useState<"library" | "hidden">("library");
 
   return (
     <div className="shell shell--desktop">
@@ -32,7 +39,12 @@ export default function DesktopShell({
         <nav aria-label="Sections">
           <ul>
             <li>
-              <button type="button" aria-current="page" className="sidebar__item">
+              <button
+                type="button"
+                aria-current={view === "library" ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => setView("library")}
+              >
                 Library
               </button>
             </li>
@@ -74,6 +86,28 @@ export default function DesktopShell({
             ))}
           </ul>
         </details>
+        <details className="sidebar__group" open>
+          <summary>Utilities</summary>
+          <ul>
+            <li>
+              <button
+                type="button"
+                aria-current={view === "hidden" ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => setView("hidden")}
+              >
+                Hidden
+              </button>
+            </li>
+            {UTILITIES.map((item) => (
+              <li key={item}>
+                <button type="button" disabled className="sidebar__item">
+                  {item}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
         <AccountMenu
           me={me}
           layoutOverride={layoutOverride}
@@ -83,10 +117,14 @@ export default function DesktopShell({
       </aside>
       <div className="shell__main">
         <header className="toolbar">
-          <h1>Library</h1>
+          <h1>{view === "hidden" ? "Hidden" : "Library"}</h1>
         </header>
         <main className="shell__content">
-          <LibraryPlaceholder />
+          {view === "hidden" && libraryId !== undefined ? (
+            <HiddenView libraryId={libraryId} />
+          ) : (
+            <LibraryPlaceholder />
+          )}
         </main>
       </div>
     </div>

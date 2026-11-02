@@ -193,6 +193,112 @@ def test_list_assets_album_filter_returns_empty_until_phase_2(tmp_path):
         conn.close()
 
 
+def test_list_assets_excludes_hidden(tmp_path):
+    """P1.13: hidden assets never appear in `/assets` -- only in `/hidden`."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "visible")
+        _insert_asset(conn, library_id, "hidden-one", hidden=1)
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/assets")
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.json()["items"]] == ["visible"]
+    finally:
+        conn.close()
+
+
+def test_list_assets_album_and_person_filters_stay_empty_with_a_hidden_asset(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "hidden-one", hidden=1)
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/assets", params={"album": "anything"})
+
+        assert response.status_code == 200
+        assert response.json() == {"items": [], "next_cursor": None}
+    finally:
+        conn.close()
+
+
+def test_hidden_endpoint_lists_only_hidden_and_respects_type_filter(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "visible")
+        _insert_asset(conn, library_id, "hidden-photo", hidden=1, is_video=0)
+        _insert_asset(conn, library_id, "hidden-video", hidden=1, is_video=1)
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/hidden")
+
+        assert response.status_code == 200
+        assert {item["id"] for item in response.json()["items"]} == {"hidden-photo", "hidden-video"}
+
+        filtered = client.get(f"/api/libraries/{library_id}/hidden", params={"type": "video"})
+        assert filtered.status_code == 200
+        assert [item["id"] for item in filtered.json()["items"]] == ["hidden-video"]
+    finally:
+        conn.close()
+
+
+def test_hidden_endpoint_pagination_cursor_works_like_assets(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "newest", hidden=1, date_created="2024-01-03T00:00:00")
+        _insert_asset(conn, library_id, "oldest", hidden=1, date_created="2024-01-01T00:00:00")
+        _login(client, "alice")
+
+        first_page = client.get(f"/api/libraries/{library_id}/hidden", params={"limit": 1})
+        assert first_page.status_code == 200
+        first_body = first_page.json()
+        assert [item["id"] for item in first_body["items"]] == ["newest"]
+        assert first_body["next_cursor"] is not None
+
+        second_page = client.get(
+            f"/api/libraries/{library_id}/hidden", params={"limit": 1, "cursor": first_body["next_cursor"]}
+        )
+        assert second_page.status_code == 200
+        assert [item["id"] for item in second_page.json()["items"]] == ["oldest"]
+    finally:
+        conn.close()
+
+
+def test_asset_detail_thumb_and_original_work_for_a_hidden_asset(tmp_path, monkeypatch):
+    """Hidden assets stay viewable by uuid -- only *lists* exclude them."""
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", hidden=1, path_original=str(file_path))
+        _login(client, "alice")
+
+        detail = client.get(f"/api/libraries/{library_id}/assets/a")
+        assert detail.status_code == 200
+        assert detail.json()["hidden"] is True
+
+        assert client.get(f"/api/libraries/{library_id}/thumb/a").status_code == 200
+        assert client.get(f"/api/libraries/{library_id}/original/a").status_code == 200
+    finally:
+        conn.close()
+
+
 def test_summary_counts_by_year_month_day(tmp_path):
     conn, client = _client(tmp_path)
     try:
@@ -211,6 +317,27 @@ def test_summary_counts_by_year_month_day(tmp_path):
         assert {"key": "2024", "count": 2} in body["years"]
         assert {"key": "2023", "count": 1} in body["years"]
         assert {"key": "2024-01", "count": 2} in body["months"]
+        assert {"key": "2024-01-01", "count": 1} in body["days"]
+    finally:
+        conn.close()
+
+
+def test_summary_excludes_hidden(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "visible", date_created="2024-01-01T00:00:00")
+        _insert_asset(conn, library_id, "hidden-one", date_created="2024-01-01T00:00:00", hidden=1)
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {"key": "2024", "count": 1} in body["years"]
+        assert {"key": "2024-01", "count": 1} in body["months"]
         assert {"key": "2024-01-01", "count": 1} in body["days"]
     finally:
         conn.close()
@@ -536,6 +663,7 @@ def test_library_routes_404_for_unassigned_user_and_401_for_anonymous(tmp_path):
 
         anonymous_routes = [
             f"/api/libraries/{library_id}/assets",
+            f"/api/libraries/{library_id}/hidden",
             f"/api/libraries/{library_id}/summary",
             f"/api/libraries/{library_id}/assets/a",
             f"/api/libraries/{library_id}/thumb/a",

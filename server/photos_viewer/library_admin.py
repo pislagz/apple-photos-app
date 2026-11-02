@@ -263,9 +263,11 @@ def _index_counts(db: sqlite3.Connection, library_id: int, last_indexed_at: str 
     if last_indexed_at is None:
         return {"asset_count": None, "video_count": None, "people_count": None}
     return {
-        "asset_count": db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0],
+        "asset_count": db.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND hidden = 0", (library_id,)
+        ).fetchone()[0],
         "video_count": db.execute(
-            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND is_video = 1", (library_id,)
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND is_video = 1 AND hidden = 0", (library_id,)
         ).fetchone()[0],
         "people_count": db.execute("SELECT COUNT(*) FROM people WHERE library_id = ?", (library_id,)).fetchone()[0],
     }

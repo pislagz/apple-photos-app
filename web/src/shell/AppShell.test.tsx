@@ -146,6 +146,27 @@ describe("AppShell", () => {
     }
   });
 
+  it("shows a Hidden entry in the desktop sidebar's Utilities group that lists hidden assets", async () => {
+    setViewport(1400, true);
+    mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
+      if (url === "/api/me") return ME_RESPONSE;
+      if (url === "/api/libraries/1/hidden") {
+        return { items: [{ id: "h1", filename: "IMG_0002.HEIC", date: null, is_video: false, is_live_photo: false, favorite: false, width: null, height: null }], next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+
+    const hidden = await screen.findByRole("button", { name: "Hidden" });
+    expect(hidden).toBeEnabled();
+    fireEvent.click(hidden);
+
+    expect(await screen.findByText("IMG_0002.HEIC")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hidden" })).toBeInTheDocument();
+  });
+
   it("logs out back to the login screen", async () => {
     setViewport(1400, true);
     let signedIn = true;
