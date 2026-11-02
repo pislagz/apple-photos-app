@@ -111,3 +111,25 @@ export function logout(): Promise<void> {
 export function setLayoutOverride(value: "desktop" | "mobile" | null): Promise<void> {
   return mutate<void>("PUT", "/api/me/layout-override", { layout_override: value });
 }
+
+export interface AssetListItem {
+  id: string;
+  filename: string | null;
+  date: string | null;
+  is_video: boolean;
+  is_live_photo: boolean;
+  favorite: boolean;
+  width: number | null;
+  height: number | null;
+}
+
+export interface AssetListResponse {
+  items: AssetListItem[];
+  next_cursor: string | null;
+}
+
+// Apple Photos' Hidden album (P1.13): the only list a hidden asset appears
+// in. Every other route excludes it.
+export function getHidden(libraryId: number): Promise<AssetListResponse> {
+  return request<AssetListResponse>(`/api/libraries/${libraryId}/hidden`);
+}

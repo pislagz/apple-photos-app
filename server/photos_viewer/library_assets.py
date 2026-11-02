@@ -151,26 +151,19 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
     )
 
 
-@router.get("/api/libraries/{library_id}/assets", response_model=AssetListResponse)
-def list_assets(
-    cursor: str | None = None,
-    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
-    album: str | None = None,
-    person: str | None = None,
-    type_: Literal["photo", "video"] | None = Query(None, alias="type"),
-    from_: str | None = Query(None, alias="from"),
-    to: str | None = None,
-    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
-    db: sqlite3.Connection = Depends(session_auth.get_db),
+def _list_assets(
+    db: sqlite3.Connection,
+    library_id: int,
+    *,
+    hidden: bool,
+    cursor: str | None,
+    limit: int,
+    type_: Literal["photo", "video"] | None,
+    from_: str | None,
+    to: str | None,
 ) -> AssetListResponse:
-    # Albums and People are Phase 2: accept the filters so the client can
-    # already send them, but a request for either comes back empty rather
-    # than ignoring the filter and returning the unfiltered library.
-    if album or person:
-        return AssetListResponse(items=[], next_cursor=None)
-
-    clauses = ["library_id = ?"]
-    params: list[object] = [library["id"]]
+    clauses = ["library_id = ?", "hidden = ?"]
+    params: list[object] = [library_id, int(hidden)]
     if type_ == "photo":
         clauses.append("is_video = 0")
     elif type_ == "video":
@@ -202,6 +195,46 @@ def list_assets(
     return AssetListResponse(items=[_to_list_item(row) for row in page], next_cursor=next_cursor)
 
 
+@router.get("/api/libraries/{library_id}/assets", response_model=AssetListResponse)
+def list_assets(
+    cursor: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    album: str | None = None,
+    person: str | None = None,
+    type_: Literal["photo", "video"] | None = Query(None, alias="type"),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> AssetListResponse:
+    # Albums and People are Phase 2: accept the filters so the client can
+    # already send them, but a request for either comes back empty rather
+    # than ignoring the filter and returning the unfiltered library.
+    if album or person:
+        return AssetListResponse(items=[], next_cursor=None)
+
+    return _list_assets(
+        db, library["id"], hidden=False, cursor=cursor, limit=limit, type_=type_, from_=from_, to=to
+    )
+
+
+@router.get("/api/libraries/{library_id}/hidden", response_model=AssetListResponse)
+def list_hidden_assets(
+    cursor: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    type_: Literal["photo", "video"] | None = Query(None, alias="type"),
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> AssetListResponse:
+    """Apple Photos' Hidden album: the one list that returns an asset with
+    `hidden = 1` -- every other route in this module excludes it."""
+    return _list_assets(
+        db, library["id"], hidden=True, cursor=cursor, limit=limit, type_=type_, from_=from_, to=to
+    )
+
+
 class SummaryBucket(BaseModel):
     key: str
     count: int
@@ -216,7 +249,7 @@ class SummaryResponse(BaseModel):
 def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryBucket]:
     rows = db.execute(
         f"SELECT substr({_LOCAL_DAY_SQL}, 1, ?) AS key, COUNT(*) AS count FROM assets "
-        "WHERE library_id = ? AND date_created IS NOT NULL GROUP BY key ORDER BY key",
+        "WHERE library_id = ? AND hidden = 0 AND date_created IS NOT NULL GROUP BY key ORDER BY key",
         (length, library_id),
     ).fetchall()
     return [SummaryBucket(key=row["key"], count=row["count"]) for row in rows]

@@ -566,6 +566,92 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
         conn.close()
 
 
+def test_hidden_flag_is_indexed_but_excluded_from_the_status_asset_count(tmp_path):
+    """P1.13: the indexer writes `hidden` from osxphotos's `photo.hidden` for
+    every row, but the admin status count -- "visible photos" -- must not
+    include it."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        assert client.get(f"/api/admin/libraries/{added['id']}/status").json()["asset_count"] == 1
+
+        sqlite_path = package_path / "database" / "Photos.sqlite"
+        wal_conn = sqlite3.connect(str(sqlite_path))
+        try:
+            wal_conn.execute("PRAGMA journal_mode=WAL")
+            wal_conn.execute(
+                """
+                INSERT INTO ZGENERICASSET (
+                    Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
+                    ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
+                    ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER,
+                    ZKINDSUBTYPE, ZTRASHEDSTATE, ZHEIGHT, ZWIDTH,
+                    ZORIENTATION, ZDEPTHSTATES, ZVISIBILITYSTATE,
+                    ZSAVEDASSETTYPE, ZADDEDDATE
+                )
+                VALUES (
+                    2, 'hidden-asset-uuid', 700000000.0, 700000000.0, 1,
+                    0, '0', 'IMG_0002.HEIC', NULL, NULL,
+                    0, 0, 'public.heic', 0,
+                    0, 100, 100, 1, 0,
+                    0, 3, 700000000.0
+                )
+                """
+            )
+            wal_conn.execute(
+                """
+                INSERT INTO ZADDITIONALASSETATTRIBUTES (
+                    Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
+                    ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
+                    ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
+                    ZORIGINALORIENTATION, ZORIGINALFILESIZE
+                )
+                VALUES (2, 2, 'IMG_0002.HEIC', 0, 0, 'UTC', 0, 0, 100, 100, 1, 123)
+                """
+            )
+            wal_conn.commit()
+
+            response = client.get(f"/api/admin/libraries/{added['id']}/status")
+        finally:
+            wal_conn.close()
+
+        assert response.status_code == 200
+        assert response.json()["asset_count"] == 1
+
+        rows = conn.execute(
+            "SELECT uuid, hidden FROM assets WHERE library_id = ? ORDER BY uuid", (added["id"],)
+        ).fetchall()
+        assert len(rows) == 2
+        assert {row["uuid"]: row["hidden"] for row in rows}["hidden-asset-uuid"] == 1
+    finally:
+        conn.close()
+
+
+def test_status_video_count_excludes_hidden(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        # Inserted directly: `_maybe_reindex` skips a re-walk when the
+        # package's own sqlite signature hasn't changed, so this row survives
+        # the status call below undisturbed.
+        conn.execute(
+            "INSERT INTO assets (library_id, uuid, filename, date_created, is_video, hidden) "
+            "VALUES (?, 'hidden-video', 'hidden-video.mov', '2024-01-01T00:00:00', 1, 1)",
+            (added["id"],),
+        )
+        conn.commit()
+
+        response = client.get(f"/api/admin/libraries/{added['id']}/status")
+
+        assert response.status_code == 200
+        assert response.json()["video_count"] == 0
+    finally:
+        conn.close()
+
+
 def test_reindex_endpoint_forces_a_fresh_walk_and_is_audit_logged(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
