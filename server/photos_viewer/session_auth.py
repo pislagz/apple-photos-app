@@ -284,12 +284,32 @@ def _cookie_secure() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
-def session_lifetime_seconds(client: Literal["desktop", "pwa"], remember_me: bool) -> int:
+def _setting_or_env_seconds(conn: sqlite3.Connection, setting_key: str, env_name: str, default_seconds: int) -> int:
+    """`app.db`'s `settings` table (written by P1.10's Settings screen) wins
+    over the environment when a value has been saved there; otherwise this
+    falls back to `_env_seconds`, so a server with no Settings save yet
+    behaves exactly as it did before P1.10."""
+    stored = app_db.get_setting(conn, setting_key)
+    if stored is not None:
+        try:
+            value = int(stored)
+        except ValueError:
+            value = -1
+        if value >= 0:
+            return value
+    return _env_seconds(env_name, default_seconds)
+
+
+def session_lifetime_seconds(conn: sqlite3.Connection, client: Literal["desktop", "pwa"], remember_me: bool) -> int:
     if remember_me:
-        return _env_seconds(_REMEMBER_ME_LIFETIME_ENV, _DEFAULT_REMEMBER_ME_LIFETIME_SECONDS)
+        return _setting_or_env_seconds(
+            conn, "session_lifetime_remember_me_seconds", _REMEMBER_ME_LIFETIME_ENV, _DEFAULT_REMEMBER_ME_LIFETIME_SECONDS
+        )
     if client == "pwa":
-        return _env_seconds(_PWA_LIFETIME_ENV, _DEFAULT_PWA_LIFETIME_SECONDS)
-    return _env_seconds(_DESKTOP_LIFETIME_ENV, _DEFAULT_DESKTOP_LIFETIME_SECONDS)
+        return _setting_or_env_seconds(conn, "session_lifetime_pwa_seconds", _PWA_LIFETIME_ENV, _DEFAULT_PWA_LIFETIME_SECONDS)
+    return _setting_or_env_seconds(
+        conn, "session_lifetime_desktop_seconds", _DESKTOP_LIFETIME_ENV, _DEFAULT_DESKTOP_LIFETIME_SECONDS
+    )
 
 
 def create_session(
@@ -302,7 +322,7 @@ def create_session(
 ) -> tuple[str, int]:
     """Create a session row and return `(raw_cookie_value, max_age_seconds)`."""
     raw_token = secrets.token_urlsafe(32)
-    lifetime_seconds = session_lifetime_seconds(client, remember_me)
+    lifetime_seconds = session_lifetime_seconds(conn, client, remember_me)
     conn.execute(
         "INSERT INTO sessions (id, user_id, device, expires_at, remember_me) "
         "VALUES (?, ?, ?, datetime('now', ?), ?)",

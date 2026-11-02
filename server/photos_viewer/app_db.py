@@ -253,6 +253,22 @@ _MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX idx_asset_albums_album_id ON asset_albums(album_id)",
     ],
+    # 9: one-time invite links (P1.10 admin UI). `id` is the sha256 hash of
+    # the invite code, the same scheme `sessions.id` uses for the cookie --
+    # the raw code is shown to the admin once, at creation, and never
+    # stored. `used_at` is what makes accepting it a one-time action.
+    [
+        """
+        CREATE TABLE invites (
+            id TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT NOT NULL,
+            used_at TEXT
+        )
+        """,
+    ],
 ]
 
 
