@@ -9,7 +9,10 @@ open the library without error.
 
 `ZGENERICASSET` has one real asset row, with a matching file under
 `originals/` and a `ZADDITIONALASSETATTRIBUTES` row, so `len(PhotosDB(...))`
-and the asset-scoped routes have something to return. Every *other* row this
+and the asset-scoped routes have something to return. That file is a real,
+tiny HEIC-encoded image (via `pillow_heif`'s write support), not placeholder
+bytes -- the P1.7 media backend tests decode it the same way a real library's
+asset would be decoded. Every *other* row this
 asset's processing could join to (`ZMOMENT`, `ZUNMANAGEDADJUSTMENT`,
 `ZASSETDESCRIPTION`, `ZCLOUDMASTER`, ...) is deliberately left absent --
 those joins are plain `JOIN`s in `_process_database5`, so an asset with no
@@ -34,10 +37,16 @@ placeholder, for tests that exercise WAL replay through the copy step.
 
 from __future__ import annotations
 
+import io
 import pathlib
 import plistlib
 import shutil
 import sqlite3
+
+import pillow_heif
+from PIL import Image
+
+pillow_heif.register_heif_opener()
 
 # osxphotos._constants._PHOTOS_5_MODEL_VERSION == [13000, 13999]: the Core
 # Data model version range Photos 5 (macOS 10.15 Catalina) libraries use.
@@ -164,6 +173,15 @@ CREATE TABLE assets (uuid_0, uuid_1);
 """
 
 
+def _build_asset_image_bytes() -> bytes:
+    """A tiny, real HEIC image -- decodable by the P1.7 media backend, not
+    just a byte string PhotosDB's metadata walk never looks inside."""
+    image = Image.new("RGB", (32, 24), color=(120, 160, 200))
+    buffer = io.BytesIO()
+    image.save(buffer, format="HEIF", quality=50)
+    return buffer.getvalue()
+
+
 def _build_search_index(search_dir: pathlib.Path) -> None:
     search_dir.mkdir(parents=True)
     conn = sqlite3.connect(str(search_dir / "psi.sqlite"))
@@ -182,7 +200,7 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
 
     originals_dir = package_path / "originals" / "0"
     originals_dir.mkdir(parents=True)
-    asset_bytes = b"not a real photo, just fixture bytes"
+    asset_bytes = _build_asset_image_bytes()
     (originals_dir / _ASSET_FILENAME).write_bytes(asset_bytes)
 
     sqlite_path = database_dir / "Photos.sqlite"
@@ -212,7 +230,7 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
             )
             VALUES (
                 1, ?, 700000000.0, 700000000.0, 0,
-                0, 'originals/0', ?, NULL, NULL,
+                0, '0', ?, NULL, NULL,
                 0, 0, 'public.heic', 0,
                 0, 100, 100, 1, 0,
                 0, 3, 700000000.0
