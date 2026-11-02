@@ -11,6 +11,7 @@
     "check-urls": "node ../scripts/check_external_urls.mjs dist"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.25",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

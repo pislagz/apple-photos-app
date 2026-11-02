@@ -133,3 +133,11 @@ export interface AssetListResponse {
 export function getHidden(libraryId: number): Promise<AssetListResponse> {
   return request<AssetListResponse>(`/api/libraries/${libraryId}/hidden`);
 }
+
+// P1.14 mobile Library: the Years/Months/Days/All Photos feed. Never
+// `/hidden` -- a hidden asset must not reach any of those views.
+export function getAssets(libraryId: number, cursor: string | null, limit = 200): Promise<AssetListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
+}

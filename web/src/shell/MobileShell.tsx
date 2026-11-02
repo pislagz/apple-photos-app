@@ -1,5 +1,6 @@
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
+import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import type { LayoutOverride } from "./useLayout";
 
@@ -36,7 +37,7 @@ export default function MobileShell({
         />
       </header>
       <main className="shell__content">
-        <LibraryPlaceholder />
+        {me.libraries[0] ? <MobileLibrary libraryId={me.libraries[0].id} /> : <LibraryPlaceholder />}
       </main>
       <nav className="tab-bar" aria-label="Primary">
         {TABS.map((tab) => (
