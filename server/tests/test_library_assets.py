@@ -95,6 +95,37 @@ def test_me_requires_authentication(tmp_path):
     assert response.status_code == 401
 
 
+def test_me_defaults_to_no_layout_override(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        _create_user(conn, "alice")
+        _login(client, "alice")
+
+        assert client.get("/api/me").json()["layout_override"] is None
+    finally:
+        conn.close()
+
+
+def test_layout_override_is_stored_server_side(tmp_path):
+    """Issue #53: the layout choice is per-user state on the server, not
+    just in the browser's localStorage, so it follows the user across
+    devices. localStorage is only a fast default while `/api/me` loads."""
+    conn, client = _client(tmp_path)
+    try:
+        _create_user(conn, "alice")
+        _login(client, "alice")
+
+        response = client.put("/api/me/layout-override", json={"layout_override": "mobile"})
+        assert response.status_code == 204
+
+        assert client.get("/api/me").json()["layout_override"] == "mobile"
+
+        client.put("/api/me/layout-override", json={"layout_override": None})
+        assert client.get("/api/me").json()["layout_override"] is None
+    finally:
+        conn.close()
+
+
 def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_path):
     conn, client = _client(tmp_path)
     try:

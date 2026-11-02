@@ -44,6 +44,7 @@ export interface UseLayoutResult {
   layout: Layout;
   override: LayoutOverride;
   setOverride: (value: LayoutOverride) => void;
+  applyRemoteOverride: (value: LayoutOverride) => void;
 }
 
 export function useLayout(): UseLayoutResult {
@@ -65,5 +66,11 @@ export function useLayout(): UseLayoutResult {
     }
   }, []);
 
-  return { layout: override === "auto" ? detected : override, override, setOverride };
+  // The server's value (from `/api/me`) is authoritative once it's back --
+  // this reconciles the fast localStorage default with it. Same
+  // implementation as `setOverride`; kept as a separate name so call sites
+  // read as "the server told us" vs. "the user picked this".
+  const applyRemoteOverride = setOverride;
+
+  return { layout: override === "auto" ? detected : override, override, setOverride, applyRemoteOverride };
 }

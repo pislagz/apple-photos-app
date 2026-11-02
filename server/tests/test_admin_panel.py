@@ -151,6 +151,25 @@ def test_update_user_password_takes_effect(tmp_path):
         conn.close()
 
 
+def test_update_user_password_revokes_existing_sessions(tmp_path):
+    """Issue #53: a password reset (admin-initiated, or a user's own change
+    via this same PATCH) must kill any session issued under the old
+    password -- otherwise a stolen or shared cookie survives the fix."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        carol_client = TestClient(client.app, base_url="https://testserver")
+        login = carol_client.post("/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD})
+        assert login.status_code == 200
+        assert carol_client.get("/api/me").status_code == 200
+
+        client.patch("/api/admin/users/carol", json={"password": "a-different-password-1"})
+
+        assert carol_client.get("/api/me").status_code == 401
+    finally:
+        conn.close()
+
+
 def test_user_changes_write_audit_rows(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
@@ -326,6 +345,11 @@ def test_list_and_revoke_session(tmp_path):
         sessions = client.get("/api/admin/sessions").json()
         carol_session = next(s for s in sessions if s["username"] == "carol")
 
+        # Issue #53: the listed id is an opaque public_id, never the
+        # sha256 hash `sessions.id` stores for cookie lookups.
+        stored_ids = {row["id"] for row in conn.execute("SELECT id FROM sessions").fetchall()}
+        assert carol_session["id"] not in stored_ids
+
         assert user_client.get("/api/me").status_code == 200
 
         revoked = client.delete(
@@ -381,6 +405,46 @@ def test_audit_log_csv_export(tmp_path):
         assert response.headers["content-type"].startswith("text/csv")
         assert "create_user" in response.text
         assert response.text.splitlines()[0].startswith("id,occurred_at,action")
+    finally:
+        conn.close()
+
+
+def test_audit_log_date_to_includes_the_whole_end_day(tmp_path):
+    """Issue #53: `date_to=2026-11-02` must include entries from later that
+    same day, not just ones at or before midnight."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO audit_log (occurred_at, action, actor) VALUES ('2026-11-02 23:59:00', 'create_user', 'admin')"
+        )
+        conn.commit()
+
+        entries = client.get("/api/admin/audit-log?date_to=2026-11-02").json()["entries"]
+        assert any(entry["occurred_at"] == "2026-11-02 23:59:00" for entry in entries)
+
+        entries = client.get("/api/admin/audit-log?date_to=2026-11-01").json()["entries"]
+        assert all(entry["occurred_at"] != "2026-11-02 23:59:00" for entry in entries)
+    finally:
+        conn.close()
+
+
+def test_audit_log_csv_export_guards_against_formula_injection(tmp_path):
+    """Issue #53: a cell that opens with `=`, `+`, `-`, `@`, tab, or CR is
+    treated as a formula by spreadsheet apps that open the CSV -- prefix it
+    so it round-trips as inert text instead."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO audit_log (occurred_at, action, actor, detail) VALUES "
+            "('2026-11-02 12:00:00', 'create_user', 'admin', '=HYPERLINK(\"http://evil\")')"
+        )
+        conn.commit()
+
+        response = client.get("/api/admin/audit-log.csv")
+        assert response.status_code == 200
+        # Prefixed with a leading `'` so a spreadsheet treats the cell as text,
+        # not a formula -- the raw payload still appears, just made inert.
+        assert "'=HYPERLINK" in response.text
     finally:
         conn.close()
 

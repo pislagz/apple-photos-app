@@ -324,9 +324,16 @@ def create_session(
     raw_token = secrets.token_urlsafe(32)
     lifetime_seconds = session_lifetime_seconds(conn, client, remember_me)
     conn.execute(
-        "INSERT INTO sessions (id, user_id, device, expires_at, remember_me) "
-        "VALUES (?, ?, ?, datetime('now', ?), ?)",
-        (_hash_token(raw_token), user_id, device, f"+{lifetime_seconds} seconds", int(remember_me)),
+        "INSERT INTO sessions (id, public_id, user_id, device, expires_at, remember_me) "
+        "VALUES (?, ?, ?, ?, datetime('now', ?), ?)",
+        (
+            _hash_token(raw_token),
+            secrets.token_hex(16),
+            user_id,
+            device,
+            f"+{lifetime_seconds} seconds",
+            int(remember_me),
+        ),
     )
     conn.commit()
     return raw_token, lifetime_seconds
@@ -348,7 +355,8 @@ def lookup_session(conn: sqlite3.Connection, raw_token: str) -> sqlite3.Row | No
     _prune_expired_sessions(conn)
     session_id = _hash_token(raw_token)
     row = conn.execute(
-        "SELECT sessions.*, users.username AS username, users.role AS role, users.disabled AS disabled "
+        "SELECT sessions.*, users.username AS username, users.role AS role, users.disabled AS disabled, "
+        "users.layout_override AS layout_override "
         "FROM sessions JOIN users ON users.id = sessions.user_id "
         "WHERE sessions.id = ? AND sessions.expires_at > datetime('now')",
         (session_id,),
@@ -373,6 +381,23 @@ def revoke_session_by_id(conn: sqlite3.Connection, session_id: str) -> None:
     """Revoke a session by its stored (already-hashed) id -- what an admin's
     Sessions screen (P1.10) lists and revokes, never the raw cookie value."""
     conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+    conn.commit()
+
+
+def revoke_session_by_public_id(conn: sqlite3.Connection, public_id: str) -> None:
+    """Revoke a session by its opaque `public_id` -- what the admin's
+    Sessions screen actually lists and revokes by (see `SessionResponse` in
+    `admin_panel.py`), never `sessions.id` (the sha256 hash used to look a
+    session up from its cookie)."""
+    conn.execute("DELETE FROM sessions WHERE public_id = ?", (public_id,))
+    conn.commit()
+
+
+def revoke_sessions_for_user(conn: sqlite3.Connection, user_id: int) -> None:
+    """Revoke every session belonging to a user. Called whenever that
+    user's password changes (an admin's reset, or their own change) -- a
+    stolen or shared cookie from before the change must not keep working."""
+    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     conn.commit()
 
 
@@ -779,7 +804,10 @@ def _enforce_tailnet_allowlist(request: Request, db: sqlite3.Connection = Depend
         return
     login = _trusted_tailscale_user_login(request)
     if login is None or login.strip().lower() not in allowed:
-        raise HTTPException(status_code=403, detail="tailnet identity not allowed")
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "tailnet_identity_not_allowed", "message": "tailnet identity not allowed"},
+        )
 
 
 def require_session(request: Request, db: sqlite3.Connection = Depends(get_db)) -> sqlite3.Row:
@@ -844,7 +872,6 @@ def require_library_assignment(
 
 
 LIBRARY_ROUTE_PATH_PREFIX = "/api/libraries/{"
-LIBRARY_ROUTE_ID_PREFIX = "/api/libraries/{library_id}"
 
 
 def _dependency_closure(dependant: object) -> set[object]:
@@ -897,13 +924,22 @@ def unguarded_library_routes(app: FastAPI) -> list[str]:
     pointed to. The literal-spelling check below catches that misnamed
     route regardless of which of those two things it would have done, so a
     new library route that forgets the guard, or spells its path parameter
-    wrong, cannot serve one user's library to another."""
+    wrong, cannot serve one user's library to another.
+
+    The spelling check compares the whole path *segment*, not just a
+    string prefix: `/api/libraries/{library_id}x/...` starts with the same
+    characters as a correctly-spelled route, so a plain `startswith` would
+    miss it entirely -- its first segment is `{library_id}x`, not
+    `{library_id}`."""
     violations = []
     for route in _leaf_routes(app.routes):
         path = getattr(route, "path", "")
         if not path.startswith(LIBRARY_ROUTE_PATH_PREFIX):
             continue
-        if not path.startswith(LIBRARY_ROUTE_ID_PREFIX):
+        # ["", "api", "libraries", "{library_id}", ...] -- segment [3] is
+        # the one that must spell `{library_id}` exactly, not merely start
+        # with it (a plain `startswith` would also match `{library_id}x`).
+        if path.split("/")[3] != "{library_id}":
             violations.append(path)
             continue
         dependant = getattr(route, "dependant", None)
@@ -944,6 +980,22 @@ class LoginRequest(BaseModel):
 class AuthUserResponse(BaseModel):
     username: str
     role: Literal["admin", "user"]
+
+
+class SetupStatusResponse(BaseModel):
+    needs_setup: bool
+
+
+@router.get(
+    "/api/setup/status",
+    response_model=SetupStatusResponse,
+    dependencies=[Depends(_enforce_tailnet_allowlist)],
+)
+def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusResponse:
+    """Whether `POST /api/setup/admin` is still open, so the web app can show
+    "Create admin account" instead of "Sign in" before any user row exists."""
+    (existing_users,) = db.execute("SELECT COUNT(*) FROM users").fetchone()
+    return SetupStatusResponse(needs_setup=existing_users == 0)
 
 
 @router.post(

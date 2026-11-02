@@ -23,6 +23,15 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Lets the page force-clear the app shell cache on logout, so the next
+// sign-in (possibly a different user, on a shared device) never serves a
+// stale cached navigation from before the logout.
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "CLEAR_CACHE") {
+    event.waitUntil(caches.delete(CACHE_NAME));
+  }
+});
+
 // Only a full 200 response is safe to store: a 206 (Range) response rejects
 // cache.put(), and an opaque (cross-origin no-cors) response has status 0
 // and would cache an unreadable blob.

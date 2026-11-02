@@ -187,13 +187,21 @@ def _mark_index_error(db: sqlite3.Connection, library_id: int, error: str) -> No
     db.commit()
 
 
-def _run_index_job(
-    lock: threading.Lock, data_dir: pathlib.Path, library_id: int, path: pathlib.Path, *, force: bool
-) -> None:
+def _run_index_job(data_dir: pathlib.Path, library_id: int, path: pathlib.Path, *, force: bool) -> None:
     """Runs on its own `app.db` connection -- the request's `get_db`
     connection is closed before a `BackgroundTasks` callback runs, and in
     production a fresh connection is handed out per request, so a job that
-    outlives the request cannot borrow it."""
+    outlives the request cannot borrow it.
+
+    Takes the per-library lock itself, once the job actually starts, rather
+    than at scheduling time: a `BackgroundTasks` callback that FastAPI never
+    ends up running (e.g. the request errored before returning) used to
+    leave the lock held forever, wedging every later reindex for that
+    library. A non-blocking acquire here is also the "already running, skip
+    this trigger" check `_schedule_index_job` used to do."""
+    lock = _lock_for(library_id)
+    if not lock.acquire(blocking=False):
+        return
     conn = app_db.connect(data_dir)
     try:
         _mark_indexing(conn, library_id)
@@ -215,12 +223,25 @@ def _schedule_index_job(
     *,
     force: bool,
 ) -> None:
-    """Non-blocking: if a job for this library is already running, this
-    trigger is a no-op rather than queuing a second walk behind it."""
-    lock = _lock_for(library_id)
-    if not lock.acquire(blocking=False):
-        return
-    background_tasks.add_task(_run_index_job, lock, data_dir, library_id, path, force=force)
+    background_tasks.add_task(_run_index_job, data_dir, library_id, path, force=force)
+
+
+def reset_stale_indexing_state(conn: sqlite3.Connection) -> None:
+    """Self-heals a library stuck showing `index_state = 'indexing'` because
+    the process that was running its job died (crash, kill, restart) without
+    reaching `_mark_indexed`/`_mark_index_error`. The per-library lock lives
+    only in this process's memory, so after a restart it is never actually
+    held; any library whose lock is free but whose stored state still says
+    "indexing" was abandoned mid-job, not genuinely in progress. Safe to call
+    on every process start: a live job holds its lock, so this skips it."""
+    rows = conn.execute("SELECT id FROM libraries WHERE index_state = 'indexing'").fetchall()
+    for row in rows:
+        lock = _lock_for(row["id"])
+        if lock.acquire(blocking=False):
+            try:
+                _mark_index_error(conn, row["id"], "indexing was interrupted and did not finish")
+            finally:
+                lock.release()
 
 
 def _maybe_reindex(
@@ -293,6 +314,13 @@ def add_library(
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="this path is already registered") from exc
     library_id = cursor.lastrowid
+    # The admin who registers a library can see it immediately, without a
+    # separate trip to the access matrix; every other user still needs an
+    # explicit grant there.
+    db.execute(
+        "INSERT OR IGNORE INTO library_assignments (user_id, library_id) VALUES (?, ?)",
+        (admin["user_id"], library_id),
+    )
     # Committed right away, before indexing is even scheduled: the initial
     # walk now runs in the background on its own connection, so a failure in
     # it can never roll back this INSERT and turn a bad library path into a
