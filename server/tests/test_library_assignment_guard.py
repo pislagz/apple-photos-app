@@ -28,7 +28,12 @@ def _probe_router() -> APIRouter:
 
 
 def _client(tmp_path):
-    app = create_app()
+    # An unbuilt `web_dist_dir` keeps this test independent of whether `web/`
+    # happens to have a local build on disk: the default dist dir, if one
+    # exists, mounts a catch-all `/{full_path:path}` route that would
+    # otherwise shadow the test-only `/api/libraries/{library_id}/_probe`
+    # route added below, since it's registered first and matches first.
+    app = create_app(web_dist_dir=tmp_path / "no-web-dist")
     conn = app_db.connect(tmp_path)
     app.dependency_overrides[session_auth.get_db] = lambda: conn
     app.include_router(_probe_router())
@@ -231,6 +236,22 @@ def test_query_string_cannot_override_the_path_library_id(tmp_path):
         assert response.status_code == 404
     finally:
         conn.close()
+
+
+def test_router_audit_catches_a_path_segment_merely_starting_with_library_id():
+    """`/api/libraries/{library_id}x/...` shares a string prefix with a
+    correctly-spelled route, but its first path segment is `{library_id}x`,
+    not `{library_id}` -- a plain `startswith` check would miss this."""
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.get("/api/libraries/{library_id}x/y")
+    def odd(library_id: str, library: object = Depends(session_auth.require_library_assignment)) -> dict:
+        return {}
+
+    app.include_router(router)
+
+    assert session_auth.unguarded_library_routes(app) == ["/api/libraries/{library_id}x/y"]
 
 
 def test_router_audit_ignores_routes_outside_the_library_prefix():

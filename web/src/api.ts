@@ -5,10 +5,12 @@
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, code?: string) {
     super(detail);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -16,13 +18,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, credentials: "include" });
   if (!response.ok) {
     let detail = response.statusText;
+    let code: string | undefined;
     try {
       const body = await response.json();
-      if (typeof body?.detail === "string") detail = body.detail;
+      if (typeof body?.detail === "string") {
+        detail = body.detail;
+      } else if (typeof body?.detail?.message === "string") {
+        // Structured `{code, message}` detail (e.g. the tailnet allow-list
+        // 403) -- `code` is the stable machine-readable part; `message` is
+        // the human-readable text the plain-string case also carries.
+        detail = body.detail.message;
+        if (typeof body.detail.code === "string") code = body.detail.code;
+      }
     } catch {
       // no JSON body; fall back to statusText
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -47,6 +58,7 @@ export interface MeResponse {
   username: string;
   role: Role;
   libraries: LibrarySummary[];
+  layout_override: "desktop" | "mobile" | null;
 }
 
 export interface AuthUserResponse {
@@ -56,6 +68,21 @@ export interface AuthUserResponse {
 
 export function getMe(): Promise<MeResponse> {
   return request<MeResponse>("/api/me");
+}
+
+export interface SetupStatusResponse {
+  needs_setup: boolean;
+}
+
+// Lets the shell show "Create admin account" instead of "Sign in" before
+// any user row exists. `POST /api/setup/admin` 409s once it has run once,
+// so this is only ever a display choice, not a security boundary.
+export function getSetupStatus(): Promise<SetupStatusResponse> {
+  return request<SetupStatusResponse>("/api/setup/status");
+}
+
+export function setupAdmin(username: string, password: string): Promise<AuthUserResponse> {
+  return mutate<AuthUserResponse>("POST", "/api/setup/admin", { username, password });
 }
 
 // `client` picks the session lifetime (`session_auth.py`): longer for the
@@ -77,4 +104,10 @@ export function login(
 
 export function logout(): Promise<void> {
   return mutate<void>("POST", "/api/auth/logout");
+}
+
+// The server is the source of truth for this choice; localStorage
+// (`useLayout.ts`) is only a fast default while `/api/me` loads.
+export function setLayoutOverride(value: "desktop" | "mobile" | null): Promise<void> {
+  return mutate<void>("PUT", "/api/me/layout-override", { layout_override: value });
 }

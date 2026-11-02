@@ -154,6 +154,10 @@ def update_user(
             (session_auth.hash_password(payload.password), target["id"]),
         )
         changed_fields.append("password")
+        # A reset or self-change must invalidate every cookie issued under
+        # the old password -- otherwise a stolen or shared session keeps
+        # working right through the "fix".
+        session_auth.revoke_sessions_for_user(db, target["id"])
     db.commit()
     if changed_fields:
         app_db.write_audit_log(
@@ -429,7 +433,7 @@ def list_sessions(
     ).fetchall()
     return [
         SessionResponse(
-            id=row["id"],
+            id=row["public_id"],
             username=row["username"],
             device=row["device"],
             created_at=row["created_at"],
@@ -451,10 +455,10 @@ def revoke_session(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> None:
-    row = db.execute("SELECT user_id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+    row = db.execute("SELECT user_id FROM sessions WHERE public_id = ?", (session_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
-    session_auth.revoke_session_by_id(db, session_id)
+    session_auth.revoke_session_by_public_id(db, session_id)
     app_db.write_audit_log(db, "revoke_session", user_id=row["user_id"], actor=admin["username"])
 
 
@@ -485,6 +489,19 @@ _AUDIT_LOG_SELECT = (
 
 _AUDIT_LOG_CSV_MAX_ROWS = 100_000
 
+# Spreadsheet formula injection: a cell that opens with one of these
+# characters is interpreted as a formula by Excel/Sheets/LibreOffice when
+# the CSV is opened, not displayed as text. `detail` and `actor` are
+# admin-controlled but round-trip values we don't otherwise sanitize, so
+# guard every exported cell rather than tracking which columns are "safe".
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe_cell(value: object) -> object:
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
 
 def _audit_log_filters(
     user_id: int | None, library_id: int | None, date_from: str | None, date_to: str | None
@@ -501,7 +518,11 @@ def _audit_log_filters(
         clauses.append("audit_log.occurred_at >= ?")
         params.append(date_from)
     if date_to is not None:
-        clauses.append("audit_log.occurred_at <= ?")
+        # `date_to` is a plain YYYY-MM-DD day, not a timestamp -- a
+        # straight `<=` comparison against it would exclude every entry
+        # from later that same day. Compare against the start of the next
+        # day instead so the whole end day is included.
+        clauses.append("audit_log.occurred_at < date(?, '+1 day')")
         params.append(date_to)
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, params
@@ -568,7 +589,8 @@ def read_audit_log_csv(
     for row in rows:
         entry = _to_audit_entry(row)
         writer.writerow(
-            [
+            _csv_safe_cell(value)
+            for value in (
                 entry.id,
                 entry.occurred_at,
                 entry.action,
@@ -579,7 +601,7 @@ def read_audit_log_csv(
                 entry.library_display_name,
                 entry.asset_id,
                 entry.detail,
-            ]
+            )
         )
     headers = {"Content-Disposition": "attachment; filename=audit-log.csv"}
     if truncated:

@@ -1,38 +1,91 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getMe, login as apiLogin, logout as apiLogout, type MeResponse } from "../api";
+import {
+  ApiError,
+  getMe,
+  getSetupStatus,
+  login as apiLogin,
+  logout as apiLogout,
+  setLayoutOverride as apiSetLayoutOverride,
+  setupAdmin as apiSetupAdmin,
+  type MeResponse,
+} from "../api";
 import AccessRefused from "./AccessRefused";
 import DesktopShell from "./DesktopShell";
 import LoginScreen, { type LoginError } from "./LoginScreen";
 import MobileShell from "./MobileShell";
-import { isStandalone, useLayout } from "./useLayout";
+import SetupScreen from "./SetupScreen";
+import { isStandalone, type LayoutOverride, useLayout } from "./useLayout";
 
-type Status = "loading" | "anonymous" | "authenticated";
+type Status = "loading" | "needs-setup" | "anonymous" | "authenticated";
 
 export default function AppShell() {
-  const { layout, override, setOverride } = useLayout();
+  const { layout, override, setOverride, applyRemoteOverride } = useLayout();
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [loginError, setLoginError] = useState<LoginError | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const refreshMe = useCallback(async () => {
     try {
       const response = await getMe();
       setMe(response);
       setStatus("authenticated");
+      // The server is authoritative once it answers -- localStorage was
+      // only this render's fast default.
+      applyRemoteOverride(response.layout_override ?? "auto");
     } catch (error) {
-      if (error instanceof ApiError && error.status === 403 && error.message === "tailnet identity not allowed") {
+      if (error instanceof ApiError && error.status === 403 && error.code === "tailnet_identity_not_allowed") {
         setBlocked(true);
         return;
       }
       setMe(null);
       setStatus("anonymous");
     }
-  }, []);
+  }, [applyRemoteOverride]);
 
   useEffect(() => {
-    refreshMe();
+    (async () => {
+      // Checked once up front, before `/api/me`: a fresh install has no
+      // admin yet, so "Sign in" would have nothing to sign in to.
+      try {
+        const { needs_setup } = await getSetupStatus();
+        if (needs_setup) {
+          setStatus("needs-setup");
+          return;
+        }
+      } catch {
+        // Fall through to the normal sign-in flow if the status check
+        // itself fails (e.g. blocked by the tailnet allow-list).
+      }
+      refreshMe();
+    })();
   }, [refreshMe]);
+
+  async function handleSetup(username: string, password: string) {
+    setSetupError(null);
+    try {
+      await apiSetupAdmin(username, password);
+      await apiLogin(username, password, false, isStandalone() ? "pwa" : "desktop");
+      await refreshMe();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        // Someone else's first-run request won the race; this is now a
+        // normal sign-in.
+        setStatus("anonymous");
+        return;
+      }
+      setSetupError(error instanceof ApiError ? error.message : "Could not create the admin account. Try again.");
+    }
+  }
+
+  function handleLayoutOverrideChange(value: LayoutOverride) {
+    setOverride(value);
+    apiSetLayoutOverride(value === "auto" ? null : value).catch(() => {
+      // Best-effort: the local choice still applies this session even if
+      // the server write fails (offline tab, expired session, ...).
+    });
+  }
 
   async function handleLogin(username: string, password: string) {
     setLoginError(null);
@@ -44,7 +97,7 @@ export default function AppShell() {
         setLoginError({ kind: "generic", message: "Sign in failed. Try again." });
         return;
       }
-      if (error.status === 403 && error.message === "tailnet identity not allowed") {
+      if (error.status === 403 && error.code === "tailnet_identity_not_allowed") {
         setBlocked(true);
         return;
       }
@@ -62,6 +115,9 @@ export default function AppShell() {
 
   async function handleLogout() {
     await apiLogout();
+    // A shared device's next sign-in (possibly a different user) must never
+    // see a cached navigation from before this logout.
+    navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_CACHE" });
     setMe(null);
     setStatus("anonymous");
   }
@@ -74,17 +130,31 @@ export default function AppShell() {
     return null;
   }
 
+  if (status === "needs-setup") {
+    return <SetupScreen layout={layout} error={setupError} onSubmit={handleSetup} />;
+  }
+
   if (status === "anonymous" || me === null) {
     return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} />;
   }
 
   if (layout === "mobile") {
     return (
-      <MobileShell me={me} layoutOverride={override} onLayoutOverrideChange={setOverride} onLogout={handleLogout} />
+      <MobileShell
+        me={me}
+        layoutOverride={override}
+        onLayoutOverrideChange={handleLayoutOverrideChange}
+        onLogout={handleLogout}
+      />
     );
   }
 
   return (
-    <DesktopShell me={me} layoutOverride={override} onLayoutOverrideChange={setOverride} onLogout={handleLogout} />
+    <DesktopShell
+      me={me}
+      layoutOverride={override}
+      onLayoutOverrideChange={handleLayoutOverrideChange}
+      onLogout={handleLogout}
+    />
   );
 }

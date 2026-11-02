@@ -5,9 +5,10 @@ import pathlib
 import shutil
 import sqlite3
 
+from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, indexer, libraries, session_auth
+from photos_viewer import app_db, indexer, libraries, library_admin, session_auth
 from photos_viewer.main import create_app
 from tests.fixtures import build_closed_fixture_library, build_fixture_library
 
@@ -164,6 +165,79 @@ def test_add_library_writes_an_audit_row(tmp_path):
 
         assert row["actor"] == "admin"
         assert str(package_path) in row["detail"]
+    finally:
+        conn.close()
+
+
+def test_add_library_grants_access_to_the_creating_admin(tmp_path):
+    """Issue #53: the admin who registers a library can see it right away;
+    nobody else gets it without an explicit access-matrix grant."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+        assigned = {
+            row["library_id"]
+            for row in conn.execute("SELECT library_id FROM library_assignments WHERE user_id = ?", (admin_id,))
+        }
+        assert assigned == {added["id"]}
+    finally:
+        conn.close()
+
+
+def test_scheduling_an_index_job_does_not_hold_its_lock_until_the_job_runs(tmp_path):
+    """Issue #53: the lock used to be acquired when a job was scheduled, so
+    a `BackgroundTasks` callback FastAPI never got around to running (e.g.
+    the request errored before returning a response) left it held forever,
+    wedging every later reindex. Taking the lock inside the job itself, once
+    it actually starts, means an unscheduled/dropped job never leaks it."""
+    unrun_tasks = BackgroundTasks()
+    library_id = 999999
+    library_admin._schedule_index_job(unrun_tasks, tmp_path, library_id, tmp_path / "missing.photoslibrary", force=True)
+
+    lock = library_admin._lock_for(library_id)
+    assert lock.acquire(blocking=False)
+    lock.release()
+
+
+def test_reset_stale_indexing_state_clears_a_library_whose_job_died(tmp_path):
+    """Issue #53: if the server dies mid-index, `index_state` stays
+    "indexing" forever unless something notices on the next startup. The
+    in-process lock is never actually held after a restart, so a stored
+    "indexing" state with a free lock means the job that set it is gone."""
+    conn = app_db.connect(tmp_path)
+    try:
+        cursor = conn.execute("INSERT INTO libraries (display_name, path) VALUES ('Stuck', '/stuck.photoslibrary')")
+        library_id = cursor.lastrowid
+        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        conn.commit()
+
+        library_admin.reset_stale_indexing_state(conn)
+
+        row = conn.execute("SELECT index_state, index_error FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        assert row["index_state"] == "error"
+        assert row["index_error"]
+    finally:
+        conn.close()
+
+
+def test_reset_stale_indexing_state_leaves_a_genuinely_running_job_alone(tmp_path):
+    conn = app_db.connect(tmp_path)
+    try:
+        cursor = conn.execute("INSERT INTO libraries (display_name, path) VALUES ('Busy', '/busy.photoslibrary')")
+        library_id = cursor.lastrowid
+        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        conn.commit()
+        lock = library_admin._lock_for(library_id)
+        lock.acquire()
+        try:
+            library_admin.reset_stale_indexing_state(conn)
+            row = conn.execute("SELECT index_state FROM libraries WHERE id = ?", (library_id,)).fetchone()
+            assert row["index_state"] == "indexing"
+        finally:
+            lock.release()
     finally:
         conn.close()
 

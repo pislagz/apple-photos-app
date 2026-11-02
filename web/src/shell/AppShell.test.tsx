@@ -13,7 +13,12 @@ function setViewport(width: number, finePointer: boolean) {
   })) as unknown as typeof window.matchMedia;
 }
 
-const ME_RESPONSE = { username: "alice", role: "user", libraries: [{ id: 1, display_name: "Family" }] };
+const ME_RESPONSE = {
+  username: "alice",
+  role: "user",
+  libraries: [{ id: 1, display_name: "Family" }],
+  layout_override: null,
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -24,6 +29,7 @@ describe("AppShell", () => {
   it("shows a full-screen login form on the mobile layout", async () => {
     setViewport(390, true);
     mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return jsonResponse({ detail: "not authenticated" }, 401);
       throw new Error(`unexpected request: ${url}`);
     });
@@ -37,6 +43,7 @@ describe("AppShell", () => {
   it("shows a centered login card on the desktop layout", async () => {
     setViewport(1400, true);
     mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return jsonResponse({ detail: "not authenticated" }, 401);
       throw new Error(`unexpected request: ${url}`);
     });
@@ -50,7 +57,10 @@ describe("AppShell", () => {
   it("shows a refused-access message on a 403 tailnet rejection, not a generic error", async () => {
     setViewport(1400, true);
     mockFetch((url) => {
-      if (url === "/api/me") return jsonResponse({ detail: "tailnet identity not allowed" }, 403);
+      if (url === "/api/setup/status") return { needs_setup: false };
+      if (url === "/api/me") {
+        return jsonResponse({ detail: { code: "tailnet_identity_not_allowed", message: "tailnet identity not allowed" } }, 403);
+      }
       throw new Error(`unexpected request: ${url}`);
     });
 
@@ -63,9 +73,10 @@ describe("AppShell", () => {
   it("shows a refused-access message when login itself is rejected by the tailnet allow-list", async () => {
     setViewport(1400, true);
     mockFetch((url, init) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return jsonResponse({ detail: "not authenticated" }, 401);
       if (url === "/api/auth/login" && init?.method === "POST") {
-        return jsonResponse({ detail: "tailnet identity not allowed" }, 403);
+        return jsonResponse({ detail: { code: "tailnet_identity_not_allowed", message: "tailnet identity not allowed" } }, 403);
       }
       throw new Error(`unexpected request: ${url}`);
     });
@@ -82,6 +93,7 @@ describe("AppShell", () => {
   it("shows a lockout message on a 429 from login, not a generic error", async () => {
     setViewport(1400, true);
     mockFetch((url, init) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return jsonResponse({ detail: "not authenticated" }, 401);
       if (url === "/api/auth/login" && init?.method === "POST") {
         return jsonResponse({ detail: "too many failed attempts, try again later" }, 429);
@@ -101,6 +113,7 @@ describe("AppShell", () => {
   it("renders the mobile tab bar with only Library enabled", async () => {
     setViewport(390, true);
     mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return ME_RESPONSE;
       throw new Error(`unexpected request: ${url}`);
     });
@@ -119,6 +132,7 @@ describe("AppShell", () => {
   it("renders the desktop sidebar with only Library enabled", async () => {
     setViewport(1400, true);
     mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return ME_RESPONSE;
       throw new Error(`unexpected request: ${url}`);
     });
@@ -136,6 +150,7 @@ describe("AppShell", () => {
     setViewport(1400, true);
     let signedIn = true;
     mockFetch((url, init) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return signedIn ? ME_RESPONSE : jsonResponse({ detail: "not authenticated" }, 401);
       if (url === "/api/auth/logout" && init?.method === "POST") {
         signedIn = false;
@@ -148,5 +163,45 @@ describe("AppShell", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument());
+  });
+
+  it("shows the first-run setup screen instead of sign-in when no admin exists yet", async () => {
+    setViewport(1400, true);
+    mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: true };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+
+    expect(await screen.findByRole("heading", { name: "Create admin account" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
+  it("creates the admin account, signs in, and lands on the normal shell", async () => {
+    setViewport(1400, true);
+    let adminCreated = false;
+    mockFetch((url, init) => {
+      if (url === "/api/setup/status") return { needs_setup: !adminCreated };
+      if (url === "/api/setup/admin" && init?.method === "POST") {
+        adminCreated = true;
+        return jsonResponse({ username: "alice", role: "admin" }, 201);
+      }
+      if (url === "/api/auth/login" && init?.method === "POST") {
+        return { username: "alice", role: "admin" };
+      }
+      if (url === "/api/me") {
+        return adminCreated ? { ...ME_RESPONSE, role: "admin" } : jsonResponse({ detail: "not authenticated" }, 401);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("heading", { name: "Create admin account" });
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create admin account" }));
+
+    await waitFor(() => expect(screen.getByRole("navigation", { name: "Sections" })).toBeInTheDocument());
   });
 });

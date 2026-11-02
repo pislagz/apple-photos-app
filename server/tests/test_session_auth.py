@@ -155,6 +155,21 @@ def test_first_run_disables_itself_after_the_first_admin(client):
     assert second.status_code == 409
 
 
+def test_setup_status_reports_needs_setup_before_any_admin_exists(client):
+    response = client.get("/api/setup/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"needs_setup": True}
+
+
+def test_setup_status_reports_no_setup_needed_once_an_admin_exists(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.get("/api/setup/status")
+
+    assert response.json() == {"needs_setup": False}
+
+
 def test_concurrent_first_run_setup_creates_exactly_one_admin(tmp_path):
     """Two first-run requests racing must not both insert an admin: the
     count-then-insert in `setup_admin` is one `BEGIN IMMEDIATE` transaction,
@@ -1524,6 +1539,7 @@ def test_tailnet_allowlist_rejects_a_non_matching_header(loopback_client):
     response = loopback_client.get("/api/auth/me", headers={"tailscale-user-login": "bob"})
 
     assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "tailnet_identity_not_allowed"
 
 
 def test_tailnet_allowlist_allows_a_matching_header(loopback_client):

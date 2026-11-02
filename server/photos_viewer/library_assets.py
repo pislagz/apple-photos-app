@@ -68,6 +68,7 @@ class MeResponse(BaseModel):
     username: str
     role: Literal["admin", "user"]
     libraries: list[LibrarySummary]
+    layout_override: Literal["desktop", "mobile"] | None
 
 
 @router.get("/api/me", response_model=MeResponse)
@@ -85,7 +86,27 @@ def read_me(
         username=session["username"],
         role=session["role"],
         libraries=[LibrarySummary(id=row["id"], display_name=row["display_name"]) for row in rows],
+        layout_override=session["layout_override"],
     )
+
+
+class LayoutOverrideRequest(BaseModel):
+    layout_override: Literal["desktop", "mobile"] | None
+
+
+@router.put("/api/me/layout-override", status_code=204, dependencies=[Depends(session_auth._reject_cross_site_requests)])
+def write_layout_override(
+    payload: LayoutOverrideRequest,
+    session: sqlite3.Row = Depends(session_auth.require_session),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> None:
+    """Server-side layout choice, so it follows a user across devices.
+    The web app's localStorage copy is only a fast default while this
+    loads -- this value is authoritative once `/api/me` returns it."""
+    db.execute(
+        "UPDATE users SET layout_override = ? WHERE id = ?", (payload.layout_override, session["user_id"])
+    )
+    db.commit()
 
 
 class AssetListItem(BaseModel):

@@ -283,6 +283,20 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE libraries ADD COLUMN index_state TEXT NOT NULL DEFAULT 'idle'",
         "ALTER TABLE libraries ADD COLUMN index_error TEXT",
     ],
+    # 11 (P1.12B): `sessions.public_id` is an opaque, random id -- what the
+    # admin's Sessions screen shows and revokes by -- distinct from
+    # `sessions.id`, the sha256 hash used to look a session up from its
+    # cookie. Backfilling it for already-existing rows keeps a session
+    # created before this migration revocable too. `users.layout_override`
+    # is that user's chosen layout (desktop vs. mobile), stored server-side
+    # so it follows them across devices; the browser's localStorage copy is
+    # only a fast default while this loads.
+    [
+        "ALTER TABLE sessions ADD COLUMN public_id TEXT",
+        "UPDATE sessions SET public_id = lower(hex(randomblob(16))) WHERE public_id IS NULL",
+        "CREATE UNIQUE INDEX idx_sessions_public_id ON sessions(public_id)",
+        "ALTER TABLE users ADD COLUMN layout_override TEXT",
+    ],
 ]
 
 
