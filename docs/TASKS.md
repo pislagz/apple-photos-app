@@ -228,6 +228,18 @@ Not blocking; pick up when convenient.
 - A full index pass is one long `app.db` write (the upsert-by-uuid transaction); fine for the synthetic fixture and real-library sizes seen so far, but a multi-million-asset library could hold the write lock long enough to matter.
 - Nits: `media_cache_size_limit_bytes = 0` silently means "unlimited" (falls back to the 5 GB default) instead of "no cache"; the admin-settings default quality (82) doesn't match `media.py`'s old module-constant default (85); a failed JPEG (`?format=jpeg`) conversion returns 404 while a failed thumbnail decode returns 415 -- pick one convention.
 
+#### Backlog (from PR #56 review)
+
+Not blocking; pick up when convenient.
+
+- There is no self-service password-change endpoint yet, so "a user's own password change revokes their sessions" only holds for an admin resetting their own password through `PATCH /api/admin/users/{username}`. When a user-facing change-password route is added, it must call `revoke_sessions_for_user` too (and probably keep the current session). The P1.12B "Done" note above overstates this.
+- An admin resetting their own password revokes every one of their sessions, including the one making the request, so they're signed out mid-action with no message. Either keep the current session or have the admin UI explain and return to sign-in.
+- Startup's stale-`indexing` reset marks the library `error` ("indexing was interrupted") and doesn't re-queue a walk; the admin has to press Reindex. Consider scheduling a background re-index on startup instead.
+- `main.py` uses the deprecated `@app.on_event("startup")` (hundreds of deprecation warnings in pytest); move to a `lifespan` handler.
+- If `web/dist` exists but has no `index.html` (half-finished build), every non-API path 500s; check for `index.html` before mounting the web app.
+- `_NO_STORE_PREFIXES` uses a plain `startswith("/api/me")`, so any future `/api/media...` or `/api/messages` route would silently get `no-store` too; match `/api/me` exactly or `/api/me/`.
+- Access matrix as its own admin sidebar item (optional in P1.12B) was not done.
+
 #### Planned: UI styling pass
 
 Before or alongside P1.14/P1.15: a dedicated pass to match the iOS 17 / Sequoia Photos look in `docs/design-refs/` (spacing, type scale, color, control shapes) rather than the current functional-but-generic chrome. Current shell components (`LoginScreen.tsx`, `SetupScreen.tsx`, `MobileShell.tsx`, `DesktopShell.tsx`, `LibraryPlaceholder.tsx`) are correct and tested but not styled to the references yet.
