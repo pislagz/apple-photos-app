@@ -47,7 +47,7 @@ from urllib.parse import urlsplit
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from argon2.low_level import Type
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, BeforeValidator, Field
 
 from . import app_db
@@ -757,6 +757,89 @@ def require_admin(session: sqlite3.Row = Depends(require_session)) -> sqlite3.Ro
     if session["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin only")
     return session
+
+
+def require_library_assignment(
+    library_id: int,
+    session: sqlite3.Row = Depends(require_session),
+    db: sqlite3.Connection = Depends(get_db),
+) -> sqlite3.Row:
+    """FastAPI dependency for every `/api/libraries/{library_id}/...` route:
+    the library row, or 404.
+
+    One query, joining `libraries` to `library_assignments` for this
+    caller, so "the library doesn't exist" and "it exists but isn't
+    assigned to you" are indistinguishable -- same status, same query shape
+    -- including for an admin who hasn't assigned the library to themselves
+    (CLAUDE.md's access-control scenario: admin routes are 403 for a
+    non-admin, but *this* guard treats an admin like anyone else, since
+    `library_assignments` has no admin-bypass row). See CLAUDE.md, "Foreign
+    library and asset ids return 404", for why this isn't a 403.
+    """
+    row = db.execute(
+        "SELECT libraries.* FROM libraries "
+        "JOIN library_assignments ON library_assignments.library_id = libraries.id "
+        "WHERE libraries.id = ? AND library_assignments.user_id = ?",
+        (library_id, session["user_id"]),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return row
+
+
+LIBRARY_ROUTE_PATH_PREFIX = "/api/libraries/{"
+
+
+def _dependency_closure(dependant: object) -> set[object]:
+    """Every dependency callable reachable from a route's `Dependant`,
+    including itself and each dependency's own dependencies, recursively --
+    so the guard is found whether a route depends on it directly or through
+    another dependency that itself depends on it."""
+    seen: set[object] = set()
+    stack = [dependant]
+    while stack:
+        current = stack.pop()
+        call = getattr(current, "call", None)
+        if call is None or call in seen:
+            continue
+        seen.add(call)
+        stack.extend(getattr(current, "dependencies", []))
+    return seen
+
+
+def _leaf_routes(routes: object) -> list[object]:
+    """Resolve FastAPI's lazy router-inclusion wrappers into the routes they
+    stand for. Since FastAPI's `app.include_router(...)` stopped eagerly
+    flattening included routes into `app.routes`, a route added through
+    `include_router` -- the pattern every router in this app uses -- only
+    exposes its real `path`/`dependant` through an `effective_candidates()`
+    call, and a router included inside another router needs the same
+    resolution applied again."""
+    leaves = []
+    for route in routes:
+        effective_candidates = getattr(route, "effective_candidates", None)
+        if callable(effective_candidates):
+            leaves.extend(_leaf_routes(effective_candidates()))
+        else:
+            leaves.append(route)
+    return leaves
+
+
+def unguarded_library_routes(app: FastAPI) -> list[str]:
+    """Every registered route whose path starts with `/api/libraries/{` that
+    does not depend on `require_library_assignment`, directly or
+    transitively. Empty is the only passing result -- a new library route
+    that forgets the guard would otherwise serve one user's library to
+    another."""
+    violations = []
+    for route in _leaf_routes(app.routes):
+        path = getattr(route, "path", "")
+        if not path.startswith(LIBRARY_ROUTE_PATH_PREFIX):
+            continue
+        dependant = getattr(route, "dependant", None)
+        if dependant is None or require_library_assignment not in _dependency_closure(dependant):
+            violations.append(path)
+    return violations
 
 
 router = APIRouter()
