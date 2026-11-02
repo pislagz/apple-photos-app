@@ -12,11 +12,76 @@ calls `PhotosDB.query` -- every read after indexing goes through `app.db`.
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 import sqlite3
 
 from . import libraries
+
+# `assets` columns written by `_write_index`, excluding `id` (assigned by
+# sqlite) and `library_id`/`uuid` (the upsert's conflict key, set once).
+_ASSET_COLUMNS = (
+    "filename",
+    "original_filename",
+    "title",
+    "description",
+    "date_created",
+    "date_created_local_day",
+    "date_added",
+    "date_modified",
+    "favorite",
+    "hidden",
+    "is_video",
+    "is_live_photo",
+    "is_screenshot",
+    "is_selfie",
+    "is_portrait",
+    "is_panorama",
+    "is_hdr",
+    "is_slow_mo",
+    "is_burst",
+    "width",
+    "height",
+    "original_filesize",
+    "uti",
+    "uti_original",
+    "latitude",
+    "longitude",
+    "place",
+    "place_country_code",
+    "place_address",
+    "path_original",
+    "path_edited",
+    "path_derivative",
+    "path_raw",
+    "path_live_photo",
+    "path_edited_live_photo",
+)
+
+
+def _to_utc_isoformat(value: datetime.datetime | None) -> str | None:
+    """One documented date format for `date_created`/`date_added`/
+    `date_modified`: UTC ISO-8601 with a literal `Z`.
+
+    osxphotos' `photo.date` carries the photo's own capture-location
+    tzoffset, while `photo.date_added`/`photo.date_modified` carry the
+    *indexing machine's* local tzoffset (`photos_datetime_local` in
+    osxphotos' `photosdb.py`) -- three columns in different reference
+    frames unless all three are converted to the same one here.
+    """
+    if value is None:
+        return None
+    return value.astimezone(datetime.UTC).isoformat().replace("+00:00", "Z")
+
+
+def _local_day(value: datetime.datetime | None) -> str | None:
+    """The photo's own capture-location calendar day, captured before the
+    UTC conversion above so a late-evening photo buckets on the day its
+    photographer saw, not the next day in UTC."""
+    if value is None:
+        return None
+    return value.strftime("%Y-%m-%d")
 
 
 def _file_signature(path: pathlib.Path) -> str:
@@ -89,12 +154,20 @@ def _write_index_and_update_signature(
         db.commit()
 
 
+_UPSERT_ASSET_SQL = (
+    "INSERT INTO assets (library_id, uuid, " + ", ".join(_ASSET_COLUMNS) + ") "
+    "VALUES (?, ?, " + ", ".join(["?"] * len(_ASSET_COLUMNS)) + ") "
+    "ON CONFLICT (library_id, uuid) DO UPDATE SET "
+    + ", ".join(f"{column} = excluded.{column}" for column in _ASSET_COLUMNS)
+)
+
+
 def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
-    # Deleting `assets`/`people`/`albums` cascades to the join tables
-    # (`ON DELETE CASCADE`), so a re-index is a clean replace, not a
-    # merge -- the fixture's single asset, inserted twice across two
-    # index runs, must end up as one row, not two.
-    db.execute("DELETE FROM assets WHERE library_id = ?", (library_id,))
+    # People/albums have no stability requirement of their own (nothing
+    # outside this module keeps a foreign key to them across index runs),
+    # so a clean replace -- cascading to `asset_people`/`asset_albums` via
+    # `ON DELETE CASCADE` -- is simplest; the join rows are rebuilt below
+    # against the (possibly pre-existing) stable asset ids.
     db.execute("DELETE FROM people WHERE library_id = ?", (library_id,))
     db.execute("DELETE FROM albums WHERE library_id = ?", (library_id,))
 
@@ -114,79 +187,86 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
         )
         album_ids[album.uuid] = cursor.lastrowid
 
-    for photo in photosdb.photos():
-        place = photo.place
-        latitude, longitude = photo.location
-        derivatives = photo.path_derivatives
-        cursor = db.execute(
-            """
-            INSERT INTO assets (
-                library_id, uuid, filename, original_filename, title, description,
-                date_created, date_added, date_modified, favorite, hidden,
-                is_video, is_live_photo, is_screenshot, is_selfie, is_portrait,
-                is_panorama, is_hdr, is_slow_mo, is_burst, width, height,
-                original_filesize, uti, uti_original, latitude, longitude,
-                place, place_country_code, place_address,
-                path_original, path_edited, path_derivative, path_raw,
-                path_live_photo, path_edited_live_photo
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    # Assets keep their `id` across a re-index (upsert by the library's
+    # natural key, `(library_id, uuid)`, instead of delete + reinsert) so
+    # `thumbnail_cache` rows, `audit_log.asset_id`, and the P1.9 keyset
+    # cursor -- all of which carry `assets.id` -- stay valid. A temp table
+    # of the uuids seen this walk lets the final cleanup delete only the
+    # assets actually gone from the library, in one statement, without
+    # building a giant `NOT IN (...)` parameter list.
+    db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
+    try:
+        for photo in photosdb.photos():
+            db.execute("INSERT INTO _seen_asset_uuids (uuid) VALUES (?)", (photo.uuid,))
+
+            place = photo.place
+            latitude, longitude = photo.location
+            derivatives = photo.path_derivatives
+            db.execute(
+                _UPSERT_ASSET_SQL,
+                (
+                    library_id,
+                    photo.uuid,
+                    photo.filename,
+                    photo.original_filename,
+                    photo.title,
+                    photo.description,
+                    _to_utc_isoformat(photo.date),
+                    _local_day(photo.date),
+                    _to_utc_isoformat(photo.date_added),
+                    _to_utc_isoformat(photo.date_modified),
+                    int(photo.favorite),
+                    int(photo.hidden),
+                    int(photo.ismovie),
+                    int(photo.live_photo),
+                    int(photo.screenshot),
+                    int(photo.selfie),
+                    int(photo.portrait),
+                    int(photo.panorama),
+                    int(photo.hdr),
+                    int(photo.slow_mo),
+                    int(photo.burst),
+                    photo.width,
+                    photo.height,
+                    photo.original_filesize,
+                    photo.uti,
+                    photo.uti_original,
+                    latitude,
+                    longitude,
+                    place.name if place else None,
+                    place.country_code if place else None,
+                    place.address_str if place else None,
+                    photo.path,
+                    photo.path_edited,
+                    derivatives[0] if derivatives else None,
+                    photo.path_raw,
+                    photo.path_live_photo,
+                    photo.path_edited_live_photo,
+                ),
             )
-            """,
-            (
-                library_id,
-                photo.uuid,
-                photo.filename,
-                photo.original_filename,
-                photo.title,
-                photo.description,
-                photo.date.isoformat(),
-                photo.date_added.isoformat() if photo.date_added else None,
-                photo.date_modified.isoformat() if photo.date_modified else None,
-                int(photo.favorite),
-                int(photo.hidden),
-                int(photo.ismovie),
-                int(photo.live_photo),
-                int(photo.screenshot),
-                int(photo.selfie),
-                int(photo.portrait),
-                int(photo.panorama),
-                int(photo.hdr),
-                int(photo.slow_mo),
-                int(photo.burst),
-                photo.width,
-                photo.height,
-                photo.original_filesize,
-                photo.uti,
-                photo.uti_original,
-                latitude,
-                longitude,
-                place.name if place else None,
-                place.country_code if place else None,
-                place.address_str if place else None,
-                photo.path,
-                photo.path_edited,
-                derivatives[0] if derivatives else None,
-                photo.path_raw,
-                photo.path_live_photo,
-                photo.path_edited_live_photo,
-            ),
+            asset_id = db.execute(
+                "SELECT id FROM assets WHERE library_id = ? AND uuid = ?", (library_id, photo.uuid)
+            ).fetchone()["id"]
+
+            for person in photo.person_info:
+                person_id = person_ids.get(person.uuid)
+                if person_id is not None:
+                    db.execute(
+                        "INSERT OR IGNORE INTO asset_people (asset_id, person_id) VALUES (?, ?)",
+                        (asset_id, person_id),
+                    )
+
+            for album in photo.album_info:
+                album_id = album_ids.get(album.uuid)
+                if album_id is not None:
+                    db.execute(
+                        "INSERT OR IGNORE INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
+                        (asset_id, album_id),
+                    )
+
+        db.execute(
+            "DELETE FROM assets WHERE library_id = ? AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
+            (library_id,),
         )
-        asset_id = cursor.lastrowid
-
-        for person in photo.person_info:
-            person_id = person_ids.get(person.uuid)
-            if person_id is not None:
-                db.execute(
-                    "INSERT OR IGNORE INTO asset_people (asset_id, person_id) VALUES (?, ?)",
-                    (asset_id, person_id),
-                )
-
-        for album in photo.album_info:
-            album_id = album_ids.get(album.uuid)
-            if album_id is not None:
-                db.execute(
-                    "INSERT OR IGNORE INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
-                    (asset_id, album_id),
-                )
+    finally:
+        db.execute("DROP TABLE _seen_asset_uuids")

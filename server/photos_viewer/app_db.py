@@ -269,6 +269,20 @@ _MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 10 (P1.12A): `date_created`/`date_added`/`date_modified` move to a
+    # single documented format (UTC ISO-8601) -- see `indexer.py`'s
+    # `_to_utc_isoformat`. `date_created_local_day` keeps the photo's own
+    # capture-location calendar day (osxphotos' `photo.date` carries the
+    # photo's own tzoffset; UTC alone would push a late-evening photo onto
+    # the next day) for `library_assets.py`'s summary buckets and from/to
+    # filters. `index_state`/`index_error` let an indexing job that now runs
+    # in the background (P1.12A) report progress instead of failing the
+    # request that happened to trigger it.
+    [
+        "ALTER TABLE assets ADD COLUMN date_created_local_day TEXT",
+        "ALTER TABLE libraries ADD COLUMN index_state TEXT NOT NULL DEFAULT 'idle'",
+        "ALTER TABLE libraries ADD COLUMN index_error TEXT",
+    ],
 ]
 
 

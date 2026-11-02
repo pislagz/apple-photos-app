@@ -8,6 +8,7 @@ alone can turn the synthetic fixture's HEIC asset into a grid image.
 from __future__ import annotations
 
 import io
+import os
 import pathlib
 
 import pytest
@@ -127,18 +128,28 @@ def test_get_or_generate_cache_key_changes_with_source_mtime(tmp_path, monkeypat
     cache_dir = tmp_path / "cache"
 
     media.get_or_generate(cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=source_path)
-    key_before = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns)
+    key_before = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
 
     # A re-index that re-fetches a changed original touches its mtime; the
     # cache key must follow it rather than serving stale bytes keyed only by
     # the (re-indexed, no-longer-stable) `assets.id`.
     new_mtime_ns = source_path.stat().st_mtime_ns + 1_000_000_000
-    import os
-
     os.utime(source_path, ns=(new_mtime_ns, new_mtime_ns))
-    key_after = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns)
+    key_after = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
 
     assert key_before != key_after
+
+
+def test_get_or_generate_cache_key_changes_with_quality(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    source_path = tmp_path / "plain.jpg"
+    Image.new("RGB", (800, 600)).save(source_path, format="JPEG")
+    mtime_ns = source_path.stat().st_mtime_ns
+
+    key_default = media.cache_key(1, "asset-uuid", "grid", mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_other_quality = media.cache_key(1, "asset-uuid", "grid", mtime_ns, media.SIZES["grid"], 40)
+
+    assert key_default != key_other_quality
 
 
 def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(tmp_path, monkeypatch):
@@ -184,6 +195,106 @@ def test_get_or_generate_with_missing_original_and_no_derivative_raises_media_ba
         )
 
     assert not cache_dir.exists()
+
+
+def test_pick_source_skips_a_decompression_bomb_derivative_and_falls_back_to_original(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.Image, "MAX_IMAGE_PIXELS", 10)
+    original = tmp_path / "original.jpg"
+    Image.new("RGB", (400, 300)).save(original, format="JPEG")
+    bomb_derivative = tmp_path / "derivative_bomb.jpg"
+    Image.new("RGB", (400, 300)).save(bomb_derivative, format="JPEG")
+
+    picked = media._pick_source(original, [bomb_derivative], target_px=media.SIZES["grid"])
+
+    assert picked == original
+
+
+def test_generate_raises_a_clean_error_for_a_decompression_bomb_source(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(media.Image, "MAX_IMAGE_PIXELS", 10)
+    source_path = tmp_path / "plain.jpg"
+    Image.new("RGB", (400, 300)).save(source_path, format="JPEG")
+
+    with pytest.raises(media.MediaBackendError, match="large"):
+        media.generate(source_path, "grid")
+
+
+def test_video_poster_derivative_is_preferred_over_ffmpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    video_path = tmp_path / "IMG_0005.MOV"
+    video_path.write_bytes(b"not a real video file")
+    poster = tmp_path / "IMG_0005_poster.jpeg"
+    Image.new("RGB", (800, 600), color=(9, 9, 9)).save(poster, format="JPEG")
+
+    result = media.generate(video_path, "grid", derivatives=[poster], is_video=True)
+
+    decoded = Image.open(io.BytesIO(result.data))
+    assert max(decoded.size) <= media.SIZES["grid"]
+
+
+def test_missing_original_falls_back_to_the_largest_insufficient_derivative(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    missing_original = tmp_path / "optimized_away.heic"
+    smaller = tmp_path / "derivative_small.jpg"
+    Image.new("RGB", (100, 80)).save(smaller, format="JPEG")
+    larger = tmp_path / "derivative_larger.jpg"
+    Image.new("RGB", (300, 200)).save(larger, format="JPEG")
+
+    picked = media._pick_source(missing_original, [smaller, larger], target_px=media.SIZES["preview"])
+
+    assert picked == larger
+
+
+def test_write_cache_is_atomic_and_leaves_no_temp_files(tmp_path):
+    cache_dir = tmp_path / "cache"
+
+    media._write_cache(cache_dir, "deadbeef", "jpg", b"some bytes")
+
+    files = list(cache_dir.rglob("*"))
+    assert [path for path in files if path.is_file()] == [media._cache_file(cache_dir, "deadbeef", "jpg")]
+    assert media._cache_file(cache_dir, "deadbeef", "jpg").read_bytes() == b"some bytes"
+
+
+def test_evict_if_needed_removes_oldest_files_first(tmp_path):
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    oldest = cache_dir / "oldest.jpg"
+    newest = cache_dir / "newest.jpg"
+    oldest.write_bytes(b"x" * 100)
+    newest.write_bytes(b"y" * 100)
+    os.utime(oldest, ns=(1_000_000_000, 1_000_000_000))
+    os.utime(newest, ns=(2_000_000_000, 2_000_000_000))
+
+    media._evict_if_needed(cache_dir, size_limit_bytes=150)
+
+    assert not oldest.exists()
+    assert newest.exists()
+
+
+def test_get_or_generate_evicts_the_older_entry_when_over_the_cache_size_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    cache_dir = tmp_path / "cache"
+    first_source = tmp_path / "first.jpg"
+    Image.new("RGB", (800, 600), color=(1, 1, 1)).save(first_source, format="JPEG")
+    second_source = tmp_path / "second.jpg"
+    Image.new("RGB", (800, 600), color=(2, 2, 2)).save(second_source, format="JPEG")
+
+    media.get_or_generate(cache_dir, library_id=1, asset_uuid="first", size="grid", source_path=first_source)
+    first_cached = next(path for path in cache_dir.rglob("*") if path.is_file())
+    one_entry_limit = first_cached.stat().st_size + 10
+
+    media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="second",
+        size="grid",
+        source_path=second_source,
+        cache_size_limit_bytes=one_entry_limit,
+    )
+
+    cached_files = [path for path in cache_dir.rglob("*") if path.is_file()]
+    assert len(cached_files) == 1
+    assert not first_cached.exists()
 
 
 def test_generating_images_never_writes_inside_the_photoslibrary(tmp_path, monkeypatch):
