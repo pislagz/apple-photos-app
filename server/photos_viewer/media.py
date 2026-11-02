@@ -79,6 +79,21 @@ def generate(
     return _resize_and_encode(image, SIZES[size])
 
 
+def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes:
+    """Decode `source_path` and return full-resolution JPEG bytes, for a
+    `?format=jpeg` original download (e.g. a HEIC original on a client that
+    can't display HEIC). Unlike `generate()`, this never resizes -- a
+    download is expected at the original's own resolution."""
+    image = _decode(pathlib.Path(source_path), is_video=is_video)
+    with image:
+        oriented = ImageOps.exif_transpose(image) or image
+        if oriented.mode not in ("RGB", "L"):
+            oriented = oriented.convert("RGB")
+        buffer = io.BytesIO()
+        oriented.save(buffer, format="JPEG", quality=92)
+        return buffer.getvalue()
+
+
 def cache_key(library_id: int, asset_uuid: str, size: str, source_mtime_ns: int) -> str:
     raw = f"{library_id}:{asset_uuid}:{size}:{source_mtime_ns}".encode()
     return hashlib.sha256(raw).hexdigest()
