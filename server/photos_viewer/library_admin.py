@@ -24,8 +24,9 @@ import logging
 import os
 import pathlib
 import sqlite3
+import threading
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from . import app_db, indexer, libraries, session_auth
@@ -34,6 +35,23 @@ from .libraries import UnsupportedPhotosVersionError, open_library_readonly
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# One `threading.Lock` per library id, so at most one indexing job -- the
+# backgrounded one from `add_library`/a status-triggered re-index, or the
+# synchronous one from `POST .../reindex` -- runs for a given library at a
+# time. `_library_locks_guard` only protects the dict's own get-or-create;
+# the per-library lock itself serializes the indexing work.
+_library_locks: dict[int, threading.Lock] = {}
+_library_locks_guard = threading.Lock()
+
+
+def _lock_for(library_id: int) -> threading.Lock:
+    with _library_locks_guard:
+        lock = _library_locks.get(library_id)
+        if lock is None:
+            lock = threading.Lock()
+            _library_locks[library_id] = lock
+        return lock
 
 
 class LibraryAddRequest(BaseModel):
@@ -66,6 +84,8 @@ class LibraryStatusResponse(BaseModel):
     people_count: int | None = None
     total_size_bytes: int | None = None
     last_indexed_at: str | None = None
+    index_state: str | None = None
+    index_error: str | None = None
     prewarm_progress: float | None = None
     warnings: list[LibraryWarning]
 
@@ -112,17 +132,17 @@ def _get_library_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.Row:
     return row
 
 
-def _total_size_bytes(path: pathlib.Path) -> int | None:
+def _total_size_bytes(db: sqlite3.Connection, library_id: int, path: pathlib.Path) -> int | None:
+    """The sum of `assets.original_filesize` from the index, not a fresh
+    filesystem walk of a package that can be terabytes. Still `None` when
+    the drive is unmounted -- a SQL sum alone would silently keep returning
+    the last-good total for a library whose directory just vanished."""
     if not path.exists():
         return None
-    total = 0
-    for entry in path.rglob("*"):
-        try:
-            if entry.is_file():
-                total += entry.stat().st_size
-        except OSError:
-            continue  # a dangling symlink or a file removed mid-walk
-    return total
+    total = db.execute(
+        "SELECT SUM(original_filesize) FROM assets WHERE library_id = ?", (library_id,)
+    ).fetchone()[0]
+    return total or 0
 
 
 def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
@@ -152,19 +172,70 @@ def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
     return warnings
 
 
-def _maybe_reindex(db: sqlite3.Connection, row: sqlite3.Row, path: pathlib.Path) -> None:
-    """Re-index if the sqlite file changed since the last index. A no-op,
-    including on a missing/unreadable library, stays silent here --
-    `_warnings_for` already opens the library itself and surfaces any
+def _mark_indexing(db: sqlite3.Connection, library_id: int) -> None:
+    db.execute("UPDATE libraries SET index_state = 'indexing', index_error = NULL WHERE id = ?", (library_id,))
+    db.commit()
+
+
+def _mark_indexed(db: sqlite3.Connection, library_id: int) -> None:
+    db.execute("UPDATE libraries SET index_state = 'idle', index_error = NULL WHERE id = ?", (library_id,))
+    db.commit()
+
+
+def _mark_index_error(db: sqlite3.Connection, library_id: int, error: str) -> None:
+    db.execute("UPDATE libraries SET index_state = 'error', index_error = ? WHERE id = ?", (error, library_id))
+    db.commit()
+
+
+def _run_index_job(
+    lock: threading.Lock, data_dir: pathlib.Path, library_id: int, path: pathlib.Path, *, force: bool
+) -> None:
+    """Runs on its own `app.db` connection -- the request's `get_db`
+    connection is closed before a `BackgroundTasks` callback runs, and in
+    production a fresh connection is handed out per request, so a job that
+    outlives the request cannot borrow it."""
+    conn = app_db.connect(data_dir)
+    try:
+        _mark_indexing(conn, library_id)
+        indexer.index_library(conn, library_id, path, force=force)
+        _mark_indexed(conn, library_id)
+    except Exception as exc:
+        _mark_index_error(conn, library_id, str(exc))
+        logger.warning("background index of library %s (%s) failed", library_id, path, exc_info=True)
+    finally:
+        conn.close()
+        lock.release()
+
+
+def _schedule_index_job(
+    background_tasks: BackgroundTasks,
+    data_dir: pathlib.Path,
+    library_id: int,
+    path: pathlib.Path,
+    *,
+    force: bool,
+) -> None:
+    """Non-blocking: if a job for this library is already running, this
+    trigger is a no-op rather than queuing a second walk behind it."""
+    lock = _lock_for(library_id)
+    if not lock.acquire(blocking=False):
+        return
+    background_tasks.add_task(_run_index_job, lock, data_dir, library_id, path, force=force)
+
+
+def _maybe_reindex(
+    background_tasks: BackgroundTasks, data_dir: pathlib.Path, row: sqlite3.Row, path: pathlib.Path
+) -> None:
+    """Schedule a background re-index when the sqlite file changed since the
+    last index, so a status poll returns immediately instead of blocking on
+    a walk. A no-op, including on a missing/unreadable library, stays silent
+    here -- `_warnings_for` already opens the library itself and surfaces any
     "unreadable"/"unsupported_version" problem as a status warning."""
     if not path.exists():
         return
-    try:
-        indexer.index_library(db, row["id"], path)
-    except Exception:
-        # Also surfaced by _warnings_for's own open attempt; logged here so it
-        # isn't silent, but it must not turn a status read into a 500.
-        logger.warning("background re-index of library %s (%s) failed", row["id"], path, exc_info=True)
+    if indexer.sqlite_signature(path) == row["last_indexed_signature"]:
+        return
+    _schedule_index_job(background_tasks, data_dir, row["id"], path, force=False)
 
 
 def _index_counts(db: sqlite3.Connection, library_id: int, last_indexed_at: str | None) -> dict:
@@ -179,16 +250,20 @@ def _index_counts(db: sqlite3.Connection, library_id: int, last_indexed_at: str 
     }
 
 
-def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResponse:
+def _build_status(
+    background_tasks: BackgroundTasks, data_dir: pathlib.Path, db: sqlite3.Connection, row: sqlite3.Row
+) -> LibraryStatusResponse:
     path = pathlib.Path(row["path"])
-    _maybe_reindex(db, row, path)
+    _maybe_reindex(background_tasks, data_dir, row, path)
     row = _get_library_or_404(db, row["id"])
     return LibraryStatusResponse(
         id=row["id"],
         display_name=row["display_name"],
         path=row["path"],
-        total_size_bytes=_total_size_bytes(path),
+        total_size_bytes=_total_size_bytes(db, row["id"], path),
         last_indexed_at=row["last_indexed_at"],
+        index_state=row["index_state"],
+        index_error=row["index_error"],
         warnings=_warnings_for(path),
         **_index_counts(db, row["id"], row["last_indexed_at"]),
     )
@@ -202,8 +277,10 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
 )
 def add_library(
     payload: LibraryAddRequest,
+    background_tasks: BackgroundTasks,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
 ) -> LibraryResponse:
     path = pathlib.Path(payload.path)
     _validate_library_path(path)
@@ -216,8 +293,13 @@ def add_library(
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="this path is already registered") from exc
     library_id = cursor.lastrowid
-    indexer.index_library(db, library_id, path)
+    # Committed right away, before indexing is even scheduled: the initial
+    # walk now runs in the background on its own connection, so a failure in
+    # it can never roll back this INSERT and turn a bad library path into a
+    # 500 that also loses the row.
+    db.commit()
     app_db.write_audit_log(db, "add_library", library_id=library_id, actor=admin["username"], detail=str(path))
+    _schedule_index_job(background_tasks, data_dir, library_id, path, force=True)
     return _to_response(_get_library_or_404(db, library_id))
 
 
@@ -271,10 +353,14 @@ def remove_library(
 
 @router.get("/api/admin/libraries/{library_id}/status", response_model=LibraryStatusResponse)
 def library_status(
-    library_id: int, admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    library_id: int,
+    background_tasks: BackgroundTasks,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
 ) -> LibraryStatusResponse:
     row = _get_library_or_404(db, library_id)
-    return _build_status(db, row)
+    return _build_status(background_tasks, data_dir, db, row)
 
 
 @router.post(
@@ -284,20 +370,35 @@ def library_status(
 )
 def reindex_library(
     library_id: int,
+    background_tasks: BackgroundTasks,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
 ) -> LibraryStatusResponse:
     """The "or when an admin asks" half of P1.6 -- forces a fresh walk even
-    if the sqlite signature hasn't changed since the last index."""
+    if the sqlite signature hasn't changed since the last index. Stays
+    synchronous (unlike `add_library`/a status-triggered re-index) because
+    its response body reports the fresh `asset_count` directly; it still
+    takes the per-library lock so it can't run at the same time as a
+    backgrounded job for the same library."""
     row = _get_library_or_404(db, library_id)
     path = pathlib.Path(row["path"])
     if not path.exists():
         raise HTTPException(status_code=400, detail=f"{path} is not reachable -- is the drive mounted?")
+    lock = _lock_for(library_id)
+    lock.acquire()
     try:
+        _mark_indexing(db, library_id)
         indexer.index_library(db, library_id, path, force=True)
     except UnsupportedPhotosVersionError as exc:
+        _mark_index_error(db, library_id, str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        _mark_index_error(db, library_id, str(exc))
         raise HTTPException(status_code=400, detail=f"could not re-index {path}: {exc}") from exc
+    else:
+        _mark_indexed(db, library_id)
+    finally:
+        lock.release()
     app_db.write_audit_log(db, "reindex_library", library_id=library_id, actor=admin["username"], detail=str(path))
-    return _build_status(db, _get_library_or_404(db, library_id))
+    return _build_status(background_tasks, data_dir, db, _get_library_or_404(db, library_id))

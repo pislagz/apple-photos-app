@@ -163,6 +163,14 @@ CREATE TABLE ZCLOUDSHAREDCOMMENT (
 _ASSET_UUID = "A1B2C3D4-0000-0000-0000-000000000001"
 _ASSET_FILENAME = "IMG_0001.HEIC"
 
+# osxphotos._constants._PHOTOS_5_ALBUM_KIND -- a normal (non-folder,
+# non-root) album, as opposed to ZGENERICALBUM's _ROOT_FOLDER_KIND row above.
+_ALBUM_KIND = 2
+_ALBUM_UUID = "B1B2C3D4-0000-0000-0000-000000000001"
+_PERSON_UUID = "C1B2C3D4-0000-0000-0000-000000000001"
+_PERSON_NAME = "Jane Doe"
+_FACE_UUID = "D1B2C3D4-0000-0000-0000-000000000001"
+
 _SEARCH_INDEX_SCHEMA = """
 CREATE TABLE ga (groupid, assetid);
 CREATE TABLE groups (
@@ -250,6 +258,34 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
             """,
             (_ASSET_FILENAME, len(asset_bytes)),
         )
+        # A second, non-root album (joined to the asset via Z_26ASSETS, the
+        # same table osxphotos's Photos-5 code path reads) and one person
+        # (joined via ZDETECTEDFACE) so the indexer's people/albums walk --
+        # not just the asset walk -- has a non-empty row to carry through
+        # `_write_index` into `people`/`albums`/`asset_people`/`asset_albums`.
+        conn.execute(
+            """
+            INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
+            VALUES (2, ?, 'Test Album', ?, 1, 0)
+            """,
+            (_ALBUM_UUID, _ALBUM_KIND),
+        )
+        conn.execute("INSERT INTO Z_26ASSETS (Z_34ASSETS, Z_26ALBUMS, Z_FOK_34ASSETS) VALUES (1, 2, 1)")
+        conn.execute(
+            """
+            INSERT INTO ZPERSON (Z_PK, ZPERSONUUID, ZFULLNAME, ZFACECOUNT, ZDISPLAYNAME, ZTYPE)
+            VALUES (1, ?, ?, 1, ?, 1)
+            """,
+            (_PERSON_UUID, _PERSON_NAME, _PERSON_NAME),
+        )
+        conn.execute(
+            """
+            INSERT INTO ZDETECTEDFACE (Z_PK, ZUUID, ZPERSON, ZASSET, ZHIDDEN, ZISINTRASH, ZMANUAL)
+            VALUES (1, ?, 1, 1, 0, 0, 0)
+            """,
+            (_FACE_UUID,),
+        )
+        conn.execute("UPDATE ZPERSON SET ZKEYFACE = 1 WHERE Z_PK = 1")
         conn.commit()
     finally:
         conn.close()

@@ -185,6 +185,84 @@ def test_summary_counts_by_year_month_day(tmp_path):
         conn.close()
 
 
+def test_list_assets_does_not_return_a_next_cursor_on_an_exactly_full_last_page(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", date_created="2024-01-02T00:00:00")
+        _insert_asset(conn, library_id, "b", date_created="2024-01-01T00:00:00")
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/assets", params={"limit": 2})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [item["id"] for item in body["items"]] == ["a", "b"]
+        assert body["next_cursor"] is None
+    finally:
+        conn.close()
+
+
+def test_summary_buckets_by_local_day_not_utc_day(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        # Captured shortly before midnight in a negative-UTC-offset timezone,
+        # so the UTC instant already rolled over to the next calendar day --
+        # bucketing must use the photographer's local day, not the UTC day.
+        _insert_asset(
+            conn,
+            library_id,
+            "late-evening",
+            date_created="2024-01-02T02:00:00Z",
+            date_created_local_day="2024-01-01",
+        )
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {"key": "2024-01-01", "count": 1} in body["days"]
+        assert {"key": "2024-01-02", "count": 1} not in body["days"]
+    finally:
+        conn.close()
+
+
+def test_list_assets_from_to_filters_by_local_day_not_utc_day(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(
+            conn,
+            library_id,
+            "late-evening",
+            date_created="2024-01-02T02:00:00Z",
+            date_created_local_day="2024-01-01",
+        )
+        _login(client, "alice")
+
+        included = client.get(
+            f"/api/libraries/{library_id}/assets", params={"from": "2024-01-01", "to": "2024-01-01"}
+        )
+        assert included.status_code == 200
+        assert [item["id"] for item in included.json()["items"]] == ["late-evening"]
+
+        excluded = client.get(
+            f"/api/libraries/{library_id}/assets", params={"from": "2024-01-02", "to": "2024-01-02"}
+        )
+        assert excluded.status_code == 200
+        assert excluded.json()["items"] == []
+    finally:
+        conn.close()
+
+
 def test_asset_detail_includes_people_and_albums(tmp_path):
     conn, client = _client(tmp_path)
     try:

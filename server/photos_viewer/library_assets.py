@@ -22,12 +22,41 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import media, session_auth
+from . import app_db, media, session_auth
 
 router = APIRouter()
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
+
+# `date_created_local_day` is only populated by indexer.py from P1.12A on --
+# a row written before that migration, or inserted directly by a test, has
+# no value there. Falling back to the first 10 chars of the UTC
+# `date_created` keeps those rows bucketed (one day off, at worst) instead
+# of excluded from every summary bucket and from/to filter.
+_LOCAL_DAY_SQL = "COALESCE(date_created_local_day, substr(date_created, 1, 10))"
+
+
+def _escape_content_disposition_filename(filename: str) -> str:
+    """RFC 6266 quoted-string escaping for a `Content-Disposition` header
+    built by hand (`FileResponse`'s own `filename=` escapes safely on its
+    own and isn't touched here). Without this, a filename containing a
+    `"` or a CR/LF -- both of which osxphotos will happily report, since a
+    `.photoslibrary` filename is whatever the OS let the user name it --
+    could break out of the quoted string or inject a header."""
+    sanitized = filename.replace("\r", "").replace("\n", "")
+    return sanitized.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
+    sizes = {
+        key: int(app_db.get_setting(db, f"thumb_size_{key}") or default) for key, default in media.SIZES.items()
+    }
+    quality = int(app_db.get_setting(db, "thumb_quality") or media.DEFAULT_QUALITY)
+    cache_limit = int(
+        app_db.get_setting(db, "media_cache_size_limit_bytes") or media.DEFAULT_CACHE_SIZE_LIMIT_BYTES
+    )
+    return sizes, quality, cache_limit
 
 
 class LibrarySummary(BaseModel):
@@ -126,10 +155,10 @@ def list_assets(
     elif type_ == "video":
         clauses.append("is_video = 1")
     if from_:
-        clauses.append("date_created >= ?")
+        clauses.append(f"{_LOCAL_DAY_SQL} >= ?")
         params.append(from_)
     if to:
-        clauses.append("date_created <= ?")
+        clauses.append(f"{_LOCAL_DAY_SQL} <= ?")
         params.append(to)
     if cursor:
         cursor_date, cursor_row_id = _decode_cursor(cursor)
@@ -137,13 +166,19 @@ def list_assets(
         params.extend([cursor_date, cursor_date, cursor_row_id])
 
     where = " AND ".join(clauses)
+    # Fetch one row past `limit`: only when it exists is there a next page,
+    # so only then does the response carry a `next_cursor` -- a page that
+    # lands exactly on the last asset must not advertise a next page that
+    # doesn't exist.
     rows = db.execute(
         f"SELECT * FROM assets WHERE {where} ORDER BY date_created DESC, id DESC LIMIT ?",
-        (*params, limit),
+        (*params, limit + 1),
     ).fetchall()
 
-    next_cursor = _encode_cursor(rows[-1]["date_created"], rows[-1]["id"]) if len(rows) == limit else None
-    return AssetListResponse(items=[_to_list_item(row) for row in rows], next_cursor=next_cursor)
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    next_cursor = _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
+    return AssetListResponse(items=[_to_list_item(row) for row in page], next_cursor=next_cursor)
 
 
 class SummaryBucket(BaseModel):
@@ -159,7 +194,7 @@ class SummaryResponse(BaseModel):
 
 def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryBucket]:
     rows = db.execute(
-        "SELECT substr(date_created, 1, ?) AS key, COUNT(*) AS count FROM assets "
+        f"SELECT substr({_LOCAL_DAY_SQL}, 1, ?) AS key, COUNT(*) AS count FROM assets "
         "WHERE library_id = ? AND date_created IS NOT NULL GROUP BY key ORDER BY key",
         (length, library_id),
     ).fetchall()
@@ -312,6 +347,7 @@ def asset_thumb(
     # as a *derivative* candidate when there's also a real original.
     source_path = _resolve_within_library(library["path"], original or derivative)
     derivatives = [_resolve_within_library(library["path"], derivative)] if derivative and original else []
+    sizes, quality, cache_limit = _media_settings(db)
     try:
         result = media.get_or_generate(
             cache_dir,
@@ -321,9 +357,16 @@ def asset_thumb(
             source_path=source_path,
             derivatives=derivatives,
             is_video=bool(asset["is_video"]),
+            size_px=sizes[size],
+            quality=quality,
+            cache_size_limit_bytes=cache_limit,
         )
     except media.MediaBackendError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # The asset row and its path both exist -- this isn't the "foreign
+        # id" case the rest of this module 404s for. 415 says the asset
+        # exists but no backend here could decode it (an unsupported RAW
+        # variant, a corrupt file, a decompression-bomb guard trip).
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(content=result.data, media_type=result.content_type)
 
 
@@ -334,6 +377,7 @@ def asset_original(
     format: Literal["native", "jpeg"] = "native",
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
+    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ):
     asset = _get_asset_or_404(db, library["id"], asset_id)
     raw_path = asset["path_edited"] if version == "edited" else asset["path_original"]
@@ -344,11 +388,18 @@ def asset_original(
     if format == "jpeg":
         if asset["is_video"]:
             raise HTTPException(status_code=400, detail="format=jpeg is not valid for a video asset")
+        _, _, cache_limit = _media_settings(db)
         try:
-            data = media.to_jpeg(file_path)
+            data = media.get_or_generate_jpeg(
+                cache_dir,
+                library_id=library["id"],
+                asset_uuid=f"{asset['uuid']}:{version}",
+                source_path=file_path,
+                cache_size_limit_bytes=cache_limit,
+            )
         except media.MediaBackendError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        filename = file_path.with_suffix(".jpg").name
+        filename = _escape_content_disposition_filename(file_path.with_suffix(".jpg").name)
         return Response(
             content=data,
             media_type="image/jpeg",

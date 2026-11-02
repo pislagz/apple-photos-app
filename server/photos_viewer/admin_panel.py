@@ -602,6 +602,7 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_size_grid2x": media.SIZES["grid2x"],
     "thumb_size_preview": media.SIZES["preview"],
     "thumb_quality": 85,
+    "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
     "map_tiles_mode": "online",
     "map_tiles_pmtiles_path": None,
@@ -616,6 +617,7 @@ class SettingsResponse(BaseModel):
     thumb_size_grid2x: int
     thumb_size_preview: int
     thumb_quality: int
+    media_cache_size_limit_bytes: int
     zip_size_limit_bytes: int
     map_tiles_mode: Literal["online", "local_file", "off"]
     map_tiles_pmtiles_path: str | None
@@ -629,6 +631,7 @@ class SettingsUpdateRequest(BaseModel):
     thumb_size_grid2x: int = Field(ge=32, le=4096)
     thumb_size_preview: int = Field(ge=32, le=8192)
     thumb_quality: int = Field(ge=1, le=100)
+    media_cache_size_limit_bytes: int = Field(ge=0)
     zip_size_limit_bytes: int = Field(ge=1)
     map_tiles_mode: Literal["online", "local_file", "off"] = "online"
     map_tiles_pmtiles_path: str | None = None

@@ -15,7 +15,9 @@ library id + asset uuid + size + the mtime of whichever file is actually
 used -- the original, or a derivative when the original is missing (an
 iCloud library with "Optimize Mac Storage" keeps no local original) --
 not the caller's `assets.id`, since P1.6 re-indexes by delete-and-reinsert
-and that id is not stable across a re-index.
+and that id is not stable across a re-index. The resolved pixel size and
+encoder quality are part of the key too, so a settings change invalidates
+stale cache entries instead of serving them forever.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import io
+import os
 import pathlib
 import shutil
 import subprocess
@@ -36,9 +39,18 @@ from PIL import Image, ImageOps
 pillow_heif.register_heif_opener()
 
 # grid ~300, grid2x ~600, preview ~1600 (docs/SPEC.md, docs/TASKS.md P1.7).
+# These are only the defaults -- `library_assets.py` passes the admin's
+# configured `size_px`/`quality` (P1.12A) and falls back to these when no
+# setting has been saved yet.
 SIZES: dict[str, int] = {"grid": 300, "grid2x": 600, "preview": 1600}
+DEFAULT_QUALITY = 82
+DEFAULT_CACHE_SIZE_LIMIT_BYTES = 5 * 1024**3
 
 _RAW_EXTENSIONS = {".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".raf", ".dng", ".pef", ".srw"}
+# A video's `path_derivatives` entry, when present, is a pre-rendered JPEG
+# poster frame -- decode it like any other image instead of paying for an
+# ffmpeg still extraction.
+_POSTER_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
 
 _SUBPROCESS_TIMEOUT_SECONDS = 30
 
@@ -68,15 +80,22 @@ def generate(
     *,
     derivatives: Sequence[str | pathlib.Path] = (),
     is_video: bool = False,
+    size_px: int | None = None,
+    quality: int = DEFAULT_QUALITY,
 ) -> GeneratedImage:
     """Decode `source_path` (or a sufficiently large derivative) and return
     WebP (or JPEG, if WebP encoding isn't available) bytes sized for `size`."""
     if size not in SIZES:
         raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
+    target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
-    chosen = _resolve_source(source_path, [pathlib.Path(d) for d in derivatives], size, is_video=is_video)
-    image = _decode(chosen, is_video=is_video)
-    return _resize_and_encode(image, SIZES[size])
+    chosen = _resolve_source(source_path, [pathlib.Path(d) for d in derivatives], target_px, is_video=is_video)
+    return _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
+
+
+def _generate_from_chosen(chosen: pathlib.Path, target_px: int, quality: int, *, is_video: bool) -> GeneratedImage:
+    image = _decode(chosen, is_video=is_video, target_px=target_px)
+    return _resize_and_encode(image, target_px, quality=quality)
 
 
 def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes:
@@ -94,8 +113,8 @@ def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes
         return buffer.getvalue()
 
 
-def cache_key(library_id: int, asset_uuid: str, size: str, source_mtime_ns: int) -> str:
-    raw = f"{library_id}:{asset_uuid}:{size}:{source_mtime_ns}".encode()
+def cache_key(library_id: int, asset_uuid: str, size: str, source_mtime_ns: int, size_px: int, quality: int) -> str:
+    raw = f"{library_id}:{asset_uuid}:{size}:{source_mtime_ns}:{size_px}:{quality}".encode()
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -108,26 +127,65 @@ def get_or_generate(
     source_path: str | pathlib.Path,
     derivatives: Sequence[str | pathlib.Path] = (),
     is_video: bool = False,
+    size_px: int | None = None,
+    quality: int = DEFAULT_QUALITY,
+    cache_size_limit_bytes: int | None = None,
 ) -> GeneratedImage:
     """Like `generate()`, but checks an on-disk cache under `cache_dir`
-    first and writes a generated result back to it."""
+    first and writes a generated result back to it. Resolves the source
+    file once -- the same `chosen` path backs both the cache key (its
+    mtime) and, on a miss, the decode -- instead of probing derivatives
+    twice per request."""
     if size not in SIZES:
         raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
+    target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
     derivative_paths = [pathlib.Path(d) for d in derivatives]
-    chosen = _resolve_source(source_path, derivative_paths, size, is_video=is_video)
+    chosen = _resolve_source(source_path, derivative_paths, target_px, is_video=is_video)
     try:
         source_mtime_ns = chosen.stat().st_mtime_ns
     except OSError as exc:
         raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, size, source_mtime_ns)
+    key = cache_key(library_id, asset_uuid, size, source_mtime_ns, target_px, quality)
     cache_dir = pathlib.Path(cache_dir)
     cached = _read_cache(cache_dir, key)
     if cached is not None:
         return cached
-    result = generate(source_path, size, derivatives=derivatives, is_video=is_video)
-    _write_cache(cache_dir, key, result)
+    result = _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
+    _write_cache(cache_dir, key, result.extension, result.data)
+    if cache_size_limit_bytes is not None:
+        _evict_if_needed(cache_dir, cache_size_limit_bytes)
     return result
+
+
+def get_or_generate_jpeg(
+    cache_dir: str | pathlib.Path,
+    *,
+    library_id: int,
+    asset_uuid: str,
+    source_path: str | pathlib.Path,
+    is_video: bool = False,
+    cache_size_limit_bytes: int | None = None,
+) -> bytes:
+    """Like `get_or_generate()`, but for `to_jpeg()`'s full-resolution
+    `?format=jpeg` conversion -- same on-disk cache, keyed on the
+    original's own mtime, no derivative selection (a download is always
+    the original, never a smaller derivative)."""
+    source_path = pathlib.Path(source_path)
+    try:
+        source_mtime_ns = source_path.stat().st_mtime_ns
+    except OSError as exc:
+        raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
+    key = cache_key(library_id, asset_uuid, "jpeg-full", source_mtime_ns, 0, 92)
+    cache_dir = pathlib.Path(cache_dir)
+    cached_path = _cache_file(cache_dir, key, "jpg")
+    if cached_path.exists():
+        return cached_path.read_bytes()
+    data = to_jpeg(source_path, is_video=is_video)
+    _write_cache(cache_dir, key, "jpg", data)
+    if cache_size_limit_bytes is not None:
+        _evict_if_needed(cache_dir, cache_size_limit_bytes)
+    return data
 
 
 def _cache_file(cache_dir: pathlib.Path, key: str, extension: str) -> pathlib.Path:
@@ -142,51 +200,107 @@ def _read_cache(cache_dir: pathlib.Path, key: str) -> GeneratedImage | None:
     return None
 
 
-def _write_cache(cache_dir: pathlib.Path, key: str, result: GeneratedImage) -> None:
-    path = _cache_file(cache_dir, key, result.extension)
+def _write_cache(cache_dir: pathlib.Path, key: str, extension: str, data: bytes) -> None:
+    """Write via a temp file in the same directory plus `os.replace()`, so
+    a concurrent reader of this cache path never observes a partial file."""
+    path = _cache_file(cache_dir, key, extension)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(result.data)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_name, path)
+    except BaseException:
+        pathlib.Path(tmp_name).unlink(missing_ok=True)
+        raise
+
+
+def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int) -> None:
+    """Delete the least-recently-written cache files until the cache is
+    back under `size_limit_bytes`. The `thumbnail_cache` app.db table is
+    unused -- this is a filesystem mtime-LRU instead, since the cache's own
+    file mtime already orders writes without a separate index to keep in
+    sync."""
+    entries: list[tuple[int, int, pathlib.Path]] = []
+    total = 0
+    for path in cache_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        entries.append((stat.st_mtime_ns, stat.st_size, path))
+        total += stat.st_size
+    if total <= size_limit_bytes:
+        return
+    entries.sort(key=lambda entry: entry[0])
+    for _, entry_size, path in entries:
+        if total <= size_limit_bytes:
+            break
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        total -= entry_size
 
 
 def _resolve_source(
-    original: pathlib.Path, derivatives: Sequence[pathlib.Path], size: str, *, is_video: bool
+    original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int, *, is_video: bool
 ) -> pathlib.Path:
-    """The file `_decode()` will actually read: the original for video (no
-    derivative selection there), otherwise the smallest sufficient
-    derivative, falling back to the original. The result may not exist on
-    disk -- callers that need an existing file check that themselves."""
+    """The file `_decode()` will actually read. For a video, a poster-image
+    derivative (a pre-rendered JPEG frame) when one decodes cleanly,
+    otherwise the video itself for ffmpeg. For a photo, the smallest
+    sufficient derivative, falling back to the original -- or, when the
+    original is missing and no derivative is big enough either, the
+    largest derivative available. The result may not exist on disk --
+    callers that need an existing file check that themselves."""
     if is_video:
+        for candidate in derivatives:
+            if candidate.suffix.lower() not in _POSTER_EXTENSIONS:
+                continue
+            try:
+                with Image.open(candidate):
+                    pass
+            except (OSError, Image.DecompressionBombError):
+                continue
+            return candidate
         return original
-    return _pick_source(original, derivatives, SIZES[size])
+    return _pick_source(original, derivatives, target_px)
 
 
 def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int) -> pathlib.Path:
-    """The smallest derivative whose longest edge still covers `target_px`,
-    so a grid thumbnail never has to decode a multi-megapixel original.
-    Falls back to `original` when no derivative is large enough (or none
-    exist, or none are readable)."""
-    sufficient: list[tuple[int, pathlib.Path]] = []
+    """The first derivative whose longest edge covers `target_px`, probing
+    each candidate at most once and stopping as soon as one is sufficient.
+    Falls back to `original` when it exists, otherwise to the largest
+    derivative seen (an "Optimize Mac Storage" asset with no local
+    original keeps only derivatives); falls back to `original` either way
+    when nothing else is usable, so `_decode()` raises a clean error."""
+    largest: tuple[int, pathlib.Path] | None = None
     for candidate in derivatives:
         try:
             with Image.open(candidate) as probe:
                 max_dim = max(probe.size)
-        except OSError:
+        except (OSError, Image.DecompressionBombError):
             continue
         if max_dim >= target_px:
-            sufficient.append((max_dim, candidate))
-    if not sufficient:
+            return candidate
+        if largest is None or max_dim > largest[0]:
+            largest = (max_dim, candidate)
+    if original.exists():
         return original
-    sufficient.sort(key=lambda pair: pair[0])
-    return sufficient[0][1]
+    if largest is not None:
+        return largest[1]
+    return original
 
 
-def _decode(path: pathlib.Path, *, is_video: bool) -> Image.Image:
+def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None) -> Image.Image:
     if sys.platform == "darwin":
         for tool in (_try_sips, _try_qlmanage):
             image = tool(path)
             if image is not None:
                 return image
-    if is_video:
+    if is_video and path.suffix.lower() not in _POSTER_EXTENSIONS:
         return _decode_video_still(path)
     if path.suffix.lower() in _RAW_EXTENSIONS:
         image = _try_rawpy(path)
@@ -195,13 +309,22 @@ def _decode(path: pathlib.Path, *, is_video: bool) -> Image.Image:
         raise MediaBackendError(f"{path.name} is a RAW file and the optional rawpy decoder is not installed")
     try:
         image = Image.open(path)
+        if target_px is not None:
+            # A no-op on formats that don't support it (the base `Image`
+            # class's `draft()` does nothing); on JPEG, and on HEIC when
+            # pillow-heif's opener implements it, this lets the decoder
+            # produce an already-downscaled image instead of fully
+            # decoding a 48MP original just to shrink it afterwards.
+            image.draft("RGB", (target_px, target_px))
         image.load()
         return image
+    except Image.DecompressionBombError as exc:
+        raise MediaBackendError(f"{path.name} decoded to an unreasonably large image: {exc}") from exc
     except Exception as exc:
         raise MediaBackendError(f"No decoder could open {path.name}: {exc}") from exc
 
 
-def _resize_and_encode(image: Image.Image, target_px: int) -> GeneratedImage:
+def _resize_and_encode(image: Image.Image, target_px: int, *, quality: int = DEFAULT_QUALITY) -> GeneratedImage:
     with image:
         oriented = ImageOps.exif_transpose(image) or image
         if oriented.mode not in ("RGB", "L"):
@@ -209,11 +332,11 @@ def _resize_and_encode(image: Image.Image, target_px: int) -> GeneratedImage:
         oriented.thumbnail((target_px, target_px), Image.Resampling.LANCZOS)
         buffer = io.BytesIO()
         try:
-            oriented.save(buffer, format="WEBP", quality=82, method=6)
+            oriented.save(buffer, format="WEBP", quality=quality, method=6)
             return GeneratedImage(data=buffer.getvalue(), content_type="image/webp")
         except Exception:  # noqa: BLE001 -- any WebP encoding failure falls back to JPEG
             buffer = io.BytesIO()
-            oriented.save(buffer, format="JPEG", quality=85)
+            oriented.save(buffer, format="JPEG", quality=quality)
             return GeneratedImage(data=buffer.getvalue(), content_type="image/jpeg")
 
 

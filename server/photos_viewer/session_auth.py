@@ -717,6 +717,22 @@ def _data_dir() -> pathlib.Path:
     return app_db.data_dir_from_env()
 
 
+def get_data_dir() -> pathlib.Path:
+    """Where `app.db` lives. A dependency, like `get_db` below, so a
+    background indexing job (P1.12A) can open its own connection at the
+    same path the request used -- tests override this to `tmp_path`
+    exactly as they already do for `get_db`/`get_media_cache_dir`, instead
+    of `$PHOTOS_VIEWER_DATA_DIR` or `./data`.
+
+    A background job cannot simply reuse the request's `get_db` connection:
+    FastAPI tears that one down (its `finally: conn.close()`) before a
+    `BackgroundTasks` callback runs, and in production each request gets a
+    fresh connection it would be unsafe to hand to a job that outlives the
+    request.
+    """
+    return _data_dir()
+
+
 def get_media_cache_dir() -> pathlib.Path:
     """Where P1.9's thumb/original routes ask `media.get_or_generate()` to
     cache generated images. A dependency, like `get_db` below, so tests can

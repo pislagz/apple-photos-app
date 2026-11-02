@@ -3,6 +3,7 @@
 import hashlib
 import pathlib
 import shutil
+import sqlite3
 
 from fastapi.testclient import TestClient
 
@@ -43,6 +44,10 @@ def _client(tmp_path):
     app = create_app()
     conn = app_db.connect(tmp_path)
     app.dependency_overrides[session_auth.get_db] = lambda: conn
+    # Background indexing jobs (P1.12A) open their own `app.db` connection via
+    # `get_data_dir`, separate from the shared `conn` above -- point it at the
+    # same `tmp_path` so a job sees the library row the test's `conn` wrote.
+    app.dependency_overrides[session_auth.get_data_dir] = lambda: tmp_path
     return conn, TestClient(app, base_url="https://testserver")
 
 
@@ -260,7 +265,7 @@ def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_p
         assert body["total_size_bytes"] > 0
         assert body["asset_count"] == 1
         assert body["video_count"] == 0
-        assert body["people_count"] == 0
+        assert body["people_count"] == 1
         assert body["last_indexed_at"] is not None
         assert body["prewarm_progress"] is None
         assert body["warnings"] == []
@@ -389,6 +394,104 @@ def test_indexing_the_fixture_is_idempotent(tmp_path):
         conn.close()
 
 
+def test_reindex_keeps_the_assets_id_and_its_thumbnail_cache_row_stable(tmp_path):
+    # A re-index upserts by (library_id, uuid) rather than delete+reinsert
+    # specifically so rows that carry a foreign key to assets.id --
+    # thumbnail_cache and audit_log -- survive a re-index of an otherwise
+    # unchanged asset.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        asset_id_before = conn.execute(
+            "SELECT id FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()["id"]
+        conn.execute(
+            "INSERT INTO thumbnail_cache (asset_id, size, cache_path) VALUES (?, 'grid', 'whatever')",
+            (asset_id_before,),
+        )
+        conn.commit()
+
+        indexer.index_library(conn, added["id"], package_path, force=True)
+
+        asset_id_after = conn.execute(
+            "SELECT id FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()["id"]
+        assert asset_id_after == asset_id_before
+        cache_rows = conn.execute(
+            "SELECT COUNT(*) FROM thumbnail_cache WHERE asset_id = ?", (asset_id_before,)
+        ).fetchone()[0]
+        assert cache_rows == 1
+    finally:
+        conn.close()
+
+
+def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(tmp_path):
+    # `_maybe_reindex` compares the sqlite signature on every status poll so
+    # a change still sitting in the WAL -- not yet checkpointed -- gets
+    # picked up without the admin having to hit the explicit reindex button.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        asset_count_before = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()[0]
+        assert asset_count_before == 1
+
+        sqlite_path = package_path / "database" / "Photos.sqlite"
+        wal_conn = sqlite3.connect(str(sqlite_path))
+        try:
+            wal_conn.execute("PRAGMA journal_mode=WAL")
+            wal_conn.execute(
+                """
+                INSERT INTO ZGENERICASSET (
+                    Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
+                    ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
+                    ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER,
+                    ZKINDSUBTYPE, ZTRASHEDSTATE, ZHEIGHT, ZWIDTH,
+                    ZORIENTATION, ZDEPTHSTATES, ZVISIBILITYSTATE,
+                    ZSAVEDASSETTYPE, ZADDEDDATE
+                )
+                VALUES (
+                    2, 'second-asset-uuid', 700000000.0, 700000000.0, 0,
+                    0, '0', 'IMG_0002.HEIC', NULL, NULL,
+                    0, 0, 'public.heic', 0,
+                    0, 100, 100, 1, 0,
+                    0, 3, 700000000.0
+                )
+                """
+            )
+            # osxphotos only surfaces a `ZGENERICASSET` row as a photo when it
+            # has a matching `ZADDITIONALASSETATTRIBUTES` row -- without one,
+            # the new row is invisible to `PhotosDB.photos()` even though it
+            # is right there in the WAL.
+            wal_conn.execute(
+                """
+                INSERT INTO ZADDITIONALASSETATTRIBUTES (
+                    Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
+                    ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
+                    ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
+                    ZORIGINALORIENTATION, ZORIGINALFILESIZE
+                )
+                VALUES (2, 2, 'IMG_0002.HEIC', 0, 0, 'UTC', 0, 0, 100, 100, 1, 123)
+                """
+            )
+            wal_conn.commit()
+
+            response = client.get(f"/api/admin/libraries/{added['id']}/status")
+        finally:
+            wal_conn.close()
+
+        assert response.status_code == 200
+        asset_count_after = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()[0]
+        assert asset_count_after == 2
+    finally:
+        conn.close()
+
+
 def test_reindex_endpoint_forces_a_fresh_walk_and_is_audit_logged(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
@@ -454,7 +557,7 @@ def test_library_status_reads_only_app_db_once_indexed(tmp_path):
         body = response.json()
         assert body["asset_count"] == 1
         assert body["video_count"] == 0
-        assert body["people_count"] == 0
+        assert body["people_count"] == 1
         assert body["last_indexed_at"] is not None
     finally:
         conn.close()
