@@ -11,9 +11,11 @@ optional `rawpy` for RAW. `sips`/`qlmanage` are a Darwin fast path, never
 required -- the Linux fallback chain below has to work on its own.
 
 `get_or_generate()` adds an on-disk cache under the data dir. Its key is
-library id + asset uuid + size + the source file's own mtime, not the
-caller's `assets.id` -- P1.6 re-indexes by delete-and-reinsert, so that id
-is not stable across a re-index.
+library id + asset uuid + size + the mtime of whichever file is actually
+used -- the original, or a derivative when the original is missing (an
+iCloud library with "Optimize Mac Storage" keeps no local original) --
+not the caller's `assets.id`, since P1.6 re-indexes by delete-and-reinsert
+and that id is not stable across a re-index.
 """
 
 from __future__ import annotations
@@ -71,11 +73,10 @@ def generate(
     WebP (or JPEG, if WebP encoding isn't available) bytes sized for `size`."""
     if size not in SIZES:
         raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
-    target_px = SIZES[size]
     source_path = pathlib.Path(source_path)
-    chosen = source_path if is_video else _pick_source(source_path, [pathlib.Path(d) for d in derivatives], target_px)
+    chosen = _resolve_source(source_path, [pathlib.Path(d) for d in derivatives], size, is_video=is_video)
     image = _decode(chosen, is_video=is_video)
-    return _resize_and_encode(image, target_px)
+    return _resize_and_encode(image, SIZES[size])
 
 
 def cache_key(library_id: int, asset_uuid: str, size: str, source_mtime_ns: int) -> str:
@@ -95,8 +96,16 @@ def get_or_generate(
 ) -> GeneratedImage:
     """Like `generate()`, but checks an on-disk cache under `cache_dir`
     first and writes a generated result back to it."""
+    if size not in SIZES:
+        raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
     source_path = pathlib.Path(source_path)
-    key = cache_key(library_id, asset_uuid, size, source_path.stat().st_mtime_ns)
+    derivative_paths = [pathlib.Path(d) for d in derivatives]
+    chosen = _resolve_source(source_path, derivative_paths, size, is_video=is_video)
+    try:
+        source_mtime_ns = chosen.stat().st_mtime_ns
+    except OSError as exc:
+        raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
+    key = cache_key(library_id, asset_uuid, size, source_mtime_ns)
     cache_dir = pathlib.Path(cache_dir)
     cached = _read_cache(cache_dir, key)
     if cached is not None:
@@ -122,6 +131,18 @@ def _write_cache(cache_dir: pathlib.Path, key: str, result: GeneratedImage) -> N
     path = _cache_file(cache_dir, key, result.extension)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(result.data)
+
+
+def _resolve_source(
+    original: pathlib.Path, derivatives: Sequence[pathlib.Path], size: str, *, is_video: bool
+) -> pathlib.Path:
+    """The file `_decode()` will actually read: the original for video (no
+    derivative selection there), otherwise the smallest sufficient
+    derivative, falling back to the original. The result may not exist on
+    disk -- callers that need an existing file check that themselves."""
+    if is_video:
+        return original
+    return _pick_source(original, derivatives, SIZES[size])
 
 
 def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int) -> pathlib.Path:

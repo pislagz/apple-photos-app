@@ -141,6 +141,51 @@ def test_get_or_generate_cache_key_changes_with_source_mtime(tmp_path, monkeypat
     assert key_before != key_after
 
 
+def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    missing_original = tmp_path / "optimized_away.heic"
+    derivative = tmp_path / "derivative.jpg"
+    Image.new("RGB", (800, 600), color=(7, 8, 9)).save(derivative, format="JPEG")
+    cache_dir = tmp_path / "cache"
+
+    result = media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="asset-uuid",
+        size="grid",
+        source_path=missing_original,
+        derivatives=[derivative],
+    )
+
+    decoded = Image.open(io.BytesIO(result.data))
+    assert max(decoded.size) <= media.SIZES["grid"]
+    cached_files = [path for path in cache_dir.rglob("*") if path.is_file()]
+    assert len(cached_files) == 1
+
+    second = media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="asset-uuid",
+        size="grid",
+        source_path=missing_original,
+        derivatives=[derivative],
+    )
+    assert second.data == result.data
+    assert [path for path in cache_dir.rglob("*") if path.is_file()] == cached_files
+
+
+def test_get_or_generate_with_missing_original_and_no_derivative_raises_media_backend_error(tmp_path):
+    missing_original = tmp_path / "optimized_away.heic"
+    cache_dir = tmp_path / "cache"
+
+    with pytest.raises(media.MediaBackendError, match="asset-uuid"):
+        media.get_or_generate(
+            cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=missing_original
+        )
+
+    assert not cache_dir.exists()
+
+
 def test_generating_images_never_writes_inside_the_photoslibrary(tmp_path, monkeypatch):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     package_path = build_closed_fixture_library(tmp_path)
