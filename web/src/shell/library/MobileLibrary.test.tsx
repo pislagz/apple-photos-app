@@ -114,6 +114,20 @@ describe("MobileLibrary", () => {
     });
   });
 
+  it("allows one-finger swipe scrolling instead of blocking all touch panning", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+
+    const scrollEl = screen.getByTestId("library-scroll");
+    // `touch-action: none` would also block one-finger swipe scrolling on a
+    // real phone; `pan-y` keeps vertical swipe-scroll working while still
+    // letting the pinch handlers see two-finger gestures.
+    expect(scrollEl.style.touchAction).toBe("pan-y");
+  });
+
   it("keeps a hidden asset out of Years, Months, Days, and All Photos", async () => {
     // The server already excludes hidden assets from `/assets`; this fixture
     // mirrors that by keeping "hidden-1" out of the `/assets` page while

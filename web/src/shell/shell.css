@@ -9,6 +9,27 @@ body {
   font-family: system-ui, sans-serif;
 }
 
+/* The mobile shell fills the viewport and only the Library's own scroll
+   area (.mobile-library__scroll) scrolls -- header and tab bar stay put,
+   and the virtualizer only renders what the bounded area can show. */
+.shell--mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.shell--mobile .shell__header,
+.shell--mobile .tab-bar {
+  flex: 0 0 auto;
+}
+
+.shell--mobile .shell__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* P1.14 mobile Library: Years/Months/Days/All Photos grid. */
 .mobile-library {
   display: flex;

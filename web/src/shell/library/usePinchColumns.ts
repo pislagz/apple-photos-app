@@ -27,8 +27,9 @@ export interface PinchColumnsResult {
 
 // Pinch-out (fingers spreading) is "zoom in": fewer, bigger columns.
 // Pinch-in is "zoom out": more, smaller columns. Caller should set
-// `touch-action: none` on the element these handlers are attached to, so
-// the browser's native pinch-zoom doesn't fight this one.
+// `touch-action: pan-y` on the element these handlers are attached to, so
+// one-finger scrolling still works while two-finger pinch drives this
+// instead of the browser's native pinch-zoom.
 export function usePinchColumns(initial: number, min = MIN_COLUMNS, max = MAX_COLUMNS): PinchColumnsResult {
   const [columns, setColumns] = useState(initial);
   const startDistance = useRef<number | null>(null);

@@ -88,7 +88,7 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
         ref={scrollRef}
         className="mobile-library__scroll"
         data-testid="library-scroll"
-        style={{ touchAction: "none" }}
+        style={{ touchAction: "pan-y" }}
         {...touchHandlers}
       >
         {items.length === 0 && done ? (
