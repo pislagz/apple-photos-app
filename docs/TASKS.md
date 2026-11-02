@@ -129,19 +129,19 @@ Not blocking; pick up when convenient.
 
 ### P1.8 Assignment guard
 
-- One dependency used by every `/api/libraries/{lib}/…` route. It loads the session, checks the assignment, and 404s otherwise.
+- One dependency used by every `/api/libraries/{library_id}/…` route. It loads the session, checks the assignment, and 404s otherwise.
 - Acceptance: the P1.16 test is wired to this dependency so a new route cannot forget it. A route added without the dependency fails a router audit test (every library route includes the dependency).
-- Done: `server/photos_viewer/session_auth.py` -- `require_library_assignment(library_id, session=Depends(require_session), db=Depends(get_db))` runs one query joining `libraries` to `library_assignments` for the caller, so a nonexistent library id and a library the caller isn't assigned to (including an admin who hasn't assigned it to themselves) both 404 the same way, matching the no-session/disabled/revoked-session 401 that `require_session` already gives. `unguarded_library_routes(app)` walks every registered route whose path starts with `/api/libraries/{`, follows each route's `Dependant` tree (direct and nested `Depends`) for `require_library_assignment`, and returns the paths that don't reach it -- the P1.16 router audit calls this and fails if it's non-empty. FastAPI 0.162's `app.include_router(...)` stores included routes lazily (as a wrapper that only exposes real paths/dependants through `effective_candidates()`, recursively for routers nested inside routers); `_leaf_routes()` resolves that before the audit inspects anything, so the audit actually sees routes added the normal way, not just ones registered directly on `app`. No real `/api/libraries/{lib}/...` route exists yet (P1.9), so `server/tests/test_library_assignment_guard.py` proves the guard and the audit against a test-only probe route, and proves the audit fails on a deliberately unguarded route registered the same `include_router` way P1.9's routes will be.
+- Done: `server/photos_viewer/session_auth.py` -- `require_library_assignment(library_id, session=Depends(require_session), db=Depends(get_db))` runs one query joining `libraries` to `library_assignments` for the caller, so a nonexistent library id and a library the caller isn't assigned to (including an admin who hasn't assigned it to themselves) both 404 the same way, matching the no-session/disabled/revoked-session 401 that `require_session` already gives. `unguarded_library_routes(app)` walks every registered route whose path starts with `/api/libraries/{`, follows each route's `Dependant` tree (direct and nested `Depends`) for `require_library_assignment`, and returns the paths that don't reach it -- the P1.16 router audit calls this and fails if it's non-empty. FastAPI 0.162's `app.include_router(...)` stores included routes lazily (as a wrapper that only exposes real paths/dependants through `effective_candidates()`, recursively for routers nested inside routers); `_leaf_routes()` resolves that before the audit inspects anything, so the audit actually sees routes added the normal way, not just ones registered directly on `app`. No real `/api/libraries/{library_id}/...` route exists yet (P1.9), so `server/tests/test_library_assignment_guard.py` proves the guard and the audit against a test-only probe route, and proves the audit fails on a deliberately unguarded route registered the same `include_router` way P1.9's routes will be. Follow-up (issue #42): `require_library_assignment`'s `library_id` is now pinned to `Path(...)`, so it only ever binds from the path, never from a same-named query-string parameter. `unguarded_library_routes(app)` additionally flags any `/api/libraries/{` route whose path parameter isn't spelled literally `{library_id}` (e.g. `{lib}`) -- P1.9+ routes must spell it `{library_id}`, not `{lib}`, or the audit fails CI.
 
 ### P1.9 Read API for Library
 
 - `GET /api/me`
-- `GET /api/libraries/{lib}/assets` with cursor and limit, plus `album`, `person`, `type`, `from`, `to` accepted even if album and person return empty until Phase 2.
-- `GET /api/libraries/{lib}/summary` (counts by year, month, day)
-- `GET /api/libraries/{lib}/assets/{id}`
-- `GET /api/libraries/{lib}/thumb/{id}?size=`
-- `GET /api/libraries/{lib}/original/{id}?version=original|edited&format=native|jpeg` with Range.
-- `GET /api/libraries/{lib}/livephoto/{id}/video`
+- `GET /api/libraries/{library_id}/assets` with cursor and limit, plus `album`, `person`, `type`, `from`, `to` accepted even if album and person return empty until Phase 2.
+- `GET /api/libraries/{library_id}/summary` (counts by year, month, day)
+- `GET /api/libraries/{library_id}/assets/{id}`
+- `GET /api/libraries/{library_id}/thumb/{id}?size=`
+- `GET /api/libraries/{library_id}/original/{id}?version=original|edited&format=native|jpeg` with Range.
+- `GET /api/libraries/{library_id}/livephoto/{id}/video`
 - `GET /api/health`
 - Acceptance: pagination is stable when new rows are inserted above the cursor. Original Range returns 206. Edited version 404s when `path_edited` is absent. JPEG format transcodes HEIC through the media backend.
 
@@ -229,7 +229,7 @@ Not blocking; pick up when convenient.
 
 ### P2.1 Albums
 
-- `GET /api/libraries/{lib}/albums` returns the folder tree from `folder_info` / `album_info`, plus smart albums built from index flags: Favorites, Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, RAW, Recently Added.
+- `GET /api/libraries/{library_id}/albums` returns the folder tree from `folder_info` / `album_info`, plus smart albums built from index flags: Favorites, Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, RAW, Recently Added.
 - Mobile Albums tab and desktop Albums group, including the folder tree.
 - Acceptance: fixture albums round-trip parent folders. A smart album count matches a direct SQL count on the index. Still 404 across users.
 
@@ -270,7 +270,7 @@ Not blocking; pick up when convenient.
 
 ### P3.2 Streamed zip
 
-- `POST /api/libraries/{lib}/zip` streams selected originals. Settings cap the total bytes. Progress is visible. HEIC-to-JPEG is an option.
+- `POST /api/libraries/{library_id}/zip` streams selected originals. Settings cap the total bytes. Progress is visible. HEIC-to-JPEG is an option.
 - Acceptance: over-limit is a 413 with no partial file left in the library package (zip is written to the response or to the data dir). Audit row per zip. Cross-user selection 404s.
 
 ### P3.3 Pre-warm

@@ -195,6 +195,44 @@ def test_router_audit_catches_a_route_missing_the_dependency():
     assert session_auth.unguarded_library_routes(app) == ["/api/libraries/{library_id}/unguarded"]
 
 
+def test_router_audit_catches_a_misnamed_path_param():
+    """A route spelled `{lib}` instead of `{library_id}` must be caught even
+    though it depends on the guard -- `require_library_assignment`'s
+    `library_id` has nothing named `library_id` to bind from in that path
+    (issue #42: this used to silently read `library_id` from the query
+    string instead, while the handler kept serving whatever `{lib}` was in
+    the path)."""
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.get("/api/libraries/{lib}/x")
+    def misnamed(lib: int, library: object = Depends(session_auth.require_library_assignment)) -> dict:
+        return {}
+
+    app.include_router(router)
+
+    assert session_auth.unguarded_library_routes(app) == ["/api/libraries/{lib}/x"]
+
+
+def test_query_string_cannot_override_the_path_library_id(tmp_path):
+    """Issue #42's exploit scenario: a query-string `library_id` must never
+    override the one bound from the path, even for a correctly spelled
+    `{library_id}` route."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        unassigned_id = _create_library(conn, "L1")
+        assigned_id = _create_library(conn, "L2")
+        _assign(conn, user_id, assigned_id)
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{unassigned_id}/_probe?library_id={assigned_id}")
+
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
 def test_router_audit_ignores_routes_outside_the_library_prefix():
     app = FastAPI()
 

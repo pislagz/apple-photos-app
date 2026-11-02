@@ -47,7 +47,7 @@ from urllib.parse import urlsplit
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from argon2.low_level import Type
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request, Response
 from pydantic import BaseModel, BeforeValidator, Field
 
 from . import app_db
@@ -760,12 +760,24 @@ def require_admin(session: sqlite3.Row = Depends(require_session)) -> sqlite3.Ro
 
 
 def require_library_assignment(
-    library_id: int,
+    library_id: int = Path(...),
     session: sqlite3.Row = Depends(require_session),
     db: sqlite3.Connection = Depends(get_db),
 ) -> sqlite3.Row:
     """FastAPI dependency for every `/api/libraries/{library_id}/...` route:
     the library row, or 404.
+
+    `library_id` is pinned to `Path(...)` on purpose: without it, FastAPI
+    infers the parameter's location from whether a route's path template
+    happens to contain a `{library_id}` segment -- so a route written as
+    `/api/libraries/{lib}/...` (the wrong name) would silently read
+    `library_id` from the *query string* instead, while the handler still
+    serves whatever library id is in the path. `Path(...)` forces this
+    dependency to always bind from the path, so that route either 422s (no
+    `library_id` path segment exists to bind from) instead of leaking
+    another library through a query-string override, or -- the case CI
+    actually catches -- gets flagged by `unguarded_library_routes()` below,
+    which checks the literal `{library_id}` spelling.
 
     One query, joining `libraries` to `library_assignments` for this
     caller, so "the library doesn't exist" and "it exists but isn't
@@ -788,6 +800,7 @@ def require_library_assignment(
 
 
 LIBRARY_ROUTE_PATH_PREFIX = "/api/libraries/{"
+LIBRARY_ROUTE_ID_PREFIX = "/api/libraries/{library_id}"
 
 
 def _dependency_closure(dependant: object) -> set[object]:
@@ -827,14 +840,27 @@ def _leaf_routes(routes: object) -> list[object]:
 
 def unguarded_library_routes(app: FastAPI) -> list[str]:
     """Every registered route whose path starts with `/api/libraries/{` that
-    does not depend on `require_library_assignment`, directly or
-    transitively. Empty is the only passing result -- a new library route
-    that forgets the guard would otherwise serve one user's library to
-    another."""
+    either does not spell its path parameter `{library_id}` or does not
+    depend on `require_library_assignment`, directly or transitively.
+    Empty is the only passing result.
+
+    A route written as `/api/libraries/{lib}/...` would still formally
+    depend on `require_library_assignment` (the dependency closure check
+    alone would miss it), but `require_library_assignment`'s `Path(...)`
+    binding has nothing named `library_id` to read from that path -- the
+    route either 422s or, pre-fix, fell back to a query-string
+    `library_id` while the handler kept serving whatever library `{lib}`
+    pointed to. The literal-spelling check below catches that misnamed
+    route regardless of which of those two things it would have done, so a
+    new library route that forgets the guard, or spells its path parameter
+    wrong, cannot serve one user's library to another."""
     violations = []
     for route in _leaf_routes(app.routes):
         path = getattr(route, "path", "")
         if not path.startswith(LIBRARY_ROUTE_PATH_PREFIX):
+            continue
+        if not path.startswith(LIBRARY_ROUTE_ID_PREFIX):
+            violations.append(path)
             continue
         dependant = getattr(route, "dependant", None)
         if dependant is None or require_library_assignment not in _dependency_closure(dependant):
