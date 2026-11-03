@@ -16,8 +16,24 @@ const SECTIONS: { label: string; icon: IconName }[] = [
   { label: "Map", icon: "map" },
   { label: "People", icon: "people" },
 ];
-const MEDIA_TYPES = ["Videos", "Selfies", "Live Photos", "Portrait", "Panoramas", "Screenshots", "RAW"];
-const SMART_ALBUMS = ["Favorites", "Videos", "Selfies", "Live Photos", "Panoramas", "Screenshots", "Recently Added"];
+const MEDIA_TYPES: { label: string; icon: IconName }[] = [
+  { label: "Videos", icon: "video" },
+  { label: "Selfies", icon: "camera" },
+  { label: "Live Photos", icon: "livephoto" },
+  { label: "Portrait", icon: "portrait" },
+  { label: "Panoramas", icon: "panorama" },
+  { label: "Screenshots", icon: "screenshot" },
+  { label: "RAW", icon: "document" },
+];
+const SMART_ALBUMS: { label: string; icon: IconName }[] = [
+  { label: "Favorites", icon: "favorite" },
+  { label: "Videos", icon: "video" },
+  { label: "Selfies", icon: "camera" },
+  { label: "Live Photos", icon: "livephoto" },
+  { label: "Panoramas", icon: "panorama" },
+  { label: "Screenshots", icon: "screenshot" },
+  { label: "Recently Added", icon: "added" },
+];
 // Sequoia Photos' "Utilities" group. Only "Hidden" (P1.13) has a real screen
 // behind it; "Imports" and "Recently Deleted" stay disabled chrome.
 const UTILITIES: { label: string; icon: IconName }[] = [
@@ -73,9 +89,10 @@ export default function DesktopShell({
           <summary>Media Types</summary>
           <ul>
             {MEDIA_TYPES.map((type) => (
-              <li key={type}>
-                <button type="button" disabled className="sidebar__item">
-                  {type}
+              <li key={type.label}>
+                <button type="button" disabled className="sidebar__item sidebar__item--sub">
+                  <Icon name={type.icon} className="sidebar__icon" />
+                  {type.label}
                 </button>
               </li>
             ))}
@@ -85,15 +102,16 @@ export default function DesktopShell({
           <summary>Albums</summary>
           <ul>
             <li>
-              <button type="button" disabled className="sidebar__item">
+              <button type="button" disabled className="sidebar__item sidebar__item--sub">
                 <Icon name="folder" className="sidebar__icon" />
                 My Albums
               </button>
             </li>
             {SMART_ALBUMS.map((album) => (
-              <li key={album}>
-                <button type="button" disabled className="sidebar__item">
-                  {album}
+              <li key={album.label}>
+                <button type="button" disabled className="sidebar__item sidebar__item--sub">
+                  <Icon name={album.icon} className="sidebar__icon" />
+                  {album.label}
                 </button>
               </li>
             ))}
@@ -128,6 +146,8 @@ export default function DesktopShell({
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
+          compact
+          variant="row"
         />
       </aside>
       <div className="shell__main">

@@ -5,7 +5,7 @@ import { Filmstrip } from "./Filmstrip";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
-import { buildInfoRows } from "./viewerInfo";
+import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
 
 export interface ViewerProps {
   libraryId: number;
@@ -102,6 +102,12 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
   const mediaTransform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
+  const dateLine = detail ? formatDateLine(detail.date_created) : "";
+  const placeLine = detail ? formatLocationLine(detail) : "";
+  // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
+  // no place falls back to the date as the sole title.
+  const titleLine = placeLine || dateLine;
+  const subtitleLine = placeLine ? dateLine : "";
 
   return (
     <div
@@ -115,7 +121,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           <button type="button" className="toolbar-button" onClick={onClose} aria-label="Close">
             <Icon name="close" size={16} />
           </button>
-          <div className="desktop-library__spacer" />
+          <div className="desktop-viewer__title">
+            {titleLine && <span className="desktop-viewer__title-primary">{titleLine}</span>}
+            {subtitleLine && <span className="desktop-viewer__title-secondary">{subtitleLine}</span>}
+          </div>
           <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
             <Icon name="download" size={16} />
           </button>
