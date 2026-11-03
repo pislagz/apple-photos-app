@@ -1,6 +1,7 @@
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
+import { shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
@@ -114,13 +115,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     }
   }
 
-  function handleDownload() {
-    const link = document.createElement("a");
-    link.href = `/api/libraries/${libraryId}/original/${item.id}`;
-    link.download = "";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+  function handleShare() {
+    void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename }]);
   }
 
   if (!item) return null;
@@ -197,6 +193,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
                 src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
                 alt={item.filename ?? ""}
                 style={{ transform: `scale(${scale})` }}
+                onError={media.wantsOriginal ? media.onOriginalError : undefined}
               />
             )}
             <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -207,6 +204,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
             alt={item.filename ?? ""}
             style={{ transform: `scale(${scale})` }}
+            onError={media.wantsOriginal ? media.onOriginalError : undefined}
           />
         )}
       </div>
@@ -217,7 +215,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             <Icon name="favorite" size={20} />
           </span>
         )}
-        <button type="button" className="mobile-viewer__icon-button" onClick={handleDownload} aria-label="Share">
+        <button type="button" className="mobile-viewer__icon-button" onClick={handleShare} aria-label="Share">
           <Icon name="share" size={20} />
         </button>
         <button

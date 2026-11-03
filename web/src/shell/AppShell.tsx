@@ -13,6 +13,7 @@ import AccessRefused from "./AccessRefused";
 import DesktopShell from "./DesktopShell";
 import LoginScreen, { type LoginError } from "./LoginScreen";
 import MobileShell from "./MobileShell";
+import { parsePhotoPath } from "./route";
 import SetupScreen from "./SetupScreen";
 import { isStandalone, type LayoutOverride, useLayout } from "./useLayout";
 
@@ -25,6 +26,22 @@ export default function AppShell() {
   const [blocked, setBlocked] = useState(false);
   const [loginError, setLoginError] = useState<LoginError | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  // Captured once at mount, so a "Copy Link" URL survives a sign-in
+  // round-trip (the login screen renders from this same component) and
+  // still opens the photo once `me` resolves.
+  const [deepLink, setDeepLink] = useState(() => parsePhotoPath(window.location.pathname));
+
+  function consumeDeepLink() {
+    setDeepLink(null);
+    window.history.replaceState(null, "", "/");
+  }
+
+  // A link to a library this account isn't assigned to must 404 the same
+  // way the asset routes do -- silently drop it rather than ever fetching
+  // the asset to find out.
+  useEffect(() => {
+    if (deepLink && me && me.libraries[0]?.id !== deepLink.libraryId) consumeDeepLink();
+  }, [deepLink, me]);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -138,6 +155,8 @@ export default function AppShell() {
     return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} />;
   }
 
+  const deepLinkAssetId = deepLink && me.libraries[0]?.id === deepLink.libraryId ? deepLink.assetId : undefined;
+
   if (layout === "mobile") {
     return (
       <MobileShell
@@ -145,6 +164,8 @@ export default function AppShell() {
         layoutOverride={override}
         onLayoutOverrideChange={handleLayoutOverrideChange}
         onLogout={handleLogout}
+        deepLinkAssetId={deepLinkAssetId}
+        onDeepLinkConsumed={consumeDeepLink}
       />
     );
   }
@@ -155,6 +176,8 @@ export default function AppShell() {
       layoutOverride={override}
       onLayoutOverrideChange={handleLayoutOverrideChange}
       onLogout={handleLogout}
+      deepLinkAssetId={deepLinkAssetId}
+      onDeepLinkConsumed={consumeDeepLink}
     />
   );
 }

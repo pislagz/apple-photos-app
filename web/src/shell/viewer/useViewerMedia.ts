@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AssetListItem } from "../../api";
-import { livePhotoVideoUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
+import { livePhotoVideoUrl, originalJpegFallbackUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
 
 // The acceptance rule in one place: every viewer surface renders the
 // `preview` thumb first, and only asks for `/original` (`requestOriginal`,
@@ -22,22 +22,28 @@ export interface ViewerMedia {
   livePlaying: boolean;
   startLive: () => void;
   stopLive: () => void;
+  // P1.17: a browser that can't decode HEIC fires `onError` on the full
+  // image -- `onOriginalError` switches `originalSrc` to a server-side JPEG
+  // transcode of the same file instead of leaving a broken image.
+  onOriginalError: () => void;
 }
 
 export function useViewerMedia(libraryId: number, item: AssetListItem | undefined): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [livePlaying, setLivePlaying] = useState(false);
+  const [jpegFallback, setJpegFallback] = useState(false);
 
   useEffect(() => {
     setWantsOriginal(false);
     setVideoPlaying(false);
     setLivePlaying(false);
+    setJpegFallback(false);
   }, [item?.id]);
 
   return {
     previewSrc: item ? previewThumbUrl(libraryId, item.id) : "",
-    originalSrc: item ? originalUrl(libraryId, item.id) : "",
+    originalSrc: item ? (jpegFallback ? originalJpegFallbackUrl(libraryId, item.id) : originalUrl(libraryId, item.id)) : "",
     liveVideoSrc: item ? livePhotoVideoUrl(libraryId, item.id) : "",
     isVideo: item?.is_video ?? false,
     isLivePhoto: item?.is_live_photo ?? false,
@@ -48,5 +54,6 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
     livePlaying,
     startLive: () => setLivePlaying(true),
     stopLive: () => setLivePlaying(false),
+    onOriginalError: () => setJpegFallback(true),
   };
 }

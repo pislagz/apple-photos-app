@@ -193,6 +193,32 @@ describe("MobileLibrary", () => {
 
     fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+  });
+
+  it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) {
+        return {
+          id: match[1], filename: `${match[1]}.jpg`, original_filename: `${match[1]}.jpg`, title: null, description: null,
+          date_created: "2024-05-10T10:00:00", date_added: "2024-05-10T10:00:00", date_modified: "2024-05-10T10:00:00",
+          favorite: false, hidden: false, is_video: false, is_live_photo: false, is_screenshot: false, is_selfie: false,
+          is_portrait: false, is_panorama: false, is_hdr: false, is_slow_mo: false, is_burst: false, width: 100, height: 100,
+          original_filesize: null, latitude: null, longitude: null, place: null, place_country_code: null, place_address: null,
+          camera_make: null, camera_model: null, has_edited: false, has_live_photo_video: false, people: [], albums: [],
+        };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const onInitialAssetOpened = vi.fn();
+
+    render(<MobileLibrary libraryId={1} initialAssetId="a2" onInitialAssetOpened={onInitialAssetOpened} />);
+
+    const viewer = await screen.findByTestId("mobile-viewer");
+    expect(viewer.querySelector("img")?.getAttribute("src")).toContain("a2");
+    expect(onInitialAssetOpened).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("library-scroll")).toBeInTheDocument();
   });
 
@@ -217,5 +243,76 @@ describe("MobileLibrary", () => {
       await waitFor(() => expect(screen.getAllByRole("img").length).toBeGreaterThan(0));
       expect(container.innerHTML).not.toContain("hidden-1");
     }
+  });
+
+  it("Select mode lets you multi-select cells, and Share invokes the Web Share API with files", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
+      if (match) return { items, next_cursor: null };
+      if (url.startsWith("/api/libraries/1/original/")) {
+        return new Response("fake-bytes", { status: 200, headers: { "Content-Type": "image/jpeg" } });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const share = vi.fn().mockResolvedValue(undefined);
+    const canShare = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("navigator", { ...navigator, share, canShare });
+
+    render(<MobileLibrary libraryId={1} />);
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+
+    const a1Image = images.find((img) => img.getAttribute("alt") === "a1.jpg") as HTMLImageElement;
+    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg") as HTMLImageElement;
+    // Tapping cells in select mode toggles their selection instead of
+    // opening the Viewer.
+    fireEvent.click(a1Image);
+    fireEvent.click(a2Image);
+    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+    expect(screen.getByText("2 Selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Share"));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    expect(canShare).toHaveBeenCalledTimes(1);
+    expect(share.mock.calls[0][0].files).toHaveLength(2);
+  });
+
+  it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Select"));
+    expect(screen.queryByRole("tablist", { name: "Library zoom" })).toBeNull();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+  });
+
+  it("falls back to download links per item when the Web Share API is unavailable", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
+      if (match) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<MobileLibrary libraryId={1} />);
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+
+    const a1Image = images.find((img) => img.getAttribute("alt") === "a1.jpg") as HTMLImageElement;
+    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg") as HTMLImageElement;
+    fireEvent.click(a1Image);
+    fireEvent.click(a2Image);
+
+    fireEvent.click(screen.getByText("Share"));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
+    clickSpy.mockRestore();
   });
 });

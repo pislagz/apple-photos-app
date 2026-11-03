@@ -46,11 +46,15 @@ export default function DesktopShell({
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
+  deepLinkAssetId,
+  onDeepLinkConsumed,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
+  deepLinkAssetId?: string;
+  onDeepLinkConsumed?: () => void;
 }) {
   const libraryName = me.libraries[0]?.display_name ?? "Library";
   const libraryId = me.libraries[0]?.id;
@@ -162,7 +166,15 @@ export default function DesktopShell({
           </>
         ) : (
           <main className="shell__content">
-            {libraryId !== undefined ? <DesktopLibrary libraryId={libraryId} /> : <LibraryPlaceholder />}
+            {libraryId !== undefined ? (
+              <DesktopLibrary
+                libraryId={libraryId}
+                initialAssetId={deepLinkAssetId}
+                onInitialAssetOpened={onDeepLinkConsumed}
+              />
+            ) : (
+              <LibraryPlaceholder />
+            )}
           </main>
         )}
       </div>
