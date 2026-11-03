@@ -111,7 +111,7 @@ describe("AppShell", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/too many sign-in attempts/i);
   });
 
-  it("renders the mobile tab bar with only Library enabled", async () => {
+  it("renders the mobile tab bar with Library, Albums, More, and Search all enabled", async () => {
     setViewport(390, true);
     mockFetch((url) => {
       if (url === "/api/setup/status") return { needs_setup: false };
@@ -122,12 +122,11 @@ describe("AppShell", () => {
     render(<AppShell />);
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
-    const library = screen.getByRole("button", { name: "Library" });
-    expect(library).toBeEnabled();
-    for (const label of ["Albums", "People", "Map"]) {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+    for (const label of ["Library", "Albums", "More", "Search"]) {
+      const tab = screen.getByRole("button", { name: label });
+      expect(tab).toBeEnabled();
+      expect(nav).toContainElement(tab);
     }
-    expect(nav).toContainElement(screen.getByRole("button", { name: "Map" }));
   });
 
   it("renders the desktop sidebar with only Library enabled", async () => {

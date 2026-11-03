@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
 import { mockFetch } from "../testHelpers";
@@ -19,6 +19,7 @@ const ME_RESPONSE: MeResponse = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.history.replaceState({}, "", "/");
 });
 
 describe("MobileShell layout", () => {
@@ -59,5 +60,100 @@ describe("MobileShell layout", () => {
     expect(contentRule).toMatch(/flex:\s*1/);
     expect(contentRule).toMatch(/min-height:\s*0/);
     expect(contentRule).toMatch(/overflow:\s*hidden/);
+  });
+
+  // Fix round 2: the large "More" title and every pushed screen's title
+  // (People & Pets, Places, each media type, Hidden) share this one class,
+  // and inherit the body's near-black light-mode color otherwise -- they
+  // need their own dark-mode color or they're unreadable on the #000
+  // mobile-screen background.
+  it("gives .mobile-screen__title a readable color in dark mode", () => {
+    const darkBlockStart = css.indexOf("@media (prefers-color-scheme: dark) {\n  .mobile-screen,");
+    const darkBlockEnd = css.indexOf("\n}\n", darkBlockStart);
+    const darkBlock = css.slice(darkBlockStart, darkBlockEnd);
+    expect(darkBlock).toMatch(/\.mobile-screen__title\s*\{\s*color:\s*#fff;\s*\}/);
+  });
+});
+
+describe("MobileShell tab switching", () => {
+  it("keeps the Library tab mounted so its segment survives Library -> More -> Library", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(
+      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
+    expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    expect(await screen.findByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("MobileShell More tab", () => {
+  it("lists People & Pets, Places, Media Types, and Hidden, with the library switcher pinned at the very bottom", async () => {
+    const { container } = render(
+      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    const more = within((await screen.findByText("More", { selector: ".mobile-screen__title" })).closest(
+      ".more-screen",
+    ) as HTMLElement);
+    expect(more.getByRole("button", { name: /People & Pets/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Places/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Videos/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Hidden/ })).toBeInTheDocument();
+
+    const switcher = container.querySelector(".more-screen__library-switcher");
+    expect(switcher).toHaveTextContent("Family");
+    // The switcher is the last thing in the screen, not just present
+    // somewhere in it -- tracker R21 asks for it at the very bottom.
+    expect(switcher?.parentElement?.lastElementChild).toBe(switcher);
+  });
+
+  it("gives People, Places, and each media type their own pushed screen reachable from More", async () => {
+    const { container } = render(
+      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: /People & Pets/ }));
+
+    expect(await screen.findByRole("heading", { name: "People & Pets" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/people");
+
+    fireEvent.click(container.querySelector(".mobile-screen__back") as HTMLElement);
+    expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
+  });
+
+  it("re-asks before showing Hidden, then renders the existing HiddenView", async () => {
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(
+      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: /Hidden/ }));
+
+    expect(window.location.pathname).toBe("/hidden");
+    const confirm = await screen.findByRole("button", { name: "View Hidden Photos" });
+    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
+
+    fireEvent.click(confirm);
+    expect(await screen.findByText("No hidden photos.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hidden", level: 1 })).toBeInTheDocument();
   });
 });

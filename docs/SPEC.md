@@ -150,19 +150,19 @@ Every endpoint requires a session, and every request is checked against the libr
 
 ### Mobile layout: iOS 17 Photos
 
-- Translucent bottom tab bar: Library, Albums, People, Map. Search is optional.
+- Translucent bottom tab bar: Library, Albums, More, Search.
 - Library tab with a Years, Months, Days, All Photos segmented control and a date header that stays pinned while scrolling.
 - Square-cropped grid with pinch-to-zoom between column counts.
 - Full-screen viewer:
   - Swipe between photos, pinch and double-tap zoom, swipe down to dismiss.
   - Info panel with date, camera details, location mini-map, and People in the photo.
   - Video streaming, and Live Photo playback on press.
-- Albums tab with My Albums, folders, and smart albums (Favorites, Videos, Selfies, Live Photos, Panoramas, Screenshots, Recently Added).
-- People tab with circular face thumbnails and names.
-- Map tab using MapLibre GL JS and the basemap from [No outbound network](#no-outbound-network), showing clustered thumbnail pins. The default basemap is OpenStreetMap raster tiles.
-- Library switcher for users with several libraries, for example in the top bar or a profile sheet, plus logout.
+- Albums tab with only user-created albums (and shared albums, if any) — no smart albums or Media Types here, those are in More.
+- More tab: People & Pets, Places (the map), Media Types (Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, Slo-mo), and a Utilities group with Hidden (behind a confirm step, re-asked every time). No Recently Deleted or Duplicates — the app is view-only. The library switcher sits at the very bottom of this tab, since switching libraries is rare.
+- People, Places, and each Media Type screen has its own stable route (e.g. `/people`, `/places`, `/media/<type>`) independent of which tab links to it, so it can move into Albums later at little cost.
+- Map (inside Places) using MapLibre GL JS and the basemap from [No outbound network](#no-outbound-network), showing clustered thumbnail pins. The default basemap is OpenStreetMap raster tiles.
 
-Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar is Library, Albums, People, Map. Match Apple's spacing and materials, and follow this spec for which tabs exist. For You, Memories, and Featured Photos are out of scope. Reference images are indexed in `docs/design-refs/README.md`.
+Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar is Library, Albums, More, Search: Apple's "For You" (Memories, Featured Photos) is curated by Apple and isn't in the library, so there is no equivalent tab here. Match Apple's spacing and materials for the bar itself. Reference images are indexed in `docs/design-refs/README.md`.
 
 ### Desktop layout: macOS Sequoia Photos
 

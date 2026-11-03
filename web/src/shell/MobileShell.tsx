@@ -1,18 +1,27 @@
+import { useEffect, useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
+import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
+import HiddenConfirm from "./more/HiddenConfirm";
+import { MEDIA_TYPES } from "./more/mediaTypes";
+import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
+import MoreScreen from "./more/MoreScreen";
+import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } from "./route";
+import TabPlaceholderScreen from "./TabPlaceholderScreen";
 import type { LayoutOverride } from "./useLayout";
 
-// iOS 17 Photos' tab bar: Library, Albums, People, Map (SPEC.md "Mobile
-// layout"). Only Library has data behind it until Phase 2; the rest stay
-// visible so the frame matches the reference, but disabled.
-const TABS: { key: string; label: string; icon: IconName; active: boolean }[] = [
-  { key: "library", label: "Library", icon: "library", active: true },
-  { key: "albums", label: "Albums", icon: "albums", active: false },
-  { key: "people", label: "People", icon: "people", active: false },
-  { key: "map", label: "Map", icon: "map", active: false },
+// #125, tracker R1: Library, Albums, More, Search -- no "For You" (Apple's
+// Memories and Featured Photos are curated by Apple, not in the library,
+// see docs/design-refs/README.md). People, Places, Media Types, and Hidden
+// move inside More instead of each getting a top-level tab.
+const TABS: { key: MobileTab; label: string; icon: IconName }[] = [
+  { key: "library", label: "Library", icon: "library" },
+  { key: "albums", label: "Albums", icon: "albums" },
+  { key: "more", label: "More", icon: "more" },
+  { key: "search", label: "Search", icon: "search" },
 ];
 
 export default function MobileShell({
@@ -30,10 +39,72 @@ export default function MobileShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
 }) {
+  const [route, setRoute] = useState<MobileRoute>(() => parseMobileRoute(window.location.pathname));
+  // Resets on every navigation (including browser back/forward into
+  // `/hidden`), not just on mount -- Apple re-asks every time you open
+  // Hidden, and #130's password re-ask is a later, stronger version of
+  // this same confirm step.
+  const [hiddenConfirmed, setHiddenConfirmed] = useState(false);
+
+  useEffect(() => {
+    function onPopState() {
+      setRoute(parseMobileRoute(window.location.pathname));
+      setHiddenConfirmed(false);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function navigate(path: string) {
+    window.history.pushState(null, "", path);
+    setRoute(parseMobileRoute(path));
+    setHiddenConfirmed(false);
+  }
+
+  const libraryId = me.libraries[0]?.id;
+  const libraryName = me.libraries[0]?.display_name ?? "Library";
+
+  function renderContent() {
+    if (route.tab === "library") return null;
+    if (route.tab === "albums") return <TabPlaceholderScreen title="Albums" />;
+    if (route.tab === "search") return <TabPlaceholderScreen title="Search" />;
+
+    // route.tab === "more"
+    if (!route.screen) {
+      return <MoreScreen libraryName={libraryName} onNavigate={navigate} />;
+    }
+    if (route.screen === "people") {
+      return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
+    }
+    if (route.screen === "places") {
+      return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;
+    }
+    if (route.screen === "media") {
+      const title = MEDIA_TYPES.find((type) => type.slug === route.mediaType)?.label ?? route.mediaType;
+      return <MorePlaceholderScreen title={title} onBack={() => navigate("/more")} />;
+    }
+    // route.screen === "hidden"
+    if (!hiddenConfirmed) {
+      return <HiddenConfirm onConfirm={() => setHiddenConfirmed(true)} onCancel={() => navigate("/more")} />;
+    }
+    return (
+      <div className="mobile-screen">
+        <header className="mobile-screen__header">
+          <button type="button" className="mobile-screen__back" onClick={() => navigate("/more")}>
+            <Icon name="chevron" className="mobile-screen__back-icon" />
+            More
+          </button>
+          <h1 className="mobile-screen__title">Hidden</h1>
+        </header>
+        <div className="mobile-screen__body">{libraryId !== undefined && <HiddenView libraryId={libraryId} />}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="shell shell--mobile">
       <header className="shell__header">
-        <h1 className="sr-only">Library</h1>
+        <h1 className="sr-only">{TABS.find((tab) => tab.key === route.tab)?.label ?? "Library"}</h1>
         <AccountMenu
           me={me}
           layoutOverride={layoutOverride}
@@ -43,15 +114,20 @@ export default function MobileShell({
         />
       </header>
       <main className="shell__content">
-        {me.libraries[0] ? (
-          <MobileLibrary
-            libraryId={me.libraries[0].id}
-            initialAssetId={deepLinkAssetId}
-            onInitialAssetOpened={onDeepLinkConsumed}
-          />
-        ) : (
-          <LibraryPlaceholder />
-        )}
+        {/* Stays mounted across tab switches so the grid's segment and scroll
+            position survive Library -> More -> Library, like iOS Photos. */}
+        <div style={{ height: "100%", display: route.tab === "library" ? "block" : "none" }}>
+          {libraryId !== undefined ? (
+            <MobileLibrary
+              libraryId={libraryId}
+              initialAssetId={deepLinkAssetId}
+              onInitialAssetOpened={onDeepLinkConsumed}
+            />
+          ) : (
+            <LibraryPlaceholder />
+          )}
+        </div>
+        {route.tab !== "library" && renderContent()}
       </main>
       <nav className="tab-bar" aria-label="Primary">
         {TABS.map((tab) => (
@@ -59,8 +135,8 @@ export default function MobileShell({
             key={tab.key}
             type="button"
             className="tab-bar__item"
-            aria-current={tab.active ? "page" : undefined}
-            disabled={!tab.active}
+            aria-current={route.tab === tab.key ? "page" : undefined}
+            onClick={() => navigate(mobileRoutePath({ tab: tab.key } as MobileRoute))}
           >
             <Icon name={tab.icon} className="tab-bar__icon" />
             <span className="tab-bar__label">{tab.label}</span>
