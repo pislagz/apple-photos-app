@@ -61,6 +61,18 @@ describe("MobileShell layout", () => {
     expect(contentRule).toMatch(/min-height:\s*0/);
     expect(contentRule).toMatch(/overflow:\s*hidden/);
   });
+
+  // Fix round 2: the large "More" title and every pushed screen's title
+  // (People & Pets, Places, each media type, Hidden) share this one class,
+  // and inherit the body's near-black light-mode color otherwise -- they
+  // need their own dark-mode color or they're unreadable on the #000
+  // mobile-screen background.
+  it("gives .mobile-screen__title a readable color in dark mode", () => {
+    const darkBlockStart = css.indexOf("@media (prefers-color-scheme: dark) {\n  .mobile-screen,");
+    const darkBlockEnd = css.indexOf("\n}\n", darkBlockStart);
+    const darkBlock = css.slice(darkBlockStart, darkBlockEnd);
+    expect(darkBlock).toMatch(/\.mobile-screen__title\s*\{\s*color:\s*#fff;\s*\}/);
+  });
 });
 
 describe("MobileShell tab switching", () => {

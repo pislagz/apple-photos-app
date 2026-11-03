@@ -449,6 +449,10 @@ body {
   .mobile-screen__header {
     background: #000;
   }
+
+  .mobile-screen__title {
+    color: #fff;
+  }
 }
 
 .more-screen {
