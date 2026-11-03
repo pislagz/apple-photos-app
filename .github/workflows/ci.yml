@@ -6,17 +6,75 @@ name: CI
 # that the production bundle has no external URL besides the OSM tile host
 # and its copyright link (see CLAUDE.md "Offline at runtime").
 
+# Billing (2026-11-03): the repo is private, so GitHub-hosted minutes count
+# against the 2,000/month allowance and macOS minutes count 10x. Linux jobs run
+# on our own self-hosted runner (labels: self-hosted, linux, box), which is
+# free. The macOS server job runs only when started by hand from the Actions
+# tab ("Run workflow" with macos=true).
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: "Also run the server job on GitHub's macOS runner (billed 10x)"
+        type: boolean
+        default: false
+
+# A newer push to the same PR or branch cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   server:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, linux, box]
+    env:
+      # P0.6: never let osxphotos reach out for a version check.
+      OSXPHOTOS_NO_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-python only supports Ubuntu images; the box runs Debian, so uv
+      # provides Python 3.12 in a throwaway venv instead.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          activate-environment: true
+
+      - name: Install server dependencies
+        run: uv pip install -e "./server[dev]"
+
+      - name: Lint
+        working-directory: server
+        run: ruff check .
+
+      - name: Run server tests
+        working-directory: server
+        run: python -m pytest -q
+
+      - name: Probe the synthetic fixture
+        working-directory: server
+        run: |
+          python <<'PY'
+          import pathlib
+          import sys
+          import tempfile
+
+          from tests.fixtures import build_fixture_library
+          from photos_viewer.probe import main
+
+          with tempfile.TemporaryDirectory() as tmp:
+              package_path = build_fixture_library(pathlib.Path(tmp))
+              exit_code = main([str(package_path)])
+
+          sys.exit(exit_code)
+          PY
+
+  server-macos:
+    if: github.event_name == 'workflow_dispatch' && inputs.macos
+    runs-on: macos-latest
     env:
       # P0.6: never let osxphotos reach out for a version check.
       OSXPHOTOS_NO_VERSION_CHECK: "1"
@@ -59,7 +117,7 @@ jobs:
           PY
 
   web:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, box]
     steps:
       - uses: actions/checkout@v4
 
