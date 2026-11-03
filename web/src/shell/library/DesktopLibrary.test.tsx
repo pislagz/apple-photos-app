@@ -127,7 +127,7 @@ describe("DesktopLibrary", () => {
     expect(screen.getByTestId("selection-count")).toHaveTextContent("3 selected");
 
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("5 selected");
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("5 selected"));
 
     fireEvent.keyDown(grid, { key: "Escape" });
     expect(screen.getByTestId("selection-count")).toHaveTextContent("");
@@ -171,6 +171,49 @@ describe("DesktopLibrary", () => {
     }
   });
 
+  it("cmd-A selects the whole library, not just the pages scrolled into view", async () => {
+    const items = Array.from({ length: 300 }, (_, i) =>
+      makeItem(`p${i}`, `2024-05-10T10:00:00`),
+    );
+    const fetchMock = mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(cells(container).length).toBeLessThan(300);
+
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("300 selected"));
+    for (const call of fetchMock.mock.calls) {
+      expect(String(call[0])).not.toContain("/hidden");
+    }
+  });
+
+  it("scrolls the focused cell into view as arrow keys move focus far past the visible rows", async () => {
+    const items = Array.from({ length: 300 }, (_, i) =>
+      makeItem(`p${i}`, `2024-05-10T10:00:00`),
+    );
+    mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    // Each ArrowDown moves focus a full row (6 columns at the default
+    // zoom); 40 presses lands far outside the virtualizer's overscan
+    // window, so this only passes if the focused row gets scrolled into
+    // view rather than just updated in state.
+    for (let i = 0; i < 40; i++) {
+      fireEvent.keyDown(grid, { key: "ArrowDown" });
+    }
+
+    await waitFor(() => {
+      const focused = container.querySelector('[data-asset-id="p240"][data-selected="true"]');
+      expect(focused).not.toBeNull();
+    });
+  });
+
   it("keeps a hidden asset out of the grid, cmd-A selection, and the count", async () => {
     const visible = [makeItem("v1", "2024-05-10T10:00:00"), makeItem("v2", "2024-05-09T10:00:00")];
     const hidden = makeItem("hidden-1", "2024-05-08T10:00:00");
@@ -186,7 +229,7 @@ describe("DesktopLibrary", () => {
 
     const grid = screen.getByTestId("desktop-library-grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected"));
     expect(container.innerHTML).not.toContain("hidden-1");
   });
 });

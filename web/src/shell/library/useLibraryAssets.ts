@@ -6,6 +6,7 @@ export interface UseLibraryAssetsResult {
   loading: boolean;
   done: boolean;
   loadMore: () => void;
+  loadAll: () => Promise<AssetListItem[]>;
 }
 
 // Pages through `/api/libraries/{id}/assets` (never `/hidden`, so a hidden
@@ -22,15 +23,17 @@ export function useLibraryAssets(libraryId: number): UseLibraryAssetsResult {
   const fetchPage = useCallback((libId: number, cursor: string | null, replace: boolean) => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
-    getAssets(libId, cursor)
+    return getAssets(libId, cursor)
       .then((response) => {
-        if (requestIdRef.current !== requestId) return;
+        if (requestIdRef.current !== requestId) return null;
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
         cursorRef.current = response.next_cursor;
         setDone(!response.next_cursor);
+        return response;
       })
       .catch(() => {
         if (requestIdRef.current === requestId) setDone(true);
+        return null;
       })
       .finally(() => {
         if (requestIdRef.current === requestId) setLoading(false);
@@ -49,5 +52,23 @@ export function useLibraryAssets(libraryId: number): UseLibraryAssetsResult {
     fetchPage(libraryId, cursorRef.current, false);
   }, [libraryId, loading, done, fetchPage]);
 
-  return { items, loading, done, loadMore };
+  // ⌘A (desktop Library) has to select the whole non-hidden library, not
+  // just the pages scrolled into view so far: page through `/assets`
+  // sequentially -- bypassing the scroll-triggered `loadMore` entirely --
+  // until the server reports no further cursor.
+  const loadAll = useCallback(async (): Promise<AssetListItem[]> => {
+    let all = items;
+    let cursor = cursorRef.current;
+    let finished = done;
+    while (!finished) {
+      const response = await fetchPage(libraryId, cursor, false);
+      if (!response) break;
+      all = [...all, ...response.items];
+      cursor = response.next_cursor;
+      finished = !cursor;
+    }
+    return all;
+  }, [libraryId, items, done, fetchPage]);
+
+  return { items, loading, done, loadMore, loadAll };
 }

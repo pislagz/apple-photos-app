@@ -63,8 +63,12 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const anchorIdRef = useRef<string | null>(null);
+  // Holds the arrow-key target index while it is still past the loaded
+  // items, so the reconciliation effect below can catch focus up once
+  // `loadMore` delivers the page that contains it.
+  const desiredIndexRef = useRef<number | null>(null);
 
-  const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
+  const { items, loading, done, loadMore, loadAll } = useLibraryAssets(libraryId);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -105,6 +109,16 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
     if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
   }, [virtualRows, rows.length, loading, done, loadMore]);
 
+  // Keyboard/click focus has to stay on-screen: the virtualizer only mounts
+  // rows near the viewport, so moving focus by state alone (as selection
+  // does) leaves the newly-focused cell unmounted if it was outside the
+  // overscan window.
+  useEffect(() => {
+    if (!focusedId) return;
+    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === focusedId));
+    if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
+  }, [focusedId, rows, rowVirtualizer]);
+
   // ⌘F focuses search from anywhere in the component, so it has to be a
   // window listener rather than living on the grid's own key handler below.
   useEffect(() => {
@@ -123,6 +137,22 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
     anchorIdRef.current = id;
     setFocusedId(id);
   }, []);
+
+  // Reconciles an arrow-key target that was past the loaded items at the
+  // time of the keypress: once the requested page arrives, catch focus up
+  // to it (loading another page first if it still isn't far enough).
+  useEffect(() => {
+    const desired = desiredIndexRef.current;
+    if (desired === null) return;
+    if (desired < items.length) {
+      selectSingle(items[desired].id);
+      desiredIndexRef.current = null;
+    } else if (!done && !loading) {
+      loadMore();
+    } else {
+      desiredIndexRef.current = null;
+    }
+  }, [items, done, loading, loadMore, selectSingle]);
 
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
@@ -161,7 +191,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
       const meta = event.metaKey || event.ctrlKey;
       if (meta && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        setSelected(new Set(items.map((item) => item.id)));
+        loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
         return;
       }
       if (event.key === "Escape") {
@@ -193,10 +223,18 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
       if (delta === undefined || items.length === 0) return;
       event.preventDefault();
       const currentIndex = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
-      const nextIndex = Math.min(items.length - 1, Math.max(0, (currentIndex === -1 ? 0 : currentIndex) + delta));
+      const base = desiredIndexRef.current ?? (currentIndex === -1 ? 0 : currentIndex);
+      const desired = Math.max(0, base + delta);
+      const nextIndex = Math.min(items.length - 1, desired);
+      if (desired > nextIndex && !done) {
+        desiredIndexRef.current = desired;
+        loadMore();
+      } else {
+        desiredIndexRef.current = null;
+      }
       selectSingle(items[nextIndex].id);
     },
-    [items, columns, focusedId, handleOpen, selectSingle],
+    [items, columns, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
   );
 
   const setCellRef = useCallback((id: string, element: HTMLElement | null) => {
