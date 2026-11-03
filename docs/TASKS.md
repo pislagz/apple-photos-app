@@ -330,6 +330,68 @@ Folds backlog issues #104, #105, #106, #107, #111, #113: closing the gap between
 - After `npm run build`, a check scans `web/dist` JS, CSS, and HTML. The only absolute external URLs allowed are `https://tile.openstreetmap.org/{z}/{x}/{y}.png` (the fetched tile template) and `https://www.openstreetmap.org/copyright` (the attribution `href`, never fetched). Any other external host fails the check. Localhost URLs are allowed.
 - Acceptance: CI runs both checks. A test that opens a socket to an external host fails. A hosted URL other than those two, left in the production bundle, fails. The copyright string is an `href` only.
 
+### P1.22 Library replacement (quarterly library drops)
+
+Ordered after P1.17b (#121, edited versions), before family launch. Issue: #122. Design only; not started.
+
+**Workflow it serves.** Each person keeps their own Photos library on their own Mac. About once a quarter they copy a fresh `.photoslibrary` onto the server, replacing the old one: months of new photos, some photos removed because they curated, some edited, some hidden. Copies take hours (100+ GB over SMB), and people may delete the old package before the new copy finishes, or give it a new name. Users must keep seeing the last good index throughout, and nothing is mass-deleted because a file is half-copied.
+
+**What exists today (grounded in code).** `indexer.sqlite_signature` fingerprints `database/Photos.sqlite` + `-wal` + `-shm` (mtime_ns:size). `index_library` skips when the signature matches, otherwise walks the library in one `BEGIN IMMEDIATE` transaction that upserts `assets` by `(library_id, uuid)` (ids stay stable), rebuilds people/albums, and deletes assets not seen. A failed walk rolls back, so the previous index survives. Re-index runs only on `POST …/reindex` or when an admin opens library status (`_maybe_reindex`). Per-library `threading.Lock` (`_lock_for`) serializes jobs. The media cache is keyed by `library_id:uuid:size:source_mtime_ns:…` (`media.cache_key`), so a changed source file already regenerates its thumb, and old files are left for the LRU (`_evict_if_needed`). The `thumbnail_cache` table exists but nothing writes it.
+
+**1. Detection (no admin click).**
+- A background checker thread starts in the app lifespan and wakes every `library_check_interval_minutes` (new `settings` key, default 15, `0` = off; admin Settings form). For each library it does only `stat()` calls: the three sqlite files, the package directory itself, and `database/`. That costs microseconds per library and opens no database.
+- A signature that differs from `last_indexed_signature`, or a missing path, moves the library into a `pending` state (new columns `pending_signature`, `pending_since`). Nothing is indexed yet; see 2.
+- The status-page trigger (`_maybe_reindex`) goes through the same pending/stability path instead of indexing immediately.
+
+**2. Copy-in-progress safety.**
+- *Stability window.* A pending library is indexed only after its fingerprint has been unchanged for `library_stable_minutes` (default 10) across consecutive checks. The fingerprint is the sqlite signature plus file count and total size of `database/` and the top-level package mtime, so a copy still writing `originals/` or `resources/` keeps it pending. The admin can press "Index now" to skip the wait.
+- *Readiness checks before the walk* (all read-only, on the temp copy `open_library_readonly` already makes, never on the package): `Photos.sqlite` exists and is non-empty; `PRAGMA quick_check` on the copy returns `ok`; the P0.4 version probe passes; `originals/` (or `resources/derivatives/`) exists; and a sample of up to 200 assets (random by uuid) from the new DB has at least one existing file each (original, edited, or derivative). Failing any check leaves the library `pending` with a reason ("copy looks incomplete: 143 of 200 sampled photos have no file yet") and retries on the next check. After 24 h pending it becomes a warning on the status page.
+- *Missing path.* If the package disappears (old one deleted, new not yet copied), keep the index and serve as today: grid, metadata and cached thumbs keep working, and an uncached original returns the existing "file unavailable" error. Status shows "Library file missing since 14:05". Never delete rows because a path is missing.
+- *Recommended workflow* (README + family guide): copy to `Alice.photoslibrary.incoming` (or any name not ending in `.photoslibrary`), then delete the old package and rename. Quit Photos on the Mac before copying. The stability window protects people who don't follow it.
+- Users see the last good index for the whole swap; the new index appears in one commit.
+
+**3. Mass-deletion guard.**
+- The walk already happens in one transaction. Before the final `DELETE … NOT IN _seen_asset_uuids`, count `removed` and compare it with the current asset count. If `removed / current > library_removal_guard_percent` (default 20%) **and** `removed >= 100`, or the new library has 0 assets while the index has some, roll back and record a **held** run with the counts (added/removed/changed). Nothing changes for users.
+- The admin Libraries screen shows "Update held: would remove 4,210 of 20,000 photos (21%), add 812", with **Apply** and **Discard**. Apply re-runs the index with the guard bypassed for that exact `pending_signature` only. Discard keeps the old index and ignores that signature until the file changes again.
+- Setting `0` turns the guard off. The guard applies to every trigger (automatic, admin re-index, replace).
+
+**4. Identity: same path vs a new name or folder.**
+- Same path: handled by 1–3 with no admin action.
+- New action **Replace library file** (`POST /api/admin/libraries/{id}/replace`, admin-only, cross-site guard). Step 1, `preview`: validate the new path exactly like add (`_validate_library_path`), then open it read-only and report: new asset count, `overlap = |old uuids ∩ new uuids| / |old uuids|`, would-add/would-remove, and whether the Core Data store UUID matches. The store UUID is `Z_METADATA.Z_UUID` in `Photos.sqlite`, read with a plain query on the temp copy; the index stores it at each run in a new `libraries.store_uuid` column. Step 2, `confirm`: update `libraries.path`, keep `id`, display name, assignments and settings, then index. Assets keep their ids because the upsert key is `(library_id, uuid)` and Photos keeps asset UUIDs across copies.
+- Warnings in the preview, requiring an explicit "Replace anyway": overlap below 50%, store UUID differs, or the new path is already registered as another library (that one is refused).
+- No auto-matching of a new folder to a library. The status page may *suggest* "A new library appeared next to this one: Alice 2026.photoslibrary. Replace?" when the old path is missing and an unregistered `.photoslibrary` sits in the same parent directory.
+- To verify on a real Mac (manual checklist): `Z_UUID` survives a Finder/rsync copy, and asset UUIDs are stable across copies and across an export/re-import cycle (they are not for re-import, so overlap is the main signal).
+
+**5. Stable ids and caches.**
+- Kept photos keep `assets.id`, uuid-based links, the keyset cursor and cached thumbs (existing upsert, keep its test).
+- Removed photos: rows deleted (cascades to joins). Their cache files must not linger. Change the cache layout to `media_cache/<library_id>/<uuid[:2]>/<uuid>/<key>.<ext>` (or record files in the unused `thumbnail_cache` table) so the indexer deletes a removed asset's cache files after the commit. Curated-away photos then leave no thumbnails on disk.
+- Edited or reverted photos: once #121 lands, the source chosen for a thumb is the edited file, and the key includes its mtime, so an edit or revert regenerates. Count them as "changed" when `path_edited`, `date_modified` or `original_filesize` differs from the old row. Purge the old cache files for changed assets too.
+- Hidden-flag changes: the upsert already rewrites `hidden`. Test that a newly hidden photo leaves `/assets`, `/summary` and counts, and appears only under Hidden, and that unhiding reverses it. A deleted-and-hidden case is covered by the removal path.
+
+**6. Optimize Mac Storage.**
+- At index time count assets whose original is missing on disk (`PhotoInfo.ismissing` or no file at `path`) and that have a derivative. Store `originals_missing` and `originals_missing_pct` on the run.
+- If `originals_missing_pct >= 5%`, status shows: "1,240 photos (6%) have no full-size original in this copy. 'Optimize Mac Storage' is probably on; downloads will be lower quality." Show it in the preview of a replace too. Downloads of those assets keep using the existing derivative fallback, and the download response says so.
+
+**7. Change summary.**
+- New table `library_index_runs (id, library_id, trigger [auto|admin|replace|apply_hold], started_at, finished_at, outcome [applied|held|discarded|failed|not_ready|unchanged], signature, store_uuid, asset_count, added, removed, changed, hidden_changed, originals_missing, error)`. Counts are computed inside the walk (insert vs update vs delete).
+- Admin Libraries list and status show the last applied run, for example "Updated 3 Nov 14:20: 812 added, 37 removed, 15 changed", plus a short history (last 10 runs) and any held update.
+- Optional, off by default (`show_library_updated_note`): users of that library see a subtle "Library updated 3 Nov" line under the Library title for 7 days. No counts are shown to non-admins.
+
+**8. Failures, audit, tests.**
+- Failures: any exception rolls the transaction back (existing) and records a `failed` run with the error. The library stays `error` with the last good index served. A not-ready check is not an error. Restart safety: `reset_stale_indexing_state` also clears a stale `pending` lock, and pending state is recomputed on the next check.
+- Audit rows (`write_audit_log`): `library.update.applied` (counts), `library.update.held`, `library.update.hold_applied` / `hold_discarded` (admin), `library.replace.previewed` / `replace.confirmed` (old path, new path, overlap, store UUID match), `library.file_missing`, `library.update.failed`. Automatic runs log the user as the system.
+- Tests (fixture-based, all on Linux under the socket ban):
+  - *Same-path swap:* index fixture A, replace the package with fixture A′ (some uuids kept, some new, some removed, one edited, one newly hidden). After the stability window (tests set it to 0 and drive the checker by hand), kept assets keep ids, removed ones are gone with their cache files deleted, counts in `library_index_runs` are exact, and the hidden photo appears only under Hidden.
+  - *Renamed swap:* register A, then `replace` to a renamed copy: the preview reports overlap 100% and a store UUID match, confirm keeps id and assignments. A replace to an unrelated fixture warns about low overlap and a mismatched UUID.
+  - *Half-copied library:* a package with a truncated `Photos.sqlite`, one with sqlite but no `originals/` files for the sampled assets, and one whose fingerprint changes between two checks. None is indexed, the old index is served, and status says why.
+  - *Missing path:* delete the package; the index survives and status says "missing".
+  - *Mass-removal guard:* a swap removing 30% (and ≥ the floor) is held with nothing changed; Apply applies it; Discard keeps the old index; a removal below the threshold applies directly.
+  - *Optimize Storage detection:* fixture where most assets have only derivatives raises the warning and the counts.
+  - *No writes:* the existing package-unchanged check (file list + mtimes) passes for every new path, including `quick_check` and the `Z_METADATA` read.
+- Acceptance: the tests above in CI; the admin can see the last update summary and any held update; README documents the copy-then-rename workflow, Optimize Storage, and the three settings.
+- Out of scope: merging two people's libraries, keeping removed photos ("archive"), watching with inotify/FSEvents (unreliable on SMB/NAS mounts; polling stat is enough).
+- Split if it runs long: P1.22a (detection, stability, guard, run summary) and P1.22b (Replace action, Optimize Storage warning, cache purge).
+
 ## Phase 2 — Albums, People, Map, search
 
 ### P2.1 Albums
@@ -356,10 +418,16 @@ Folds backlog issues #104, #105, #106, #107, #111, #113: closing the gap between
 
 ### P2.4 Search
 
-- `GET …/search?q=` matches date, place name, person, album title, and camera fields stored in the index.
+- `GET …/search?q=` matches date, place name, person, album title, and camera fields stored in the index, plus Apple's on-device scene/object labels ("dog", "beach", "snow").
+- Labels (English only): at index time copy `PhotoInfo.labels` (display form) and `labels_normalized` (lower-case, used for matching) into a new `asset_labels (asset_id, label, label_normalized)` table, rebuilt per asset on every re-index like `asset_people`. osxphotos already parses `database/search/psi.sqlite` once inside `PhotosDB()` (`_process_searchinfo`, one joined query over `ga`/`groups`/`assets`), so this adds no per-photo file reads, only the inserts. Optional extra fields from `PhotoInfo.search_info` worth indexing the same way: `activities`, `venues`, `venue_types`, `holidays`, `season`, `bodies_of_water`, `pets`, `landmarks` (Photos 8+ fields return `[]` on older libraries).
+- Matching is plain word/prefix matching across all fields (`beach 2024`, `Alice snow` AND the terms). No natural-language parsing. Non-English words do not translate (`pies` will not find a dog); that is accepted.
+- Detected text (OCR): `search_info.detected_text` reads Apple's stored text tokens (Photos 8+, category 1203) from the same search index, with no image processing. Index it only if a real macOS 13+ library shows usable values; record the result in `docs/MANUAL_MAC_TESTS.md`. Never call `PhotoInfo.detected_text()`: it runs Vision OCR through pyobjc (forbidden), is macOS-only, and writes an xattr onto the original file.
+- Newer libraries (macOS 27+) keep the search index in `search/leo.sqlite` instead of `psi.sqlite`. `libraries._copy_search_index` only copies `psi.sqlite`, so labels would silently be empty on those libraries in copy mode. Copy `leo.sqlite` too, with a fixture test.
+- Labels are only as fresh as the owner's Mac made them: photos imported just before a library drop may have no labels yet. They appear after the next drop.
 - Place strings are the ones indexed in P1.6. Search does not geocode.
 - Desktop search field and optional mobile search.
-- Acceptance: a query cannot return another library's asset. Empty query returns an empty page, not the whole library. The search module imports no HTTP client.
+- Acceptance: a query cannot return another library's asset. Empty query returns an empty page, not the whole library. The search module imports no HTTP client. A fixture with a populated `psi.sqlite` returns an asset for its label ("dog"), case-insensitively, and drops it when a re-index no longer lists the label. Hidden assets never appear in search results. Re-index time on the fixture is unchanged within noise.
+- Measured (2026-11-03, osxphotos 0.77.2, Linux box): reading labels for the fixture adds under 0.1 ms. A synthetic 50,000-asset `psi.sqlite` with 12 labels each (600k rows, 9 MB) takes 2.2 s for osxphotos' parse. A real library has more rows per asset (places, dates, etc.), so expect roughly 5–10 s for 50k photos, and that cost is already paid by every index today. Re-check on a real library.
 
 ### P2.5 Place names stay inside the library
 
