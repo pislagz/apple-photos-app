@@ -63,6 +63,28 @@ describe("MobileShell layout", () => {
   });
 });
 
+describe("MobileShell tab switching", () => {
+  it("keeps the Library tab mounted so its segment survives Library -> More -> Library", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(
+      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+    );
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
+    expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    expect(await screen.findByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
 describe("MobileShell More tab", () => {
   it("lists People & Pets, Places, Media Types, and Hidden, with the library switcher pinned at the very bottom", async () => {
     const { container } = render(

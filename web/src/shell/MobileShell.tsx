@@ -65,17 +65,7 @@ export default function MobileShell({
   const libraryName = me.libraries[0]?.display_name ?? "Library";
 
   function renderContent() {
-    if (route.tab === "library") {
-      return libraryId !== undefined ? (
-        <MobileLibrary
-          libraryId={libraryId}
-          initialAssetId={deepLinkAssetId}
-          onInitialAssetOpened={onDeepLinkConsumed}
-        />
-      ) : (
-        <LibraryPlaceholder />
-      );
-    }
+    if (route.tab === "library") return null;
     if (route.tab === "albums") return <TabPlaceholderScreen title="Albums" />;
     if (route.tab === "search") return <TabPlaceholderScreen title="Search" />;
 
@@ -123,7 +113,22 @@ export default function MobileShell({
           compact
         />
       </header>
-      <main className="shell__content">{renderContent()}</main>
+      <main className="shell__content">
+        {/* Stays mounted across tab switches so the grid's segment and scroll
+            position survive Library -> More -> Library, like iOS Photos. */}
+        <div style={{ height: "100%", display: route.tab === "library" ? "block" : "none" }}>
+          {libraryId !== undefined ? (
+            <MobileLibrary
+              libraryId={libraryId}
+              initialAssetId={deepLinkAssetId}
+              onInitialAssetOpened={onDeepLinkConsumed}
+            />
+          ) : (
+            <LibraryPlaceholder />
+          )}
+        </div>
+        {route.tab !== "library" && renderContent()}
+      </main>
       <nav className="tab-bar" aria-label="Primary">
         {TABS.map((tab) => (
           <button

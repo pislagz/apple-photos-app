@@ -426,6 +426,7 @@ body {
 
 .mobile-screen__back-icon {
   margin-right: -2px;
+  transform: scaleX(-1);
 }
 
 .mobile-screen__title {
@@ -514,9 +515,11 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .more-screen,
-  .more-screen__item {
+  .more-screen {
     background: #000;
+  }
+
+  .more-screen__item {
     color: #fff;
   }
 
