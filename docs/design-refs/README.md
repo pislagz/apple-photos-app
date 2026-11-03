@@ -4,7 +4,7 @@ Screenshots of iOS 17 Photos and macOS Sequoia Photos. They are layout reference
 
 These files stay in this folder. The web app does not import them. They are not a sample photo library. Some of the Mac shots show personal pictures; treat the folder as documentation, and do not add more personal photos to the repo.
 
-Apple's iOS 17 tab bar is Library, For You, Albums, and Search. This app's mobile bar is Library, Albums, People, and Map. For You, Memories, Featured Photos, Trips, Recently Deleted, Projects, and Shared Albums show up in the shots and are out of scope. Edit, trash, and favorite-as-a-write are out of scope. A heart may display the existing favorite flag.
+Apple's iOS 17 tab bar is Library, For You, Albums, and Search. This app's mobile bar is Library, Albums, More, and Search: there is no "For You" equivalent, since Apple's Memories and Featured Photos are curated by Apple and aren't in the library. People & Pets, Places (the map), and Media Types move into the More tab instead of each getting a top-level tab; Albums holds only user-created (and shared) albums. For You, Memories, Featured Photos, Trips, Recently Deleted, Projects, and Shared Albums show up in the shots and are out of scope. Edit, trash, and favorite-as-a-write are out of scope. A heart may display the existing favorite flag.
 
 ## Sidebar order: 15.0 and 15.4
 
@@ -48,7 +48,7 @@ Spec screens: mobile Library, the Years/Months/Days/All Photos control, and the 
 
 Pushed from Albums: back button "Albums", title "People & Pets", Select, and a sort button. Two-column grid of circular portraits with names underneath: Brian, Angie, Ryder (a dog), Louis, Tyler, Gabriela. Each circle has a blue heart badge. Tab bar has Albums selected. White background.
 
-Spec screen: mobile People. In iOS 17 this screen lives under Albums. In this app it is its own tab. The circles, names, and heart badge are the visual target. Renaming people is out of scope.
+Spec screen: mobile People. In iOS 17 this screen lives under Albums; in this app it is pushed from the More tab instead, at its own stable route (`/people`) so it can move again later at little cost. The circles, names, and heart badge are the visual target. Renaming people is out of scope.
 
 ### `ios17-viewer.png`
 
