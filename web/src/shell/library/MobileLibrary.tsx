@@ -78,9 +78,11 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
 
   return (
     <div className="mobile-library">
-      <div className="mobile-library__pinned-header" data-testid="pinned-header">
-        {pinnedLabel}
-      </div>
+      {view !== "days" && (
+        <div className="mobile-library__pinned-header" data-testid="pinned-header">
+          {pinnedLabel}
+        </div>
+      )}
       <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
         {VIEWS.map((item) => (
           <button
@@ -128,23 +130,17 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
                 );
               }
               if (row.type === "feature") {
+                const hero = row.items[0];
                 return (
-                  <div
-                    key={row.key}
-                    style={{ ...style, display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gridAutoRows: "1fr" }}
-                    className="mobile-library__row-feature"
-                  >
-                    {row.items.map((item, index) => (
-                      <img
-                        key={item.id}
-                        src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
-                        alt={item.filename ?? ""}
-                        loading="lazy"
-                        className="mobile-library__cell"
-                        style={index === 0 ? { gridColumn: "span 2", gridRow: "span 2" } : undefined}
-                        onClick={() => openItem(item)}
-                      />
-                    ))}
+                  <div key={row.key} style={style} className="mobile-library__row-feature">
+                    <img
+                      src={`/api/libraries/${libraryId}/thumb/${hero.id}?size=grid2x`}
+                      alt={hero.filename ?? ""}
+                      loading="lazy"
+                      className="mobile-library__feature-image"
+                      onClick={() => openItem(hero)}
+                    />
+                    <div className="mobile-library__feature-caption">{row.label}</div>
                   </div>
                 );
               }

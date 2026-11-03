@@ -126,16 +126,16 @@ body {
   gap: 2px;
   padding: 3px;
   border-radius: 16px;
-  background: rgba(60, 60, 67, 0.72);
+  background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
 .mobile-library__view-switch-item {
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(60, 60, 67, 0.7);
   font-size: 13px;
   font-weight: 500;
   padding: 6px 12px;
@@ -144,9 +144,27 @@ body {
 }
 
 .mobile-library__view-switch-item[aria-selected="true"] {
-  background: rgba(255, 255, 255, 0.95);
+  background: #fff;
   color: #000;
   font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-library__view-switch {
+    background: rgba(60, 60, 67, 0.72);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
+
+  .mobile-library__view-switch-item {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .mobile-library__view-switch-item[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.95);
+    color: #000;
+    box-shadow: none;
+  }
 }
 
 .mobile-library__scroll {
@@ -176,7 +194,32 @@ body {
 }
 
 .mobile-library__row-feature {
-  gap: 1px;
+  position: relative;
+}
+
+/* Days hero (ios17-library-days.png): one full-width photo per day, its
+   date overlaid directly on the image -- there is no separate header row
+   for Days, so the date is never shown twice. */
+.mobile-library__feature-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #e5e5ea;
+}
+
+.mobile-library__feature-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.2px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 75%);
+  pointer-events: none;
 }
 
 .mobile-library__cell {
@@ -188,7 +231,8 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  .mobile-library__cell {
+  .mobile-library__cell,
+  .mobile-library__feature-image {
     background: #1c1c1e;
   }
 }
@@ -199,13 +243,15 @@ body {
   color: var(--ios-label-secondary);
 }
 
-/* Bottom tab bar: translucent, icons + labels, safe-area aware. */
+/* Bottom tab bar: translucent, icons + labels, safe-area aware. Light,
+   frosted material by default (ios17-viewer.png); dark only when the
+   system itself is in dark mode. */
 .tab-bar {
   display: flex;
-  background: rgba(22, 22, 24, 0.86);
+  background: rgba(249, 249, 249, 0.86);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -217,13 +263,24 @@ body {
   gap: 2px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(60, 60, 67, 0.6);
   padding: 2px 0;
   cursor: pointer;
 }
 
 .tab-bar__item[aria-current="page"] {
   color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .tab-bar {
+    background: rgba(22, 22, 24, 0.86);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .tab-bar__item {
+    color: rgba(255, 255, 255, 0.5);
+  }
 }
 
 .tab-bar__item:disabled {
@@ -433,12 +490,22 @@ body {
 }
 
 .sidebar__item[aria-current="page"] {
-  background: var(--accent);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.08);
+  color: #1d1d1f;
 }
 
 .sidebar__item[aria-current="page"] .sidebar__icon {
-  color: #fff;
+  color: var(--accent);
+}
+
+.sidebar__item--sub {
+  padding-left: 22px;
+  font-size: 12.5px;
+}
+
+.sidebar__item--sub .sidebar__icon {
+  width: 15px;
+  height: 15px;
 }
 
 .sidebar .account-menu {
@@ -595,6 +662,26 @@ body {
   position: relative;
   background: #fff;
   padding: 0 1px;
+}
+
+/* Date-range large title overlaid on the grid's first row, like
+   sequoia-library-grid.png's "Apr 13, 2021 – Jun 11, 2024". A gradient
+   scrim keeps the white text legible over whatever thumbnail scrolls
+   underneath; pointer-events stay off so it never intercepts clicks or
+   the rubber-band drag-select below it. */
+.desktop-library__date-range {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+  padding: 14px 10px 36px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 100%);
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.2px;
 }
 
 .desktop-library__row-header {
@@ -763,6 +850,69 @@ body {
   font-size: 13px;
 }
 
+/* Desktop sidebar footer: a tidy row instead of the plain stacked
+   controls -- avatar glyph, username, chevron, opening the popover
+   upward since the row sits at the bottom of the sidebar. */
+.account-menu--row {
+  border-top: 1px solid var(--sequoia-border);
+  padding: 6px 4px;
+  position: relative;
+}
+
+.account-menu__row-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 6px;
+  cursor: pointer;
+  color: #1d1d1f;
+}
+
+.account-menu__row-trigger:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.account-menu__avatar {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.account-menu__row-username {
+  flex: 1 1 auto;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu__row-chevron {
+  flex: 0 0 auto;
+  color: var(--sequoia-text-secondary);
+  transform: rotate(-90deg);
+}
+
+.account-menu__popover--row {
+  top: auto;
+  bottom: 44px;
+  left: 4px;
+  right: 4px;
+}
+
 .account-menu__popover .layout-override select {
   background: #fff;
 }
@@ -771,14 +921,24 @@ body {
 /* P1.16 Viewer                                                           */
 /* ---------------------------------------------------------------------- */
 
+/* ios17-viewer.png: white/light stage with a date/place title in the top
+   bar and a light filmstrip, not the all-black viewer this started as.
+   Dark mode (system only, not a toggle) keeps the original black look. */
 .mobile-viewer {
   position: fixed;
   inset: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: #000;
-  color: #fff;
+  background: #fff;
+  color: #1d1d1f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-viewer {
+    background: #000;
+    color: #fff;
+  }
 }
 
 .mobile-viewer__topbar {
@@ -786,6 +946,34 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
+}
+
+.mobile-viewer__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.mobile-viewer__title-primary {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.mobile-viewer__title-secondary {
+  font-size: 11px;
+  color: var(--ios-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .mobile-viewer__icon-button {
@@ -796,8 +984,14 @@ body {
   justify-content: center;
   border: none;
   background: transparent;
-  color: #fff;
+  color: #1d1d1f;
   cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-viewer__icon-button {
+    color: #fff;
+  }
 }
 
 .mobile-viewer__back-chevron {
@@ -875,7 +1069,7 @@ body {
 
 .mobile-viewer__filmstrip__item[data-selected="true"] {
   opacity: 1;
-  outline: 2px solid #fff;
+  outline: 2px solid var(--accent);
 }
 
 .mobile-viewer__filmstrip__item img {
@@ -947,6 +1141,36 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
+}
+
+/* Sequoia's viewer title: date/place centered in the top bar, like the
+   grid's own date-range title. */
+.desktop-viewer__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1px;
+}
+
+.desktop-viewer__title-primary {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.desktop-viewer__title-secondary {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .desktop-viewer__topbar .toolbar-button {

@@ -26,6 +26,19 @@ const MAX_ZOOM_INDEX = ZOOM_STEPS.length - 1;
 const DESKTOP_VIEWS = VIEWS.filter((item) => item.key !== "days");
 const LOAD_MORE_ROW_MARGIN = 3;
 
+// Short form for the Sequoia-style date-range title (sequoia-library-grid.png:
+// "Apr 13, 2021 – Jun 11, 2024" overlaid on the first row). `date` is a naive
+// UTC-ish ISO string, same convention as grouping.ts's `formatGroupLabel`.
+function shortDate(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function formatDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return "";
   const total = Math.max(0, Math.round(seconds));
@@ -95,6 +108,16 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
   const thumbSize = ZOOM_STEPS[zoomIndex].thumbSize;
   const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
   const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
+
+  // Items arrive sorted descending by date (grouping.ts), so the first and
+  // last loaded items are the newest and oldest seen so far.
+  const dateRangeLabel = useMemo(() => {
+    const dated = items.filter((item): item is AssetListItem & { date: string } => Boolean(item.date));
+    if (dated.length === 0) return "";
+    const newest = shortDate(dated[0].date);
+    const oldest = shortDate(dated[dated.length - 1].date);
+    return newest === oldest ? newest : `${oldest} – ${newest}`;
+  }, [items]);
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -392,6 +415,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
         onKeyDown={handleGridKeyDown}
         onMouseDown={handleGridMouseDown}
       >
+        {dateRangeLabel && <div className="desktop-library__date-range">{dateRangeLabel}</div>}
         {items.length === 0 && done ? (
           <p className="desktop-library__empty">No photos yet.</p>
         ) : (

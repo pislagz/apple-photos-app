@@ -5,7 +5,7 @@ import { Filmstrip } from "./Filmstrip";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
-import { buildInfoRows } from "./viewerInfo";
+import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
 
 export interface ViewerProps {
   libraryId: number;
@@ -125,6 +125,12 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail) : [];
+  const dateLine = detail ? formatDateLine(detail.date_created) : "";
+  const placeLine = detail ? formatLocationLine(detail) : "";
+  // ios17-viewer.png: place is the bold title, date is the subtitle below
+  // it. When a photo has no place, the date becomes the title on its own.
+  const titleLine = placeLine || dateLine;
+  const subtitleLine = placeLine ? dateLine : "";
 
   return (
     <div className="mobile-viewer" data-testid="mobile-viewer" style={{ opacity: 1 - Math.min(dragY / 400, 0.6) }}>
@@ -132,6 +138,10 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={20} className="mobile-viewer__back-chevron" />
         </button>
+        <div className="mobile-viewer__title">
+          {titleLine && <div className="mobile-viewer__title-primary">{titleLine}</div>}
+          {subtitleLine && <div className="mobile-viewer__title-secondary">{subtitleLine}</div>}
+        </div>
         <button type="button" className="mobile-viewer__icon-button" aria-label="More">
           <Icon name="more" size={18} />
         </button>
@@ -200,6 +210,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           />
         )}
       </div>
+      <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" />
       <div className="mobile-viewer__icon-row">
         {item.favorite && (
           <span className="mobile-viewer__icon-button" aria-label="Favorite">
@@ -219,7 +230,6 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           <Icon name="info" size={20} />
         </button>
       </div>
-      <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" />
       {infoOpen && (
         <div className="mobile-viewer__info-sheet" data-testid="viewer-info-sheet">
           <button
