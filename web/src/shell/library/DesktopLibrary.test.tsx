@@ -272,7 +272,7 @@ describe("DesktopLibrary", () => {
     };
   }
 
-  it("opens the Viewer on a double-click, at the clicked item's position, and closing it restores the grid", async () => {
+  it("opens the Viewer on a double-click in All Photos, at the clicked item's position, and closing it restores the grid", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
@@ -283,6 +283,10 @@ describe("DesktopLibrary", () => {
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
+    // Only All Photos opens the Viewer on double-click; Years and Months
+    // drill in instead (#126).
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    await screen.findAllByRole("img");
     fireEvent.doubleClick(cells(container)[1]);
 
     const viewer = await screen.findByTestId("desktop-viewer");
@@ -291,6 +295,51 @@ describe("DesktopLibrary", () => {
     fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
+  });
+
+  it("double-clicking a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
+    fireEvent.doubleClick(oldestCell);
+
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
+    // Overscan keeps every row mounted for a list this small, so DOM order
+    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
+    await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+  });
+
+  it("double-clicking a Month tile drills into All Photos scrolled to that tile's date, without opening the Viewer", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
+    fireEvent.doubleClick(oldestCell);
+
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    // Overscan keeps every row mounted for a list this small, so DOM order
+    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
+    await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
   });
 
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
@@ -335,6 +384,10 @@ describe("DesktopLibrary", () => {
     });
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    // Only All Photos opens the Viewer on Enter/Space; Years and Months
+    // drill in instead (#126).
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     await screen.findAllByRole("img");
     const grid = screen.getByTestId("desktop-library-grid");
 
