@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
 import HiddenView from "./HiddenView";
+import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import type { LayoutOverride } from "./useLayout";
@@ -9,12 +10,20 @@ import type { LayoutOverride } from "./useLayout";
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Only
 // "Library" has a real screen behind it until later phases; the rest are
 // disabled chrome so the frame matches the reference.
-const SECTIONS = ["Favorites", "Recently Added", "Map", "People"];
+const SECTIONS: { label: string; icon: IconName }[] = [
+  { label: "Favorites", icon: "favorite" },
+  { label: "Recently Added", icon: "added" },
+  { label: "Map", icon: "map" },
+  { label: "People", icon: "people" },
+];
 const MEDIA_TYPES = ["Videos", "Selfies", "Live Photos", "Portrait", "Panoramas", "Screenshots", "RAW"];
 const SMART_ALBUMS = ["Favorites", "Videos", "Selfies", "Live Photos", "Panoramas", "Screenshots", "Recently Added"];
 // Sequoia Photos' "Utilities" group. Only "Hidden" (P1.13) has a real screen
 // behind it; "Imports" and "Recently Deleted" stay disabled chrome.
-const UTILITIES = ["Imports", "Recently Deleted"];
+const UTILITIES: { label: string; icon: IconName }[] = [
+  { label: "Imports", icon: "tray" },
+  { label: "Recently Deleted", icon: "trash" },
+];
 
 export default function DesktopShell({
   me,
@@ -46,13 +55,15 @@ export default function DesktopShell({
                 className="sidebar__item"
                 onClick={() => setView("library")}
               >
+                <Icon name="library" className="sidebar__icon" />
                 Library
               </button>
             </li>
             {SECTIONS.map((section) => (
-              <li key={section}>
+              <li key={section.label}>
                 <button type="button" disabled className="sidebar__item">
-                  {section}
+                  <Icon name={section.icon} className="sidebar__icon" />
+                  {section.label}
                 </button>
               </li>
             ))}
@@ -75,6 +86,7 @@ export default function DesktopShell({
           <ul>
             <li>
               <button type="button" disabled className="sidebar__item">
+                <Icon name="folder" className="sidebar__icon" />
                 My Albums
               </button>
             </li>
@@ -97,13 +109,15 @@ export default function DesktopShell({
                 className="sidebar__item"
                 onClick={() => setView("hidden")}
               >
+                <Icon name="hidden" className="sidebar__icon" />
                 Hidden
               </button>
             </li>
             {UTILITIES.map((item) => (
-              <li key={item}>
+              <li key={item.label}>
                 <button type="button" disabled className="sidebar__item">
-                  {item}
+                  <Icon name={item.icon} className="sidebar__icon" />
+                  {item.label}
                 </button>
               </li>
             ))}

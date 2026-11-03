@@ -106,9 +106,13 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
                 transform: `translateY(${virtualRow.start}px)`,
               };
               if (row.type === "header") {
+                // The pinned overlay above already shows the topmost
+                // group's label; rendering it again here would duplicate
+                // the date line right under the overlay.
+                const isPinnedRow = topmostRow !== undefined && virtualRow.index === topmostRow.index;
                 return (
                   <div key={row.key} style={style} className="mobile-library__row-header">
-                    {row.label}
+                    {isPinnedRow ? null : row.label}
                   </div>
                 );
               }

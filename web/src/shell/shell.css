@@ -1,59 +1,151 @@
 /* SPEC.md "Front end": system-ui font, light and dark follow the system.
-   `color-scheme` alone makes form controls and scrollbars follow it too. */
+   `color-scheme` alone makes form controls and scrollbars follow it too.
+   P1.15b styles to the iOS 17 / Sequoia look in docs/design-refs/; light
+   appearance only, dark mode is a follow-up. */
 :root {
   color-scheme: light dark;
+  --accent: #0a84ff;
+  --ios-grouped-bg: #f2f2f7;
+  --ios-card-bg: #ffffff;
+  --ios-separator: rgba(60, 60, 67, 0.29);
+  --ios-label-secondary: #8e8e93;
+  --sequoia-sidebar-bg: rgba(246, 246, 246, 0.82);
+  --sequoia-toolbar-bg: rgba(246, 246, 246, 0.92);
+  --sequoia-border: rgba(0, 0, 0, 0.1);
+  --sequoia-text-secondary: #6e6e73;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
+  color: #1d1d1f;
 }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Mobile shell (iOS 17 Photos)                                           */
+/* ---------------------------------------------------------------------- */
 
 /* The mobile shell fills the viewport and only the Library's own scroll
    area (.mobile-library__scroll) scrolls -- header and tab bar stay put,
    and the virtualizer only renders what the bounded area can show. */
 .shell--mobile {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100dvh;
   min-height: 0;
+  background: #fff;
 }
 
-.shell--mobile .shell__header,
 .shell--mobile .tab-bar {
   flex: 0 0 auto;
+}
+
+/* The title + account button float over the top of the grid (see
+   .mobile-library__pinned-header below), so the header takes no flex
+   space of its own -- .shell__content fills the full height behind it. */
+.shell--mobile .shell__header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 0 0;
 }
 
 .shell--mobile .shell__content {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  background: #fff;
 }
 
-/* P1.14 mobile Library: Years/Months/Days/All Photos grid. */
+@media (prefers-color-scheme: dark) {
+  .shell--mobile,
+  .shell--mobile .shell__content {
+    background: #000;
+  }
+}
+
+/* P1.14 mobile Library: Years/Months/Days/All Photos grid, with a pinned
+   large-title header and a floating segmented pill like ios17-library-days.png. */
 .mobile-library {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  position: relative;
+  background: #fff;
 }
 
+@media (prefers-color-scheme: dark) {
+  .mobile-library {
+    background: #000;
+  }
+}
+
+/* Large title overlaid on the grid, like ios17-library-days.png: a
+   gradient scrim keeps the white text legible over whatever photo scrolls
+   underneath. The grid fills the full height behind it (no top padding),
+   so this must stay position:absolute rather than taking flex space. */
 .mobile-library__pinned-header {
-  flex: 0 0 auto;
-  padding: 4px 12px;
-  font-weight: 600;
-  text-align: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 28px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.3px;
 }
 
 .mobile-library__view-switch {
-  flex: 0 0 auto;
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 2;
   display: flex;
   justify-content: center;
-  gap: 4px;
-  padding: 4px;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 16px;
+  background: rgba(60, 60, 67, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.mobile-library__view-switch-item {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 13px;
+  cursor: pointer;
 }
 
 .mobile-library__view-switch-item[aria-selected="true"] {
+  background: rgba(255, 255, 255, 0.95);
+  color: #000;
   font-weight: 700;
 }
 
@@ -67,16 +159,24 @@ body {
 .mobile-library__row-header {
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  font-weight: 600;
+  padding: 0 12px;
+  font-weight: 700;
+  font-size: 15px;
+  color: #1d1d1f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-library__row-header {
+    color: #fff;
+  }
 }
 
 .mobile-library__row-grid {
-  gap: 2px;
+  gap: 1px;
 }
 
 .mobile-library__row-feature {
-  gap: 2px;
+  gap: 1px;
 }
 
 .mobile-library__cell {
@@ -84,12 +184,173 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+  background: #e5e5ea;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-library__cell {
+    background: #1c1c1e;
+  }
 }
 
 .mobile-library__empty {
   text-align: center;
   padding: 24px;
+  color: var(--ios-label-secondary);
 }
+
+/* Bottom tab bar: translucent, icons + labels, safe-area aware. */
+.tab-bar {
+  display: flex;
+  background: rgba(22, 22, 24, 0.86);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+}
+
+.tab-bar__item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.tab-bar__item[aria-current="page"] {
+  color: var(--accent);
+}
+
+.tab-bar__item:disabled {
+  cursor: default;
+}
+
+.tab-bar__icon {
+  display: block;
+}
+
+.tab-bar__label {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Login / setup (iOS grouped-form look on mobile, centered card on desktop) */
+/* ---------------------------------------------------------------------- */
+
+.login-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-screen--mobile {
+  background: var(--ios-grouped-bg);
+  align-items: flex-start;
+  padding-top: 72px;
+}
+
+.login-screen--desktop {
+  background: #e8e8ea;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.login-screen--desktop .login-card {
+  background: var(--ios-card-bg);
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+}
+
+.login-card h1 {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 8px;
+}
+
+.login-card > p {
+  text-align: center;
+  color: var(--sequoia-text-secondary);
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.login-card p[role="alert"] {
+  color: #ff3b30;
+}
+
+.login-card form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+}
+
+.login-screen--mobile .login-card form {
+  background: var(--ios-card-bg);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--sequoia-text-secondary);
+  padding: 8px 12px;
+}
+
+.login-screen--mobile .login-card label {
+  border-bottom: 1px solid var(--ios-separator);
+  padding: 10px 14px;
+}
+
+.login-screen--mobile .login-card label:last-of-type {
+  border-bottom: none;
+}
+
+.login-card input {
+  border: 1px solid var(--ios-separator);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+  color: #1d1d1f;
+}
+
+.login-screen--mobile .login-card input {
+  border: none;
+  padding: 0;
+  font-size: 17px;
+}
+
+.login-card button[type="submit"] {
+  margin-top: 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Desktop shell (macOS Sequoia Photos)                                   */
+/* ---------------------------------------------------------------------- */
 
 /* The desktop shell fills the viewport the same way `.shell--mobile` does:
    the sidebar and toolbar stay fixed, and only `.desktop-library__grid`
@@ -98,11 +359,90 @@ body {
   display: flex;
   height: 100dvh;
   min-height: 0;
+  background: #fff;
+  font-size: 13px;
 }
 
 .shell--desktop .sidebar {
-  flex: 0 0 auto;
+  flex: 0 0 220px;
   overflow-y: auto;
+  background: var(--sequoia-sidebar-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid var(--sequoia-border);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__library-switcher {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 4px 8px 10px;
+  color: #1d1d1f;
+}
+
+.sidebar nav,
+.sidebar__group {
+  margin-bottom: 4px;
+}
+
+.sidebar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar__group summary {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--sequoia-text-secondary);
+  padding: 10px 8px 4px;
+  cursor: default;
+}
+
+.sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: #1d1d1f;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sidebar__icon {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.sidebar__item:disabled {
+  color: var(--sequoia-text-secondary);
+  cursor: default;
+}
+
+.sidebar__item:disabled .sidebar__icon {
+  color: var(--sequoia-text-secondary);
+}
+
+.sidebar__item[aria-current="page"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sidebar__item[aria-current="page"] .sidebar__icon {
+  color: #fff;
+}
+
+.sidebar .account-menu {
+  margin-top: auto;
 }
 
 .shell--desktop .shell__main {
@@ -118,6 +458,21 @@ body {
   overflow: hidden;
 }
 
+.shell--desktop .toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--sequoia-border);
+  background: var(--sequoia-toolbar-bg);
+}
+
+.shell--desktop .toolbar h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+
 /* P1.15 desktop Library: Years/Months/All Photos grid. */
 .desktop-library {
   display: flex;
@@ -130,12 +485,106 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--sequoia-border);
+  background: var(--sequoia-toolbar-bg);
+}
+
+.desktop-library__spacer {
+  flex: 1 1 auto;
+}
+
+.desktop-library__zoom-slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sequoia-text-secondary);
+}
+
+.desktop-library__zoom-slider input[type="range"] {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+.segmented-control {
+  display: flex;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.segmented-control__item {
+  border: none;
+  background: transparent;
+  color: #1d1d1f;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.segmented-control__item[aria-selected="true"] {
+  background: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .desktop-library__view-switch-item[aria-selected="true"] {
   font-weight: 700;
+}
+
+.toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  color: #1d1d1f;
+  cursor: pointer;
+}
+
+.toolbar-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.toolbar-button:disabled {
+  color: var(--sequoia-text-secondary);
+  cursor: default;
+}
+
+.toolbar-button[aria-pressed="true"] {
+  background: rgba(10, 132, 255, 0.15);
+  color: var(--accent);
+}
+
+.desktop-library__selection-count {
+  font-size: 12px;
+  color: var(--sequoia-text-secondary);
+  white-space: nowrap;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 7px;
+  padding: 4px 8px;
+  color: var(--sequoia-text-secondary);
+  width: 140px;
+}
+
+.search-field input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  width: 100%;
+  color: #1d1d1f;
 }
 
 .desktop-library__grid {
@@ -144,6 +593,8 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   position: relative;
+  background: #fff;
+  padding: 0 1px;
 }
 
 .desktop-library__row-header {
@@ -151,6 +602,7 @@ body {
   align-items: center;
   padding: 0 8px;
   font-weight: 600;
+  font-size: 13px;
 }
 
 .desktop-library__row-grid {
@@ -160,11 +612,13 @@ body {
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
+  border-radius: 4px;
+  cursor: default;
 }
 
 .desktop-library__cell[data-selected="true"] {
-  outline: 2px solid Highlight;
-  outline-offset: -2px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px var(--accent);
 }
 
 .desktop-library__thumb {
@@ -179,6 +633,8 @@ body {
   opacity: 0;
   color: #fff;
   font-size: 12px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.1s ease;
 }
 
 .desktop-library__cell:hover .desktop-library__heart,
@@ -199,4 +655,114 @@ body {
 .desktop-library__empty {
   text-align: center;
   padding: 24px;
+  color: var(--sequoia-text-secondary);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Account menu                                                           */
+/* ---------------------------------------------------------------------- */
+
+.account-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--sequoia-border);
+  font-size: 12px;
+}
+
+.account-menu__username {
+  font-weight: 600;
+  margin: 0;
+}
+
+.account-menu a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.account-menu button {
+  border: none;
+  background: transparent;
+  color: var(--sequoia-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  text-align: left;
+}
+
+.layout-override {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sequoia-text-secondary);
+}
+
+.layout-override select {
+  font-size: 12px;
+  color: #1d1d1f;
+  border: 1px solid var(--sequoia-border);
+  border-radius: 5px;
+  padding: 1px 4px;
+  background: #fff;
+}
+
+/* Mobile: the same controls behind a round "..." trigger, overlaid
+   top-right like the overflow button in ios17-library-days.png. */
+.account-menu--compact {
+  display: block;
+  padding: 0;
+  border-top: none;
+  position: relative;
+}
+
+.account-menu__trigger {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 120, 128, 0.28);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #1d1d1f;
+  cursor: pointer;
+}
+
+.account-menu__trigger-icon {
+  display: block;
+}
+
+.account-menu__popover {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  color: #1d1d1f;
+  font-size: 13px;
+}
+
+.account-menu__popover .account-menu__username {
+  font-size: 13px;
+}
+
+.account-menu__popover a,
+.account-menu__popover button {
+  font-size: 13px;
+}
+
+.account-menu__popover .layout-override select {
+  background: #fff;
 }

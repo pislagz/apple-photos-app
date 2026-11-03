@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
+import { Icon } from "../icons";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -303,46 +304,76 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
   return (
     <div className="desktop-library" data-testid="desktop-library">
       <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
-        <div role="tablist" aria-label="Library zoom">
+        <div className="desktop-library__zoom-slider">
+          <Icon name="grid" size={14} />
+          <input
+            type="range"
+            aria-label="Zoom"
+            min={0}
+            max={MAX_ZOOM_INDEX}
+            value={zoomIndex}
+            onChange={(event) => setZoomIndex(Number(event.target.value))}
+          />
+        </div>
+        <div className="desktop-library__spacer" />
+        <div role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
             <button
               key={item.key}
               type="button"
               role="tab"
               aria-selected={view === item.key}
-              className="desktop-library__view-switch-item"
+              className="segmented-control__item"
               onClick={() => setView(item.key)}
             >
               {item.label}
             </button>
           ))}
         </div>
-        <input
-          type="range"
-          aria-label="Zoom"
-          min={0}
-          max={MAX_ZOOM_INDEX}
-          value={zoomIndex}
-          onChange={(event) => setZoomIndex(Number(event.target.value))}
-        />
-        <button type="button" aria-pressed={!squareMode} onClick={() => setSquareMode((value) => !value)}>
-          {squareMode ? "Square" : "Aspect"}
+        <button
+          type="button"
+          className="toolbar-button"
+          aria-pressed={!squareMode}
+          onClick={() => setSquareMode((value) => !value)}
+          title={squareMode ? "Square" : "Aspect"}
+        >
+          <Icon name="rotate" size={16} />
+          <span className="sr-only">{squareMode ? "Square" : "Aspect"}</span>
         </button>
-        <input
-          ref={searchInputRef}
-          type="text"
-          aria-label="Search"
-          placeholder="Search"
-          value={searchValue}
-          onChange={(event) => setSearchValue(event.target.value)}
-        />
-        <button type="button" onClick={handleDownload} disabled={selected.size === 0}>
-          Download
+        <button
+          type="button"
+          className="toolbar-button"
+          onClick={handleDownload}
+          disabled={selected.size === 0}
+          title="Download"
+        >
+          <Icon name="download" size={16} />
+          <span className="sr-only">Download</span>
         </button>
-        <button type="button" aria-pressed={infoOpen} onClick={() => setInfoOpen((value) => !value)}>
-          Info
+        <button
+          type="button"
+          className="toolbar-button"
+          aria-pressed={infoOpen}
+          onClick={() => setInfoOpen((value) => !value)}
+          title="Info"
+        >
+          <Icon name="info" size={16} />
+          <span className="sr-only">Info</span>
         </button>
-        <span data-testid="selection-count">{selected.size > 0 ? `${selected.size} selected` : ""}</span>
+        <span className="desktop-library__selection-count" data-testid="selection-count">
+          {selected.size > 0 ? `${selected.size} selected` : ""}
+        </span>
+        <div className="search-field">
+          <Icon name="search" size={14} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            aria-label="Search"
+            placeholder="Search"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+          />
+        </div>
       </div>
       <div
         ref={scrollRef}
@@ -374,7 +405,11 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
                 );
               }
               return (
-                <div key={row.key} style={{ ...style, display: "flex" }} className="desktop-library__row-grid">
+                <div
+                  key={row.key}
+                  style={{ ...style, display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+                  className="desktop-library__row-grid"
+                >
                   {row.items.map((item) => {
                     const index = items.indexOf(item);
                     return (
@@ -385,7 +420,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
-                        style={{ width: cellSize, height: cellSize }}
+                        style={{ height: cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
                       >
                         <img
