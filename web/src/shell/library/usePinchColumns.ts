@@ -1,0 +1,61 @@
+import { type TouchEvent, useRef, useState } from "react";
+
+export const MIN_COLUMNS = 2;
+export const MAX_COLUMNS = 7;
+
+interface TouchPoint {
+  clientX: number;
+  clientY: number;
+}
+
+function distance(a: TouchPoint, b: TouchPoint): number {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+// One column step per 25% change in the two-finger distance, so a single
+// continued pinch can walk through several column counts.
+const STEP_RATIO = 1.25;
+
+export interface PinchColumnsResult {
+  columns: number;
+  touchHandlers: {
+    onTouchStart: (event: TouchEvent) => void;
+    onTouchMove: (event: TouchEvent) => void;
+    onTouchEnd: (event: TouchEvent) => void;
+  };
+}
+
+// Pinch-out (fingers spreading) is "zoom in": fewer, bigger columns.
+// Pinch-in is "zoom out": more, smaller columns. Caller should set
+// `touch-action: pan-y` on the element these handlers are attached to, so
+// one-finger scrolling still works while two-finger pinch drives this
+// instead of the browser's native pinch-zoom.
+export function usePinchColumns(initial: number, min = MIN_COLUMNS, max = MAX_COLUMNS): PinchColumnsResult {
+  const [columns, setColumns] = useState(initial);
+  const startDistance = useRef<number | null>(null);
+
+  function onTouchStart(event: TouchEvent) {
+    if (event.touches.length === 2) {
+      startDistance.current = distance(event.touches[0], event.touches[1]);
+    }
+  }
+
+  function onTouchMove(event: TouchEvent) {
+    if (event.touches.length !== 2 || startDistance.current === null) return;
+    const current = distance(event.touches[0], event.touches[1]);
+    const ratio = current / startDistance.current;
+    if (ratio >= STEP_RATIO) {
+      setColumns((value) => Math.max(min, value - 1));
+      startDistance.current = current;
+    } else if (ratio <= 1 / STEP_RATIO) {
+      setColumns((value) => Math.min(max, value + 1));
+      startDistance.current = current;
+    }
+  }
+
+  function onTouchEnd(event: TouchEvent) {
+    if (event.touches.length < 2) startDistance.current = null;
+  }
+
+  return { columns, touchHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
+}
