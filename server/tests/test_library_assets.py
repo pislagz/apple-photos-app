@@ -452,6 +452,25 @@ def test_asset_detail_includes_people_and_albums(tmp_path):
         conn.close()
 
 
+def test_asset_detail_includes_camera_make_and_model(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", camera_make="Apple", camera_model="iPhone 15 Pro")
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/assets/a")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["camera_make"] == "Apple"
+        assert body["camera_model"] == "iPhone 15 Pro"
+    finally:
+        conn.close()
+
+
 def test_asset_detail_cross_library_asset_id_404s(tmp_path):
     conn, client = _client(tmp_path)
     try:

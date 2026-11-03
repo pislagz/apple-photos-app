@@ -304,6 +304,13 @@ _MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE assets ADD COLUMN duration REAL",
     ],
+    # 13 (P1.16): camera make/model for the Viewer's info panel, from
+    # `photo.exif_info.camera_make`/`.camera_model` -- the same already-loaded
+    # `exif_info` duration (migration 12) reads from.
+    [
+        "ALTER TABLE assets ADD COLUMN camera_make TEXT",
+        "ALTER TABLE assets ADD COLUMN camera_model TEXT",
+    ],
 ]
 
 
