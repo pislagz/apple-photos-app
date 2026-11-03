@@ -26,6 +26,8 @@ const TABS: { key: MobileTab; label: string; icon: IconName }[] = [
 
 export default function MobileShell({
   me,
+  activeLibraryId,
+  onActiveLibraryChange,
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
@@ -33,6 +35,8 @@ export default function MobileShell({
   onDeepLinkConsumed,
 }: {
   me: MeResponse;
+  activeLibraryId?: number;
+  onActiveLibraryChange: (id: number) => void;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
@@ -61,9 +65,6 @@ export default function MobileShell({
     setHiddenConfirmed(false);
   }
 
-  const libraryId = me.libraries[0]?.id;
-  const libraryName = me.libraries[0]?.display_name ?? "Library";
-
   function renderContent() {
     if (route.tab === "library") return null;
     if (route.tab === "albums") return <TabPlaceholderScreen title="Albums" />;
@@ -71,7 +72,14 @@ export default function MobileShell({
 
     // route.tab === "more"
     if (!route.screen) {
-      return <MoreScreen libraryName={libraryName} onNavigate={navigate} />;
+      return (
+        <MoreScreen
+          libraries={me.libraries}
+          activeLibraryId={activeLibraryId}
+          onActiveLibraryChange={onActiveLibraryChange}
+          onNavigate={navigate}
+        />
+      );
     }
     if (route.screen === "people") {
       return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
@@ -96,7 +104,9 @@ export default function MobileShell({
           </button>
           <h1 className="mobile-screen__title">Hidden</h1>
         </header>
-        <div className="mobile-screen__body">{libraryId !== undefined && <HiddenView libraryId={libraryId} />}</div>
+        <div className="mobile-screen__body">
+          {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
+        </div>
       </div>
     );
   }
@@ -117,9 +127,10 @@ export default function MobileShell({
         {/* Stays mounted across tab switches so the grid's segment and scroll
             position survive Library -> More -> Library, like iOS Photos. */}
         <div style={{ height: "100%", display: route.tab === "library" ? "block" : "none" }}>
-          {libraryId !== undefined ? (
+          {activeLibraryId !== undefined ? (
             <MobileLibrary
-              libraryId={libraryId}
+              key={activeLibraryId}
+              libraryId={activeLibraryId}
               initialAssetId={deepLinkAssetId}
               onInitialAssetOpened={onDeepLinkConsumed}
             />

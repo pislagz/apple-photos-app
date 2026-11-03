@@ -5,6 +5,7 @@ import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
+import LibrarySwitcher from "./LibrarySwitcher";
 import type { LayoutOverride } from "./useLayout";
 
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Only
@@ -43,6 +44,8 @@ const UTILITIES: { label: string; icon: IconName }[] = [
 
 export default function DesktopShell({
   me,
+  activeLibraryId,
+  onActiveLibraryChange,
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
@@ -50,22 +53,19 @@ export default function DesktopShell({
   onDeepLinkConsumed,
 }: {
   me: MeResponse;
+  activeLibraryId?: number;
+  onActiveLibraryChange: (id: number) => void;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
 }) {
-  const libraryName = me.libraries[0]?.display_name ?? "Library";
-  const libraryId = me.libraries[0]?.id;
   const [view, setView] = useState<"library" | "hidden">("library");
 
   return (
     <div className="shell shell--desktop">
       <aside className="sidebar">
-        <div className="sidebar__library-switcher" aria-label="Library switcher">
-          {libraryName}
-        </div>
         <nav aria-label="Sections">
           <ul>
             <li>
@@ -153,6 +153,12 @@ export default function DesktopShell({
           compact
           variant="row"
         />
+        <LibrarySwitcher
+          libraries={me.libraries}
+          activeLibraryId={activeLibraryId}
+          onChange={onActiveLibraryChange}
+          className="sidebar__library-switcher"
+        />
       </aside>
       <div className="shell__main">
         {view === "hidden" ? (
@@ -161,14 +167,15 @@ export default function DesktopShell({
               <h1>Hidden</h1>
             </header>
             <main className="shell__content">
-              {libraryId !== undefined && <HiddenView libraryId={libraryId} />}
+              {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
             </main>
           </>
         ) : (
           <main className="shell__content">
-            {libraryId !== undefined ? (
+            {activeLibraryId !== undefined ? (
               <DesktopLibrary
-                libraryId={libraryId}
+                key={activeLibraryId}
+                libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
               />

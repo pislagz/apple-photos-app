@@ -1,16 +1,22 @@
+import type { LibrarySummary } from "../../api";
 import { Icon } from "../icons";
+import LibrarySwitcher from "../LibrarySwitcher";
 import { MEDIA_TYPES } from "./mediaTypes";
 
 // #125, tracker R1: the phone "More" tab -- People & Pets, Places, Media
 // Types, and Utilities (Hidden only; no Recently Deleted or Duplicates,
 // this app is view-only). Tracker R21: the library switcher sits at the
 // very bottom since switching libraries is rare -- same placement as the
-// bottom of the Mac sidebar (#90), but that's a separate, later change.
+// bottom of the Mac sidebar (#90).
 export default function MoreScreen({
-  libraryName,
+  libraries,
+  activeLibraryId,
+  onActiveLibraryChange,
   onNavigate,
 }: {
-  libraryName: string;
+  libraries: LibrarySummary[];
+  activeLibraryId: number | undefined;
+  onActiveLibraryChange: (id: number) => void;
   onNavigate: (path: "/people" | "/places" | `/media/${string}` | "/hidden") => void;
 }) {
   return (
@@ -58,9 +64,12 @@ export default function MoreScreen({
           </li>
         </ul>
       </div>
-      <div className="more-screen__library-switcher" aria-label="Library switcher">
-        {libraryName}
-      </div>
+      <LibrarySwitcher
+        libraries={libraries}
+        activeLibraryId={activeLibraryId}
+        onChange={onActiveLibraryChange}
+        className="more-screen__library-switcher"
+      />
     </div>
   );
 }
