@@ -39,7 +39,7 @@ function distance(a: TouchPoint, b: TouchPoint): number {
 export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited ?? false);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
@@ -194,7 +194,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               onClick={() => media.startVideo()}
               aria-label="Play video"
             >
-              <img className="mobile-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} />
+              <img className="mobile-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} draggable={false} />
               <Icon name="play" size={48} className="mobile-viewer__play-icon" />
             </button>
           )
@@ -223,6 +223,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
                 style={{ transform: `scale(${scale})` }}
                 onLoad={media.onPreviewLoaded}
                 onError={stillOnError}
+                draggable={false}
               />
             )}
             <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -235,6 +236,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             style={{ transform: `scale(${scale})` }}
             onLoad={media.onPreviewLoaded}
             onError={stillOnError}
+            draggable={false}
           />
         )}
         {media.showingOriginal && (

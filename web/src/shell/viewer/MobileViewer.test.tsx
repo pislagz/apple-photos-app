@@ -424,4 +424,33 @@ describe("MobileViewer", () => {
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
   });
+
+  it("never requests the unedited original for the automatic full-quality load of an edited photo", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    // Fire the preview's onLoad before the asset detail (has_edited) fetch
+    // has resolved -- the race this fix closes. The automatic load must
+    // wait for has_edited rather than briefly requesting plain `/original`.
+    fireEvent.load(media());
+    expect(media().src).toContain("?size=preview");
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
+  });
+
+  it("disables drag and the iOS press-and-hold callout on the viewer image", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Share");
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = stage.querySelector("img") as HTMLImageElement;
+    expect(media.draggable).toBe(false);
+  });
 });

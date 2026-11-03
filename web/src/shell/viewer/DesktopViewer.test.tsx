@@ -378,4 +378,23 @@ describe("DesktopViewer", () => {
       delete (window.navigator as { connection?: unknown }).connection;
     }
   });
+
+  it("never requests the unedited original for the automatic full-quality load of an edited photo", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
+
+    // Fire onLoad before the asset detail (has_edited) fetch resolves --
+    // the automatic load must wait for it instead of briefly requesting
+    // plain `/original`.
+    fireEvent.load(media());
+    expect(media().src).toContain("?size=preview");
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
+  });
 });

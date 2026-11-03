@@ -26,7 +26,7 @@ const ZOOM_SCALE = 2.5;
 export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited ?? false);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);

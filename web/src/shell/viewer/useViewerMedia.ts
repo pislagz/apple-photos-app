@@ -45,8 +45,13 @@ function isDataSaverOn(): boolean {
   return connection?.saveData === true;
 }
 
-export function useViewerMedia(libraryId: number, item: AssetListItem | undefined, hasEdited: boolean): ViewerMedia {
+export function useViewerMedia(
+  libraryId: number,
+  item: AssetListItem | undefined,
+  hasEdited: boolean | undefined,
+): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [livePlaying, setLivePlaying] = useState(false);
   const [jpegFallback, setJpegFallback] = useState(false);
@@ -54,11 +59,23 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
 
   useEffect(() => {
     setWantsOriginal(false);
+    setPreviewLoaded(false);
     setVideoPlaying(false);
     setLivePlaying(false);
     setJpegFallback(false);
     setShowingOriginal(false);
   }, [item?.id]);
+
+  // P1.17b fix round 2: the automatic full-quality fetch must not fire until
+  // `hasEdited` is actually known (the asset detail request has resolved),
+  // otherwise it requests `version=original` first and `version=edited`
+  // moments later once the detail arrives -- a real flash of the unedited
+  // photo. Wait for both the preview `onLoad` and a resolved `hasEdited`.
+  useEffect(() => {
+    if (previewLoaded && hasEdited !== undefined && !isDataSaverOn()) {
+      setWantsOriginal(true);
+    }
+  }, [previewLoaded, hasEdited]);
 
   // Apple Photos always shows the edited render (P1.17b): zoom and video
   // playback ask for `version=edited` whenever the asset has one, same as
@@ -96,8 +113,6 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
     toggleShowOriginal: () => {
       if (hasEdited) setShowingOriginal((value) => !value);
     },
-    onPreviewLoaded: () => {
-      if (!isDataSaverOn()) setWantsOriginal(true);
-    },
+    onPreviewLoaded: () => setPreviewLoaded(true),
   };
 }

@@ -1149,6 +1149,11 @@ body {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  /* P1.17b fix round 2: without these, iOS Safari's long-press image menu
+     fights the press-and-hold "Show Original" gesture. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .mobile-viewer__media-wrap {
