@@ -205,14 +205,25 @@ describe("DesktopViewer", () => {
   it("downloads the original only on an explicit click, not before", () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    let downloadHref = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadHref = this.href;
+    });
 
-    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const media = container.querySelector(".desktop-viewer__media") as HTMLImageElement;
     expect(clickSpy).not.toHaveBeenCalled();
+    expect(media.src).not.toContain("download=1");
 
     fireEvent.click(screen.getByLabelText("Download"));
 
     expect(clickSpy).toHaveBeenCalledTimes(1);
+    // The explicit Download click carries the audit marker; the zoomed-in
+    // `<img>` src the viewer may already be showing never does.
+    expect(downloadHref).toContain("download=1");
+    expect(media.src).not.toContain("download=1");
     clickSpy.mockRestore();
   });
 

@@ -15,7 +15,7 @@ function triggerDownload(href: string) {
 }
 
 export function downloadVersion(libraryId: number, assetId: string, version: "original" | "edited") {
-  triggerDownload(originalUrl(libraryId, assetId, version));
+  triggerDownload(originalUrl(libraryId, assetId, version, true));
 }
 
 // Used where the caller doesn't already have the asset's `has_edited` flag
@@ -42,7 +42,7 @@ export async function copyAssetLink(libraryId: number, assetId: string): Promise
 const SHARE_BATCH_SIZE = 5;
 
 async function fetchAsFile(libraryId: number, item: { id: string; filename: string | null }): Promise<File> {
-  const response = await fetch(originalUrl(libraryId, item.id), { credentials: "same-origin" });
+  const response = await fetch(originalUrl(libraryId, item.id, "original", true), { credentials: "same-origin" });
   if (!response.ok) throw new Error(`download failed: ${response.status}`);
   const blob = await response.blob();
   return new File([blob], item.filename ?? item.id, { type: blob.type });

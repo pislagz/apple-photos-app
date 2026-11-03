@@ -7,9 +7,19 @@ export function previewThumbUrl(libraryId: number, assetId: string): string {
   return `/api/libraries/${libraryId}/thumb/${assetId}?size=preview`;
 }
 
-export function originalUrl(libraryId: number, assetId: string, version: "original" | "edited" = "original"): string {
-  const params = version === "edited" ? "?version=edited" : "";
-  return `/api/libraries/${libraryId}/original/${assetId}${params}`;
+// `download` must stay `false` for viewer zoom, the HEIC->JPEG fallback, and
+// video play -- the server only writes an audit row when it's `true`, which
+// callers set for an explicit Download/share action.
+export function originalUrl(
+  libraryId: number,
+  assetId: string,
+  version: "original" | "edited" = "original",
+  download = false,
+): string {
+  const params = [];
+  if (version === "edited") params.push("version=edited");
+  if (download) params.push("download=1");
+  return `/api/libraries/${libraryId}/original/${assetId}${params.length ? `?${params.join("&")}` : ""}`;
 }
 
 // P1.17: a browser that can't decode HEIC fires `onError` on the <img>
@@ -19,9 +29,12 @@ export function originalJpegFallbackUrl(
   libraryId: number,
   assetId: string,
   version: "original" | "edited" = "original",
+  download = false,
 ): string {
-  const params = version === "edited" ? "&version=edited" : "";
-  return `/api/libraries/${libraryId}/original/${assetId}?format=jpeg${params}`;
+  const params = ["format=jpeg"];
+  if (version === "edited") params.push("version=edited");
+  if (download) params.push("download=1");
+  return `/api/libraries/${libraryId}/original/${assetId}?${params.join("&")}`;
 }
 
 export function livePhotoVideoUrl(libraryId: number, assetId: string): string {
@@ -29,10 +42,8 @@ export function livePhotoVideoUrl(libraryId: number, assetId: string): string {
 }
 
 // P1.17 "Copy link": a same-origin, in-app URL (never the raw `/original`
-// file URL) that identifies a photo within this app. There is no
-// client-side router yet to resolve it back to an open viewer -- it's a
-// stable, shareable identifier a later phase can wire up to actually
-// navigate.
+// file URL) that identifies a photo within this app. `route.ts` parses this
+// same shape back so a pasted link reopens the photo in the viewer.
 export function assetPageUrl(libraryId: number, assetId: string): string {
   return `${window.location.origin}/library/${libraryId}/photo/${assetId}`;
 }

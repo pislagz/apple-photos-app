@@ -6,6 +6,7 @@ import { copyAssetLink, downloadAsset } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
+import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 
 const HEADER_ROW_HEIGHT = 28;
@@ -55,7 +56,7 @@ function formatDuration(seconds: number | null): string {
 function downloadSelection(libraryId: number, ids: Iterable<string>) {
   for (const id of ids) {
     const link = document.createElement("a");
-    link.href = `/api/libraries/${libraryId}/original/${id}`;
+    link.href = `/api/libraries/${libraryId}/original/${id}?download=1`;
     link.download = "";
     document.body.appendChild(link);
     link.click();
@@ -70,7 +71,15 @@ function downloadSelection(libraryId: number, ids: Iterable<string>) {
 // this only ever pages `/assets` -- never `/hidden` -- so a hidden asset
 // (P1.13) can't reach any view or ⌘A. Cells request thumbnails only; a
 // download is the only thing that may hit `/original`.
-export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
+export default function DesktopLibrary({
+  libraryId,
+  initialAssetId,
+  onInitialAssetOpened,
+}: {
+  libraryId: number;
+  initialAssetId?: string;
+  onInitialAssetOpened?: () => void;
+}) {
   const [view, setView] = useState<ViewKey>("years");
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
@@ -209,6 +218,8 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
   );
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
 
   // Opens the Viewer on this id, at its position in `items` -- the current
   // Library view's own array, never `/hidden` (P1.13), so the Viewer can

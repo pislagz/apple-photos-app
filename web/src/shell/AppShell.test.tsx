@@ -23,6 +23,7 @@ const ME_RESPONSE = {
 afterEach(() => {
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.history.replaceState({}, "", "/");
 });
 
 describe("AppShell", () => {
@@ -165,6 +166,59 @@ describe("AppShell", () => {
 
     expect(await screen.findByText("IMG_0002.HEIC")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hidden" })).toBeInTheDocument();
+  });
+
+  it("opens a pasted Copy Link URL's photo in the desktop Viewer, then clears the address bar", async () => {
+    setViewport(1400, true);
+    window.history.pushState({}, "", "/library/1/photo/a2");
+    mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
+      if (url === "/api/me") return ME_RESPONSE;
+      if (url.startsWith("/api/libraries/1/assets?")) {
+        return {
+          items: [
+            { id: "a1", filename: "a1.jpg", date: "2024-05-10T10:00:00", is_video: false, is_live_photo: false, favorite: false, width: 100, height: 100, duration: null },
+            { id: "a2", filename: "a2.jpg", date: "2024-05-09T10:00:00", is_video: false, is_live_photo: false, favorite: false, width: 100, height: 100, duration: null },
+          ],
+          next_cursor: null,
+        };
+      }
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) {
+        return {
+          id: match[1], filename: `${match[1]}.jpg`, original_filename: `${match[1]}.jpg`, title: null, description: null,
+          date_created: "2024-05-10T10:00:00", date_added: "2024-05-10T10:00:00", date_modified: "2024-05-10T10:00:00",
+          favorite: false, hidden: false, is_video: false, is_live_photo: false, is_screenshot: false, is_selfie: false,
+          is_portrait: false, is_panorama: false, is_hdr: false, is_slow_mo: false, is_burst: false, width: 100, height: 100,
+          original_filesize: null, latitude: null, longitude: null, place: null, place_country_code: null, place_address: null,
+          camera_make: null, camera_model: null, has_edited: false, has_live_photo_video: false, people: [], albums: [],
+        };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+
+    const viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
+  });
+
+  it("drops a Copy Link URL for a library this account isn't assigned to, without fetching the asset", async () => {
+    setViewport(1400, true);
+    window.history.pushState({}, "", "/library/2/photo/x1");
+    mockFetch((url) => {
+      if (url === "/api/setup/status") return { needs_setup: false };
+      if (url === "/api/me") return ME_RESPONSE;
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+
+    await screen.findByRole("navigation", { name: "Sections" });
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
   });
 
   it("logs out back to the login screen", async () => {

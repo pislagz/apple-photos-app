@@ -20,11 +20,15 @@ export default function MobileShell({
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
+  deepLinkAssetId,
+  onDeepLinkConsumed,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
+  deepLinkAssetId?: string;
+  onDeepLinkConsumed?: () => void;
 }) {
   return (
     <div className="shell shell--mobile">
@@ -39,7 +43,15 @@ export default function MobileShell({
         />
       </header>
       <main className="shell__content">
-        {me.libraries[0] ? <MobileLibrary libraryId={me.libraries[0].id} /> : <LibraryPlaceholder />}
+        {me.libraries[0] ? (
+          <MobileLibrary
+            libraryId={me.libraries[0].id}
+            initialAssetId={deepLinkAssetId}
+            onInitialAssetOpened={onDeepLinkConsumed}
+          />
+        ) : (
+          <LibraryPlaceholder />
+        )}
       </main>
       <nav className="tab-bar" aria-label="Primary">
         {TABS.map((tab) => (

@@ -5,6 +5,7 @@ import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
+import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { usePinchColumns } from "./usePinchColumns";
 
@@ -18,11 +19,21 @@ const LOAD_MORE_ROW_MARGIN = 3;
 // `/api/libraries/{id}/assets`, never `/hidden` (P1.13) -- a hidden asset
 // must not reach any of these views. Thumbnails only; the grid never
 // requests an original.
-export default function MobileLibrary({ libraryId }: { libraryId: number }) {
+export default function MobileLibrary({
+  libraryId,
+  initialAssetId,
+  onInitialAssetOpened,
+}: {
+  libraryId: number;
+  initialAssetId?: string;
+  onInitialAssetOpened?: () => void;
+}) {
   const [view, setView] = useState<ViewKey>("years");
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState(false);

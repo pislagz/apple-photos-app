@@ -643,7 +643,7 @@ def test_original_download_writes_an_audit_row(tmp_path):
         asset_pk = _insert_asset(conn, library_id, "a", path_original=str(file_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a")
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"download": "1"})
 
         assert response.status_code == 200
         row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
@@ -652,6 +652,46 @@ def test_original_download_writes_an_audit_row(tmp_path):
         assert row["library_id"] == library_id
         assert row["asset_id"] == asset_pk
         assert row["detail"] == "version=original"
+    finally:
+        conn.close()
+
+
+def test_original_without_download_marker_writes_no_audit_row(tmp_path):
+    # Viewer zoom and the HEIC->JPEG fallback hit the same route without the
+    # explicit marker a Download/share click sends -- this is what a zoom
+    # request looks like, and it must not be recorded as a download.
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(file_path))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+
+        assert response.status_code == 200
+        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_original_download_marker_writes_exactly_one_audit_row(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(file_path))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"download": "1"})
+
+        assert response.status_code == 200
+        rows = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchall()
+        assert len(rows) == 1
     finally:
         conn.close()
 
@@ -710,7 +750,7 @@ def test_original_format_jpeg_download_writes_an_audit_row(tmp_path, monkeypatch
         _insert_asset(conn, library_id, "a", path_original=str(heic_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg"})
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg", "download": "1"})
 
         assert response.status_code == 200
         row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()

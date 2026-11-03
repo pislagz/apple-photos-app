@@ -292,6 +292,38 @@ describe("DesktopLibrary", () => {
     expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
   });
 
+  it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const onInitialAssetOpened = vi.fn();
+
+    render(<DesktopLibrary libraryId={1} initialAssetId="a2" onInitialAssetOpened={onInitialAssetOpened} />);
+
+    const viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
+    expect(onInitialAssetOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it("silently ignores an initialAssetId that never shows up in this grid (hidden or foreign)", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const onInitialAssetOpened = vi.fn();
+
+    render(<DesktopLibrary libraryId={1} initialAssetId="does-not-exist" onInitialAssetOpened={onInitialAssetOpened} />);
+    await screen.findAllByRole("img");
+
+    await waitFor(() => expect(onInitialAssetOpened).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+  });
+
   it("opens the Viewer on the focused cell with Space or Enter", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
