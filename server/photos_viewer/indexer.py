@@ -57,6 +57,7 @@ _ASSET_COLUMNS = (
     "path_raw",
     "path_live_photo",
     "path_edited_live_photo",
+    "duration",
 )
 
 
@@ -202,6 +203,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
             place = photo.place
             latitude, longitude = photo.location
             derivatives = photo.path_derivatives
+            exif_info = photo.exif_info
             db.execute(
                 _UPSERT_ASSET_SQL,
                 (
@@ -242,6 +244,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
                     photo.path_raw,
                     photo.path_live_photo,
                     photo.path_edited_live_photo,
+                    exif_info.duration if exif_info else None,
                 ),
             )
             asset_id = db.execute(

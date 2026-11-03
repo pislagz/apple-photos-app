@@ -118,6 +118,7 @@ class AssetListItem(BaseModel):
     favorite: bool
     width: int | None
     height: int | None
+    duration: float | None
 
 
 class AssetListResponse(BaseModel):
@@ -148,6 +149,7 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
         favorite=bool(row["favorite"]),
         width=row["width"],
         height=row["height"],
+        duration=row["duration"],
     )
 
 

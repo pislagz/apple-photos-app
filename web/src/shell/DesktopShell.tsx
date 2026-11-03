@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
 import HiddenView from "./HiddenView";
+import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import type { LayoutOverride } from "./useLayout";
 
@@ -116,16 +117,20 @@ export default function DesktopShell({
         />
       </aside>
       <div className="shell__main">
-        <header className="toolbar">
-          <h1>{view === "hidden" ? "Hidden" : "Library"}</h1>
-        </header>
-        <main className="shell__content">
-          {view === "hidden" && libraryId !== undefined ? (
-            <HiddenView libraryId={libraryId} />
-          ) : (
-            <LibraryPlaceholder />
-          )}
-        </main>
+        {view === "hidden" ? (
+          <>
+            <header className="toolbar">
+              <h1>Hidden</h1>
+            </header>
+            <main className="shell__content">
+              {libraryId !== undefined && <HiddenView libraryId={libraryId} />}
+            </main>
+          </>
+        ) : (
+          <main className="shell__content">
+            {libraryId !== undefined ? <DesktopLibrary libraryId={libraryId} /> : <LibraryPlaceholder />}
+          </main>
+        )}
       </div>
     </div>
   );

@@ -121,6 +121,7 @@ export interface AssetListItem {
   favorite: boolean;
   width: number | null;
   height: number | null;
+  duration: number | null;
 }
 
 export interface AssetListResponse {
