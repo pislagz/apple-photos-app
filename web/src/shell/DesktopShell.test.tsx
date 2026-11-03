@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
 import { mockFetch } from "../testHelpers";
@@ -29,12 +29,20 @@ describe("DesktopShell layout", () => {
     });
 
     const { container } = render(
-      <DesktopShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     const shell = container.querySelector(".shell--desktop");
     expect(shell).not.toBeNull();
-    expect(shell?.querySelector(".sidebar")).not.toBeNull();
+    const sidebar = shell?.querySelector(".sidebar");
+    expect(sidebar).not.toBeNull();
     const main = shell?.querySelector(".shell__main");
     expect(main).not.toBeNull();
     const content = main?.querySelector(".shell__content");
@@ -43,7 +51,38 @@ describe("DesktopShell layout", () => {
     // area, not a sibling of it -- that's what keeps the sidebar and
     // toolbar from scrolling off-screen with the grid.
     expect(content?.querySelector(".desktop-library__grid")).not.toBeNull();
-    expect(await screen.findByLabelText("Library switcher")).toBeInTheDocument();
+    const switcher = await screen.findByLabelText("Library switcher");
+    expect(switcher).toBeInTheDocument();
+    // Tracker R21: the switcher sits at the very bottom of the sidebar,
+    // below the account menu, not at the top -- same placement rule as the
+    // bottom of the phone More tab (#90).
+    expect(sidebar?.lastElementChild).toBe(switcher);
+  });
+
+  it("lets a multi-library account pick the active library from the bottom of the sidebar", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const onActiveLibraryChange = vi.fn();
+    const twoLibraries = { ...ME_RESPONSE, libraries: [{ id: 1, display_name: "Family" }, { id: 2, display_name: "Travel" }] };
+    render(
+      <DesktopShell
+        me={twoLibraries}
+        activeLibraryId={1}
+        onActiveLibraryChange={onActiveLibraryChange}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+
+    const select = await screen.findByLabelText("Library switcher");
+    expect(select).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "2" } });
+    expect(onActiveLibraryChange).toHaveBeenCalledWith(2);
   });
 
   // jsdom does no real layout (see test-setup.ts), so this asserts the CSS

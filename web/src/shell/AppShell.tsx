@@ -10,6 +10,7 @@ import {
   type MeResponse,
 } from "../api";
 import AccessRefused from "./AccessRefused";
+import { useActiveLibrary } from "./activeLibrary";
 import DesktopShell from "./DesktopShell";
 import LoginScreen, { type LoginError } from "./LoginScreen";
 import MobileShell from "./MobileShell";
@@ -30,6 +31,7 @@ export default function AppShell() {
   // round-trip (the login screen renders from this same component) and
   // still opens the photo once `me` resolves.
   const [deepLink, setDeepLink] = useState(() => parsePhotoPath(window.location.pathname));
+  const { activeLibraryId, setActiveLibraryId } = useActiveLibrary(me);
 
   function consumeDeepLink() {
     setDeepLink(null);
@@ -38,10 +40,16 @@ export default function AppShell() {
 
   // A link to a library this account isn't assigned to must 404 the same
   // way the asset routes do -- silently drop it rather than ever fetching
-  // the asset to find out.
+  // the asset to find out. One assigned to the account switches the shared
+  // active library (#90) so the Viewer opens against the right one.
   useEffect(() => {
-    if (deepLink && me && me.libraries[0]?.id !== deepLink.libraryId) consumeDeepLink();
-  }, [deepLink, me]);
+    if (!deepLink || !me) return;
+    if (!me.libraries.some((library) => library.id === deepLink.libraryId)) {
+      consumeDeepLink();
+      return;
+    }
+    if (activeLibraryId !== deepLink.libraryId) setActiveLibraryId(deepLink.libraryId);
+  }, [deepLink, me, activeLibraryId, setActiveLibraryId]);
 
   const refreshMe = useCallback(async () => {
     try {
@@ -155,12 +163,14 @@ export default function AppShell() {
     return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} />;
   }
 
-  const deepLinkAssetId = deepLink && me.libraries[0]?.id === deepLink.libraryId ? deepLink.assetId : undefined;
+  const deepLinkAssetId = deepLink && activeLibraryId === deepLink.libraryId ? deepLink.assetId : undefined;
 
   if (layout === "mobile") {
     return (
       <MobileShell
         me={me}
+        activeLibraryId={activeLibraryId}
+        onActiveLibraryChange={setActiveLibraryId}
         layoutOverride={override}
         onLayoutOverrideChange={handleLayoutOverrideChange}
         onLogout={handleLogout}
@@ -173,6 +183,8 @@ export default function AppShell() {
   return (
     <DesktopShell
       me={me}
+      activeLibraryId={activeLibraryId}
+      onActiveLibraryChange={setActiveLibraryId}
       layoutOverride={override}
       onLayoutOverrideChange={handleLayoutOverrideChange}
       onLogout={handleLogout}

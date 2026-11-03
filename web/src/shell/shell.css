@@ -518,6 +518,15 @@ body {
   color: var(--ios-label-secondary);
 }
 
+.more-screen__library-switcher select {
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  color: var(--ios-label-secondary);
+  text-align: center;
+  text-align-last: center;
+}
+
 @media (prefers-color-scheme: dark) {
   .more-screen {
     background: #000;
@@ -708,10 +717,20 @@ body {
 }
 
 .sidebar__library-switcher {
-  font-weight: 700;
-  font-size: 13px;
-  padding: 4px 8px 10px;
-  color: #1d1d1f;
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 8px 8px 2px;
+  text-align: center;
+  color: var(--sequoia-text-secondary);
+}
+
+.sidebar__library-switcher select {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--sequoia-text-secondary);
+  text-align: center;
+  text-align-last: center;
 }
 
 .sidebar nav,

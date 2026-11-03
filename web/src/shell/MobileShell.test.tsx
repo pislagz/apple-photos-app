@@ -30,7 +30,14 @@ describe("MobileShell layout", () => {
     });
 
     const { container } = render(
-      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     const shell = container.querySelector(".shell--mobile");
@@ -83,7 +90,14 @@ describe("MobileShell tab switching", () => {
     });
 
     render(
-      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
@@ -100,7 +114,14 @@ describe("MobileShell tab switching", () => {
 describe("MobileShell More tab", () => {
   it("lists People & Pets, Places, Media Types, and Hidden, with the library switcher pinned at the very bottom", async () => {
     const { container } = render(
-      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
@@ -120,9 +141,41 @@ describe("MobileShell More tab", () => {
     expect(switcher?.parentElement?.lastElementChild).toBe(switcher);
   });
 
+  it("lets a multi-library account pick the active library from the bottom of More", async () => {
+    const onActiveLibraryChange = vi.fn();
+    const twoLibraries = { ...ME_RESPONSE, libraries: [{ id: 1, display_name: "Family" }, { id: 2, display_name: "Travel" }] };
+    const { container } = render(
+      <MobileShell
+        me={twoLibraries}
+        activeLibraryId={1}
+        onActiveLibraryChange={onActiveLibraryChange}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    const switcher = container.querySelector(".more-screen__library-switcher");
+    const select = switcher?.querySelector("select") as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    expect(switcher?.parentElement?.lastElementChild).toBe(switcher);
+
+    fireEvent.change(select, { target: { value: "2" } });
+    expect(onActiveLibraryChange).toHaveBeenCalledWith(2);
+  });
+
   it("gives People, Places, and each media type their own pushed screen reachable from More", async () => {
     const { container } = render(
-      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
@@ -142,7 +195,14 @@ describe("MobileShell More tab", () => {
     });
 
     render(
-      <MobileShell me={ME_RESPONSE} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={() => {}} />,
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
