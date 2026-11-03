@@ -1,7 +1,7 @@
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
-import { shareOrDownloadAssets } from "./download";
+import { downloadVersion, shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
@@ -19,6 +19,7 @@ export interface ViewerProps {
 const SWIPE_DISMISS_PX = 100;
 const SWIPE_NAV_PX = 60;
 const DOUBLE_TAP_MS = 300;
+const LONG_PRESS_MS = 450;
 const ZOOM_SCALE = 2.5;
 
 interface TouchPoint {
@@ -38,7 +39,7 @@ function distance(a: TouchPoint, b: TouchPoint): number {
 export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
@@ -51,11 +52,20 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     pinchStartScale: number;
     lastTapTime: number;
   }>({ startX: 0, startY: 0, pinchStartDistance: null, pinchStartScale: 1, lastTapTime: 0 });
+  const longPressTimer = useRef<number | null>(null);
+
+  function clearLongPress() {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
 
   useEffect(() => {
     setScale(1);
     setDragY(0);
     setInfoOpen(false);
+    clearLongPress();
   }, [item?.id]);
 
   useEffect(() => {
@@ -63,6 +73,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }, [scale, media]);
 
   function onTouchStart(event: TouchEvent) {
+    clearLongPress();
     if (event.touches.length === 2) {
       gesture.current.pinchStartDistance = distance(event.touches[0], event.touches[1]);
       gesture.current.pinchStartScale = scale;
@@ -77,10 +88,19 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       gesture.current.lastTapTime = 0;
     } else {
       gesture.current.lastTapTime = now;
+      // Apple Photos' press-and-hold "Show Original" (P1.17b fix round):
+      // only armed for an edited asset, and cleared by any subsequent
+      // touchstart/move/end so a swipe or double-tap never triggers it.
+      if (detail?.has_edited) {
+        longPressTimer.current = window.setTimeout(() => {
+          media.startShowOriginal();
+        }, LONG_PRESS_MS);
+      }
     }
   }
 
   function onTouchMove(event: TouchEvent) {
+    clearLongPress();
     if (event.touches.length === 2 && gesture.current.pinchStartDistance) {
       const current = distance(event.touches[0], event.touches[1]);
       const ratio = current / gesture.current.pinchStartDistance;
@@ -94,6 +114,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }
 
   function onTouchEnd(event: TouchEvent) {
+    clearLongPress();
+    media.stopShowOriginal();
     if (event.touches.length > 0) return;
     gesture.current.pinchStartDistance = null;
     if (scale > 1) return;
@@ -119,7 +141,13 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename }]);
   }
 
+  function handleDownloadOriginal() {
+    downloadVersion(libraryId, item.id, "original");
+  }
+
   if (!item) return null;
+  const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
+  const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
   const placeLine = detail ? formatLocationLine(detail) : "";
@@ -166,7 +194,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               onClick={() => media.startVideo()}
               aria-label="Play video"
             >
-              <img className="mobile-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} />
+              <img className="mobile-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} draggable={false} />
               <Icon name="play" size={48} className="mobile-viewer__play-icon" />
             </button>
           )
@@ -190,10 +218,12 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             ) : (
               <img
                 className="mobile-viewer__media"
-                src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+                src={stillSrc}
                 alt={item.filename ?? ""}
                 style={{ transform: `scale(${scale})` }}
-                onError={media.wantsOriginal ? media.onOriginalError : undefined}
+                onLoad={media.onPreviewLoaded}
+                onError={stillOnError}
+                draggable={false}
               />
             )}
             <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -201,11 +231,18 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         ) : (
           <img
             className="mobile-viewer__media"
-            src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+            src={stillSrc}
             alt={item.filename ?? ""}
             style={{ transform: `scale(${scale})` }}
-            onError={media.wantsOriginal ? media.onOriginalError : undefined}
+            onLoad={media.onPreviewLoaded}
+            onError={stillOnError}
+            draggable={false}
           />
+        )}
+        {media.showingOriginal && (
+          <span className="mobile-viewer__original-badge" data-testid="mobile-viewer-original-badge">
+            Original
+          </span>
         )}
       </div>
       <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" />
@@ -214,6 +251,16 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           <span className="mobile-viewer__icon-button" aria-label="Favorite">
             <Icon name="favorite" size={20} />
           </span>
+        )}
+        {detail?.has_edited && (
+          <button
+            type="button"
+            className="mobile-viewer__icon-button"
+            onClick={handleDownloadOriginal}
+            aria-label="Download Original"
+          >
+            <Icon name="document" size={20} />
+          </button>
         )}
         <button type="button" className="mobile-viewer__icon-button" onClick={handleShare} aria-label="Share">
           <Icon name="share" size={20} />

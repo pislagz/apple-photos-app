@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -60,6 +60,7 @@ function makeDetail(id: string, overrides: Partial<AssetDetailResponse> = {}): A
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete (window.navigator as { connection?: unknown }).connection;
 });
 
 function mockDetail(details: Record<string, AssetDetailResponse>) {
@@ -87,6 +88,22 @@ describe("MobileViewer", () => {
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
+  });
+
+  it("zooms to the edited version when the asset has one", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
   });
 
   it("closes on the back chevron", () => {
@@ -289,5 +306,151 @@ describe("MobileViewer", () => {
     expect(onClose).toHaveBeenCalled();
 
     rectSpy.mockRestore();
+  });
+
+  it("shows a Download Original action for an edited photo, and downloads the original file", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+    let href = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      href = this.href;
+    });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByLabelText("Download Original"));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(href).toContain("/original/a1");
+    expect(href).not.toContain("version=edited");
+    clickSpy.mockRestore();
+  });
+
+  it("has no Download Original action for a photo that was never edited", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    await screen.findByLabelText("Share");
+    expect(screen.queryByLabelText("Download Original")).toBeNull();
+  });
+
+  it("press-and-hold shows the unedited original while held, and reverts on release", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Download Original");
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(media().src).toContain("/original/a1");
+      expect(media().src).not.toContain("version=edited");
+      expect(screen.getByTestId("mobile-viewer-original-badge")).toBeTruthy();
+
+      fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 100, clientY: 100 }] });
+      expect(screen.queryByTestId("mobile-viewer-original-badge")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never arms the press-and-hold preview for a photo that was never edited", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Share");
+    const stage = screen.getByTestId("mobile-viewer-stage");
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(screen.queryByTestId("mobile-viewer-original-badge")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("loads full quality automatically once the preview has rendered, without requiring zoom", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+    expect(media().src).toContain("?size=preview");
+
+    fireEvent.load(media());
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+  });
+
+  it("skips the automatic full-quality load when the browser's data saver is on", async () => {
+    Object.defineProperty(window.navigator, "connection", { configurable: true, value: { saveData: true } });
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    fireEvent.load(media());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(media().src).toContain("?size=preview");
+    expect(media().src).not.toContain("/original/");
+  });
+
+  it("still loads full quality on zoom even when the browser's data saver is on", async () => {
+    Object.defineProperty(window.navigator, "connection", { configurable: true, value: { saveData: true } });
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+  });
+
+  it("never requests the unedited original for the automatic full-quality load of an edited photo", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    // Fire the preview's onLoad before the asset detail (has_edited) fetch
+    // has resolved -- the race this fix closes. The automatic load must
+    // wait for has_edited rather than briefly requesting plain `/original`.
+    fireEvent.load(media());
+    expect(media().src).toContain("?size=preview");
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
+  });
+
+  it("disables drag and the iOS press-and-hold callout on the viewer image", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Share");
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = stage.querySelector("img") as HTMLImageElement;
+    expect(media.draggable).toBe(false);
   });
 });

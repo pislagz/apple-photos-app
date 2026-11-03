@@ -113,8 +113,15 @@ def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes
         return buffer.getvalue()
 
 
-def cache_key(library_id: int, asset_uuid: str, size: str, source_mtime_ns: int, size_px: int, quality: int) -> str:
-    raw = f"{library_id}:{asset_uuid}:{size}:{source_mtime_ns}:{size_px}:{quality}".encode()
+def cache_key(
+    library_id: int, asset_uuid: str, size: str, source_path: str | pathlib.Path, source_mtime_ns: int,
+    size_px: int, quality: int,
+) -> str:
+    # `source_path` is part of the key, not just its mtime: an edit or a
+    # revert (P1.17b) can swap which file backs an asset_uuid between two
+    # requests whose mtimes happen to land in the same filesystem tick, and
+    # mtime alone would then serve one file's cached bytes for the other.
+    raw = f"{library_id}:{asset_uuid}:{size}:{source_path}:{source_mtime_ns}:{size_px}:{quality}".encode()
     return hashlib.sha256(raw).hexdigest()
 
 
@@ -146,7 +153,7 @@ def get_or_generate(
         source_mtime_ns = chosen.stat().st_mtime_ns
     except OSError as exc:
         raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, size, source_mtime_ns, target_px, quality)
+    key = cache_key(library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality)
     cache_dir = pathlib.Path(cache_dir)
     cached = _read_cache(cache_dir, key)
     if cached is not None:
@@ -176,7 +183,7 @@ def get_or_generate_jpeg(
         source_mtime_ns = source_path.stat().st_mtime_ns
     except OSError as exc:
         raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, "jpeg-full", source_mtime_ns, 0, 92)
+    key = cache_key(library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92)
     cache_dir = pathlib.Path(cache_dir)
     cached_path = _cache_file(cache_dir, key, "jpg")
     if cached_path.exists():

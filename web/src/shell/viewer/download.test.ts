@@ -41,7 +41,9 @@ describe("downloadAsset", () => {
 
 describe("shareOrDownloadAssets", () => {
   it("fetches files for the share sheet with the download marker", async () => {
-    const fetchMock = mockFetch(() => new Response(new Blob(["x"]), { status: 200 }));
+    const fetchMock = mockFetch((url) =>
+      url.includes("/assets/") ? { has_edited: false } : new Response(new Blob(["x"]), { status: 200 }),
+    );
     vi.stubGlobal("navigator", {
       ...navigator,
       canShare: () => true,
@@ -50,18 +52,19 @@ describe("shareOrDownloadAssets", () => {
 
     await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain("download=1");
+    const fileFetch = fetchMock.mock.calls.find((call) => String(call[0]).includes("download=1"));
+    expect(fileFetch).toBeDefined();
   });
 
-  it("falls back to a marked download link when the Web Share API is unavailable", () => {
+  it("falls back to a marked download link when the Web Share API is unavailable", async () => {
+    mockFetch(() => ({ has_edited: false }));
     vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
     let href = "";
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       href = this.href;
     });
 
-    void shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
+    await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
 
     expect(href).toContain("download=1");
   });

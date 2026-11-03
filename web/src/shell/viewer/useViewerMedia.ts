@@ -26,24 +26,69 @@ export interface ViewerMedia {
   // image -- `onOriginalError` switches `originalSrc` to a server-side JPEG
   // transcode of the same file instead of leaving a broken image.
   onOriginalError: () => void;
+  // P1.17b fix round: "Show Original" (phone long-press / Mac toolbar
+  // toggle) always shows the unedited file, regardless of `wantsOriginal`'s
+  // edited-by-default choice. A no-op when the asset was never edited.
+  showingOriginal: boolean;
+  showOriginalSrc: string;
+  startShowOriginal: () => void;
+  stopShowOriginal: () => void;
+  toggleShowOriginal: () => void;
+  // Fires once the preview thumb has actually rendered, so the viewer can
+  // follow up with the full-quality file without waiting for a zoom -- but
+  // skips that follow-up under the browser's data saver setting.
+  onPreviewLoaded: () => void;
 }
 
-export function useViewerMedia(libraryId: number, item: AssetListItem | undefined): ViewerMedia {
+function isDataSaverOn(): boolean {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return connection?.saveData === true;
+}
+
+export function useViewerMedia(
+  libraryId: number,
+  item: AssetListItem | undefined,
+  hasEdited: boolean | undefined,
+): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [livePlaying, setLivePlaying] = useState(false);
   const [jpegFallback, setJpegFallback] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   useEffect(() => {
     setWantsOriginal(false);
+    setPreviewLoaded(false);
     setVideoPlaying(false);
     setLivePlaying(false);
     setJpegFallback(false);
+    setShowingOriginal(false);
   }, [item?.id]);
+
+  // P1.17b fix round 2: the automatic full-quality fetch must not fire until
+  // `hasEdited` is actually known (the asset detail request has resolved),
+  // otherwise it requests `version=original` first and `version=edited`
+  // moments later once the detail arrives -- a real flash of the unedited
+  // photo. Wait for both the preview `onLoad` and a resolved `hasEdited`.
+  useEffect(() => {
+    if (previewLoaded && hasEdited !== undefined && !isDataSaverOn()) {
+      setWantsOriginal(true);
+    }
+  }, [previewLoaded, hasEdited]);
+
+  // Apple Photos always shows the edited render (P1.17b): zoom and video
+  // playback ask for `version=edited` whenever the asset has one, same as
+  // the grid/preview thumb already does server-side.
+  const version: "original" | "edited" = hasEdited ? "edited" : "original";
 
   return {
     previewSrc: item ? previewThumbUrl(libraryId, item.id) : "",
-    originalSrc: item ? (jpegFallback ? originalJpegFallbackUrl(libraryId, item.id) : originalUrl(libraryId, item.id)) : "",
+    originalSrc: item
+      ? jpegFallback
+        ? originalJpegFallbackUrl(libraryId, item.id, version)
+        : originalUrl(libraryId, item.id, version)
+      : "",
     liveVideoSrc: item ? livePhotoVideoUrl(libraryId, item.id) : "",
     isVideo: item?.is_video ?? false,
     isLivePhoto: item?.is_live_photo ?? false,
@@ -55,5 +100,19 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
     startLive: () => setLivePlaying(true),
     stopLive: () => setLivePlaying(false),
     onOriginalError: () => setJpegFallback(true),
+    showingOriginal,
+    showOriginalSrc: item
+      ? jpegFallback
+        ? originalJpegFallbackUrl(libraryId, item.id, "original")
+        : originalUrl(libraryId, item.id, "original")
+      : "",
+    startShowOriginal: () => {
+      if (hasEdited) setShowingOriginal(true);
+    },
+    stopShowOriginal: () => setShowingOriginal(false),
+    toggleShowOriginal: () => {
+      if (hasEdited) setShowingOriginal((value) => !value);
+    },
+    onPreviewLoaded: () => setPreviewLoaded(true),
   };
 }

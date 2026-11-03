@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AssetListItem } from "../../api";
+import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
 import DesktopLibrary from "./DesktopLibrary";
 
@@ -233,7 +233,7 @@ describe("DesktopLibrary", () => {
     expect(container.innerHTML).not.toContain("hidden-1");
   });
 
-  function mockDetail(id: string) {
+  function mockDetail(id: string, overrides: Partial<AssetDetailResponse> = {}): AssetDetailResponse {
     return {
       id,
       filename: `${id}.jpg`,
@@ -268,6 +268,7 @@ describe("DesktopLibrary", () => {
       has_live_photo_video: false,
       people: [],
       albums: [],
+      ...overrides,
     };
   }
 
@@ -374,6 +375,49 @@ describe("DesktopLibrary", () => {
     expect(screen.queryByTestId("context-menu")).toBeNull();
     expect(menu).not.toBeInTheDocument();
     clickSpy.mockRestore();
+  });
+
+  it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1], { has_edited: true });
+      throw new Error(`unexpected request: ${url}`);
+    });
+    let href = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      href = this.href;
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+
+    fireEvent.click(await within(menu).findByText("Download Original"));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(href).toContain("/original/a1");
+    expect(href).not.toContain("version=edited");
+    clickSpy.mockRestore();
+  });
+
+  it("right-click's menu has no Download Original for a photo that was never edited", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1], { has_edited: false });
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+
+    await within(menu).findByText("Download");
+    expect(within(menu).queryByText("Download Original")).toBeNull();
   });
 
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {

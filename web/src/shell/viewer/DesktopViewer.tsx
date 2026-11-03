@@ -26,7 +26,7 @@ const ZOOM_SCALE = 2.5;
 export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
@@ -95,6 +95,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original");
   }
 
+  function handleDownloadOriginal() {
+    downloadVersion(libraryId, item.id, "original");
+  }
+
   function handleCopyLink() {
     void copyAssetLink(libraryId, item.id);
   }
@@ -102,6 +106,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
   const mediaTransform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
+  const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
+  const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
   const placeLine = detail ? formatLocationLine(detail) : "";
   // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
@@ -131,6 +137,22 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
             <Icon name="download" size={16} />
           </button>
+          {detail?.has_edited && (
+            <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
+              <Icon name="document" size={16} />
+            </button>
+          )}
+          {detail?.has_edited && (
+            <button
+              type="button"
+              className="toolbar-button"
+              aria-pressed={media.showingOriginal}
+              onClick={() => media.toggleShowOriginal()}
+              aria-label="Show Original"
+            >
+              <Icon name="original" size={16} />
+            </button>
+          )}
           <button
             type="button"
             className="toolbar-button"
@@ -176,12 +198,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               ) : (
                 <img
                   className="desktop-viewer__media"
-                  src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+                  src={stillSrc}
                   alt={item.filename ?? ""}
                   style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
-                  onError={media.wantsOriginal ? media.onOriginalError : undefined}
+                  onLoad={media.onPreviewLoaded}
+                  onError={stillOnError}
                 />
               )}
               <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -189,12 +212,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           ) : (
             <img
               className="desktop-viewer__media"
-              src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+              src={stillSrc}
               alt={item.filename ?? ""}
               style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}
-              onError={media.wantsOriginal ? media.onOriginalError : undefined}
+              onLoad={media.onPreviewLoaded}
+              onError={stillOnError}
             />
           )}
         </div>

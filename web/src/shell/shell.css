@@ -1124,6 +1124,7 @@ body {
 }
 
 .mobile-viewer__stage {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -1132,10 +1133,27 @@ body {
   touch-action: none;
 }
 
+.mobile-viewer__original-badge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+}
+
 .mobile-viewer__media {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  /* P1.17b fix round 2: without these, iOS Safari's long-press image menu
+     fights the press-and-hold "Show Original" gesture. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .mobile-viewer__media-wrap {

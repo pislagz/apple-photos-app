@@ -398,15 +398,17 @@ def asset_thumb(
     cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ) -> Response:
     asset = _get_asset_or_404(db, library["id"], asset_id)
-    original, derivative = asset["path_original"], asset["path_derivative"]
-    if not original and not derivative:
+    edited, original, derivative = asset["path_edited"], asset["path_original"], asset["path_derivative"]
+    if not edited and not original and not derivative:
         raise HTTPException(status_code=404, detail="not found")
-    # A derivative substitutes for a missing original (e.g. an iCloud asset
-    # with "Optimize Mac Storage" -- out of scope per CLAUDE.md, but this
-    # mirrors media.py's own fallback instead of fighting it); only list it
-    # as a *derivative* candidate when there's also a real original.
-    source_path = _resolve_within_library(library["path"], original or derivative)
-    derivatives = [_resolve_within_library(library["path"], derivative)] if derivative and original else []
+    # Apple Photos always shows the edited render when one exists (P1.17b);
+    # a derivative substitutes for a missing original/edit (e.g. an iCloud
+    # asset with "Optimize Mac Storage" -- out of scope per CLAUDE.md, but
+    # this mirrors media.py's own fallback instead of fighting it); only
+    # list it as a *derivative* candidate when it isn't already the source.
+    main_path = edited or original or derivative
+    source_path = _resolve_within_library(library["path"], main_path)
+    derivatives = [_resolve_within_library(library["path"], derivative)] if derivative and derivative != main_path else []
     sizes, quality, cache_limit = _media_settings(db)
     try:
         result = media.get_or_generate(
@@ -494,7 +496,7 @@ def asset_live_photo_video(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ):
     asset = _get_asset_or_404(db, library["id"], asset_id)
-    raw_path = asset["path_live_photo"] or asset["path_edited_live_photo"]
+    raw_path = asset["path_edited_live_photo"] or asset["path_live_photo"]
     if not raw_path:
         raise HTTPException(status_code=404, detail="not found")
     file_path = _resolve_within_library(library["path"], raw_path)
