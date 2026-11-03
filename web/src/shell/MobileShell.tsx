@@ -29,12 +29,13 @@ export default function MobileShell({
   return (
     <div className="shell shell--mobile">
       <header className="shell__header">
-        <h1>Library</h1>
+        <h1 className="sr-only">Library</h1>
         <AccountMenu
           me={me}
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
+          compact
         />
       </header>
       <main className="shell__content">
