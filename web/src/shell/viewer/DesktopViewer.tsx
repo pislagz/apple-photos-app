@@ -26,7 +26,7 @@ const ZOOM_SCALE = 2.5;
 export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited ?? false);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
@@ -95,6 +95,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original");
   }
 
+  function handleDownloadOriginal() {
+    downloadVersion(libraryId, item.id, "original");
+  }
+
   function handleCopyLink() {
     void copyAssetLink(libraryId, item.id);
   }
@@ -131,6 +135,11 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
             <Icon name="download" size={16} />
           </button>
+          {detail?.has_edited && (
+            <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
+              <Icon name="document" size={16} />
+            </button>
+          )}
           <button
             type="button"
             className="toolbar-button"

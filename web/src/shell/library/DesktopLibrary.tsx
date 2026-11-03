@@ -2,7 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
-import { copyAssetLink, downloadAsset } from "../viewer/download";
+import { copyAssetLink, downloadAsset, downloadVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
@@ -546,6 +546,15 @@ export default function DesktopLibrary({
             }}
           >
             Download
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              downloadVersion(libraryId, contextMenu.id, "original");
+              setContextMenu(null);
+            }}
+          >
+            Download Original
           </button>
           <button
             type="button"

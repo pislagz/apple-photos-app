@@ -227,6 +227,42 @@ describe("DesktopViewer", () => {
     clickSpy.mockRestore();
   });
 
+  it("zooms and downloads the edited version when the asset has one, and offers Download Original", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+    let downloadHref = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadHref = this.href;
+    });
+
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
+    await screen.findByLabelText("Download Original");
+
+    fireEvent.doubleClick(media());
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
+
+    fireEvent.click(screen.getByLabelText("Download"));
+    expect(downloadHref).toContain("version=edited");
+
+    fireEvent.click(screen.getByLabelText("Download Original"));
+    expect(downloadHref).not.toContain("version=edited");
+    clickSpy.mockRestore();
+  });
+
+  it("has no Download Original button when the asset has no edited version", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+
+    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    await screen.findByLabelText("Download");
+    expect(screen.queryByLabelText("Download Original")).toBeNull();
+  });
+
   it("has no edit, delete, or favorite-write controls", () => {
     const items = [makeItem("a1", { favorite: true })];
     mockDetail({ a1: makeDetail("a1") });

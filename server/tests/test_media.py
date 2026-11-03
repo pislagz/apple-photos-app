@@ -128,14 +128,18 @@ def test_get_or_generate_cache_key_changes_with_source_mtime(tmp_path, monkeypat
     cache_dir = tmp_path / "cache"
 
     media.get_or_generate(cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=source_path)
-    key_before = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_before = media.cache_key(
+        1, "asset-uuid", "grid", source_path, source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY
+    )
 
     # A re-index that re-fetches a changed original touches its mtime; the
     # cache key must follow it rather than serving stale bytes keyed only by
     # the (re-indexed, no-longer-stable) `assets.id`.
     new_mtime_ns = source_path.stat().st_mtime_ns + 1_000_000_000
     os.utime(source_path, ns=(new_mtime_ns, new_mtime_ns))
-    key_after = media.cache_key(1, "asset-uuid", "grid", source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_after = media.cache_key(
+        1, "asset-uuid", "grid", source_path, source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY
+    )
 
     assert key_before != key_after
 
@@ -146,10 +150,26 @@ def test_get_or_generate_cache_key_changes_with_quality(tmp_path, monkeypatch):
     Image.new("RGB", (800, 600)).save(source_path, format="JPEG")
     mtime_ns = source_path.stat().st_mtime_ns
 
-    key_default = media.cache_key(1, "asset-uuid", "grid", mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
-    key_other_quality = media.cache_key(1, "asset-uuid", "grid", mtime_ns, media.SIZES["grid"], 40)
+    key_default = media.cache_key(1, "asset-uuid", "grid", source_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_other_quality = media.cache_key(1, "asset-uuid", "grid", source_path, mtime_ns, media.SIZES["grid"], 40)
 
     assert key_default != key_other_quality
+
+
+def test_get_or_generate_cache_key_changes_with_source_path(tmp_path):
+    # Two different files for the same asset_uuid (e.g. an edited render vs
+    # the original, P1.17b) must not collide even if their mtimes coincide.
+    original_path = tmp_path / "original.jpg"
+    edited_path = tmp_path / "edited.jpg"
+    original_path.touch()
+    edited_path.touch()
+    mtime_ns = original_path.stat().st_mtime_ns
+    os.utime(edited_path, ns=(mtime_ns, mtime_ns))
+
+    key_original = media.cache_key(1, "asset-uuid", "grid", original_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_edited = media.cache_key(1, "asset-uuid", "grid", edited_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+
+    assert key_original != key_edited
 
 
 def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(tmp_path, monkeypatch):

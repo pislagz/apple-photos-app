@@ -28,7 +28,7 @@ export interface ViewerMedia {
   onOriginalError: () => void;
 }
 
-export function useViewerMedia(libraryId: number, item: AssetListItem | undefined): ViewerMedia {
+export function useViewerMedia(libraryId: number, item: AssetListItem | undefined, hasEdited: boolean): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [livePlaying, setLivePlaying] = useState(false);
@@ -41,9 +41,18 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
     setJpegFallback(false);
   }, [item?.id]);
 
+  // Apple Photos always shows the edited render (P1.17b): zoom and video
+  // playback ask for `version=edited` whenever the asset has one, same as
+  // the grid/preview thumb already does server-side.
+  const version: "original" | "edited" = hasEdited ? "edited" : "original";
+
   return {
     previewSrc: item ? previewThumbUrl(libraryId, item.id) : "",
-    originalSrc: item ? (jpegFallback ? originalJpegFallbackUrl(libraryId, item.id) : originalUrl(libraryId, item.id)) : "",
+    originalSrc: item
+      ? jpegFallback
+        ? originalJpegFallbackUrl(libraryId, item.id, version)
+        : originalUrl(libraryId, item.id, version)
+      : "",
     liveVideoSrc: item ? livePhotoVideoUrl(libraryId, item.id) : "",
     isVideo: item?.is_video ?? false,
     isLivePhoto: item?.is_live_photo ?? false,

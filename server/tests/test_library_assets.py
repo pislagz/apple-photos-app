@@ -571,6 +571,65 @@ def test_thumb_unknown_asset_id_404s(tmp_path):
         conn.close()
 
 
+def _dominant_channel(data: bytes) -> str:
+    decoded = Image.open(io.BytesIO(data)).convert("RGB")
+    r, g, b = decoded.resize((1, 1)).getpixel((0, 0))
+    return max(("r", r), ("g", g), ("b", b), key=lambda pair: pair[1])[0]
+
+
+def test_thumb_prefers_edited_version_when_present(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client = _client(tmp_path)
+    try:
+        library_path, original_path = _library_root_with_jpeg(tmp_path, name="original.jpg")
+        edited_path = original_path.parent / "edited.jpg"
+        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(edited_path, format="JPEG")
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+
+        assert response.status_code == 200
+        assert _dominant_channel(response.content) == "r"  # edited.jpg's (200, 60, 10), not original's (10, 20, 30)
+    finally:
+        conn.close()
+
+
+def test_thumb_reverts_to_original_after_edit_removed_with_no_stale_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client = _client(tmp_path)
+    try:
+        library_path, original_path = _library_root_with_jpeg(tmp_path, name="original.jpg")
+        edited_path = original_path.parent / "edited.jpg"
+        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(edited_path, format="JPEG")
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        asset_pk = _insert_asset(
+            conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path)
+        )
+        _login(client, "alice")
+
+        edited_response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+        assert _dominant_channel(edited_response.content) == "r"
+
+        # A re-index that picks up a revert clears path_edited via the same
+        # upsert that set it (indexer.py) -- simulate that directly.
+        conn.execute("UPDATE assets SET path_edited = NULL WHERE id = ?", (asset_pk,))
+        conn.commit()
+
+        reverted_response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+
+        assert reverted_response.status_code == 200
+        assert _dominant_channel(reverted_response.content) == "b"  # original.jpg's (10, 20, 30)
+        assert reverted_response.content != edited_response.content
+    finally:
+        conn.close()
+
+
 def test_original_native_download_supports_range_206(tmp_path):
     conn, client = _client(tmp_path)
     try:
@@ -585,6 +644,34 @@ def test_original_native_download_supports_range_206(tmp_path):
 
         assert response.status_code == 206
         assert response.content == b"234"
+    finally:
+        conn.close()
+
+
+def test_original_version_param_selects_edited_or_original_bytes(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path = tmp_path / "L1.photoslibrary"
+        originals = library_path / "originals"
+        originals.mkdir(parents=True)
+        original_path = originals / "a.jpg"
+        original_path.write_bytes(b"original bytes")
+        edited_path = originals / "a_edited.jpg"
+        edited_path.write_bytes(b"edited bytes")
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path))
+        _login(client, "alice")
+
+        # The route itself always defaults to "original" -- the P1.17b
+        # edited-by-default behaviour lives in the client, which passes
+        # `version=edited` explicitly once it knows `has_edited` is true.
+        default_response = client.get(f"/api/libraries/{library_id}/original/a")
+        edited_response = client.get(f"/api/libraries/{library_id}/original/a", params={"version": "edited"})
+
+        assert default_response.content == b"original bytes"
+        assert edited_response.content == b"edited bytes"
     finally:
         conn.close()
 
@@ -796,6 +883,33 @@ def test_livephoto_video_downloads_the_recorded_file(tmp_path):
 
         assert response.status_code == 200
         assert response.content == b"not a real video, just bytes to serve"
+    finally:
+        conn.close()
+
+
+def test_livephoto_video_prefers_edited_over_original(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path = tmp_path / "L1.photoslibrary"
+        originals = library_path / "originals"
+        originals.mkdir(parents=True)
+        original_video = originals / "a.mov"
+        original_video.write_bytes(b"original live photo video")
+        edited_video = originals / "a_edited.mov"
+        edited_video.write_bytes(b"edited live photo video")
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(
+            conn, library_id, "a",
+            path_live_photo=str(original_video), path_edited_live_photo=str(edited_video),
+        )
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/livephoto/a/video")
+
+        assert response.status_code == 200
+        assert response.content == b"edited live photo video"
     finally:
         conn.close()
 

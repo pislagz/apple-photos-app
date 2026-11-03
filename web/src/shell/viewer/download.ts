@@ -19,17 +19,21 @@ export function downloadVersion(libraryId: number, assetId: string, version: "or
 }
 
 // Used where the caller doesn't already have the asset's `has_edited` flag
-// (the grid context menu) -- looks it up first so a right-click download
-// picks the same version the viewer would.
-export async function downloadAsset(libraryId: number, assetId: string): Promise<void> {
-  let version: "original" | "edited" = "original";
+// (the grid context menu, the share batches below) -- looks it up first so
+// a right-click download or share picks the same version the viewer would.
+async function resolveVersion(libraryId: number, assetId: string): Promise<"original" | "edited"> {
   try {
     const detail = await getAssetDetail(libraryId, assetId);
-    if (detail.has_edited) version = "edited";
+    return detail.has_edited ? "edited" : "original";
   } catch {
     // Foreign/missing asset: fall back to "original" and let the server's
     // own 404 on the download request be the source of truth.
+    return "original";
   }
+}
+
+export async function downloadAsset(libraryId: number, assetId: string): Promise<void> {
+  const version = await resolveVersion(libraryId, assetId);
   downloadVersion(libraryId, assetId, version);
 }
 
@@ -42,8 +46,12 @@ export async function copyAssetLink(libraryId: number, assetId: string): Promise
 const SHARE_BATCH_SIZE = 5;
 
 // A share fetch is audited as a download even if the share sheet is cancelled; accepted (admin-only log)
-async function fetchAsFile(libraryId: number, item: { id: string; filename: string | null }): Promise<File> {
-  const response = await fetch(originalUrl(libraryId, item.id, "original", true), { credentials: "same-origin" });
+async function fetchAsFile(
+  libraryId: number,
+  item: { id: string; filename: string | null },
+  version: "original" | "edited",
+): Promise<File> {
+  const response = await fetch(originalUrl(libraryId, item.id, version, true), { credentials: "same-origin" });
   if (!response.ok) throw new Error(`download failed: ${response.status}`);
   const blob = await response.blob();
   return new File([blob], item.filename ?? item.id, { type: blob.type });
@@ -61,17 +69,18 @@ export async function shareOrDownloadAssets(
   const canShareFiles = typeof navigator.canShare === "function" && typeof navigator.share === "function";
   for (let start = 0; start < items.length; start += SHARE_BATCH_SIZE) {
     const batch = items.slice(start, start + SHARE_BATCH_SIZE);
+    const versions = await Promise.all(batch.map((item) => resolveVersion(libraryId, item.id)));
     if (!canShareFiles) {
-      for (const item of batch) downloadVersion(libraryId, item.id, "original");
+      batch.forEach((item, i) => downloadVersion(libraryId, item.id, versions[i]));
       continue;
     }
     try {
-      const files = await Promise.all(batch.map((item) => fetchAsFile(libraryId, item)));
+      const files = await Promise.all(batch.map((item, i) => fetchAsFile(libraryId, item, versions[i])));
       if (!navigator.canShare({ files })) throw new Error("cannot share these files");
       await navigator.share({ files });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") continue;
-      for (const item of batch) downloadVersion(libraryId, item.id, "original");
+      batch.forEach((item, i) => downloadVersion(libraryId, item.id, versions[i]));
     }
   }
 }

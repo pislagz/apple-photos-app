@@ -89,6 +89,22 @@ describe("MobileViewer", () => {
     await waitFor(() => expect(media().src).toContain("/original/a1"));
   });
 
+  it("zooms to the edited version when the asset has one", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const media = () => stage.querySelector("img") as HTMLImageElement;
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+    expect(media().src).toContain("version=edited");
+  });
+
   it("closes on the back chevron", () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });

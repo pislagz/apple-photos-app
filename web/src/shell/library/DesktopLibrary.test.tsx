@@ -376,6 +376,31 @@ describe("DesktopLibrary", () => {
     clickSpy.mockRestore();
   });
 
+  it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+    let href = "";
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      href = this.href;
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+
+    fireEvent.click(within(menu).getByText("Download Original"));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(href).toContain("/original/a1");
+    expect(href).not.toContain("version=edited");
+    clickSpy.mockRestore();
+  });
+
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
