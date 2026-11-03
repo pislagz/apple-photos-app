@@ -41,6 +41,7 @@ export async function copyAssetLink(libraryId: number, assetId: string): Promise
 // carry; this is a conservative batch size, not a number from a spec.
 const SHARE_BATCH_SIZE = 5;
 
+// A share fetch is audited as a download even if the share sheet is cancelled; accepted (admin-only log)
 async function fetchAsFile(libraryId: number, item: { id: string; filename: string | null }): Promise<File> {
   const response = await fetch(originalUrl(libraryId, item.id, "original", true), { credentials: "same-origin" });
   if (!response.ok) throw new Error(`download failed: ${response.status}`);

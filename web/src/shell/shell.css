@@ -115,6 +115,13 @@ body {
   letter-spacing: -0.3px;
 }
 
+/* P1.17 follow-up: in Select mode the "Cancel" button occupies the same
+   top-left corner as the large title text -- push the title right so the
+   two don't overlap. */
+.mobile-library__pinned-header--select {
+  padding-left: 72px;
+}
+
 .mobile-library__view-switch {
   position: absolute;
   left: 50%;

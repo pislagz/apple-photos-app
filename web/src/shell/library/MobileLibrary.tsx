@@ -129,7 +129,10 @@ export default function MobileLibrary({
   return (
     <div className="mobile-library">
       {view !== "days" && (
-        <div className="mobile-library__pinned-header" data-testid="pinned-header">
+        <div
+          className={`mobile-library__pinned-header${selectMode ? " mobile-library__pinned-header--select" : ""}`}
+          data-testid="pinned-header"
+        >
           {pinnedLabel}
         </div>
       )}
@@ -140,20 +143,22 @@ export default function MobileLibrary({
       >
         {selectMode ? "Cancel" : "Select"}
       </button>
-      <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
-        {VIEWS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={view === item.key}
-            className="mobile-library__view-switch-item"
-            onClick={() => setView(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {!selectMode && (
+        <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
+          {VIEWS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={view === item.key}
+              className="mobile-library__view-switch-item"
+              onClick={() => setView(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="mobile-library__scroll"

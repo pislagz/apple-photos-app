@@ -278,6 +278,21 @@ describe("MobileLibrary", () => {
     expect(share.mock.calls[0][0].files).toHaveLength(2);
   });
 
+  it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Select"));
+    expect(screen.queryByRole("tablist", { name: "Library zoom" })).toBeNull();
+
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+  });
+
   it("falls back to download links per item when the Web Share API is unavailable", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
