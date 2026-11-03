@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
+import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
@@ -22,14 +23,52 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sharing, setSharing] = useState(false);
 
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
+  // instead of opening the Viewer; outside select mode a tap still opens
+  // the Viewer exactly as before.
   const openItem = useCallback(
     (item: AssetListItem) => {
+      if (selectMode) {
+        toggleSelected(item.id);
+        return;
+      }
       const index = items.indexOf(item);
       if (index !== -1) setOpenIndex(index);
     },
-    [items],
+    [items, selectMode, toggleSelected],
   );
+
+  async function handleShareSelection() {
+    const toShare = items.filter((item) => selectedIds.has(item.id));
+    if (toShare.length === 0) return;
+    setSharing(true);
+    try {
+      await shareOrDownloadAssets(
+        libraryId,
+        toShare.map((item) => ({ id: item.id, filename: item.filename })),
+      );
+    } finally {
+      setSharing(false);
+    }
+  }
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -83,6 +122,13 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
           {pinnedLabel}
         </div>
       )}
+      <button
+        type="button"
+        className="mobile-library__select-button"
+        onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+      >
+        {selectMode ? "Cancel" : "Select"}
+      </button>
       <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
         {VIEWS.map((item) => (
           <button
@@ -141,21 +187,40 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
                       onClick={() => openItem(hero)}
                     />
                     <div className="mobile-library__feature-caption">{row.label}</div>
+                    {selectMode && (
+                      <span
+                        className="mobile-library__select-badge"
+                        data-selected={selectedIds.has(hero.id)}
+                        aria-label={selectedIds.has(hero.id) ? "Selected" : "Select"}
+                      />
+                    )}
                   </div>
                 );
               }
               return (
                 <div key={row.key} style={{ ...style, display: "flex" }} className="mobile-library__row-grid">
                   {row.items.map((item) => (
-                    <img
+                    <div
                       key={item.id}
-                      src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
-                      alt={item.filename ?? ""}
-                      loading="lazy"
-                      className="mobile-library__cell"
+                      className="mobile-library__cell-wrap"
                       style={{ width: cellSize, height: cellSize }}
-                      onClick={() => openItem(item)}
-                    />
+                    >
+                      <img
+                        src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
+                        alt={item.filename ?? ""}
+                        loading="lazy"
+                        className="mobile-library__cell"
+                        style={{ width: cellSize, height: cellSize }}
+                        onClick={() => openItem(item)}
+                      />
+                      {selectMode && (
+                        <span
+                          className="mobile-library__select-badge"
+                          data-selected={selectedIds.has(item.id)}
+                          aria-label={selectedIds.has(item.id) ? "Selected" : "Select"}
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               );
@@ -163,6 +228,20 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
           </div>
         )}
       </div>
+      {selectMode && (
+        <div className="mobile-library__select-bar" data-testid="select-bar">
+          <span className="mobile-library__select-count">
+            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+          </span>
+          <button
+            type="button"
+            onClick={handleShareSelection}
+            disabled={selectedIds.size === 0 || sharing}
+          >
+            Share
+          </button>
+        </div>
+      )}
       {openIndex !== null && (
         <MobileViewer
           libraryId={libraryId}

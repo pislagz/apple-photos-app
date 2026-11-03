@@ -243,6 +243,92 @@ body {
   color: var(--ios-label-secondary);
 }
 
+/* P1.17 multi-select: a top-left text button mirroring iOS Photos'
+   "Select"/"Cancel", symmetric with the account avatar the Shell already
+   floats at the top-right. */
+.mobile-library__select-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 16px;
+  z-index: 2;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.mobile-library__cell-wrap {
+  position: relative;
+}
+
+.mobile-library__select-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.mobile-library__select-badge[data-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Bottom action bar for multi-select, replacing the tab bar's role while
+   selecting (ios17's "N Selected" / Share row) -- lives inside
+   .mobile-library, which already stretches the full height behind the
+   pinned header, so position:absolute anchors it correctly. */
+.mobile-library__select-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: rgba(249, 249, 249, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.mobile-library__select-count {
+  font-size: 13px;
+  color: #1d1d1f;
+}
+
+.mobile-library__select-bar button {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mobile-library__select-bar button:disabled {
+  color: var(--ios-label-secondary);
+  cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-library__select-bar {
+    background: rgba(22, 22, 24, 0.92);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .mobile-library__select-count {
+    color: #fff;
+  }
+}
+
 /* Bottom tab bar: translucent, icons + labels, safe-area aware. Light,
    frosted material by default (ios17-viewer.png); dark only when the
    system itself is in dark mode. */
@@ -743,6 +829,38 @@ body {
   text-align: center;
   padding: 24px;
   color: var(--sequoia-text-secondary);
+}
+
+/* P1.17 grid context menu: right-click Download/Copy Link on a single
+   cell, positioned at the click point like the macOS Finder/Photos
+   equivalent, independent of whatever is multi-selected. */
+.desktop-library__context-menu {
+  position: fixed;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.desktop-library__context-menu button {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1d1d1f;
+  cursor: pointer;
+}
+
+.desktop-library__context-menu button:hover {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 /* ---------------------------------------------------------------------- */

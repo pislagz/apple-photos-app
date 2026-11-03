@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -315,5 +315,56 @@ describe("DesktopLibrary", () => {
     fireEvent.keyDown(grid, { key: " " });
     viewer = await screen.findByTestId("desktop-viewer");
     expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a1");
+  });
+
+  it("right-click opens a context menu to download the asset, independent of the multi-selection", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    // Right-clicking a cell that isn't part of the current selection still
+    // shows its own Download/Copy Link menu.
+    fireEvent.click(cells(container)[0]);
+    fireEvent.contextMenu(cells(container)[1]);
+
+    const menu = await screen.findByTestId("context-menu");
+    expect(clickSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(within(menu).getByText("Download"));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("context-menu")).toBeNull();
+    expect(menu).not.toBeInTheDocument();
+    clickSpy.mockRestore();
+  });
+
+  it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+
+    fireEvent.click(within(menu).getByText("Copy Link"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/library/1/photo/a1")));
+    expect(screen.queryByTestId("context-menu")).toBeNull();
+
+    fireEvent.contextMenu(cells(container)[0]);
+    await screen.findByTestId("context-menu");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("context-menu")).toBeNull();
   });
 });

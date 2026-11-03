@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
+import { copyAssetLink, downloadAsset } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
@@ -77,6 +78,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
   const [infoOpen, setInfoOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const anchorIdRef = useRef<string | null>(null);
   // Holds the arrow-key target index while it is still past the loaded
   // items, so the reconciliation effect below can catch focus up once
@@ -333,6 +335,33 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
     downloadSelection(libraryId, selected);
   }, [libraryId, selected]);
 
+  // Right-click on a single cell (ios17-viewer.png's Download/Copy Link
+  // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
+  // edited vs. original the same way the Viewer does, independent of
+  // whatever is multi-selected.
+  const handleCellContextMenu = useCallback((event: React.MouseEvent, id: string) => {
+    event.preventDefault();
+    setContextMenu({ id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function dismiss() {
+      setContextMenu(null);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") dismiss();
+    }
+    window.addEventListener("click", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("click", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
+
   return (
     <div className="desktop-library" data-testid="desktop-library">
       <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
@@ -456,6 +485,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
                         style={{ height: cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
                         onDoubleClick={() => handleOpen(item.id)}
+                        onContextMenu={(event) => handleCellContextMenu(event, item.id)}
                       >
                         <img
                           src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
@@ -489,6 +519,33 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
         />
+      )}
+      {contextMenu && (
+        <div
+          className="desktop-library__context-menu"
+          data-testid="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              void downloadAsset(libraryId, contextMenu.id);
+              setContextMenu(null);
+            }}
+          >
+            Download
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void copyAssetLink(libraryId, contextMenu.id);
+              setContextMenu(null);
+            }}
+          >
+            Copy Link
+          </button>
+        </div>
       )}
     </div>
   );

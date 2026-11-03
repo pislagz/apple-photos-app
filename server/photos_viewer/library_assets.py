@@ -436,6 +436,7 @@ def asset_original(
     version: Literal["original", "edited"] = "original",
     format: Literal["native", "jpeg"] = "native",
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
     cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ):
@@ -460,6 +461,13 @@ def asset_original(
         except media.MediaBackendError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         filename = _escape_content_disposition_filename(file_path.with_suffix(".jpg").name)
+        # P1.17: recorded on every successful response from this route, not
+        # just a click labeled "Download" -- a zoom or a HEIC->JPEG fallback
+        # already serves the same original-quality bytes.
+        app_db.write_audit_log(
+            db, "download", user_id=session["user_id"], library_id=library["id"], asset_id=asset["id"],
+            detail=f"version={version} format=jpeg",
+        )
         return Response(
             content=data,
             media_type="image/jpeg",
@@ -469,6 +477,10 @@ def asset_original(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="not found")
     media_type, _ = mimetypes.guess_type(file_path.name)
+    app_db.write_audit_log(
+        db, "download", user_id=session["user_id"], library_id=library["id"], asset_id=asset["id"],
+        detail=f"version={version}",
+    )
     return FileResponse(file_path, media_type=media_type or "application/octet-stream", filename=file_path.name)
 
 

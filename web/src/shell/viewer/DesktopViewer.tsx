@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
+import { copyAssetLink, downloadVersion } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
@@ -91,12 +92,11 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   }
 
   function handleDownload() {
-    const link = document.createElement("a");
-    link.href = `/api/libraries/${libraryId}/original/${item.id}`;
-    link.download = "";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original");
+  }
+
+  function handleCopyLink() {
+    void copyAssetLink(libraryId, item.id);
   }
 
   if (!item) return null;
@@ -125,6 +125,9 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             {titleLine && <span className="desktop-viewer__title-primary">{titleLine}</span>}
             {subtitleLine && <span className="desktop-viewer__title-secondary">{subtitleLine}</span>}
           </div>
+          <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
+            <Icon name="link" size={16} />
+          </button>
           <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
             <Icon name="download" size={16} />
           </button>
@@ -178,6 +181,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                   style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
+                  onError={media.wantsOriginal ? media.onOriginalError : undefined}
                 />
               )}
               <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -190,6 +194,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}
+              onError={media.wantsOriginal ? media.onOriginalError : undefined}
             />
           )}
         </div>

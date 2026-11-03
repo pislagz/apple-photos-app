@@ -633,6 +633,94 @@ def test_original_format_jpeg_transcodes_heic(tmp_path, monkeypatch):
         conn.close()
 
 
+def test_original_download_writes_an_audit_row(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        asset_pk = _insert_asset(conn, library_id, "a", path_original=str(file_path))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+
+        assert response.status_code == 200
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+        assert row is not None
+        assert row["user_id"] == user_id
+        assert row["library_id"] == library_id
+        assert row["asset_id"] == asset_pk
+        assert row["detail"] == "version=original"
+    finally:
+        conn.close()
+
+
+def test_original_download_of_another_users_library_404s_and_writes_no_audit_row(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        library_id = _create_library(conn, "L2", path=library_path)
+        _insert_asset(conn, library_id, "a", path_original=str(file_path))
+        owner_id = _create_user(conn, "bob")
+        _assign(conn, owner_id, library_id)
+        _create_user(conn, "alice")  # never assigned to L2
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+
+        assert response.status_code == 404
+        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_original_download_of_missing_edited_version_404s_and_writes_no_audit_row(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(file_path))  # path_edited left NULL
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"version": "edited"})
+
+        assert response.status_code == 404
+        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_original_format_jpeg_download_writes_an_audit_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client = _client(tmp_path)
+    try:
+        library_path = tmp_path / "L1.photoslibrary"
+        originals = library_path / "originals"
+        originals.mkdir(parents=True)
+        heic_path = originals / "a.heic"
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 24), color=(120, 160, 200)).save(buffer, format="HEIF", quality=50)
+        heic_path.write_bytes(buffer.getvalue())
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(heic_path))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg"})
+
+        assert response.status_code == 200
+        row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+        assert row is not None
+        assert row["user_id"] == user_id
+        assert row["detail"] == "version=original format=jpeg"
+    finally:
+        conn.close()
+
+
 def test_livephoto_video_missing_404s(tmp_path):
     conn, client = _client(tmp_path)
     try:
