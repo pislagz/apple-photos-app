@@ -106,6 +106,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
   const mediaTransform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
+  const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
+  const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
   const placeLine = detail ? formatLocationLine(detail) : "";
   // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
@@ -138,6 +140,17 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           {detail?.has_edited && (
             <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
               <Icon name="document" size={16} />
+            </button>
+          )}
+          {detail?.has_edited && (
+            <button
+              type="button"
+              className="toolbar-button"
+              aria-pressed={media.showingOriginal}
+              onClick={() => media.toggleShowOriginal()}
+              aria-label="Show Original"
+            >
+              <Icon name="original" size={16} />
             </button>
           )}
           <button
@@ -185,12 +198,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               ) : (
                 <img
                   className="desktop-viewer__media"
-                  src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+                  src={stillSrc}
                   alt={item.filename ?? ""}
                   style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
-                  onError={media.wantsOriginal ? media.onOriginalError : undefined}
+                  onLoad={media.onPreviewLoaded}
+                  onError={stillOnError}
                 />
               )}
               <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
@@ -198,12 +212,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           ) : (
             <img
               className="desktop-viewer__media"
-              src={media.wantsOriginal ? media.originalSrc : media.previewSrc}
+              src={stillSrc}
               alt={item.filename ?? ""}
               style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}
-              onError={media.wantsOriginal ? media.onOriginalError : undefined}
+              onLoad={media.onPreviewLoaded}
+              onError={stillOnError}
             />
           )}
         </div>

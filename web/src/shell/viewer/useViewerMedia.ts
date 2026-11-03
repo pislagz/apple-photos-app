@@ -26,6 +26,23 @@ export interface ViewerMedia {
   // image -- `onOriginalError` switches `originalSrc` to a server-side JPEG
   // transcode of the same file instead of leaving a broken image.
   onOriginalError: () => void;
+  // P1.17b fix round: "Show Original" (phone long-press / Mac toolbar
+  // toggle) always shows the unedited file, regardless of `wantsOriginal`'s
+  // edited-by-default choice. A no-op when the asset was never edited.
+  showingOriginal: boolean;
+  showOriginalSrc: string;
+  startShowOriginal: () => void;
+  stopShowOriginal: () => void;
+  toggleShowOriginal: () => void;
+  // Fires once the preview thumb has actually rendered, so the viewer can
+  // follow up with the full-quality file without waiting for a zoom -- but
+  // skips that follow-up under the browser's data saver setting.
+  onPreviewLoaded: () => void;
+}
+
+function isDataSaverOn(): boolean {
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+  return connection?.saveData === true;
 }
 
 export function useViewerMedia(libraryId: number, item: AssetListItem | undefined, hasEdited: boolean): ViewerMedia {
@@ -33,12 +50,14 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [livePlaying, setLivePlaying] = useState(false);
   const [jpegFallback, setJpegFallback] = useState(false);
+  const [showingOriginal, setShowingOriginal] = useState(false);
 
   useEffect(() => {
     setWantsOriginal(false);
     setVideoPlaying(false);
     setLivePlaying(false);
     setJpegFallback(false);
+    setShowingOriginal(false);
   }, [item?.id]);
 
   // Apple Photos always shows the edited render (P1.17b): zoom and video
@@ -64,5 +83,21 @@ export function useViewerMedia(libraryId: number, item: AssetListItem | undefine
     startLive: () => setLivePlaying(true),
     stopLive: () => setLivePlaying(false),
     onOriginalError: () => setJpegFallback(true),
+    showingOriginal,
+    showOriginalSrc: item
+      ? jpegFallback
+        ? originalJpegFallbackUrl(libraryId, item.id, "original")
+        : originalUrl(libraryId, item.id, "original")
+      : "",
+    startShowOriginal: () => {
+      if (hasEdited) setShowingOriginal(true);
+    },
+    stopShowOriginal: () => setShowingOriginal(false),
+    toggleShowOriginal: () => {
+      if (hasEdited) setShowingOriginal((value) => !value);
+    },
+    onPreviewLoaded: () => {
+      if (!isDataSaverOn()) setWantsOriginal(true);
+    },
   };
 }

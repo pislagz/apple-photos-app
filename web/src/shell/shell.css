@@ -1124,12 +1124,25 @@ body {
 }
 
 .mobile-viewer__stage {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   touch-action: none;
+}
+
+.mobile-viewer__original-badge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
 }
 
 .mobile-viewer__media {

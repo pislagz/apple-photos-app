@@ -21,7 +21,7 @@ export function downloadVersion(libraryId: number, assetId: string, version: "or
 // Used where the caller doesn't already have the asset's `has_edited` flag
 // (the grid context menu, the share batches below) -- looks it up first so
 // a right-click download or share picks the same version the viewer would.
-async function resolveVersion(libraryId: number, assetId: string): Promise<"original" | "edited"> {
+export async function resolveVersion(libraryId: number, assetId: string): Promise<"original" | "edited"> {
   try {
     const detail = await getAssetDetail(libraryId, assetId);
     return detail.has_edited ? "edited" : "original";

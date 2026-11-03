@@ -312,4 +312,70 @@ describe("DesktopViewer", () => {
     await waitFor(() => expect(media.src).toContain("/original/a1"));
     rectSpy.mockRestore();
   });
+
+  it("toggles Show Original to the unedited file and back, only for an edited photo", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
+    const toggle = await screen.findByLabelText("Show Original");
+
+    fireEvent.click(toggle);
+    expect(media().src).toContain("/original/a1");
+    expect(media().src).not.toContain("version=edited");
+    expect(media().src).not.toContain("download=1");
+
+    fireEvent.click(toggle);
+    expect(media().src).not.toContain("/original/a1");
+  });
+
+  it("has no Show Original toggle when the asset has no edited version", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+
+    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    await screen.findByLabelText("Download");
+    expect(screen.queryByLabelText("Show Original")).toBeNull();
+  });
+
+  it("loads full quality automatically once the preview has rendered, without requiring a zoom", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
+    expect(media().src).toContain("?size=preview");
+
+    fireEvent.load(media());
+
+    await waitFor(() => expect(media().src).toContain("/original/a1"));
+  });
+
+  it("skips the automatic full-quality load when the browser's data saver is on, but zoom still loads it", async () => {
+    Object.defineProperty(window.navigator, "connection", { configurable: true, value: { saveData: true } });
+    try {
+      const items = [makeItem("a1")];
+      mockDetail({ a1: makeDetail("a1") });
+
+      const { container } = render(
+        <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+      );
+      const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
+
+      fireEvent.load(media());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(media().src).not.toContain("/original/");
+
+      fireEvent.doubleClick(media());
+      await waitFor(() => expect(media().src).toContain("/original/a1"));
+    } finally {
+      delete (window.navigator as { connection?: unknown }).connection;
+    }
+  });
 });

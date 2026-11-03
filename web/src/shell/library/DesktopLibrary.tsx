@@ -2,7 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
-import { copyAssetLink, downloadAsset, downloadVersion } from "../viewer/download";
+import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
@@ -87,7 +87,11 @@ export default function DesktopLibrary({
   const [infoOpen, setInfoOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  // `hasEdited` starts `null` (still resolving) so the menu never shows
+  // "Download Original" for a photo that turns out to have no edited version.
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number; hasEdited: boolean | null } | null>(
+    null,
+  );
   const anchorIdRef = useRef<string | null>(null);
   // Holds the arrow-key target index while it is still past the loaded
   // items, so the reconciliation effect below can catch focus up once
@@ -350,10 +354,16 @@ export default function DesktopLibrary({
   // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
   // edited vs. original the same way the Viewer does, independent of
   // whatever is multi-selected.
-  const handleCellContextMenu = useCallback((event: React.MouseEvent, id: string) => {
-    event.preventDefault();
-    setContextMenu({ id, x: event.clientX, y: event.clientY });
-  }, []);
+  const handleCellContextMenu = useCallback(
+    (event: React.MouseEvent, id: string) => {
+      event.preventDefault();
+      setContextMenu({ id, x: event.clientX, y: event.clientY, hasEdited: null });
+      void resolveVersion(libraryId, id).then((version) => {
+        setContextMenu((current) => (current?.id === id ? { ...current, hasEdited: version === "edited" } : current));
+      });
+    },
+    [libraryId],
+  );
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -547,15 +557,17 @@ export default function DesktopLibrary({
           >
             Download
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              downloadVersion(libraryId, contextMenu.id, "original");
-              setContextMenu(null);
-            }}
-          >
-            Download Original
-          </button>
+          {contextMenu.hasEdited && (
+            <button
+              type="button"
+              onClick={() => {
+                downloadVersion(libraryId, contextMenu.id, "original");
+                setContextMenu(null);
+              }}
+            >
+              Download Original
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
