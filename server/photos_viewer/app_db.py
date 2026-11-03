@@ -297,6 +297,13 @@ _MIGRATIONS: list[list[str]] = [
         "CREATE UNIQUE INDEX idx_sessions_public_id ON sessions(public_id)",
         "ALTER TABLE users ADD COLUMN layout_override TEXT",
     ],
+    # 12 (P1.15): video duration, in seconds, for the desktop Library grid's
+    # hover overlay. Comes from `photo.exif_info.duration` (the Photos
+    # database's own `ZDURATION`, already loaded with the rest of the
+    # library's metadata -- no extra query, no file read).
+    [
+        "ALTER TABLE assets ADD COLUMN duration REAL",
+    ],
 ]
 
 

@@ -5,7 +5,17 @@ import { mockFetch } from "../../testHelpers";
 import MobileLibrary from "./MobileLibrary";
 
 function makeItem(id: string, date: string): AssetListItem {
-  return { id, filename: `${id}.jpg`, date, is_video: false, is_live_photo: false, favorite: false, width: 100, height: 100 };
+  return {
+    id,
+    filename: `${id}.jpg`,
+    date,
+    is_video: false,
+    is_live_photo: false,
+    favorite: false,
+    width: 100,
+    height: 100,
+    duration: null,
+  };
 }
 
 afterEach(() => {

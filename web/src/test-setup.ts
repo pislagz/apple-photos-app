@@ -40,3 +40,24 @@ for (const prop of ["clientWidth", "offsetWidth"]) {
 for (const prop of ["clientHeight", "offsetHeight"]) {
   Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => 600 });
 }
+
+// jsdom's `scrollHeight`/`scrollWidth` default to 0 (no real layout), so
+// TanStack Virtual's scroll clamp (`min(offset, scrollHeight - clientHeight)`)
+// forces every `scrollToOffset`/`scrollToIndex` call to 0. A large constant
+// keeps that clamp a no-op in tests.
+for (const prop of ["scrollHeight", "scrollWidth"]) {
+  Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => 1_000_000 });
+}
+
+// jsdom's `Element.scrollTo` is a documented no-op: it neither moves
+// `scrollTop`/`scrollLeft` nor fires a `scroll` event. TanStack Virtual's
+// `scrollToIndex` (the desktop Library's keyboard-focus scroll) calls it
+// under the hood, so without this stub it would look like a no-op in every
+// test that exercises that path.
+Element.prototype.scrollTo = function scrollTo(this: Element, options?: ScrollToOptions | number) {
+  if (typeof options === "object" && options !== null) {
+    if (typeof options.top === "number") this.scrollTop = options.top;
+    if (typeof options.left === "number") this.scrollLeft = options.left;
+  }
+  this.dispatchEvent(new Event("scroll"));
+};
