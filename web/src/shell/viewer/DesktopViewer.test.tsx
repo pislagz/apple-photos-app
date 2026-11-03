@@ -144,6 +144,29 @@ describe("DesktopViewer", () => {
     expect(video.getAttribute("src")).toContain("/original/v1");
   });
 
+  it("keeps Esc and arrow keys working after the play button unmounts and focus falls to body", () => {
+    const items = [makeItem("v1", { is_video: true }), makeItem("v2", { is_video: true })];
+    mockDetail({ v1: makeDetail("v1", { is_video: true }), v2: makeDetail("v2", { is_video: true }) });
+    const onClose = vi.fn();
+    const onIndexChange = vi.fn();
+
+    render(
+      <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={onIndexChange} onClose={onClose} />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Play video"));
+    expect(screen.getByTestId("viewer-video")).toBeTruthy();
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("plays a Live Photo on hover using the live-photo route, never the original still", () => {
     const items = [makeItem("lp1", { is_live_photo: true })];
     mockDetail({ lp1: makeDetail("lp1", { is_live_photo: true }) });

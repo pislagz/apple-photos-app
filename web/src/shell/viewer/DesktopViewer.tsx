@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
 import { Filmstrip } from "./Filmstrip";
@@ -42,6 +42,30 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     setPan({ x: 0, y: 0 });
   }, [item?.id]);
 
+  // Window-level, not the root div's onKeyDown: clicking the video play
+  // button unmounts it, which drops focus to <body>, and a div-level
+  // handler stops receiving keydowns once that happens. A window listener
+  // keeps Esc/arrows working regardless of where focus lands, and it never
+  // doubles up with DesktopLibrary's grid shortcuts -- those live on the
+  // grid's own onKeyDown, which only fires while the grid itself holds focus.
+  useEffect(() => {
+    function onWindowKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key === "ArrowLeft" && index > 0) {
+        onIndexChange(index - 1);
+        return;
+      }
+      if (event.key === "ArrowRight" && index < items.length - 1) {
+        onIndexChange(index + 1);
+      }
+    }
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [index, items.length, onClose, onIndexChange]);
+
   useEffect(() => {
     if (scale > 1.01) media.requestOriginal();
   }, [scale, media]);
@@ -66,20 +90,6 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     dragRef.current = null;
   }
 
-  function onKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      onClose();
-      return;
-    }
-    if (event.key === "ArrowLeft" && index > 0) {
-      onIndexChange(index - 1);
-      return;
-    }
-    if (event.key === "ArrowRight" && index < items.length - 1) {
-      onIndexChange(index + 1);
-    }
-  }
-
   function handleDownload() {
     const link = document.createElement("a");
     link.href = `/api/libraries/${libraryId}/original/${item.id}`;
@@ -99,7 +109,6 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       data-testid="desktop-viewer"
       ref={rootRef}
       tabIndex={-1}
-      onKeyDown={onKeyDown}
     >
       <div className="desktop-viewer__main">
         <div className="desktop-viewer__topbar">
