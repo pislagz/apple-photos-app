@@ -32,6 +32,9 @@ export default function MobileLibrary({
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // Set right before drilling a zoom level in, so the scroll effect below
+  // can land on the tapped tile's own row once the new view's rows exist.
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
@@ -53,18 +56,29 @@ export default function MobileLibrary({
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
-  // instead of opening the Viewer; outside select mode a tap still opens
-  // the Viewer exactly as before.
+  // instead of navigating. Outside select mode, a tap drills Years -> Months
+  // -> Days (R3, #126), scrolled to the tapped tile's own date; only Days
+  // opens the Viewer.
   const openItem = useCallback(
     (item: AssetListItem) => {
       if (selectMode) {
         toggleSelected(item.id);
         return;
       }
+      if (view === "years") {
+        setPendingScrollId(item.id);
+        setView("months");
+        return;
+      }
+      if (view === "months") {
+        setPendingScrollId(item.id);
+        setView("days");
+        return;
+      }
       const index = items.indexOf(item);
       if (index !== -1) setOpenIndex(index);
     },
-    [items, selectMode, toggleSelected],
+    [items, selectMode, toggleSelected, view],
   );
 
   async function handleShareSelection() {
@@ -125,6 +139,17 @@ export default function MobileLibrary({
     if (!last || loading || done) return;
     if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
   }, [virtualRows, rows.length, loading, done, loadMore]);
+
+  // Lands the just-switched-to view scrolled to the tile that was tapped,
+  // not back at the top -- see `openItem` above.
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === pendingScrollId));
+    if (rowIndex !== -1) {
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
+      setPendingScrollId(null);
+    }
+  }, [pendingScrollId, rows, rowVirtualizer]);
 
   return (
     <div className="mobile-library">

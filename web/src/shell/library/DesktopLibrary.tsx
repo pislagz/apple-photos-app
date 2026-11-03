@@ -222,18 +222,44 @@ export default function DesktopLibrary({
   );
 
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  // Set right before drilling a zoom level in, so the scroll effect below
+  // can land on the opened tile's own row once the new view's rows exist.
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
 
-  // Opens the Viewer on this id, at its position in `items` -- the current
-  // Library view's own array, never `/hidden` (P1.13), so the Viewer can
-  // only ever page through what the grid itself shows.
+  // Lands the just-switched-to view scrolled to the tile that was opened,
+  // not back at the top -- see `handleOpen` below.
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === pendingScrollId));
+    if (rowIndex !== -1) {
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
+      setPendingScrollId(null);
+    }
+  }, [pendingScrollId, rows, rowVirtualizer]);
+
+  // A double-click (or Enter/Space on the focused cell) drills Years ->
+  // Months -> All Photos (R3, #126), scrolled to this id's own date; only
+  // All Photos opens the Viewer, at this id's position in `items` -- the
+  // current Library view's own array, never `/hidden` (P1.13), so the
+  // Viewer can only ever page through what the grid itself shows.
   const handleOpen = useCallback(
     (id: string) => {
+      if (view === "years") {
+        setPendingScrollId(id);
+        setView("months");
+        return;
+      }
+      if (view === "months") {
+        setPendingScrollId(id);
+        setView("all");
+        return;
+      }
       const index = items.findIndex((item) => item.id === id);
       if (index !== -1) setViewerIndex(index);
     },
-    [items],
+    [items, view],
   );
 
   const handleGridKeyDown = useCallback(

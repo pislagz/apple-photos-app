@@ -138,7 +138,7 @@ describe("MobileLibrary", () => {
     expect(scrollEl.style.touchAction).toBe("pan-y");
   });
 
-  it("opens the Viewer on tap, at the tapped item's position, and closing it restores the grid", async () => {
+  it("opens the Viewer on tap in All Photos, at the tapped item's position, and closing it restores the grid", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
       if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items, next_cursor: null };
@@ -184,6 +184,10 @@ describe("MobileLibrary", () => {
     });
 
     render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    // Only the terminal zoom level (All Photos, or Days -- covered below)
+    // opens the Viewer on tap; Years and Months drill in instead (#126).
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     const images = await screen.findAllByRole("img");
     const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg");
     fireEvent.click(a2Image as HTMLImageElement);
@@ -193,6 +197,48 @@ describe("MobileLibrary", () => {
 
     fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+  });
+
+  it("tapping a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    const images = await screen.findAllByRole("img");
+    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
+
+    const olderImage = images.find((img) => img.getAttribute("alt") === "jan22-0.jpg") as HTMLImageElement;
+    fireEvent.click(olderImage);
+
+    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("January 2022"));
+  });
+
+  it("tapping a Month tile drills into Days scrolled to that tile's month, without opening the Viewer", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    const images = await screen.findAllByRole("img");
+
+    // "jan22-19" is 2022-01-01, the oldest and last-rendered row for this
+    // month -- tapping it only proves the scroll worked if Days actually
+    // lands there instead of staying at the top (2022-01-20).
+    const oldestImage = images.find((img) => img.getAttribute("alt") === "jan22-19.jpg") as HTMLImageElement;
+    fireEvent.click(oldestImage);
+
+    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.getByText("January 1, 2022")).toBeInTheDocument());
   });
 
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
