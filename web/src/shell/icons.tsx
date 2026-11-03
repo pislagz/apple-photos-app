@@ -24,6 +24,9 @@ const PATHS: Record<string, string> = {
   share: "M10 3.5v9 M6.8 6.7 10 3.5l3.2 3.2 M5 11v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-4",
   rotate: "M4.5 4.5h7v7h-7z M11.5 8a4.5 4.5 0 1 0 1.2-3.1 M12.7 3.1v2.4h-2.4",
   more: "M4.5 10a1 1 0 1 0 2 0 1 1 0 0 0-2 0Z M9 10a1 1 0 1 0 2 0 1 1 0 0 0-2 0Z M13.5 10a1 1 0 1 0 2 0 1 1 0 0 0-2 0Z",
+  play: "M6.5 5v10l8-5-8-5Z",
+  close: "M5.5 5.5 14.5 14.5 M14.5 5.5 5.5 14.5",
+  livephoto: "M10 16.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Z M10 12.8a2.8 2.8 0 1 0 0-5.6 2.8 2.8 0 0 0 0 5.6Z",
 };
 
 export type IconName = keyof typeof PATHS;

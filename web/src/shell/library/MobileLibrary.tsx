@@ -1,5 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { AssetListItem } from "../../api";
+import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -19,6 +21,15 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
   const [view, setView] = useState<ViewKey>("years");
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  const openItem = useCallback(
+    (item: AssetListItem) => {
+      const index = items.indexOf(item);
+      if (index !== -1) setOpenIndex(index);
+    },
+    [items],
+  );
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -131,6 +142,7 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
                         loading="lazy"
                         className="mobile-library__cell"
                         style={index === 0 ? { gridColumn: "span 2", gridRow: "span 2" } : undefined}
+                        onClick={() => openItem(item)}
                       />
                     ))}
                   </div>
@@ -146,6 +158,7 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
                       loading="lazy"
                       className="mobile-library__cell"
                       style={{ width: cellSize, height: cellSize }}
+                      onClick={() => openItem(item)}
                     />
                   ))}
                 </div>
@@ -154,6 +167,15 @@ export default function MobileLibrary({ libraryId }: { libraryId: number }) {
           </div>
         )}
       </div>
+      {openIndex !== null && (
+        <MobileViewer
+          libraryId={libraryId}
+          items={items}
+          index={openIndex}
+          onIndexChange={setOpenIndex}
+          onClose={() => setOpenIndex(null)}
+        />
+      )}
     </div>
   );
 }

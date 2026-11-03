@@ -232,4 +232,88 @@ describe("DesktopLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected"));
     expect(container.innerHTML).not.toContain("hidden-1");
   });
+
+  function mockDetail(id: string) {
+    return {
+      id,
+      filename: `${id}.jpg`,
+      original_filename: `${id}.jpg`,
+      title: null,
+      description: null,
+      date_created: "2024-05-10T10:00:00",
+      date_added: "2024-05-10T10:00:00",
+      date_modified: "2024-05-10T10:00:00",
+      favorite: false,
+      hidden: false,
+      is_video: false,
+      is_live_photo: false,
+      is_screenshot: false,
+      is_selfie: false,
+      is_portrait: false,
+      is_panorama: false,
+      is_hdr: false,
+      is_slow_mo: false,
+      is_burst: false,
+      width: 100,
+      height: 100,
+      original_filesize: null,
+      latitude: null,
+      longitude: null,
+      place: null,
+      place_country_code: null,
+      place_address: null,
+      camera_make: null,
+      camera_model: null,
+      has_edited: false,
+      has_live_photo_video: false,
+      people: [],
+      albums: [],
+    };
+  }
+
+  it("opens the Viewer on a double-click, at the clicked item's position, and closing it restores the grid", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.doubleClick(cells(container)[1]);
+
+    const viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
+
+    fireEvent.click(screen.getByLabelText("Close"));
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
+  });
+
+  it("opens the Viewer on the focused cell with Space or Enter", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.keyDown(grid, { key: "Enter" });
+    let viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a1");
+    fireEvent.keyDown(viewer, { key: "Escape" });
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+
+    fireEvent.keyDown(grid, { key: " " });
+    viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a1");
+  });
 });

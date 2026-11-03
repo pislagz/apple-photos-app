@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { Icon } from "../icons";
+import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows } from "./rows";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -182,10 +183,18 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
     [items, selectSingle],
   );
 
-  // Opening an asset (Space/Enter) is a no-op stub until P1.16 builds the
-  // Viewer -- the keyboard wiring lands now so that task only has to add
-  // behavior, not a new key handler.
-  const handleOpen = useCallback((_id: string) => {}, []);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  // Opens the Viewer on this id, at its position in `items` -- the current
+  // Library view's own array, never `/hidden` (P1.13), so the Viewer can
+  // only ever page through what the grid itself shows.
+  const handleOpen = useCallback(
+    (id: string) => {
+      const index = items.findIndex((item) => item.id === id);
+      if (index !== -1) setViewerIndex(index);
+    },
+    [items],
+  );
 
   const handleGridKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -422,6 +431,7 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
                         className="desktop-library__cell"
                         style={{ height: cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
+                        onDoubleClick={() => handleOpen(item.id)}
                       >
                         <img
                           src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
@@ -447,6 +457,15 @@ export default function DesktopLibrary({ libraryId }: { libraryId: number }) {
           </div>
         )}
       </div>
+      {viewerIndex !== null && (
+        <DesktopViewer
+          libraryId={libraryId}
+          items={items}
+          index={viewerIndex}
+          onIndexChange={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
     </div>
   );
 }

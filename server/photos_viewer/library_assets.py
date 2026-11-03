@@ -297,6 +297,8 @@ class AssetDetailResponse(BaseModel):
     place: str | None
     place_country_code: str | None
     place_address: str | None
+    camera_make: str | None
+    camera_model: str | None
     has_edited: bool
     has_live_photo_video: bool
     people: list[str]
@@ -365,6 +367,8 @@ def asset_detail(
         place=asset["place"],
         place_country_code=asset["place_country_code"],
         place_address=asset["place_address"],
+        camera_make=asset["camera_make"],
+        camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
         has_live_photo_video=bool(asset["path_live_photo"] or asset["path_edited_live_photo"]),
         people=people,

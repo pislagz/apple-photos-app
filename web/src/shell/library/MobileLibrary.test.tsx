@@ -138,6 +138,64 @@ describe("MobileLibrary", () => {
     expect(scrollEl.style.touchAction).toBe("pan-y");
   });
 
+  it("opens the Viewer on tap, at the tapped item's position, and closing it restores the grid", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) {
+        return {
+          id: match[1],
+          filename: `${match[1]}.jpg`,
+          original_filename: `${match[1]}.jpg`,
+          title: null,
+          description: null,
+          date_created: "2024-05-10T10:00:00",
+          date_added: "2024-05-10T10:00:00",
+          date_modified: "2024-05-10T10:00:00",
+          favorite: false,
+          hidden: false,
+          is_video: false,
+          is_live_photo: false,
+          is_screenshot: false,
+          is_selfie: false,
+          is_portrait: false,
+          is_panorama: false,
+          is_hdr: false,
+          is_slow_mo: false,
+          is_burst: false,
+          width: 100,
+          height: 100,
+          original_filesize: null,
+          latitude: null,
+          longitude: null,
+          place: null,
+          place_country_code: null,
+          place_address: null,
+          camera_make: null,
+          camera_model: null,
+          has_edited: false,
+          has_live_photo_video: false,
+          people: [],
+          albums: [],
+        };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<MobileLibrary libraryId={1} />);
+    const images = await screen.findAllByRole("img");
+    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg");
+    fireEvent.click(a2Image as HTMLImageElement);
+
+    const viewer = await screen.findByTestId("mobile-viewer");
+    expect(viewer.querySelector("img")?.getAttribute("src")).toContain("a2");
+
+    fireEvent.click(screen.getByLabelText("Close"));
+    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+    expect(screen.getByTestId("library-scroll")).toBeInTheDocument();
+  });
+
   it("keeps a hidden asset out of Years, Months, Days, and All Photos", async () => {
     // The server already excludes hidden assets from `/assets`; this fixture
     // mirrors that by keeping "hidden-1" out of the `/assets` page while

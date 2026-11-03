@@ -142,3 +142,46 @@ export function getAssets(libraryId: number, cursor: string | null, limit = 200)
   if (cursor) params.set("cursor", cursor);
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
 }
+
+export interface AssetDetailResponse {
+  id: string;
+  filename: string | null;
+  original_filename: string | null;
+  title: string | null;
+  description: string | null;
+  date_created: string | null;
+  date_added: string | null;
+  date_modified: string | null;
+  favorite: boolean;
+  hidden: boolean;
+  is_video: boolean;
+  is_live_photo: boolean;
+  is_screenshot: boolean;
+  is_selfie: boolean;
+  is_portrait: boolean;
+  is_panorama: boolean;
+  is_hdr: boolean;
+  is_slow_mo: boolean;
+  is_burst: boolean;
+  width: number | null;
+  height: number | null;
+  original_filesize: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  place: string | null;
+  place_country_code: string | null;
+  place_address: string | null;
+  camera_make: string | null;
+  camera_model: string | null;
+  has_edited: boolean;
+  has_live_photo_video: boolean;
+  people: string[];
+  albums: string[];
+}
+
+// P1.16 Viewer's info panel/sheet. Same access check as every other
+// library-scoped route (`require_library_assignment`): a foreign asset id
+// 404s here exactly like it does for `thumb`/`original`.
+export function getAssetDetail(libraryId: number, assetId: string): Promise<AssetDetailResponse> {
+  return request<AssetDetailResponse>(`/api/libraries/${libraryId}/assets/${assetId}`);
+}
