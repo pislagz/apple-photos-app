@@ -116,6 +116,7 @@ describe("AppShell", () => {
     mockFetch((url) => {
       if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return ME_RESPONSE;
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
       throw new Error(`unexpected request: ${url}`);
     });
 

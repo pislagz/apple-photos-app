@@ -136,11 +136,42 @@ export function getHidden(libraryId: number): Promise<AssetListResponse> {
 }
 
 // P1.14 mobile Library: the Years/Months/Days/All Photos feed. Never
-// `/hidden` -- a hidden asset must not reach any of those views.
-export function getAssets(libraryId: number, cursor: string | null, limit = 200): Promise<AssetListResponse> {
+// `/hidden` -- a hidden asset must not reach any of those views. `to`
+// anchors the first page at a given local day (#91's Month -> Days
+// drill-down), so landing on a month deep in the library pages back from
+// that month instead of from the top of the whole library.
+export function getAssets(
+  libraryId: number,
+  cursor: string | null,
+  limit = 200,
+  to: string | null = null,
+): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
+  if (to) params.set("to", to);
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
+}
+
+export interface SummaryBucket {
+  key: string;
+  count: number;
+}
+
+export interface SummaryPeriodBucket extends SummaryBucket {
+  key_asset_ids: string[];
+}
+
+export interface SummaryResponse {
+  years: SummaryPeriodBucket[];
+  months: SummaryPeriodBucket[];
+  days: SummaryBucket[];
+}
+
+// #91: the mobile Years/Months tiles -- counts and a few key-photo
+// candidates per period, computed server-side over the whole library, so
+// neither view needs to page through `/assets` to render.
+export function getSummary(libraryId: number): Promise<SummaryResponse> {
+  return request<SummaryResponse>(`/api/libraries/${libraryId}/summary`);
 }
 
 export interface AssetDetailResponse {
