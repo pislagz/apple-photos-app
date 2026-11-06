@@ -7,6 +7,7 @@ import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
+import { viewerKeyAction } from "./viewerKeys";
 
 export interface ViewerProps {
   libraryId: number;
@@ -51,15 +52,12 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   // grid's own onKeyDown, which only fires while the grid itself holds focus.
   useEffect(() => {
     function onWindowKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      const action = viewerKeyAction(event, document.fullscreenElement);
+      if (action === "close") {
         onClose();
-        return;
-      }
-      if (event.key === "ArrowLeft" && index > 0) {
+      } else if (action === "prev" && index > 0) {
         onIndexChange(index - 1);
-        return;
-      }
-      if (event.key === "ArrowRight" && index < items.length - 1) {
+      } else if (action === "next" && index < items.length - 1) {
         onIndexChange(index + 1);
       }
     }
