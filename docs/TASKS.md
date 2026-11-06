@@ -4,6 +4,18 @@ Each heading is one issue. Do them in order inside a phase. Acceptance criteria 
 
 Phase 0 is the gate. Phase 1 is the first usable viewer. Later phases add screens, they do not relax read-only or the access-control test.
 
+## Build order
+
+The approved queue, as decided by Pawel. Work it top to bottom. It overrides the heading order where they differ. Each item is one issue and one PR unless it says otherwise.
+
+1. #130 Ask for the password again before opening Hidden (R9). Done in #141.
+2. #84 Mobile Hidden entry. Pairs with #130.
+3. Mac sidebar, as one PR: #127 Days (R6), #128 drop Recently Deleted (R7), #129 drop duplicate Smart Albums and rename to People & Pets (R8).
+4. P1 bugs: #117 Days pill too narrow, #93 pinch column change jumps scroll, #99 desktop row overflow, #115 viewer key handler under native video controls, #132 Mac Filter By menu (R25).
+5. P1.18 Access-control test, P1.19 Packaging, P1.20 Content-Security-Policy, P1.21 Suite-wide outbound-connection tests.
+6. P1.22 Library replacement (#122).
+7. Phase 2.
+
 ## Phase 0 — Open a library on Linux and on macOS
 
 ### P0.1 Record which Photos versions osxphotos supports
