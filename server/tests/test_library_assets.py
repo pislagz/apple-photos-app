@@ -52,6 +52,11 @@ def _login(client, username):
     assert response.status_code == 200, response.text
 
 
+def _unlock_hidden(client):
+    response = client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD})
+    assert response.status_code == 204, response.text
+
+
 def _insert_asset(conn, library_id, asset_uuid, **overrides):
     columns = {
         "library_id": library_id,
@@ -239,6 +244,7 @@ def test_hidden_endpoint_lists_only_hidden_and_respects_type_filter(tmp_path):
         _insert_asset(conn, library_id, "hidden-photo", hidden=1, is_video=0)
         _insert_asset(conn, library_id, "hidden-video", hidden=1, is_video=1)
         _login(client, "alice")
+        _unlock_hidden(client)
 
         response = client.get(f"/api/libraries/{library_id}/hidden")
 
@@ -261,6 +267,7 @@ def test_hidden_endpoint_pagination_cursor_works_like_assets(tmp_path):
         _insert_asset(conn, library_id, "newest", hidden=1, date_created="2024-01-03T00:00:00")
         _insert_asset(conn, library_id, "oldest", hidden=1, date_created="2024-01-01T00:00:00")
         _login(client, "alice")
+        _unlock_hidden(client)
 
         first_page = client.get(f"/api/libraries/{library_id}/hidden", params={"limit": 1})
         assert first_page.status_code == 200
@@ -973,5 +980,59 @@ def test_library_routes_404_for_unassigned_user_and_401_for_anonymous(tmp_path):
         _login(client, "alice")
         for route in anonymous_routes:
             assert client.get(route).status_code == 404
+    finally:
+        conn.close()
+
+
+def test_hidden_endpoint_is_locked_until_the_password_is_reconfirmed(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "hidden-one", hidden=1)
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/hidden"
+
+        locked = client.get(url)
+        assert locked.status_code == 403
+        assert locked.json()["detail"]["code"] == "hidden_locked"
+
+        _unlock_hidden(client)
+        assert client.get(url).status_code == 200
+
+        assert client.post("/api/auth/lock-hidden", json={}).status_code == 204
+        assert client.get(url).status_code == 403
+    finally:
+        conn.close()
+
+
+def test_hidden_unlock_expires(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _login(client, "alice")
+        _unlock_hidden(client)
+        conn.execute("UPDATE sessions SET hidden_unlocked_until = datetime('now', '-1 seconds')")
+        conn.commit()
+
+        assert client.get(f"/api/libraries/{library_id}/hidden").status_code == 403
+    finally:
+        conn.close()
+
+
+def test_foreign_library_hidden_still_404s_even_when_unlocked(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        l1 = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        l2 = _create_library(conn, "L2", path=tmp_path / "L2.photoslibrary")
+        _assign(conn, user_id, l1)
+        _login(client, "alice")
+        _unlock_hidden(client)
+
+        assert client.get(f"/api/libraries/{l2}/hidden").status_code == 404
     finally:
         conn.close()

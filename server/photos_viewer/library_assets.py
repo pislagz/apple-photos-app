@@ -228,10 +228,14 @@ def list_hidden_assets(
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
     """Apple Photos' Hidden album: the one list that returns an asset with
-    `hidden = 1` -- every other route in this module excludes it."""
+    `hidden = 1` -- every other route in this module excludes it. Needs a
+    recent `/api/auth/reconfirm-password` (#130); checked after the library
+    guard so a foreign library still 404s."""
+    session_auth.require_hidden_unlocked(session, db)
     return _list_assets(
         db, library["id"], hidden=True, cursor=cursor, limit=limit, type_=type_, from_=from_, to=to
     )

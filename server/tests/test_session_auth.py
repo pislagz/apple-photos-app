@@ -1770,3 +1770,83 @@ def test_tailnet_allowlist_put_normalizes_whitespace_case_and_duplicates(loopbac
 
     allowed = loopback_client.get("/api/auth/me", headers={"tailscale-user-login": "ALICE@EXAMPLE.COM"})
     assert allowed.status_code == 200
+
+
+def _setup_and_login(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+    assert client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 200
+
+
+def test_reconfirm_password_succeeds_with_204_and_keeps_the_session(client, tmp_path):
+    _setup_and_login(client)
+    conn = app_db.connect(tmp_path)
+    try:
+        before = [tuple(r) for r in conn.execute("SELECT id, public_id, user_id, expires_at FROM sessions")]
+        cookie_before = client.cookies.get(session_auth.COOKIE_NAME)
+
+        response = client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD})
+
+        assert response.status_code == 204
+        assert "set-cookie" not in response.headers
+        assert client.cookies.get(session_auth.COOKIE_NAME) == cookie_before
+        after = [tuple(r) for r in conn.execute("SELECT id, public_id, user_id, expires_at FROM sessions")]
+        assert after == before
+        assert client.get("/api/auth/me").status_code == 200
+    finally:
+        conn.close()
+
+
+def test_reconfirm_password_wrong_password_is_401_and_session_survives(client):
+    _setup_and_login(client)
+
+    response = client.post("/api/auth/reconfirm-password", json={"password": "wrong-password-1"})
+
+    assert response.status_code == 401
+    assert client.get("/api/auth/me").status_code == 200
+
+
+def test_reconfirm_password_shares_the_login_lockout(client):
+    _setup_and_login(client)
+
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+        client.post("/api/auth/reconfirm-password", json={"password": "wrong-password-1"})
+
+    locked = client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD})
+    assert locked.status_code == 429
+    # same counter as login
+    assert client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 429
+
+
+def test_failed_logins_count_toward_reconfirm_lockout_and_success_clears_them(client):
+    _setup_and_login(client)
+    client.post("/api/auth/reconfirm-password", json={"password": "wrong-password-1"})
+    assert client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD}).status_code == 204
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS - 1):
+        client.post("/api/auth/reconfirm-password", json={"password": "wrong-password-1"})
+    assert client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD}).status_code == 204
+
+
+def test_reconfirm_password_requires_a_session(client):
+    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+    response = client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD})
+
+    assert response.status_code == 401
+
+
+def test_reconfirm_password_rejects_cross_site_requests(client):
+    _setup_and_login(client)
+
+    cross_origin = client.post(
+        "/api/auth/reconfirm-password",
+        json={"password": VALID_PASSWORD},
+        headers={"origin": "https://evil.example"},
+    )
+    form = client.post(
+        "/api/auth/reconfirm-password",
+        content="password=x",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert cross_origin.status_code == 403
+    assert form.status_code == 415
