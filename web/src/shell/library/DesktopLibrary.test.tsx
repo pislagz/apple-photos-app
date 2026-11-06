@@ -552,5 +552,47 @@ describe("DesktopLibrary", () => {
       fireEvent.mouseDown(document.body);
       expect(screen.queryByRole("menu")).toBeNull();
     });
+
+    it("the Viewer opened from a filtered grid steps through the filtered items only", async () => {
+      const items = [
+        makeItem("f1", "2024-05-10T10:00:00", { favorite: true }),
+        makeItem("n1", "2024-05-09T10:00:00"),
+        makeItem("f2", "2024-05-08T10:00:00", { favorite: true }),
+        makeItem("n2", "2024-05-07T10:00:00"),
+        makeItem("f3", "2024-05-06T10:00:00", { favorite: true }),
+      ];
+      mockFetch((url) => {
+        if (url.startsWith("/api/libraries/1/assets?")) {
+          const params = new URLSearchParams(url.split("?")[1]);
+          const list = params.get("favorite") === "true" ? items.filter((item) => item.favorite) : items;
+          return { items: list, next_cursor: null };
+        }
+        const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+        if (match) return mockDetail(match[1]);
+        throw new Error(`unexpected request: ${url}`);
+      });
+
+      const { container } = render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+      await waitFor(() => expect(cells(container)).toHaveLength(5));
+
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
+      await waitFor(() => expect(cells(container)).toHaveLength(3));
+
+      fireEvent.doubleClick(cells(container)[0]);
+      const viewer = await screen.findByTestId("desktop-viewer");
+      const src = () => viewer.querySelector(".desktop-viewer__media")?.getAttribute("src") ?? "";
+      expect(src()).toContain("f1");
+
+      fireEvent.keyDown(viewer, { key: "ArrowRight" });
+      await waitFor(() => expect(src()).toContain("f2"));
+      fireEvent.keyDown(viewer, { key: "ArrowRight" });
+      await waitFor(() => expect(src()).toContain("f3"));
+      fireEvent.keyDown(viewer, { key: "ArrowLeft" });
+      await waitFor(() => expect(src()).toContain("f2"));
+      expect(src()).not.toContain("n1");
+    });
   });
 });
