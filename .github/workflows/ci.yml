@@ -6,11 +6,10 @@ name: CI
 # that the production bundle has no external URL besides the OSM tile host
 # and its copyright link (see CLAUDE.md "Offline at runtime").
 
-# Billing (2026-11-03): the repo is private, so GitHub-hosted minutes count
-# against the 2,000/month allowance and macOS minutes count 10x. Linux jobs run
-# on our own self-hosted runner (labels: self-hosted, linux, box), which is
-# free. The macOS server job runs only when started by hand from the Actions
-# tab ("Run workflow" with macos=true).
+# Billing: every job runs on a GitHub-hosted runner. Standard hosted runners,
+# including macOS, are free and unlimited for public repositories. The macOS
+# server job still runs only when started by hand from the Actions tab
+# ("Run workflow" with macos=true), so it never runs by accident.
 on:
   push:
     branches: [main]
@@ -29,15 +28,14 @@ concurrency:
 
 jobs:
   server:
-    runs-on: [self-hosted, linux, box]
+    runs-on: ubuntu-latest
     env:
       # P0.6: never let osxphotos reach out for a version check.
       OSXPHOTOS_NO_VERSION_CHECK: "1"
     steps:
       - uses: actions/checkout@v4
 
-      # setup-python only supports Ubuntu images; the box runs Debian, so uv
-      # provides Python 3.12 in a throwaway venv instead.
+      # uv provides Python 3.12 in a throwaway venv (kept from the box setup).
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -117,7 +115,7 @@ jobs:
           PY
 
   web:
-    runs-on: [self-hosted, linux, box]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
