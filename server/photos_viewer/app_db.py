@@ -311,6 +311,12 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE assets ADD COLUMN camera_make TEXT",
         "ALTER TABLE assets ADD COLUMN camera_model TEXT",
     ],
+    # 14 (#91): osxphotos' overall aesthetic score (`photo.score.overall`),
+    # so the mobile Years/Months summary tiles can rank a period's key
+    # photos without re-deriving Apple's curation score at request time.
+    [
+        "ALTER TABLE assets ADD COLUMN score REAL",
+    ],
 ]
 
 

@@ -242,10 +242,24 @@ class SummaryBucket(BaseModel):
     count: int
 
 
+class SummaryPeriodBucket(SummaryBucket):
+    # #91: the mobile Years/Months tiles' key photos -- up to
+    # `_KEY_ASSETS_PER_BUCKET`, favorite first, then by osxphotos' own
+    # aesthetic score, so the client can cycle a tile through a few
+    # candidates instead of pinning one "best shot" (Pawel declined a
+    # curated-best-shot feature; this only re-orders assets already in the
+    # bucket). Days stays plain `SummaryBucket`: it keeps cursor paging and
+    # has no tiles to feed.
+    key_asset_ids: list[str]
+
+
 class SummaryResponse(BaseModel):
-    years: list[SummaryBucket]
-    months: list[SummaryBucket]
+    years: list[SummaryPeriodBucket]
+    months: list[SummaryPeriodBucket]
     days: list[SummaryBucket]
+
+
+_KEY_ASSETS_PER_BUCKET = 5
 
 
 def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryBucket]:
@@ -257,14 +271,48 @@ def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[Summa
     return [SummaryBucket(key=row["key"], count=row["count"]) for row in rows]
 
 
+def _period_buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryPeriodBucket]:
+    buckets = _buckets(db, library_id, length)
+    # Ranked within each bucket -- favorite first, then score, then most
+    # recent -- and capped at `_KEY_ASSETS_PER_BUCKET` *before* grouping in
+    # Python, so a bucket with thousands of assets costs one indexed scan
+    # plus a window-function pass, not a client-side sort of everything in
+    # it. Hidden assets are excluded by the same `hidden = 0` filter as the
+    # counts above -- a hidden photo must never be a tile's key photo
+    # (P1.13).
+    key_rows = db.execute(
+        f"""
+        SELECT key, uuid FROM (
+            SELECT substr({_LOCAL_DAY_SQL}, 1, ?) AS key, uuid,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY substr({_LOCAL_DAY_SQL}, 1, ?)
+                       ORDER BY favorite DESC, COALESCE(score, -1.0) DESC, date_created DESC
+                   ) AS rn
+            FROM assets
+            WHERE library_id = ? AND hidden = 0 AND date_created IS NOT NULL
+        )
+        WHERE rn <= ?
+        ORDER BY key, rn
+        """,
+        (length, length, library_id, _KEY_ASSETS_PER_BUCKET),
+    ).fetchall()
+    key_asset_ids: dict[str, list[str]] = {}
+    for row in key_rows:
+        key_asset_ids.setdefault(row["key"], []).append(row["uuid"])
+    return [
+        SummaryPeriodBucket(key=bucket.key, count=bucket.count, key_asset_ids=key_asset_ids.get(bucket.key, []))
+        for bucket in buckets
+    ]
+
+
 @router.get("/api/libraries/{library_id}/summary", response_model=SummaryResponse)
 def library_summary(
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SummaryResponse:
     return SummaryResponse(
-        years=_buckets(db, library["id"], 4),
-        months=_buckets(db, library["id"], 7),
+        years=_period_buckets(db, library["id"], 4),
+        months=_period_buckets(db, library["id"], 7),
         days=_buckets(db, library["id"], 10),
     )
 

@@ -314,10 +314,42 @@ def test_summary_counts_by_year_month_day(tmp_path):
 
         assert response.status_code == 200
         body = response.json()
-        assert {"key": "2024", "count": 2} in body["years"]
-        assert {"key": "2023", "count": 1} in body["years"]
-        assert {"key": "2024-01", "count": 2} in body["months"]
+        years_2024 = next(bucket for bucket in body["years"] if bucket["key"] == "2024")
+        assert years_2024["count"] == 2
+        assert set(years_2024["key_asset_ids"]) == {"a", "b"}
+        years_2023 = next(bucket for bucket in body["years"] if bucket["key"] == "2023")
+        assert years_2023["count"] == 1
+        assert years_2023["key_asset_ids"] == ["c"]
+        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        assert months_2024_01["count"] == 2
+        assert set(months_2024_01["key_asset_ids"]) == {"a", "b"}
         assert {"key": "2024-01-01", "count": 1} in body["days"]
+    finally:
+        conn.close()
+
+
+def test_summary_key_asset_ids_rank_favorite_then_score_then_recency_and_cap_at_five(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        # Lower score but favorited -- outranks every non-favorite.
+        _insert_asset(conn, library_id, "favorite", date_created="2024-01-01T00:00:00", favorite=1, score=0.1)
+        _insert_asset(conn, library_id, "high-score", date_created="2024-01-02T00:00:00", score=0.9)
+        _insert_asset(conn, library_id, "low-score", date_created="2024-01-03T00:00:00", score=0.2)
+        _insert_asset(conn, library_id, "no-score", date_created="2024-01-04T00:00:00")
+        for day in range(5, 9):
+            _insert_asset(conn, library_id, f"filler-{day}", date_created=f"2024-01-0{day}T00:00:00")
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/summary")
+
+        assert response.status_code == 200
+        body = response.json()
+        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        assert months_2024_01["count"] == 8
+        assert months_2024_01["key_asset_ids"] == ["favorite", "high-score", "low-score", "filler-8", "filler-7"]
     finally:
         conn.close()
 
@@ -336,8 +368,12 @@ def test_summary_excludes_hidden(tmp_path):
 
         assert response.status_code == 200
         body = response.json()
-        assert {"key": "2024", "count": 1} in body["years"]
-        assert {"key": "2024-01", "count": 1} in body["months"]
+        years_2024 = next(bucket for bucket in body["years"] if bucket["key"] == "2024")
+        assert years_2024["count"] == 1
+        assert years_2024["key_asset_ids"] == ["visible"]
+        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        assert months_2024_01["count"] == 1
+        assert months_2024_01["key_asset_ids"] == ["visible"]
         assert {"key": "2024-01-01", "count": 1} in body["days"]
     finally:
         conn.close()

@@ -1,4 +1,4 @@
-import type { AssetListItem } from "../../api";
+import type { AssetListItem, SummaryPeriodBucket } from "../../api";
 import { type ViewKey, formatGroupLabel, groupAssets } from "./grouping";
 
 export interface HeaderRow {
@@ -26,7 +26,23 @@ export interface FeatureRow {
   items: AssetListItem[];
 }
 
-export type LibraryRow = HeaderRow | GridRow | FeatureRow;
+// #91: one compact, full-width tile per Years/Months bucket -- the server's
+// `/summary` already carries the count and a few cycling key-photo
+// candidates, so there is no per-asset grid to build here at all.
+export interface TileRow {
+  type: "tile";
+  key: string;
+  label: string;
+  count: number;
+  keyAssetIds: string[];
+}
+
+export type LibraryRow = HeaderRow | GridRow | FeatureRow | TileRow;
+
+// Desktop (`DesktopLibrary.tsx`) only ever calls `buildRows`, never
+// `buildTileRows` -- narrow its return type so Desktop's Years/Months,
+// unchanged by #91, don't have to handle a `TileRow` case that can't occur.
+type PagedRow = HeaderRow | GridRow | FeatureRow;
 
 function gridRows(items: AssetListItem[], columns: number, label: string, keyPrefix: string): GridRow[] {
   const rows: GridRow[] = [];
@@ -36,7 +52,7 @@ function gridRows(items: AssetListItem[], columns: number, label: string, keyPre
   return rows;
 }
 
-export function buildRows(items: AssetListItem[], view: ViewKey, columns: number): LibraryRow[] {
+export function buildRows(items: AssetListItem[], view: ViewKey, columns: number): PagedRow[] {
   if (view === "all") {
     // Uniform square grid, no inline headers -- the pinned header still
     // tracks a day-level label per row for the topmost-visible lookup.
@@ -49,7 +65,7 @@ export function buildRows(items: AssetListItem[], view: ViewKey, columns: number
     return rows;
   }
 
-  const rows: LibraryRow[] = [];
+  const rows: PagedRow[] = [];
   for (const group of groupAssets(items, view)) {
     if (view === "days") {
       const [hero, ...rest] = group.items;
@@ -61,4 +77,18 @@ export function buildRows(items: AssetListItem[], view: ViewKey, columns: number
     rows.push(...gridRows(group.items, columns, group.label, `g-${group.key}`));
   }
   return rows;
+}
+
+// #91: Years and Months read `/summary`'s buckets directly, newest period
+// first like every other view -- the server returns them oldest-first
+// (`ORDER BY key`), suited to its own `WHERE key >= ... AND key <= ...`
+// range queries, not to display order.
+export function buildTileRows(buckets: SummaryPeriodBucket[], view: "years" | "months"): TileRow[] {
+  return [...buckets].reverse().map((bucket) => ({
+    type: "tile",
+    key: bucket.key,
+    label: formatGroupLabel(bucket.key, view),
+    count: bucket.count,
+    keyAssetIds: bucket.key_asset_ids,
+  }));
 }

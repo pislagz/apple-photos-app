@@ -244,6 +244,66 @@ body {
   }
 }
 
+/* #91 Years/Months tiles: one rounded card per period, title+count over
+   the photo like Apple's own Years/Months (design-refs/ios17-library-days.png
+   is the closest reference for the overlay treatment, applied here to a
+   full card instead of an edge-to-edge hero). */
+.mobile-library__tile {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 6px 16px;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-library__tile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 20px;
+  background: #e5e5ea;
+}
+
+.mobile-library__tile-caption {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 80%);
+  border-radius: 0 0 20px 20px;
+  pointer-events: none;
+}
+
+.mobile-library__tile-label {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.mobile-library__tile-count {
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-library__tile-image {
+    background: #1c1c1e;
+  }
+}
+
 .mobile-library__empty {
   text-align: center;
   padding: 24px;

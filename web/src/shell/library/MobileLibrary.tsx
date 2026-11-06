@@ -4,13 +4,19 @@ import type { AssetListItem } from "../../api";
 import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
-import { buildRows } from "./rows";
+import { buildRows, buildTileRows, type LibraryRow } from "./rows";
+import SummaryTile from "./SummaryTile";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
+import { useLibrarySummary } from "./useLibrarySummary";
 import { usePinchColumns } from "./usePinchColumns";
 
 const HEADER_ROW_HEIGHT = 32;
 const DEFAULT_COLUMNS = 4;
+// Years/Months tiles are full-width cards, sized off the container alone --
+// independent of pinch-zoom's `columns`, which only ever applies to Days
+// and All Photos.
+const TILE_ASPECT_RATIO = 0.66;
 // Keep fetching the next page well before the user reaches the physical
 // bottom of what's loaded, since a page covers many virtual rows.
 const LOAD_MORE_ROW_MARGIN = 3;
@@ -29,12 +35,20 @@ export default function MobileLibrary({
   onInitialAssetOpened?: () => void;
 }) {
   const [view, setView] = useState<ViewKey>("years");
-  const { items, loading, done, loadMore } = useLibraryAssets(libraryId);
+  // Set right before drilling Months -> Days (#126): anchors the Days/All
+  // Photos feed's first page at that month instead of the top of the whole
+  // library. `/assets`'s `to` bound is a string compare on the local-day
+  // column, so "-31" is always a safe upper bound regardless of the real
+  // month length.
+  const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
+  const { items, loading, done, loadMore } = useLibraryAssets(libraryId, daysAnchor);
+  const summary = useLibrarySummary(libraryId);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  // Set right before drilling a zoom level in, so the scroll effect below
-  // can land on the tapped tile's own row once the new view's rows exist.
-  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // Set right before drilling Years -> Months, so the scroll effect below
+  // can land on the tapped year's own tile once Months' rows exist.
+  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
+  const isTileView = view === "years" || view === "months";
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
@@ -56,29 +70,33 @@ export default function MobileLibrary({
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
-  // instead of navigating. Outside select mode, a tap drills Years -> Months
-  // -> Days (R3, #126), scrolled to the tapped tile's own date; only Days
-  // opens the Viewer.
+  // instead of navigating. Outside select mode, a tap opens the Viewer --
+  // Years/Months tiles drill down instead, via `openTile` below (R3, #126).
   const openItem = useCallback(
     (item: AssetListItem) => {
       if (selectMode) {
         toggleSelected(item.id);
         return;
       }
-      if (view === "years") {
-        setPendingScrollId(item.id);
-        setView("months");
-        return;
-      }
-      if (view === "months") {
-        setPendingScrollId(item.id);
-        setView("days");
-        return;
-      }
       const index = items.indexOf(item);
       if (index !== -1) setOpenIndex(index);
     },
-    [items, selectMode, toggleSelected, view],
+    [items, selectMode, toggleSelected],
+  );
+
+  // A Year tile scrolls Months to that year; a Month tile anchors Days to
+  // that month (#126). Neither ever opens the Viewer.
+  const openTile = useCallback(
+    (bucketKey: string) => {
+      if (view === "years") {
+        setPendingScrollKey(bucketKey);
+        setView("months");
+        return;
+      }
+      setDaysAnchor(`${bucketKey}-31`);
+      setView("days");
+    },
+    [view],
   );
 
   async function handleShareSelection() {
@@ -112,8 +130,17 @@ export default function MobileLibrary({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
+  // #91: Years/Months tiles come straight from `/summary`, not from
+  // `buildRows` over the cursor-paged `items` -- so they render instantly
+  // without paging through the whole library, and a `summary` still
+  // loading renders zero rows rather than a stale grid.
+  const rows = useMemo<LibraryRow[]>(() => {
+    if (view === "years") return summary ? buildTileRows(summary.years, "years") : [];
+    if (view === "months") return summary ? buildTileRows(summary.months, "months") : [];
+    return buildRows(items, view, columns);
+  }, [view, summary, items, columns]);
   const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
+  const tileHeight = containerWidth > 0 ? containerWidth * TILE_ASPECT_RATIO : 0;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -121,6 +148,7 @@ export default function MobileLibrary({
     estimateSize: (index) => {
       const row = rows[index];
       if (row.type === "header") return HEADER_ROW_HEIGHT;
+      if (row.type === "tile") return tileHeight;
       return row.type === "feature" ? cellSize * 2 : cellSize;
     },
     overscan: 6,
@@ -135,25 +163,30 @@ export default function MobileLibrary({
   const pinnedLabel = topmostRow ? rows[topmostRow.index]?.label ?? "" : "";
 
   useEffect(() => {
+    // Years/Months never page -- `/summary` already carries every bucket.
+    if (isTileView) return;
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
     if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [virtualRows, rows.length, loading, done, loadMore]);
+  }, [isTileView, virtualRows, rows.length, loading, done, loadMore]);
 
-  // Lands the just-switched-to view scrolled to the tile that was tapped,
-  // not back at the top -- see `openItem` above.
+  // Lands Months scrolled to the year tile that was tapped, not back at the
+  // top -- see `openTile` above. A month's own key ("2022-01") always
+  // starts with its year's key ("2022").
   useEffect(() => {
-    if (!pendingScrollId) return;
-    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === pendingScrollId));
+    if (!pendingScrollKey) return;
+    const rowIndex = rows.findIndex((row) => row.type === "tile" && row.key.startsWith(pendingScrollKey));
     if (rowIndex !== -1) {
       rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
-      setPendingScrollId(null);
+      setPendingScrollKey(null);
     }
-  }, [pendingScrollId, rows, rowVirtualizer]);
+  }, [pendingScrollKey, rows, rowVirtualizer]);
+
+  const isEmpty = isTileView ? summary !== null && rows.length === 0 : items.length === 0 && done;
 
   return (
     <div className="mobile-library">
-      {view !== "days" && (
+      {view === "all" && (
         <div
           className={`mobile-library__pinned-header${selectMode ? " mobile-library__pinned-header--select" : ""}`}
           data-testid="pinned-header"
@@ -161,13 +194,15 @@ export default function MobileLibrary({
           {pinnedLabel}
         </div>
       )}
-      <button
-        type="button"
-        className="mobile-library__select-button"
-        onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-      >
-        {selectMode ? "Cancel" : "Select"}
-      </button>
+      {!isTileView && (
+        <button
+          type="button"
+          className="mobile-library__select-button"
+          onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+        >
+          {selectMode ? "Cancel" : "Select"}
+        </button>
+      )}
       {!selectMode && (
         <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
           {VIEWS.map((item) => (
@@ -177,7 +212,14 @@ export default function MobileLibrary({
               role="tab"
               aria-selected={view === item.key}
               className="mobile-library__view-switch-item"
-              onClick={() => setView(item.key)}
+              onClick={() => {
+                // A direct tab tap is not a drill-down (`openTile` below) --
+                // clear any stale Month -> Days anchor so tapping Days here
+                // starts at the top of the library, not back at the last
+                // drilled-into month.
+                setDaysAnchor(null);
+                setView(item.key);
+              }}
             >
               {item.label}
             </button>
@@ -191,7 +233,7 @@ export default function MobileLibrary({
         style={{ touchAction: "pan-y" }}
         {...touchHandlers}
       >
-        {items.length === 0 && done ? (
+        {isEmpty ? (
           <p className="mobile-library__empty">No photos yet.</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
@@ -213,6 +255,19 @@ export default function MobileLibrary({
                 return (
                   <div key={row.key} style={style} className="mobile-library__row-header">
                     {isPinnedRow ? null : row.label}
+                  </div>
+                );
+              }
+              if (row.type === "tile") {
+                return (
+                  <div key={row.key} style={style}>
+                    <SummaryTile
+                      libraryId={libraryId}
+                      label={row.label}
+                      count={row.count}
+                      keyAssetIds={row.keyAssetIds}
+                      onOpen={() => openTile(row.key)}
+                    />
                   </div>
                 );
               }

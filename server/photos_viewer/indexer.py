@@ -60,6 +60,7 @@ _ASSET_COLUMNS = (
     "duration",
     "camera_make",
     "camera_model",
+    "score",
 )
 
 
@@ -249,6 +250,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
                     exif_info.duration if exif_info else None,
                     exif_info.camera_make if exif_info else None,
                     exif_info.camera_model if exif_info else None,
+                    photo.score.overall if photo.score else None,
                 ),
             )
             asset_id = db.execute(

@@ -25,6 +25,7 @@ afterEach(() => {
 describe("MobileShell layout", () => {
   it("nests the header, scrolling content, and tab bar inside the mobile shell so only the library scroll area scrolls", async () => {
     mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
       if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
@@ -85,6 +86,7 @@ describe("MobileShell layout", () => {
 describe("MobileShell tab switching", () => {
   it("keeps the Library tab mounted so its segment survives Library -> More -> Library", async () => {
     mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
       if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
@@ -190,6 +192,7 @@ describe("MobileShell More tab", () => {
 
   it("re-asks before showing Hidden, then renders the existing HiddenView", async () => {
     mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
       if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
