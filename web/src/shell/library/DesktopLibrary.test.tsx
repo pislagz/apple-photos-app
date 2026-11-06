@@ -342,6 +342,30 @@ describe("DesktopLibrary", () => {
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
   });
 
+  it("double-clicking a Day tile in the Days view opens All Photos scrolled to that day, without opening the Viewer", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 8 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(8 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} fixedView="days" />);
+    await screen.findAllByRole("img");
+    expect(screen.queryByRole("tab")).toBeNull();
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-7") as HTMLElement;
+    fireEvent.doubleClick(oldestCell);
+
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+
+    // The switch is usable afterwards.
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {

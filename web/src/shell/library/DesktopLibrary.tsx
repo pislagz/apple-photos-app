@@ -93,7 +93,10 @@ export default function DesktopLibrary({
   fixedView?: ViewKey;
 }) {
   const [switchedView, setView] = useState<ViewKey>("years");
-  const view = fixedView ?? switchedView;
+  // Double-clicking a day leaves the pinned Days view for All Photos (#152);
+  // from then on the Years/Months/All Photos switch is shown and in charge.
+  const [leftFixedView, setLeftFixedView] = useState(false);
+  const view = leftFixedView ? switchedView : (fixedView ?? switchedView);
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
   const [searchValue, setSearchValue] = useState("");
@@ -271,6 +274,13 @@ export default function DesktopLibrary({
       if (view === "months") {
         setPendingScrollId(id);
         setView("all");
+        return;
+      }
+      // Sequoia opens the whole day, not one photo: All Photos scrolled to it.
+      if (view === "days") {
+        setPendingScrollId(id);
+        setView("all");
+        setLeftFixedView(true);
         return;
       }
       const index = items.findIndex((item) => item.id === id);
@@ -467,7 +477,7 @@ export default function DesktopLibrary({
           />
         </div>
         <div className="desktop-library__spacer" />
-        {fixedView === undefined && (
+        {(fixedView === undefined || leftFixedView) && (
         <div role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
             <button
