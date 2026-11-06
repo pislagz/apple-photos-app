@@ -5,6 +5,9 @@ export interface UseLibraryAssetsResult {
   items: AssetListItem[];
   loading: boolean;
   done: boolean;
+  // True when the latest page request failed; `retry` re-requests that page.
+  error: boolean;
+  retry: () => void;
   loadMore: () => void;
   loadAll: () => Promise<AssetListItem[]>;
 }
@@ -20,12 +23,14 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
   const [items, setItems] = useState<AssetListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState(false);
   const cursorRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
 
   const fetchPage = useCallback((libId: number, cursor: string | null, replace: boolean) => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    setError(false);
     return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
@@ -35,7 +40,12 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
         return response;
       })
       .catch(() => {
-        if (requestIdRef.current === requestId) setDone(true);
+        // `done` stays true so the scroll trigger doesn't hammer a failing
+        // endpoint; `error` lets the view say so instead of looking empty.
+        if (requestIdRef.current === requestId) {
+          setDone(true);
+          setError(true);
+        }
         return null;
       })
       .finally(() => {
@@ -46,6 +56,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
   useEffect(() => {
     cursorRef.current = null;
     setDone(false);
+    setError(false);
     setItems([]);
     fetchPage(libraryId, null, true);
   }, [libraryId, fetchPage]);
@@ -54,6 +65,11 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
     if (loading || done) return;
     fetchPage(libraryId, cursorRef.current, false);
   }, [libraryId, loading, done, fetchPage]);
+
+  const retry = useCallback(() => {
+    setDone(false);
+    fetchPage(libraryId, cursorRef.current, cursorRef.current === null);
+  }, [libraryId, fetchPage]);
 
   // ⌘A (desktop Library) has to select the whole non-hidden library, not
   // just the pages scrolled into view so far: page through `/assets`
@@ -73,5 +89,5 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
     return all;
   }, [libraryId, items, done, fetchPage]);
 
-  return { items, loading, done, loadMore, loadAll };
+  return { items, loading, done, error, retry, loadMore, loadAll };
 }

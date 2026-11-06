@@ -114,7 +114,7 @@ export default function DesktopLibrary({
   // `loadMore` delivers the page that contains it.
   const desiredIndexRef = useRef<number | null>(null);
 
-  const { items, loading, done, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter);
+  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -567,7 +567,14 @@ export default function DesktopLibrary({
         onMouseDown={handleGridMouseDown}
       >
         {dateRangeLabel && <div className="desktop-library__date-range">{dateRangeLabel}</div>}
-        {items.length === 0 && done ? (
+        {items.length === 0 && error ? (
+          <div className="desktop-library__empty" role="alert">
+            <p>Couldn't load your library.</p>
+            <button type="button" className="desktop-library__retry" onClick={retry}>
+              Retry
+            </button>
+          </div>
+        ) : items.length === 0 && done ? (
           <p className="desktop-library__empty">No photos yet.</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>

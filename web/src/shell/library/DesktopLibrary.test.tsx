@@ -596,3 +596,27 @@ describe("DesktopLibrary", () => {
     });
   });
 });
+
+describe("DesktopLibrary assets failure (#147)", () => {
+  it.each(["Years", "Months"])("shows an error and Retry in %s instead of 'No photos yet.', then recovers", async (name) => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    let fail = true;
+    mockFetch((url) => {
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) {
+        return fail ? new Response("boom", { status: 500 }) : { items, next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<DesktopLibrary libraryId={1} />);
+    if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(await screen.findAllByRole("img")).not.toHaveLength(0);
+  });
+});

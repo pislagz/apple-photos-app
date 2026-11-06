@@ -1229,6 +1229,12 @@ body {
   color: var(--sequoia-text-secondary);
 }
 
+.desktop-library__retry {
+  margin-top: 8px;
+  padding: 4px 14px;
+  color: var(--sequoia-accent, #0a84ff);
+}
+
 /* P1.17 grid context menu: right-click Download/Copy Link on a single
    cell, positioned at the click point like the macOS Finder/Photos
    equivalent, independent of whatever is multi-selected. */
