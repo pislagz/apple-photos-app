@@ -23,8 +23,8 @@ const ZOOM_STEPS: { columns: number; thumbSize: "grid" | "grid2x" }[] = [
 ];
 const DEFAULT_ZOOM_INDEX = 2;
 const MAX_ZOOM_INDEX = ZOOM_STEPS.length - 1;
-// Years/Months/All Photos only -- Days (the iOS 17 feature-row layout) is
-// mobile-only per docs/TASKS.md P1.15.
+// The toolbar's segmented control is Years/Months/All Photos. Days is its
+// own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
 const DESKTOP_VIEWS = VIEWS.filter((item) => item.key !== "days");
 const LOAD_MORE_ROW_MARGIN = 3;
 
@@ -75,12 +75,17 @@ export default function DesktopLibrary({
   libraryId,
   initialAssetId,
   onInitialAssetOpened,
+  fixedView,
 }: {
   libraryId: number;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
+  // Sidebar-driven view (Days, #127): pins the view and hides the
+  // Years/Months/All Photos switch.
+  fixedView?: ViewKey;
 }) {
-  const [view, setView] = useState<ViewKey>("years");
+  const [switchedView, setView] = useState<ViewKey>("years");
+  const view = fixedView ?? switchedView;
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
   const [searchValue, setSearchValue] = useState("");
@@ -137,7 +142,8 @@ export default function DesktopLibrary({
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => (rows[index].type === "header" ? HEADER_ROW_HEIGHT : cellSize),
+    estimateSize: (index) =>
+      rows[index].type === "header" ? HEADER_ROW_HEIGHT : rows[index].type === "feature" ? cellSize * 2 : cellSize,
     overscan: 6,
   });
 
@@ -424,6 +430,7 @@ export default function DesktopLibrary({
           />
         </div>
         <div className="desktop-library__spacer" />
+        {fixedView === undefined && (
         <div role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
             <button
@@ -438,6 +445,7 @@ export default function DesktopLibrary({
             </button>
           ))}
         </div>
+        )}
         <button
           type="button"
           className="toolbar-button"
@@ -516,7 +524,11 @@ export default function DesktopLibrary({
               return (
                 <div
                   key={row.key}
-                  style={{ ...style, display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+                  style={{
+                    ...style,
+                    display: "grid",
+                    gridTemplateColumns: row.type === "feature" ? "1fr" : `repeat(${columns}, 1fr)`,
+                  }}
                   className="desktop-library__row-grid"
                 >
                   {row.items.map((item) => {
@@ -529,7 +541,7 @@ export default function DesktopLibrary({
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
-                        style={{ height: cellSize }}
+                        style={{ height: row.type === "feature" ? cellSize * 2 : cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
                         onDoubleClick={() => handleOpen(item.id)}
                         onContextMenu={(event) => handleCellContextMenu(event, item.id)}
@@ -541,6 +553,7 @@ export default function DesktopLibrary({
                           className="desktop-library__thumb"
                           style={{ objectFit: squareMode ? "cover" : "contain" }}
                         />
+                        {row.type === "feature" && <div className="desktop-library__feature-caption">{row.label}</div>}
                         {item.favorite && (
                           <span className="desktop-library__heart" aria-label="Favorite">
                             ♥

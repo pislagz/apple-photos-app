@@ -9,14 +9,14 @@ import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibrarySwitcher from "./LibrarySwitcher";
 import type { LayoutOverride } from "./useLayout";
 
-// SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Only
-// "Library" has a real screen behind it until later phases; the rest are
-// disabled chrome so the frame matches the reference.
+// SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Library
+// and Days (#127) have real screens; the rest is disabled chrome so the frame
+// matches the reference.
 const SECTIONS: { label: string; icon: IconName }[] = [
   { label: "Favorites", icon: "favorite" },
   { label: "Recently Added", icon: "added" },
   { label: "Map", icon: "map" },
-  { label: "People", icon: "people" },
+  { label: "People & Pets", icon: "people" },
 ];
 const MEDIA_TYPES: { label: string; icon: IconName }[] = [
   { label: "Videos", icon: "video" },
@@ -27,21 +27,10 @@ const MEDIA_TYPES: { label: string; icon: IconName }[] = [
   { label: "Screenshots", icon: "screenshot" },
   { label: "RAW", icon: "document" },
 ];
-const SMART_ALBUMS: { label: string; icon: IconName }[] = [
-  { label: "Favorites", icon: "favorite" },
-  { label: "Videos", icon: "video" },
-  { label: "Selfies", icon: "camera" },
-  { label: "Live Photos", icon: "livephoto" },
-  { label: "Panoramas", icon: "panorama" },
-  { label: "Screenshots", icon: "screenshot" },
-  { label: "Recently Added", icon: "added" },
-];
 // Sequoia Photos' "Utilities" group. Only "Hidden" (P1.13) has a real screen
-// behind it; "Imports" and "Recently Deleted" stay disabled chrome.
-const UTILITIES: { label: string; icon: IconName }[] = [
-  { label: "Imports", icon: "tray" },
-  { label: "Recently Deleted", icon: "trash" },
-];
+// behind it; "Imports" stays disabled chrome. No Recently Deleted: deleted
+// items are excluded by design (#128).
+const UTILITIES: { label: string; icon: IconName }[] = [{ label: "Imports", icon: "tray" }];
 
 export default function DesktopShell({
   me,
@@ -62,7 +51,7 @@ export default function DesktopShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
 }) {
-  const [view, setView] = useState<"library" | "hidden">("library");
+  const [view, setView] = useState<"library" | "days" | "hidden">("library");
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
@@ -80,6 +69,17 @@ export default function DesktopShell({
               >
                 <Icon name="library" className="sidebar__icon" />
                 Library
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                aria-current={view === "days" ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => setView("days")}
+              >
+                <Icon name="days" className="sidebar__icon" />
+                Days
               </button>
             </li>
             {SECTIONS.map((section) => (
@@ -114,14 +114,6 @@ export default function DesktopShell({
                 My Albums
               </button>
             </li>
-            {SMART_ALBUMS.map((album) => (
-              <li key={album.label}>
-                <button type="button" disabled className="sidebar__item sidebar__item--sub">
-                  <Icon name={album.icon} className="sidebar__icon" />
-                  {album.label}
-                </button>
-              </li>
-            ))}
           </ul>
         </details>
         <details className="sidebar__group" open>
@@ -177,7 +169,8 @@ export default function DesktopShell({
           <main className="shell__content">
             {activeLibraryId !== undefined ? (
               <DesktopLibrary
-                key={activeLibraryId}
+                key={`${activeLibraryId}-${view}`}
+                fixedView={view === "days" ? "days" : undefined}
                 libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}

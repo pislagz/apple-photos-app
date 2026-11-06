@@ -104,6 +104,64 @@ describe("DesktopShell layout", () => {
   });
 });
 
+describe("DesktopShell sidebar (#127, #128, #129)", () => {
+  const asset = (id: string, date: string) => ({
+    id,
+    filename: `${id}.jpg`,
+    date,
+    is_video: false,
+    favorite: false,
+    duration: null,
+  });
+
+  function setup() {
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) {
+        return {
+          items: [asset("a1", "2024-05-02T10:00:00"), asset("a2", "2024-05-02T09:00:00"), asset("a3", "2024-05-01T09:00:00")],
+          next_cursor: null,
+        };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+  }
+
+  it("has a Days item right after Library that shows the Days view", async () => {
+    setup();
+    const labels = Array.from(document.querySelectorAll(".sidebar nav .sidebar__item")).map((el) => el.textContent);
+    expect(labels.slice(0, 2)).toEqual(["Library", "Days"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Days" }));
+    expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
+    // One hero per day, with the date as its caption; no Years/Months switch.
+    await waitFor(() => expect(document.querySelectorAll(".desktop-library__feature-caption")).toHaveLength(2));
+    expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Library/ }));
+    expect(screen.getByRole("tab", { name: "Years" })).toBeInTheDocument();
+  });
+
+  it("has no Recently Deleted, no duplicate Favorites/Videos, and labels People & Pets", () => {
+    setup();
+    expect(screen.queryByText("Recently Deleted")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Favorites")).toHaveLength(1);
+    expect(screen.getAllByText("Videos")).toHaveLength(1);
+    expect(screen.queryByText("Smart Albums")).not.toBeInTheDocument();
+    expect(screen.getByText("People & Pets")).toBeInTheDocument();
+    expect(screen.queryByText("People")).not.toBeInTheDocument();
+  });
+});
+
 describe("DesktopShell Hidden password prompt (#130)", () => {
   function setup(reconfirmStatus: number) {
     const fetchMock = mockFetch((url) => {
