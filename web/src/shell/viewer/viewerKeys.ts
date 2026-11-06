@@ -9,24 +9,30 @@ interface KeyLike {
   altKey: boolean;
 }
 
-// Native media controls and text fields use arrows/Esc themselves (seek,
-// exit fullscreen, caret movement), so the window-level viewer listener
-// must not act on keys that originated there.
-function isInteractiveTarget(target: EventTarget | null): boolean {
+const TEXT_FIELDS = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+const MEDIA = "video, audio";
+
+function closestMatch(target: EventTarget | null, selector: string): boolean {
   if (!(target instanceof Element)) return false;
-  return (
-    target.closest("video, audio, input, textarea, select, [contenteditable]:not([contenteditable='false'])") !== null
-  );
+  return target.closest(selector) !== null;
 }
 
+// Arrows: native media controls seek with them and text fields move the
+// caret, so the window-level viewer listener must not act on arrows that
+// originated there.
+//
+// Esc: in fullscreen the browser uses it to exit fullscreen, and in text
+// fields it belongs to the field. Media controls do not use Esc outside
+// fullscreen, and clicking a video (e.g. to pause) focuses it, so Esc from a
+// focused video still closes the viewer.
 export function viewerKeyAction(event: KeyLike, fullscreenElement: Element | null): ViewerKeyAction {
   if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return null;
   if (event.key === "Escape") {
-    if (fullscreenElement || isInteractiveTarget(event.target)) return null;
+    if (fullscreenElement || closestMatch(event.target, TEXT_FIELDS)) return null;
     return "close";
   }
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-    if (isInteractiveTarget(event.target)) return null;
+    if (closestMatch(event.target, `${MEDIA}, ${TEXT_FIELDS}`)) return null;
     return event.key === "ArrowLeft" ? "prev" : "next";
   }
   return null;
