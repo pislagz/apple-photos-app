@@ -152,6 +152,7 @@ describe("AppShell", () => {
     mockFetch((url) => {
       if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return ME_RESPONSE;
+      if (url === "/api/auth/reconfirm-password") return new Response(null, { status: 204 });
       if (url === "/api/libraries/1/hidden") {
         return { items: [{ id: "h1", filename: "IMG_0002.HEIC", date: null, is_video: false, is_live_photo: false, favorite: false, width: null, height: null }], next_cursor: null };
       }
@@ -163,6 +164,8 @@ describe("AppShell", () => {
     const hidden = await screen.findByRole("button", { name: "Hidden" });
     expect(hidden).toBeEnabled();
     fireEvent.click(hidden);
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
     expect(await screen.findByText("IMG_0002.HEIC")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hidden" })).toBeInTheDocument();

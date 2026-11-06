@@ -102,6 +102,17 @@ export function login(
   });
 }
 
+// #130: re-ask for the signed-in user's own password before Hidden opens.
+// 401 wrong password, 429 locked out. Does not touch the session cookie.
+export function reconfirmPassword(password: string): Promise<void> {
+  return mutate<void>("POST", "/api/auth/reconfirm-password", { password });
+}
+
+// Re-lock Hidden server-side when the user leaves it.
+export function lockHidden(): Promise<void> {
+  return mutate<void>("POST", "/api/auth/lock-hidden");
+}
+
 export function logout(): Promise<void> {
   return mutate<void>("POST", "/api/auth/logout");
 }

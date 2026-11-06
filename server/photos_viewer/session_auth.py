@@ -1085,6 +1085,76 @@ def login(payload: LoginRequest, request: Request, response: Response, db: sqlit
     return AuthUserResponse(username=user["username"], role=user["role"])
 
 
+HIDDEN_UNLOCK_SECONDS = 300
+
+
+class ReconfirmPasswordRequest(BaseModel):
+    password: LoginPassword
+
+
+@router.post(
+    "/api/auth/reconfirm-password",
+    status_code=204,
+    dependencies=[Depends(_reject_cross_site_requests)],
+)
+def reconfirm_password(
+    payload: ReconfirmPasswordRequest,
+    session: sqlite3.Row = Depends(require_session),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    """#130: re-ask for the signed-in user's own password before Hidden opens.
+
+    Checks against the current user's hash only; it never creates or replaces
+    a session. Shares the login lockout counters, so guessing here is
+    rate-limited like guessing at login. Success marks this session as
+    Hidden-unlocked for a short sliding window (see `hidden_is_unlocked`).
+    """
+    username = session["username"]
+    _prune_old_login_failures(db)
+    if is_locked_out(db, username, user_exists=True):
+        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+    user = db.execute("SELECT password_hash FROM users WHERE username = ?", (username,)).fetchone()
+    if user is None or not verify_password(user["password_hash"], payload.password):
+        record_login_failure(db, username, user_exists=True)
+        raise HTTPException(status_code=401, detail="wrong password")
+    clear_login_failures(db, username)
+    db.execute(
+        "UPDATE sessions SET hidden_unlocked_until = datetime('now', ?) WHERE id = ?",
+        (f"+{HIDDEN_UNLOCK_SECONDS} seconds", session["id"]),
+    )
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/api/auth/lock-hidden", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
+def lock_hidden(
+    session: sqlite3.Row = Depends(require_session), db: sqlite3.Connection = Depends(get_db)
+) -> Response:
+    """Re-lock Hidden for this session (the client calls this on leaving it)."""
+    db.execute("UPDATE sessions SET hidden_unlocked_until = NULL WHERE id = ?", (session["id"],))
+    db.commit()
+    return Response(status_code=204)
+
+
+def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> None:
+    """403 `hidden_locked` unless a recent reconfirm unlocked this session.
+    Each allowed call slides the window forward so paging through Hidden
+    does not re-prompt mid-browse."""
+    unlocked = db.execute(
+        "SELECT 1 FROM sessions WHERE id = ? AND hidden_unlocked_until > datetime('now')",
+        (session["id"],),
+    ).fetchone()
+    if unlocked is None:
+        raise HTTPException(
+            status_code=403, detail={"code": "hidden_locked", "message": "password required to open Hidden"}
+        )
+    db.execute(
+        "UPDATE sessions SET hidden_unlocked_until = datetime('now', ?) WHERE id = ?",
+        (f"+{HIDDEN_UNLOCK_SECONDS} seconds", session["id"]),
+    )
+    db.commit()
+
+
 @router.post("/api/auth/logout", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
 def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> Response:
     raw_token = request.cookies.get(COOKIE_NAME)

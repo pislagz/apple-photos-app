@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
-import { mockFetch } from "../testHelpers";
+import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import MobileShell from "./MobileShell";
 
 // Vitest mocks plain CSS imports (no stylesheet to attach them to in
@@ -190,14 +190,8 @@ describe("MobileShell More tab", () => {
     expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
   });
 
-  it("re-asks before showing Hidden, then renders the existing HiddenView", async () => {
-    mockFetch((url) => {
-      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
-      if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
-      throw new Error(`unexpected request: ${url}`);
-    });
-
-    render(
+  function renderMobile() {
+    return render(
       <MobileShell
         me={ME_RESPONSE}
         activeLibraryId={1}
@@ -207,16 +201,92 @@ describe("MobileShell More tab", () => {
         onLogout={() => {}}
       />,
     );
+  }
 
+  function hiddenFetch(reconfirmStatus: number) {
+    return mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
+      if (url === "/api/auth/reconfirm-password") {
+        return reconfirmStatus === 204 ? noContentResponse() : jsonResponse({ detail: "x" }, reconfirmStatus);
+      }
+      if (url === "/api/auth/lock-hidden") return noContentResponse();
+      if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+  }
+
+  function openHidden() {
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(screen.getByRole("button", { name: /Hidden/ }));
+  }
+
+  it("asks for the password before showing Hidden, then renders HiddenView", async () => {
+    const fetchMock = hiddenFetch(204);
+    renderMobile();
+    openHidden();
 
     expect(window.location.pathname).toBe("/hidden");
-    const confirm = await screen.findByRole("button", { name: "View Hidden Photos" });
+    const input = await screen.findByLabelText("Password");
     expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/libraries/1/hidden")).toBe(false);
 
-    fireEvent.click(confirm);
+    fireEvent.change(input, { target: { value: "hunter2hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
     expect(await screen.findByText("No hidden photos.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hidden", level: 1 })).toBeInTheDocument();
+    const reconfirm = fetchMock.mock.calls.find(([url]) => url === "/api/auth/reconfirm-password");
+    expect(JSON.parse(reconfirm?.[1]?.body as string)).toEqual({ password: "hunter2hunter2" });
+  });
+
+  it("shows an inline error for a wrong password and stays locked", async () => {
+    hiddenFetch(401);
+    renderMobile();
+    openHidden();
+
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "nope" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect password.");
+    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
+  });
+
+  it("shows a try-later message when locked out", async () => {
+    hiddenFetch(429);
+    renderMobile();
+    openHidden();
+
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "nope" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/try again later/i);
+  });
+
+  it("cancel returns to More", async () => {
+    hiddenFetch(204);
+    renderMobile();
+    openHidden();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(window.location.pathname).toBe("/more");
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("re-locks on leaving Hidden and asks again next time", async () => {
+    const fetchMock = hiddenFetch(204);
+    renderMobile();
+    openHidden();
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    await screen.findByText("No hidden photos.");
+
+    fireEvent.click(document.querySelector(".mobile-screen__back") as HTMLElement);
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/auth/lock-hidden")).toBe(true),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Hidden/ }));
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
   });
 });

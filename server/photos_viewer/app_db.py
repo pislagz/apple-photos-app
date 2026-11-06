@@ -317,6 +317,11 @@ _MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE assets ADD COLUMN score REAL",
     ],
+    # 15 (#130): set by a successful password reconfirm, cleared on leaving
+    # Hidden. The Hidden list is served only while it is in the future.
+    [
+        "ALTER TABLE sessions ADD COLUMN hidden_unlocked_until TEXT",
+    ],
 ]
 
 
