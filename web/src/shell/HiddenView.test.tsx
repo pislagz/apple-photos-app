@@ -44,10 +44,19 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
     expect(onCancel).toHaveBeenCalled();
   });
 
-  it("other errors still show the empty state, not the prompt", async () => {
-    mockFetch(() => jsonResponse({ detail: "boom" }, 500));
+  it("other errors show an error with Retry, not the prompt or the empty state", async () => {
+    let hiddenCalls = 0;
+    mockFetch(() => {
+      hiddenCalls += 1;
+      if (hiddenCalls === 1) return jsonResponse({ detail: "boom" }, 500);
+      return { items: [{ id: "a1", filename: "back.jpg" }], next_cursor: null };
+    });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
-    expect(await screen.findByText("No hidden photos.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load hidden photos.")).toBeInTheDocument();
+    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("back.jpg")).toBeInTheDocument();
+    expect(hiddenCalls).toBe(2);
   });
 });

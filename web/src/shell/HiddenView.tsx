@@ -8,7 +8,8 @@ import { HiddenUnlock } from "./HiddenUnlock";
 //
 // #148: the server re-locks Hidden after 5 idle minutes and answers 403
 // `hidden_locked`. That brings the password prompt back in place; a
-// successful unlock re-requests the list.
+// successful unlock re-requests the list. Any other failure shows an error
+// with Retry rather than a misleading "No hidden photos.".
 export default function HiddenView({
   libraryId,
   variant,
@@ -20,6 +21,7 @@ export default function HiddenView({
 }) {
   const [items, setItems] = useState<AssetListItem[] | null>(null);
   const [locked, setLocked] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function HiddenView({
         if (err instanceof ApiError && err.status === 403 && err.code === "hidden_locked") {
           setLocked(true);
         } else {
-          setItems([]);
+          setFailed(true);
         }
       });
     return () => {
@@ -41,17 +43,25 @@ export default function HiddenView({
     };
   }, [libraryId, reloadKey]);
 
+  function reload() {
+    setLocked(false);
+    setFailed(false);
+    setItems(null);
+    setReloadKey((key) => key + 1);
+  }
+
   if (locked) {
+    return <HiddenUnlock variant={variant} onUnlocked={reload} onCancel={onCancel} />;
+  }
+
+  if (failed) {
     return (
-      <HiddenUnlock
-        variant={variant}
-        onUnlocked={() => {
-          setLocked(false);
-          setItems(null);
-          setReloadKey((key) => key + 1);
-        }}
-        onCancel={onCancel}
-      />
+      <div className="hidden-view hidden-view--error" role="alert">
+        <p>Couldn't load hidden photos.</p>
+        <button type="button" className="hidden-view__retry" onClick={reload}>
+          Retry
+        </button>
+      </div>
     );
   }
 

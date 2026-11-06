@@ -1248,7 +1248,14 @@ body {
   margin-top: 0;
 }
 
-.desktop-library__retry {
+.hidden-view--error {
+  text-align: center;
+  padding: 24px;
+  color: var(--sequoia-text-secondary);
+}
+
+.desktop-library__retry,
+.hidden-view__retry {
   margin-top: 8px;
   padding: 4px 14px;
   color: var(--accent);
