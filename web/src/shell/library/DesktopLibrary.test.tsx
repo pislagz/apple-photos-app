@@ -496,4 +496,61 @@ describe("DesktopLibrary", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByTestId("context-menu")).toBeNull();
   });
+
+  describe("Filter By menu", () => {
+    function assetCalls(fetchMock: ReturnType<typeof vi.fn>): URLSearchParams[] {
+      return fetchMock.mock.calls
+        .map((call) => String(call[0]))
+        .filter((url) => url.includes("/assets?"))
+        .map((url) => new URLSearchParams(url.split("?")[1]));
+    }
+
+    it("offers the four options and reloads the grid with the matching params", async () => {
+      const fetchMock = mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+
+      const button = screen.getByRole("button", { name: "Filter By" });
+      expect(button).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(button);
+      const menu = screen.getByRole("menu", { name: "Filter By" });
+      expect(within(menu).getAllByRole("menuitemradio").map((el) => el.textContent?.replace("✓", ""))).toEqual([
+        "All Items",
+        "Favorites",
+        "Photos",
+        "Videos",
+      ]);
+
+      fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Videos/ }));
+      expect(screen.queryByRole("menu")).toBeNull();
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("type")).toBe("video"));
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "true");
+
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("favorite")).toBe("true"));
+      expect(assetCalls(fetchMock).at(-1)?.get("type")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /All Items/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).length).toBe(4));
+      expect(assetCalls(fetchMock).at(-1)?.get("favorite")).toBeNull();
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("closes on Escape and on outside click", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("menu")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+  });
 });

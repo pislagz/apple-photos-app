@@ -163,6 +163,7 @@ def _list_assets(
     type_: Literal["photo", "video"] | None,
     from_: str | None,
     to: str | None,
+    favorite: bool | None = None,
 ) -> AssetListResponse:
     clauses = ["library_id = ?", "hidden = ?"]
     params: list[object] = [library_id, int(hidden)]
@@ -170,6 +171,8 @@ def _list_assets(
         clauses.append("is_video = 0")
     elif type_ == "video":
         clauses.append("is_video = 1")
+    if favorite:
+        clauses.append("favorite = 1")
     if from_:
         clauses.append(f"{_LOCAL_DAY_SQL} >= ?")
         params.append(from_)
@@ -206,6 +209,7 @@ def list_assets(
     type_: Literal["photo", "video"] | None = Query(None, alias="type"),
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
+    favorite: bool | None = None,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
@@ -216,7 +220,15 @@ def list_assets(
         return AssetListResponse(items=[], next_cursor=None)
 
     return _list_assets(
-        db, library["id"], hidden=False, cursor=cursor, limit=limit, type_=type_, from_=from_, to=to
+        db,
+        library["id"],
+        hidden=False,
+        cursor=cursor,
+        limit=limit,
+        type_=type_,
+        from_=from_,
+        to=to,
+        favorite=favorite,
     )
 
 

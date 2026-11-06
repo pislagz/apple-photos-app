@@ -1036,3 +1036,39 @@ def test_foreign_library_hidden_still_404s_even_when_unlocked(tmp_path):
         assert client.get(f"/api/libraries/{l2}/hidden").status_code == 404
     finally:
         conn.close()
+
+
+def test_favorite_filter_lists_only_favorites_and_combines_with_type_and_cursor(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "fav-photo-new", favorite=1, is_video=0, date_created="2024-01-05T00:00:00")
+        _insert_asset(conn, library_id, "plain-photo", favorite=0, is_video=0, date_created="2024-01-04T00:00:00")
+        _insert_asset(conn, library_id, "fav-video", favorite=1, is_video=1, date_created="2024-01-03T00:00:00")
+        _insert_asset(conn, library_id, "fav-photo-old", favorite=1, is_video=0, date_created="2024-01-02T00:00:00")
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/assets"
+
+        def ids(**params):
+            response = client.get(url, params=params)
+            assert response.status_code == 200, response.text
+            return [item["id"] for item in response.json()["items"]]
+
+        assert ids(favorite="true") == ["fav-photo-new", "fav-video", "fav-photo-old"]
+        assert len(ids()) == 4
+        assert len(ids(favorite="false")) == 4
+        assert ids(favorite="true", type="photo") == ["fav-photo-new", "fav-photo-old"]
+        assert ids(favorite="true", type="video") == ["fav-video"]
+
+        first = client.get(url, params={"favorite": "true", "type": "photo", "limit": 1}).json()
+        assert [item["id"] for item in first["items"]] == ["fav-photo-new"]
+        assert first["next_cursor"]
+        second = client.get(
+            url, params={"favorite": "true", "type": "photo", "limit": 1, "cursor": first["next_cursor"]}
+        ).json()
+        assert [item["id"] for item in second["items"]] == ["fav-photo-old"]
+        assert second["next_cursor"] is None
+    finally:
+        conn.close()

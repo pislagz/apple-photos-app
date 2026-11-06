@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type AssetListItem, getAssets } from "../../api";
+import { type AssetFilter, type AssetListItem, getAssets } from "../../api";
 
 export interface UseLibraryAssetsResult {
   items: AssetListItem[];
@@ -16,7 +16,7 @@ export interface UseLibraryAssetsResult {
 // Days drill-down) starts the first page at that local day instead of the
 // top of the library, so landing on a month deep in the library's history
 // doesn't page through everything newer first.
-export function useLibraryAssets(libraryId: number, anchorTo: string | null = null): UseLibraryAssetsResult {
+export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all"): UseLibraryAssetsResult {
   const [items, setItems] = useState<AssetListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -26,7 +26,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
   const fetchPage = useCallback((libId: number, cursor: string | null, replace: boolean) => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
-    return getAssets(libId, cursor, 200, replace ? anchorTo : null)
+    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
@@ -41,7 +41,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       .finally(() => {
         if (requestIdRef.current === requestId) setLoading(false);
       });
-  }, [anchorTo]);
+  }, [anchorTo, filter]);
 
   useEffect(() => {
     cursorRef.current = null;
