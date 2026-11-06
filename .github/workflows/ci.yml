@@ -7,19 +7,13 @@ name: CI
 # and its copyright link (see CLAUDE.md "Offline at runtime").
 
 # Billing: every job runs on a GitHub-hosted runner. Standard hosted runners,
-# including macOS, are free and unlimited for public repositories. The macOS
-# server job still runs only when started by hand from the Actions tab
-# ("Run workflow" with macos=true), so it never runs by accident.
+# including macOS, are free and unlimited for public repositories. The repo
+# must stay public for this: on a private repo the macOS job bills at 10x.
+# server-macos runs on every push and every pull request, same as server.
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      macos:
-        description: "Also run the server job on GitHub's macOS runner (billed 10x)"
-        type: boolean
-        default: false
 
 # A newer push to the same PR or branch cancels the run it replaces.
 concurrency:
@@ -71,7 +65,6 @@ jobs:
           PY
 
   server-macos:
-    if: github.event_name == 'workflow_dispatch' && inputs.macos
     runs-on: macos-latest
     env:
       # P0.6: never let osxphotos reach out for a version check.
