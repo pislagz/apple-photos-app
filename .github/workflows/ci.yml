@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # uv provides Python 3.12 in a throwaway venv (kept from the box setup).
+      # uv provides Python 3.12 in a throwaway venv (no preinstalled Python needed on hosted runners).
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
