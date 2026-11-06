@@ -115,7 +115,7 @@ export default function MobileShell({
           <h1 className="mobile-screen__title">Hidden</h1>
         </header>
         <div className="mobile-screen__body">
-          {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
+          {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} variant="mobile" onCancel={() => navigate("/more")} />}
         </div>
       </div>
       </HiddenSession>

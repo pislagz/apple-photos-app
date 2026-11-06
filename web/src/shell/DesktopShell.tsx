@@ -162,7 +162,7 @@ export default function DesktopShell({
               <h1>Hidden</h1>
             </header>
             <main className="shell__content">
-              {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
+              {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} variant="desktop" onCancel={() => setView("library")} />}
             </main>
           </HiddenSession>
         ) : (
