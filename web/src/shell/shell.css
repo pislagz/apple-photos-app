@@ -132,6 +132,8 @@ body {
   justify-content: center;
   gap: 2px;
   padding: 3px;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(16px);
@@ -148,6 +150,16 @@ body {
   padding: 6px 12px;
   border-radius: 13px;
   cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* 320px-wide phones: tighten so all four labels still fit on one line. */
+@media (max-width: 359px) {
+  .mobile-library__view-switch-item {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
 }
 
 .mobile-library__view-switch-item[aria-selected="true"] {
@@ -179,6 +191,10 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* Room below the last row so the floating view-switch pill (about 44px
+     tall, 14px off the bottom) never covers the last Days hero caption. */
+  padding-bottom: 72px;
+  box-sizing: border-box;
 }
 
 .mobile-library__row-header {
