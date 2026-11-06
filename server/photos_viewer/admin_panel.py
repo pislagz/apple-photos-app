@@ -82,14 +82,17 @@ def _would_leave_no_enabled_admin(
     if not target_is_enabled_admin:
         return False
     (other_enabled_admins,) = db.execute(
-        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0 AND id != ?", (target["id"],)
+        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND disabled = 0 AND id != ?",
+        (target["id"],),
     ).fetchone()
     if other_enabled_admins > 0:
         return False
     if deleting:
         return True
     final_role = new_role if new_role is not None else target["role"]
-    final_disabled = new_disabled if new_disabled is not None else bool(target["disabled"])
+    final_disabled = (
+        new_disabled if new_disabled is not None else bool(target["disabled"])
+    )
     return not (final_role == "admin" and not final_disabled)
 
 
@@ -113,13 +116,20 @@ def create_user(
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="username already taken") from exc
     db.commit()
-    app_db.write_audit_log(db, "create_user", user_id=cursor.lastrowid, actor=admin["username"], detail=f"role={payload.role}")
+    app_db.write_audit_log(
+        db,
+        "create_user",
+        user_id=cursor.lastrowid,
+        actor=admin["username"],
+        detail=f"role={payload.role}",
+    )
     return _to_user_response(_get_user_by_username_or_404(db, payload.username))
 
 
 @router.get("/api/admin/users", response_model=list[UserResponse])
 def list_users(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> list[UserResponse]:
     rows = db.execute("SELECT * FROM users ORDER BY username").fetchall()
     return [_to_user_response(row) for row in rows]
@@ -138,15 +148,24 @@ def update_user(
 ) -> UserResponse:
     normalized = session_auth._normalize_username(username)
     target = _get_user_by_username_or_404(db, normalized)
-    if _would_leave_no_enabled_admin(db, target, new_role=payload.role, new_disabled=payload.disabled):
-        raise HTTPException(status_code=400, detail="this would leave no enabled admin account")
+    if _would_leave_no_enabled_admin(
+        db, target, new_role=payload.role, new_disabled=payload.disabled
+    ):
+        raise HTTPException(
+            status_code=400, detail="this would leave no enabled admin account"
+        )
 
     changed_fields: list[str] = []
     if payload.role is not None:
-        db.execute("UPDATE users SET role = ? WHERE id = ?", (payload.role, target["id"]))
+        db.execute(
+            "UPDATE users SET role = ? WHERE id = ?", (payload.role, target["id"])
+        )
         changed_fields.append("role")
     if payload.disabled is not None:
-        db.execute("UPDATE users SET disabled = ? WHERE id = ?", (int(payload.disabled), target["id"]))
+        db.execute(
+            "UPDATE users SET disabled = ? WHERE id = ?",
+            (int(payload.disabled), target["id"]),
+        )
         changed_fields.append("disabled")
     if payload.password is not None:
         db.execute(
@@ -161,7 +180,11 @@ def update_user(
     db.commit()
     if changed_fields:
         app_db.write_audit_log(
-            db, "update_user", user_id=target["id"], actor=admin["username"], detail=f"changed={','.join(changed_fields)}"
+            db,
+            "update_user",
+            user_id=target["id"],
+            actor=admin["username"],
+            detail=f"changed={','.join(changed_fields)}",
         )
     return _to_user_response(_get_user_by_username_or_404(db, normalized))
 
@@ -179,10 +202,14 @@ def delete_user(
     normalized = session_auth._normalize_username(username)
     target = _get_user_by_username_or_404(db, normalized)
     if _would_leave_no_enabled_admin(db, target, deleting=True):
-        raise HTTPException(status_code=400, detail="cannot delete the last admin account")
+        raise HTTPException(
+            status_code=400, detail="cannot delete the last admin account"
+        )
     db.execute("DELETE FROM users WHERE id = ?", (target["id"],))
     db.commit()
-    app_db.write_audit_log(db, "delete_user", actor=admin["username"], detail=f"username={normalized}")
+    app_db.write_audit_log(
+        db, "delete_user", actor=admin["username"], detail=f"username={normalized}"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +257,8 @@ def _get_open_invite_or_404(db: sqlite3.Connection, code: str) -> sqlite3.Row:
     "expired" -- all become one 404, so a guess can't distinguish them."""
     invite_id = session_auth._hash_token(code)
     row = db.execute(
-        "SELECT * FROM invites WHERE id = ? AND used_at IS NULL AND expires_at > datetime('now')", (invite_id,)
+        "SELECT * FROM invites WHERE id = ? AND used_at IS NULL AND expires_at > datetime('now')",
+        (invite_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -253,16 +281,26 @@ def create_invite(
     row = db.execute(
         "INSERT INTO invites (id, role, created_by, expires_at) "
         "VALUES (?, ?, ?, datetime('now', ?)) RETURNING expires_at",
-        (invite_id, payload.role, admin["username"], f"+{_INVITE_LIFETIME_SECONDS} seconds"),
+        (
+            invite_id,
+            payload.role,
+            admin["username"],
+            f"+{_INVITE_LIFETIME_SECONDS} seconds",
+        ),
     ).fetchone()
     db.commit()
-    app_db.write_audit_log(db, "create_invite", actor=admin["username"], detail=f"role={payload.role}")
-    return InviteCreateResponse(code=raw_code, role=payload.role, expires_at=row["expires_at"])
+    app_db.write_audit_log(
+        db, "create_invite", actor=admin["username"], detail=f"role={payload.role}"
+    )
+    return InviteCreateResponse(
+        code=raw_code, role=payload.role, expires_at=row["expires_at"]
+    )
 
 
 @router.get("/api/admin/invites", response_model=list[InviteResponse])
 def list_invites(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> list[InviteResponse]:
     rows = db.execute("SELECT * FROM invites ORDER BY created_at DESC").fetchall()
     return [
@@ -283,7 +321,9 @@ def list_invites(
     response_model=InviteInfoResponse,
     dependencies=[Depends(session_auth._enforce_tailnet_allowlist)],
 )
-def read_invite(code: str, db: sqlite3.Connection = Depends(session_auth.get_db)) -> InviteInfoResponse:
+def read_invite(
+    code: str, db: sqlite3.Connection = Depends(session_auth.get_db)
+) -> InviteInfoResponse:
     row = _get_open_invite_or_404(db, code)
     return InviteInfoResponse(role=row["role"])
 
@@ -291,7 +331,10 @@ def read_invite(code: str, db: sqlite3.Connection = Depends(session_auth.get_db)
 @router.post(
     "/api/invites/{code}/accept",
     response_model=InviteAcceptResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests), Depends(session_auth._enforce_tailnet_allowlist)],
+    dependencies=[
+        Depends(session_auth._reject_cross_site_requests),
+        Depends(session_auth._enforce_tailnet_allowlist),
+    ],
 )
 def accept_invite(
     code: str,
@@ -299,11 +342,15 @@ def accept_invite(
     response: Response,
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> InviteAcceptResponse:
-    password_hash = session_auth.hash_password(payload.password)  # hash before taking the write lock
+    password_hash = session_auth.hash_password(
+        payload.password
+    )  # hash before taking the write lock
     db.execute("BEGIN IMMEDIATE")
     try:
         invite = _get_open_invite_or_404(db, code)
-        existing = db.execute("SELECT id FROM users WHERE username = ?", (payload.username,)).fetchone()
+        existing = db.execute(
+            "SELECT id FROM users WHERE username = ?", (payload.username,)
+        ).fetchone()
         if existing is not None:
             raise HTTPException(status_code=409, detail="username already taken")
         cursor = db.execute(
@@ -311,14 +358,22 @@ def accept_invite(
             (payload.username, password_hash, invite["role"]),
         )
         user_id = cursor.lastrowid
-        db.execute("UPDATE invites SET used_at = datetime('now') WHERE id = ?", (invite["id"],))
+        db.execute(
+            "UPDATE invites SET used_at = datetime('now') WHERE id = ?", (invite["id"],)
+        )
     except BaseException:
         db.rollback()
         raise
     else:
         db.commit()
 
-    app_db.write_audit_log(db, "accept_invite", user_id=user_id, actor=payload.username, detail=f"role={invite['role']}")
+    app_db.write_audit_log(
+        db,
+        "accept_invite",
+        user_id=user_id,
+        actor=payload.username,
+        detail=f"role={invite['role']}",
+    )
     raw_token, max_age = session_auth.create_session(db, user_id)
     response.set_cookie(
         key=session_auth.COOKIE_NAME,
@@ -361,14 +416,25 @@ def _get_library_row_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.
 
 @router.get("/api/admin/access-matrix", response_model=AccessMatrixResponse)
 def read_access_matrix(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AccessMatrixResponse:
-    users = [_to_user_response(row) for row in db.execute("SELECT * FROM users ORDER BY username").fetchall()]
-    libraries = [library_admin._to_response(row) for row in db.execute("SELECT * FROM libraries ORDER BY id").fetchall()]
+    users = [
+        _to_user_response(row)
+        for row in db.execute("SELECT * FROM users ORDER BY username").fetchall()
+    ]
+    libraries = [
+        library_admin._to_response(row)
+        for row in db.execute("SELECT * FROM libraries ORDER BY id").fetchall()
+    ]
     assignments: dict[str, list[int]] = {str(user.id): [] for user in users}
-    for row in db.execute("SELECT user_id, library_id FROM library_assignments").fetchall():
+    for row in db.execute(
+        "SELECT user_id, library_id FROM library_assignments"
+    ).fetchall():
         assignments.setdefault(str(row["user_id"]), []).append(row["library_id"])
-    return AccessMatrixResponse(users=users, libraries=libraries, assignments=assignments)
+    return AccessMatrixResponse(
+        users=users, libraries=libraries, assignments=assignments
+    )
 
 
 @router.put(
@@ -384,9 +450,18 @@ def assign_library(
 ) -> None:
     _get_user_row_or_404(db, user_id)
     _get_library_row_or_404(db, library_id)
-    db.execute("INSERT OR IGNORE INTO library_assignments (user_id, library_id) VALUES (?, ?)", (user_id, library_id))
+    db.execute(
+        "INSERT OR IGNORE INTO library_assignments (user_id, library_id) VALUES (?, ?)",
+        (user_id, library_id),
+    )
     db.commit()
-    app_db.write_audit_log(db, "assign_library", user_id=user_id, library_id=library_id, actor=admin["username"])
+    app_db.write_audit_log(
+        db,
+        "assign_library",
+        user_id=user_id,
+        library_id=library_id,
+        actor=admin["username"],
+    )
 
 
 @router.delete(
@@ -402,9 +477,18 @@ def unassign_library(
 ) -> None:
     _get_user_row_or_404(db, user_id)
     _get_library_row_or_404(db, library_id)
-    db.execute("DELETE FROM library_assignments WHERE user_id = ? AND library_id = ?", (user_id, library_id))
+    db.execute(
+        "DELETE FROM library_assignments WHERE user_id = ? AND library_id = ?",
+        (user_id, library_id),
+    )
     db.commit()
-    app_db.write_audit_log(db, "unassign_library", user_id=user_id, library_id=library_id, actor=admin["username"])
+    app_db.write_audit_log(
+        db,
+        "unassign_library",
+        user_id=user_id,
+        library_id=library_id,
+        actor=admin["username"],
+    )
 
 
 # --------------------------------------------------------------------------
@@ -424,7 +508,8 @@ class SessionResponse(BaseModel):
 
 @router.get("/api/admin/sessions", response_model=list[SessionResponse])
 def list_sessions(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> list[SessionResponse]:
     rows = db.execute(
         "SELECT sessions.*, users.username AS username FROM sessions "
@@ -455,11 +540,15 @@ def revoke_session(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> None:
-    row = db.execute("SELECT user_id FROM sessions WHERE public_id = ?", (session_id,)).fetchone()
+    row = db.execute(
+        "SELECT user_id FROM sessions WHERE public_id = ?", (session_id,)
+    ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
     session_auth.revoke_session_by_public_id(db, session_id)
-    app_db.write_audit_log(db, "revoke_session", user_id=row["user_id"], actor=admin["username"])
+    app_db.write_audit_log(
+        db, "revoke_session", user_id=row["user_id"], actor=admin["username"]
+    )
 
 
 # --------------------------------------------------------------------------
@@ -504,7 +593,10 @@ def _csv_safe_cell(value: object) -> object:
 
 
 def _audit_log_filters(
-    user_id: int | None, library_id: int | None, date_from: str | None, date_to: str | None
+    user_id: int | None,
+    library_id: int | None,
+    date_from: str | None,
+    date_to: str | None,
 ) -> tuple[str, list[object]]:
     clauses = []
     params: list[object] = []
@@ -585,7 +677,20 @@ def read_audit_log_csv(
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["id", "occurred_at", "action", "actor", "user_id", "username", "library_id", "library_display_name", "asset_id", "detail"])
+    writer.writerow(
+        [
+            "id",
+            "occurred_at",
+            "action",
+            "actor",
+            "user_id",
+            "username",
+            "library_id",
+            "library_display_name",
+            "asset_id",
+            "detail",
+        ]
+    )
     for row in rows:
         entry = _to_audit_entry(row)
         writer.writerow(
@@ -676,7 +781,8 @@ def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
 
 @router.get("/api/admin/settings", response_model=SettingsResponse)
 def read_settings(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SettingsResponse:
     return _read_settings(db)
 

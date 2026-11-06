@@ -40,7 +40,7 @@ jobs:
 
       - name: Lint
         working-directory: server
-        run: ruff check .
+        run: ruff check . && ruff format --check .
 
       - name: Run server tests
         working-directory: server
@@ -83,7 +83,7 @@ jobs:
 
       - name: Lint
         working-directory: server
-        run: ruff check .
+        run: ruff check . && ruff format --check .
 
       - name: Run server tests
         working-directory: server

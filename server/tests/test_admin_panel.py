@@ -25,8 +25,12 @@ def _client(tmp_path):
 
 def _admin_client(tmp_path):
     conn, client = _client(tmp_path)
-    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
-    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    client.post(
+        "/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}
+    )
     return conn, client
 
 
@@ -47,7 +51,9 @@ def _create_library(conn, display_name):
         (display_name, f"/libraries/{display_name}.photoslibrary"),
     )
     conn.commit()
-    return conn.execute("SELECT id FROM libraries WHERE display_name = ?", (display_name,)).fetchone()["id"]
+    return conn.execute(
+        "SELECT id FROM libraries WHERE display_name = ?", (display_name,)
+    ).fetchone()["id"]
 
 
 # --------------------------------------------------------------------------
@@ -59,7 +65,8 @@ def test_create_list_update_delete_user(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         created = client.post(
-            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD, "role": "user"}
+            "/api/admin/users",
+            json={"username": "carol", "password": VALID_PASSWORD, "role": "user"},
         )
         assert created.status_code == 201, created.text
         assert created.json()["username"] == "carol"
@@ -69,12 +76,16 @@ def test_create_list_update_delete_user(tmp_path):
         listed = client.get("/api/admin/users")
         assert {u["username"] for u in listed.json()} == {"admin", "carol"}
 
-        updated = client.patch("/api/admin/users/carol", json={"role": "admin", "disabled": True})
+        updated = client.patch(
+            "/api/admin/users/carol", json={"role": "admin", "disabled": True}
+        )
         assert updated.status_code == 200, updated.text
         assert updated.json()["role"] == "admin"
         assert updated.json()["disabled"] is True
 
-        deleted = client.delete("/api/admin/users/carol", headers={"content-type": "application/json"})
+        deleted = client.delete(
+            "/api/admin/users/carol", headers={"content-type": "application/json"}
+        )
         assert deleted.status_code == 204
         assert client.get("/api/admin/users").json() == [
             u for u in listed.json() if u["username"] == "admin"
@@ -86,8 +97,12 @@ def test_create_list_update_delete_user(tmp_path):
 def test_create_user_duplicate_username_is_409(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
-        again = client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        again = client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         assert again.status_code == 409
     finally:
         conn.close()
@@ -96,7 +111,10 @@ def test_create_user_duplicate_username_is_409(tmp_path):
 def test_update_unknown_user_is_404(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        assert client.patch("/api/admin/users/nobody", json={"disabled": True}).status_code == 404
+        assert (
+            client.patch("/api/admin/users/nobody", json={"disabled": True}).status_code
+            == 404
+        )
     finally:
         conn.close()
 
@@ -123,7 +141,9 @@ def test_cannot_disable_the_last_admin(tmp_path):
 def test_cannot_delete_the_last_admin(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        response = client.delete("/api/admin/users/admin", headers={"content-type": "application/json"})
+        response = client.delete(
+            "/api/admin/users/admin", headers={"content-type": "application/json"}
+        )
         assert response.status_code == 400
     finally:
         conn.close()
@@ -132,7 +152,10 @@ def test_cannot_delete_the_last_admin(tmp_path):
 def test_demoting_one_of_two_admins_is_allowed(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"})
+        client.post(
+            "/api/admin/users",
+            json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"},
+        )
         response = client.patch("/api/admin/users/admin", json={"role": "user"})
         assert response.status_code == 200
     finally:
@@ -142,10 +165,17 @@ def test_demoting_one_of_two_admins_is_allowed(tmp_path):
 def test_update_user_password_takes_effect(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
-        client.patch("/api/admin/users/carol", json={"password": "a-different-password-1"})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        client.patch(
+            "/api/admin/users/carol", json={"password": "a-different-password-1"}
+        )
 
-        login = client.post("/api/auth/login", json={"username": "carol", "password": "a-different-password-1"})
+        login = client.post(
+            "/api/auth/login",
+            json={"username": "carol", "password": "a-different-password-1"},
+        )
         assert login.status_code == 200
     finally:
         conn.close()
@@ -157,13 +187,19 @@ def test_update_user_password_revokes_existing_sessions(tmp_path):
     password -- otherwise a stolen or shared cookie survives the fix."""
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         carol_client = TestClient(client.app, base_url="https://testserver")
-        login = carol_client.post("/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD})
+        login = carol_client.post(
+            "/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         assert login.status_code == 200
         assert carol_client.get("/api/me").status_code == 200
 
-        client.patch("/api/admin/users/carol", json={"password": "a-different-password-1"})
+        client.patch(
+            "/api/admin/users/carol", json={"password": "a-different-password-1"}
+        )
 
         assert carol_client.get("/api/me").status_code == 401
     finally:
@@ -173,11 +209,20 @@ def test_update_user_password_revokes_existing_sessions(tmp_path):
 def test_user_changes_write_audit_rows(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         client.patch("/api/admin/users/carol", json={"disabled": True})
-        client.delete("/api/admin/users/carol", headers={"content-type": "application/json"})
+        client.delete(
+            "/api/admin/users/carol", headers={"content-type": "application/json"}
+        )
 
-        actions = [row["action"] for row in conn.execute("SELECT action FROM audit_log ORDER BY id").fetchall()]
+        actions = [
+            row["action"]
+            for row in conn.execute(
+                "SELECT action FROM audit_log ORDER BY id"
+            ).fetchall()
+        ]
         assert actions == ["create_user", "update_user", "delete_user"]
     finally:
         conn.close()
@@ -200,7 +245,8 @@ def test_invite_create_and_accept_logs_in_the_new_user(tmp_path):
         assert info.json() == {"role": "user"}
 
         accepted = client.post(
-            f"/api/invites/{code}/accept", json={"username": "dave", "password": VALID_PASSWORD}
+            f"/api/invites/{code}/accept",
+            json={"username": "dave", "password": VALID_PASSWORD},
         )
         assert accepted.status_code == 200, accepted.text
         assert accepted.json() == {"username": "dave", "role": "user"}
@@ -217,11 +263,15 @@ def test_invite_can_only_be_accepted_once(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         code = client.post("/api/admin/invites", json={"role": "user"}).json()["code"]
-        first = client.post(f"/api/invites/{code}/accept", json={"username": "dave", "password": VALID_PASSWORD})
+        first = client.post(
+            f"/api/invites/{code}/accept",
+            json={"username": "dave", "password": VALID_PASSWORD},
+        )
         assert first.status_code == 200
 
         second = client.post(
-            f"/api/invites/{code}/accept", json={"username": "erin", "password": VALID_PASSWORD}
+            f"/api/invites/{code}/accept",
+            json={"username": "erin", "password": VALID_PASSWORD},
         )
         assert second.status_code == 404
         assert client.get(f"/api/invites/{code}").status_code == 404
@@ -235,7 +285,8 @@ def test_unknown_invite_code_is_404(tmp_path):
         assert client.get("/api/invites/not-a-real-code").status_code == 404
         assert (
             client.post(
-                "/api/invites/not-a-real-code/accept", json={"username": "dave", "password": VALID_PASSWORD}
+                "/api/invites/not-a-real-code/accept",
+                json={"username": "dave", "password": VALID_PASSWORD},
             ).status_code
             == 404
         )
@@ -259,7 +310,9 @@ def test_list_invites_is_admin_only(tmp_path):
     conn, client = _non_admin_client(tmp_path)
     try:
         assert client.get("/api/admin/invites").status_code == 403
-        assert client.post("/api/admin/invites", json={"role": "user"}).status_code == 403
+        assert (
+            client.post("/api/admin/invites", json={"role": "user"}).status_code == 403
+        )
     finally:
         conn.close()
 
@@ -277,16 +330,24 @@ def test_access_matrix_assign_unassign_round_trip(tmp_path):
         ).json()["id"]
         library_id = _create_library(conn, "L1")
 
-        assert client.put(
-            f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"}
-        ).status_code == 204
+        assert (
+            client.put(
+                f"/api/admin/users/{user_id}/libraries/{library_id}",
+                headers={"content-type": "application/json"},
+            ).status_code
+            == 204
+        )
 
         matrix = client.get("/api/admin/access-matrix").json()
         assert matrix["assignments"][str(user_id)] == [library_id]
 
-        assert client.delete(
-            f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"}
-        ).status_code == 204
+        assert (
+            client.delete(
+                f"/api/admin/users/{user_id}/libraries/{library_id}",
+                headers={"content-type": "application/json"},
+            ).status_code
+            == 204
+        )
 
         matrix = client.get("/api/admin/access-matrix").json()
         assert matrix["assignments"][str(user_id)] == []
@@ -297,18 +358,32 @@ def test_access_matrix_assign_unassign_round_trip(tmp_path):
 def test_unassigning_a_library_404s_the_p19_routes_on_the_next_request(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        signup = client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        signup = client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         user_id = signup.json()["id"]
         library_id = _create_library(conn, "L1")
-        client.put(f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"})
+        client.put(
+            f"/api/admin/users/{user_id}/libraries/{library_id}",
+            headers={"content-type": "application/json"},
+        )
 
         user_client = TestClient(client.app, base_url="https://testserver")
-        user_client.post("/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD})
-        assert user_client.get(f"/api/libraries/{library_id}/summary").status_code == 200
+        user_client.post(
+            "/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        assert (
+            user_client.get(f"/api/libraries/{library_id}/summary").status_code == 200
+        )
 
-        client.delete(f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"})
+        client.delete(
+            f"/api/admin/users/{user_id}/libraries/{library_id}",
+            headers={"content-type": "application/json"},
+        )
 
-        assert user_client.get(f"/api/libraries/{library_id}/summary").status_code == 404
+        assert (
+            user_client.get(f"/api/libraries/{library_id}/summary").status_code == 404
+        )
     finally:
         conn.close()
 
@@ -318,12 +393,20 @@ def test_access_matrix_unknown_user_or_library_is_404(tmp_path):
     try:
         library_id = _create_library(conn, "L1")
         assert (
-            client.put(f"/api/admin/users/999/libraries/{library_id}", headers={"content-type": "application/json"}).status_code
+            client.put(
+                f"/api/admin/users/999/libraries/{library_id}",
+                headers={"content-type": "application/json"},
+            ).status_code
             == 404
         )
-        user_id = client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}).json()["id"]
+        user_id = client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        ).json()["id"]
         assert (
-            client.put(f"/api/admin/users/{user_id}/libraries/999", headers={"content-type": "application/json"}).status_code
+            client.put(
+                f"/api/admin/users/{user_id}/libraries/999",
+                headers={"content-type": "application/json"},
+            ).status_code
             == 404
         )
     finally:
@@ -338,22 +421,29 @@ def test_access_matrix_unknown_user_or_library_is_404(tmp_path):
 def test_list_and_revoke_session(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         user_client = TestClient(client.app, base_url="https://testserver")
-        user_client.post("/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD})
+        user_client.post(
+            "/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD}
+        )
 
         sessions = client.get("/api/admin/sessions").json()
         carol_session = next(s for s in sessions if s["username"] == "carol")
 
         # Issue #53: the listed id is an opaque public_id, never the
         # sha256 hash `sessions.id` stores for cookie lookups.
-        stored_ids = {row["id"] for row in conn.execute("SELECT id FROM sessions").fetchall()}
+        stored_ids = {
+            row["id"] for row in conn.execute("SELECT id FROM sessions").fetchall()
+        }
         assert carol_session["id"] not in stored_ids
 
         assert user_client.get("/api/me").status_code == 200
 
         revoked = client.delete(
-            f"/api/admin/sessions/{carol_session['id']}", headers={"content-type": "application/json"}
+            f"/api/admin/sessions/{carol_session['id']}",
+            headers={"content-type": "application/json"},
         )
         assert revoked.status_code == 204
 
@@ -366,7 +456,10 @@ def test_revoke_unknown_session_is_404(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         assert (
-            client.delete("/api/admin/sessions/not-a-real-id", headers={"content-type": "application/json"}).status_code
+            client.delete(
+                "/api/admin/sessions/not-a-real-id",
+                headers={"content-type": "application/json"},
+            ).status_code
             == 404
         )
     finally:
@@ -381,14 +474,18 @@ def test_revoke_unknown_session_is_404(tmp_path):
 def test_audit_log_lists_and_filters_by_user(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        created = client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        created = client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
         user_id = created.json()["id"]
         client.patch("/api/admin/users/carol", json={"disabled": True})
 
         all_entries = client.get("/api/admin/audit-log").json()["entries"]
         assert len(all_entries) >= 2
 
-        filtered = client.get(f"/api/admin/audit-log?user_id={user_id}").json()["entries"]
+        filtered = client.get(f"/api/admin/audit-log?user_id={user_id}").json()[
+            "entries"
+        ]
         assert filtered
         assert all(entry["user_id"] == user_id for entry in filtered)
     finally:
@@ -398,7 +495,9 @@ def test_audit_log_lists_and_filters_by_user(tmp_path):
 def test_audit_log_csv_export(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        client.post("/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD})
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
 
         response = client.get("/api/admin/audit-log.csv")
         assert response.status_code == 200
@@ -419,10 +518,14 @@ def test_audit_log_date_to_includes_the_whole_end_day(tmp_path):
         )
         conn.commit()
 
-        entries = client.get("/api/admin/audit-log?date_to=2026-11-02").json()["entries"]
+        entries = client.get("/api/admin/audit-log?date_to=2026-11-02").json()[
+            "entries"
+        ]
         assert any(entry["occurred_at"] == "2026-11-02 23:59:00" for entry in entries)
 
-        entries = client.get("/api/admin/audit-log?date_to=2026-11-01").json()["entries"]
+        entries = client.get("/api/admin/audit-log?date_to=2026-11-01").json()[
+            "entries"
+        ]
         assert all(entry["occurred_at"] != "2026-11-02 23:59:00" for entry in entries)
     finally:
         conn.close()
@@ -546,29 +649,51 @@ def test_non_admin_is_403_on_every_admin_panel_route(tmp_path):
     conn, client = _non_admin_client(tmp_path)
     try:
         library_id = _create_library(conn, "L1")
-        user_id = conn.execute("SELECT id FROM users WHERE username = 'bob'").fetchone()["id"]
+        user_id = conn.execute(
+            "SELECT id FROM users WHERE username = 'bob'"
+        ).fetchone()["id"]
 
-        assert client.post("/api/admin/users", json={"username": "x", "password": VALID_PASSWORD}).status_code == 403
+        assert (
+            client.post(
+                "/api/admin/users", json={"username": "x", "password": VALID_PASSWORD}
+            ).status_code
+            == 403
+        )
         assert client.get("/api/admin/users").status_code == 403
-        assert client.patch("/api/admin/users/bob", json={"disabled": True}).status_code == 403
-        assert client.delete("/api/admin/users/bob", headers={"content-type": "application/json"}).status_code == 403
+        assert (
+            client.patch("/api/admin/users/bob", json={"disabled": True}).status_code
+            == 403
+        )
+        assert (
+            client.delete(
+                "/api/admin/users/bob", headers={"content-type": "application/json"}
+            ).status_code
+            == 403
+        )
 
         assert client.get("/api/admin/access-matrix").status_code == 403
         assert (
             client.put(
-                f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"}
+                f"/api/admin/users/{user_id}/libraries/{library_id}",
+                headers={"content-type": "application/json"},
             ).status_code
             == 403
         )
         assert (
             client.delete(
-                f"/api/admin/users/{user_id}/libraries/{library_id}", headers={"content-type": "application/json"}
+                f"/api/admin/users/{user_id}/libraries/{library_id}",
+                headers={"content-type": "application/json"},
             ).status_code
             == 403
         )
 
         assert client.get("/api/admin/sessions").status_code == 403
-        assert client.delete("/api/admin/sessions/x", headers={"content-type": "application/json"}).status_code == 403
+        assert (
+            client.delete(
+                "/api/admin/sessions/x", headers={"content-type": "application/json"}
+            ).status_code
+            == 403
+        )
 
         assert client.get("/api/admin/audit-log").status_code == 403
         assert client.get("/api/admin/audit-log.csv").status_code == 403

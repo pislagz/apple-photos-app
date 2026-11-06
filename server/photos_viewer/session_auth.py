@@ -124,7 +124,9 @@ class _Unset:
 
 _UNSET = _Unset()
 
-_trusted_proxies_cache: list[ipaddress.IPv4Network | ipaddress.IPv6Network] | _Unset = _UNSET
+_trusted_proxies_cache: list[ipaddress.IPv4Network | ipaddress.IPv6Network] | _Unset = (
+    _UNSET
+)
 
 
 def reset_trusted_proxies_cache() -> None:
@@ -135,7 +137,9 @@ def reset_trusted_proxies_cache() -> None:
     _trusted_proxies_cache = _UNSET
 
 
-def _parse_trusted_proxies_env(raw: str) -> tuple[list[ipaddress.IPv4Network | ipaddress.IPv6Network], list[str]]:
+def _parse_trusted_proxies_env(
+    raw: str,
+) -> tuple[list[ipaddress.IPv4Network | ipaddress.IPv6Network], list[str]]:
     valid: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     invalid: list[str] = []
     for part in raw.split(","):
@@ -225,9 +229,13 @@ def get_allowed_tailnet_identities(conn: sqlite3.Connection) -> list[str]:
     return json.loads(raw) if raw is not None else []
 
 
-def set_allowed_tailnet_identities(conn: sqlite3.Connection, identities: Iterable[str]) -> None:
+def set_allowed_tailnet_identities(
+    conn: sqlite3.Connection, identities: Iterable[str]
+) -> None:
     app_db.set_setting(
-        conn, _TAILNET_ALLOWLIST_SETTING_KEY, json.dumps(normalize_tailnet_identities(identities))
+        conn,
+        _TAILNET_ALLOWLIST_SETTING_KEY,
+        json.dumps(normalize_tailnet_identities(identities)),
     )
 
 
@@ -267,10 +275,17 @@ def _env_seconds(name: str, default_seconds: int) -> int:
     try:
         value = int(raw)
     except ValueError:
-        logger.warning("%s=%r is not an integer; using default %d seconds", name, raw, default_seconds)
+        logger.warning(
+            "%s=%r is not an integer; using default %d seconds",
+            name,
+            raw,
+            default_seconds,
+        )
         return default_seconds
     if value < 0:
-        logger.warning("%s=%d is negative; using default %d seconds", name, value, default_seconds)
+        logger.warning(
+            "%s=%d is negative; using default %d seconds", name, value, default_seconds
+        )
         return default_seconds
     return value
 
@@ -284,7 +299,9 @@ def _cookie_secure() -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
-def _setting_or_env_seconds(conn: sqlite3.Connection, setting_key: str, env_name: str, default_seconds: int) -> int:
+def _setting_or_env_seconds(
+    conn: sqlite3.Connection, setting_key: str, env_name: str, default_seconds: int
+) -> int:
     """`app.db`'s `settings` table (written by P1.10's Settings screen) wins
     over the environment when a value has been saved there; otherwise this
     falls back to `_env_seconds`, so a server with no Settings save yet
@@ -300,15 +317,28 @@ def _setting_or_env_seconds(conn: sqlite3.Connection, setting_key: str, env_name
     return _env_seconds(env_name, default_seconds)
 
 
-def session_lifetime_seconds(conn: sqlite3.Connection, client: Literal["desktop", "pwa"], remember_me: bool) -> int:
+def session_lifetime_seconds(
+    conn: sqlite3.Connection, client: Literal["desktop", "pwa"], remember_me: bool
+) -> int:
     if remember_me:
         return _setting_or_env_seconds(
-            conn, "session_lifetime_remember_me_seconds", _REMEMBER_ME_LIFETIME_ENV, _DEFAULT_REMEMBER_ME_LIFETIME_SECONDS
+            conn,
+            "session_lifetime_remember_me_seconds",
+            _REMEMBER_ME_LIFETIME_ENV,
+            _DEFAULT_REMEMBER_ME_LIFETIME_SECONDS,
         )
     if client == "pwa":
-        return _setting_or_env_seconds(conn, "session_lifetime_pwa_seconds", _PWA_LIFETIME_ENV, _DEFAULT_PWA_LIFETIME_SECONDS)
+        return _setting_or_env_seconds(
+            conn,
+            "session_lifetime_pwa_seconds",
+            _PWA_LIFETIME_ENV,
+            _DEFAULT_PWA_LIFETIME_SECONDS,
+        )
     return _setting_or_env_seconds(
-        conn, "session_lifetime_desktop_seconds", _DESKTOP_LIFETIME_ENV, _DEFAULT_DESKTOP_LIFETIME_SECONDS
+        conn,
+        "session_lifetime_desktop_seconds",
+        _DESKTOP_LIFETIME_ENV,
+        _DEFAULT_DESKTOP_LIFETIME_SECONDS,
     )
 
 
@@ -416,7 +446,9 @@ def _prune_old_login_failures(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def record_login_failure(conn: sqlite3.Connection, username: str, *, user_exists: bool) -> None:
+def record_login_failure(
+    conn: sqlite3.Connection, username: str, *, user_exists: bool
+) -> None:
     """`user_exists` is whether `username` matched a row at the time of this
     attempt, stored alongside the failure so an unknown name's attempts
     never share a counter with a real account's -- see `is_locked_out`."""
@@ -432,7 +464,9 @@ def clear_login_failures(conn: sqlite3.Connection, username: str) -> None:
     conn.commit()
 
 
-def is_locked_out(conn: sqlite3.Connection, username: str, *, user_exists: bool) -> bool:
+def is_locked_out(
+    conn: sqlite3.Connection, username: str, *, user_exists: bool
+) -> bool:
     """Trade-off: this lockout is keyed on the username alone, not on who is
     typing it, so someone who merely knows a real username can lock that
     account out for the cool-off window by sending wrong passwords. The
@@ -455,7 +489,9 @@ def is_locked_out(conn: sqlite3.Connection, username: str, *, user_exists: bool)
     return count >= MAX_FAILED_LOGIN_ATTEMPTS
 
 
-def record_ip_login_failure(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> None:
+def record_ip_login_failure(
+    conn: sqlite3.Connection, client_ip: str, peer_ip: str
+) -> None:
     """`client_ip` is `_ip_lockout_key`'s bucket (a header value or a raw
     address); `peer_ip` is always the direct TCP peer, so a trusted proxy's
     distinct `client_ip` buckets stay findable as one group by `peer_ip` --
@@ -585,7 +621,11 @@ def _parse_origin(origin: str) -> _Origin | None:
         return None
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         return None
-    return (parsed.scheme.lower(), parsed.hostname.lower(), _effective_port(parsed.scheme, port))
+    return (
+        parsed.scheme.lower(),
+        parsed.hostname.lower(),
+        _effective_port(parsed.scheme, port),
+    )
 
 
 def _request_origin(request: Request) -> _Origin:
@@ -672,7 +712,11 @@ def _public_origins_from_env() -> set[_Origin] | None:
     if invalid:
         _ensure_logger_has_a_handler()
     for entry in invalid:
-        logger.warning("%s: ignoring invalid origin %r (expected scheme://host[:port])", _PUBLIC_ORIGINS_ENV, entry)
+        logger.warning(
+            "%s: ignoring invalid origin %r (expected scheme://host[:port])",
+            _PUBLIC_ORIGINS_ENV,
+            entry,
+        )
     _public_origins_cache = valid
     return valid
 
@@ -720,7 +764,9 @@ def _reject_cross_site_requests(request: Request) -> None:
     """
     content_type = request.headers.get("content-type", "")
     if not content_type.split(";", 1)[0].strip().lower() == "application/json":
-        raise HTTPException(status_code=415, detail="Content-Type must be application/json")
+        raise HTTPException(
+            status_code=415, detail="Content-Type must be application/json"
+        )
 
     origin = request.headers.get("origin")
     if origin is None:
@@ -792,7 +838,9 @@ def _trusted_tailscale_user_login(request: Request) -> str | None:
     return request.headers.get(_TAILSCALE_USER_LOGIN_HEADER)
 
 
-def _enforce_tailnet_allowlist(request: Request, db: sqlite3.Connection = Depends(get_db)) -> None:
+def _enforce_tailnet_allowlist(
+    request: Request, db: sqlite3.Connection = Depends(get_db)
+) -> None:
     """FastAPI dependency: 403 unless the caller's trusted
     `Tailscale-User-Login` header is in the configured allow-list. A no-op
     when the list is empty (the default) -- this is an *optional* extra
@@ -806,11 +854,16 @@ def _enforce_tailnet_allowlist(request: Request, db: sqlite3.Connection = Depend
     if login is None or login.strip().lower() not in allowed:
         raise HTTPException(
             status_code=403,
-            detail={"code": "tailnet_identity_not_allowed", "message": "tailnet identity not allowed"},
+            detail={
+                "code": "tailnet_identity_not_allowed",
+                "message": "tailnet identity not allowed",
+            },
         )
 
 
-def require_session(request: Request, db: sqlite3.Connection = Depends(get_db)) -> sqlite3.Row:
+def require_session(
+    request: Request, db: sqlite3.Connection = Depends(get_db)
+) -> sqlite3.Row:
     """FastAPI dependency: the caller's session row, or 401. Use on every
     route that needs "who is asking" -- the P1.8 per-library assignment
     guard builds on top of this. Also enforces the P1.4 tailnet allow-list,
@@ -943,7 +996,9 @@ def unguarded_library_routes(app: FastAPI) -> list[str]:
             violations.append(path)
             continue
         dependant = getattr(route, "dependant", None)
-        if dependant is None or require_library_assignment not in _dependency_closure(dependant):
+        if dependant is None or require_library_assignment not in _dependency_closure(
+            dependant
+        ):
             violations.append(path)
     return violations
 
@@ -955,7 +1010,9 @@ def _normalize_username(value: object) -> object:
     return value.strip().lower() if isinstance(value, str) else value
 
 
-Username = Annotated[str, BeforeValidator(_normalize_username), Field(min_length=1, max_length=64)]
+Username = Annotated[
+    str, BeforeValidator(_normalize_username), Field(min_length=1, max_length=64)
+]
 Password = Annotated[str, Field(min_length=12, max_length=1024)]
 # Login must not apply the 12-character minimum: a short wrong password has
 # to go through the same lockout accounting and Argon2 verify as any other
@@ -1002,9 +1059,14 @@ def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusRespons
     "/api/setup/admin",
     status_code=201,
     response_model=AuthUserResponse,
-    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
+    dependencies=[
+        Depends(_reject_cross_site_requests),
+        Depends(_enforce_tailnet_allowlist),
+    ],
 )
-def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
+def setup_admin(
+    payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get_db)
+) -> AuthUserResponse:
     """Create the single admin account. Disables itself the moment any user
     row exists, so it cannot be used again to add a second account.
 
@@ -1018,7 +1080,9 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
     try:
         (existing_users,) = db.execute("SELECT COUNT(*) FROM users").fetchone()
         if existing_users > 0:
-            raise HTTPException(status_code=409, detail="first-run setup has already run")
+            raise HTTPException(
+                status_code=409, detail="first-run setup has already run"
+            )
         db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
             (payload.username, password_hash),
@@ -1034,20 +1098,32 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
 @router.post(
     "/api/auth/login",
     response_model=AuthUserResponse,
-    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
+    dependencies=[
+        Depends(_reject_cross_site_requests),
+        Depends(_enforce_tailnet_allowlist),
+    ],
 )
-def login(payload: LoginRequest, request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: sqlite3.Connection = Depends(get_db),
+) -> AuthUserResponse:
     _prune_old_login_failures(db)
     peer_ip = _client_ip(request)
     ip_key = _ip_lockout_key(request)
 
-    user = db.execute("SELECT * FROM users WHERE username = ?", (payload.username,)).fetchone()
+    user = db.execute(
+        "SELECT * FROM users WHERE username = ?", (payload.username,)
+    ).fetchone()
     user_exists = user is not None
 
     if (ip_key is not None and is_ip_locked_out(db, ip_key, peer_ip)) or is_locked_out(
         db, payload.username, user_exists=user_exists
     ):
-        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+        raise HTTPException(
+            status_code=429, detail="too many failed attempts, try again later"
+        )
 
     if user is None or user["disabled"]:
         # Always verify against something, even for a missing or disabled
@@ -1072,7 +1148,9 @@ def login(payload: LoginRequest, request: Request, response: Response, db: sqlit
         )
         db.commit()
 
-    raw_token, max_age = create_session(db, user["id"], client=payload.client, remember_me=payload.remember_me)
+    raw_token, max_age = create_session(
+        db, user["id"], client=payload.client, remember_me=payload.remember_me
+    )
     response.set_cookie(
         key=COOKIE_NAME,
         value=raw_token,
@@ -1112,8 +1190,12 @@ def reconfirm_password(
     username = session["username"]
     _prune_old_login_failures(db)
     if is_locked_out(db, username, user_exists=True):
-        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
-    user = db.execute("SELECT password_hash FROM users WHERE username = ?", (username,)).fetchone()
+        raise HTTPException(
+            status_code=429, detail="too many failed attempts, try again later"
+        )
+    user = db.execute(
+        "SELECT password_hash FROM users WHERE username = ?", (username,)
+    ).fetchone()
     if user is None or not verify_password(user["password_hash"], payload.password):
         record_login_failure(db, username, user_exists=True)
         raise HTTPException(status_code=401, detail="wrong password")
@@ -1126,12 +1208,20 @@ def reconfirm_password(
     return Response(status_code=204)
 
 
-@router.post("/api/auth/lock-hidden", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
+@router.post(
+    "/api/auth/lock-hidden",
+    status_code=204,
+    dependencies=[Depends(_reject_cross_site_requests)],
+)
 def lock_hidden(
-    session: sqlite3.Row = Depends(require_session), db: sqlite3.Connection = Depends(get_db)
+    session: sqlite3.Row = Depends(require_session),
+    db: sqlite3.Connection = Depends(get_db),
 ) -> Response:
     """Re-lock Hidden for this session (the client calls this on leaving it)."""
-    db.execute("UPDATE sessions SET hidden_unlocked_until = NULL WHERE id = ?", (session["id"],))
+    db.execute(
+        "UPDATE sessions SET hidden_unlocked_until = NULL WHERE id = ?",
+        (session["id"],),
+    )
     db.commit()
     return Response(status_code=204)
 
@@ -1146,7 +1236,11 @@ def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> Non
     ).fetchone()
     if unlocked is None:
         raise HTTPException(
-            status_code=403, detail={"code": "hidden_locked", "message": "password required to open Hidden"}
+            status_code=403,
+            detail={
+                "code": "hidden_locked",
+                "message": "password required to open Hidden",
+            },
         )
     db.execute(
         "UPDATE sessions SET hidden_unlocked_until = datetime('now', ?) WHERE id = ?",
@@ -1155,8 +1249,14 @@ def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> Non
     db.commit()
 
 
-@router.post("/api/auth/logout", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
-def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> Response:
+@router.post(
+    "/api/auth/logout",
+    status_code=204,
+    dependencies=[Depends(_reject_cross_site_requests)],
+)
+def logout(
+    request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)
+) -> Response:
     raw_token = request.cookies.get(COOKIE_NAME)
     if raw_token:
         revoke_session(db, raw_token)
@@ -1169,7 +1269,9 @@ def logout(request: Request, response: Response, db: sqlite3.Connection = Depend
 
 
 @router.get("/api/auth/me", response_model=AuthUserResponse)
-def read_current_user(session: sqlite3.Row = Depends(require_session)) -> AuthUserResponse:
+def read_current_user(
+    session: sqlite3.Row = Depends(require_session),
+) -> AuthUserResponse:
     return AuthUserResponse(username=session["username"], role=session["role"])
 
 
@@ -1198,7 +1300,9 @@ def unlock_user(
     yet; this is the API it will call for its "Unlock" action."""
     payload = payload or UnlockRequest()
     normalized = _normalize_username(username)
-    user = db.execute("SELECT id FROM users WHERE username = ?", (normalized,)).fetchone()
+    user = db.execute(
+        "SELECT id FROM users WHERE username = ?", (normalized,)
+    ).fetchone()
     if user is None:
         raise HTTPException(status_code=404, detail="not found")
     clear_login_failures(db, normalized)
@@ -1222,9 +1326,12 @@ class TailnetAllowlistRequest(BaseModel):
     identities: list[str]
 
 
-@router.get("/api/admin/settings/tailnet-allowlist", response_model=TailnetAllowlistResponse)
+@router.get(
+    "/api/admin/settings/tailnet-allowlist", response_model=TailnetAllowlistResponse
+)
 def read_tailnet_allowlist(
-    admin: sqlite3.Row = Depends(require_admin), db: sqlite3.Connection = Depends(get_db)
+    admin: sqlite3.Row = Depends(require_admin),
+    db: sqlite3.Connection = Depends(get_db),
 ) -> TailnetAllowlistResponse:
     return TailnetAllowlistResponse(identities=get_allowed_tailnet_identities(db))
 
