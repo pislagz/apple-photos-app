@@ -5,6 +5,7 @@ import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
+import { cellHeight, computeCellSize, GRID_GAP, gridRowHeight } from "./gridMetrics";
 import { buildRows } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -127,7 +128,7 @@ export default function DesktopLibrary({
   const columns = ZOOM_STEPS[zoomIndex].columns;
   const thumbSize = ZOOM_STEPS[zoomIndex].thumbSize;
   const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
-  const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
+  const cellSize = computeCellSize(containerWidth, columns);
 
   // Items arrive sorted descending by date (grouping.ts), so the first and
   // last loaded items are the newest and oldest seen so far.
@@ -143,7 +144,7 @@ export default function DesktopLibrary({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) =>
-      rows[index].type === "header" ? HEADER_ROW_HEIGHT : rows[index].type === "feature" ? cellSize * 2 : cellSize,
+      rows[index].type === "header" ? HEADER_ROW_HEIGHT : gridRowHeight(cellSize, rows[index].type === "feature"),
     overscan: 6,
   });
 
@@ -527,6 +528,8 @@ export default function DesktopLibrary({
                   style={{
                     ...style,
                     display: "grid",
+                    gap: GRID_GAP,
+                    alignContent: "start",
                     gridTemplateColumns: row.type === "feature" ? "1fr" : `repeat(${columns}, 1fr)`,
                   }}
                   className="desktop-library__row-grid"
@@ -541,7 +544,7 @@ export default function DesktopLibrary({
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
-                        style={{ height: row.type === "feature" ? cellSize * 2 : cellSize }}
+                        style={{ height: cellHeight(cellSize, row.type === "feature") }}
                         onClick={(event) => handleCellClick(event, item, index)}
                         onDoubleClick={() => handleOpen(item.id)}
                         onContextMenu={(event) => handleCellContextMenu(event, item.id)}
