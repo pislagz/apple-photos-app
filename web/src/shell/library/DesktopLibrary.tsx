@@ -24,8 +24,6 @@ const ZOOM_STEPS: { columns: number; thumbSize: "grid" | "grid2x" }[] = [
 ];
 const DEFAULT_ZOOM_INDEX = 2;
 const MAX_ZOOM_INDEX = ZOOM_STEPS.length - 1;
-// The toolbar's segmented control is Years/Months/All Photos. Days is its
-// own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
 const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
   { key: "all", label: "All Items" },
   { key: "favorites", label: "Favorites" },
@@ -33,6 +31,8 @@ const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
   { key: "videos", label: "Videos" },
 ];
 
+// The toolbar's segmented control is Years/Months/All Photos. Days is its
+// own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
 const DESKTOP_VIEWS = VIEWS.filter((item) => item.key !== "days");
 const LOAD_MORE_ROW_MARGIN = 3;
 
