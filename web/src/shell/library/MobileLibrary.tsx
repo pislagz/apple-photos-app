@@ -50,7 +50,7 @@ export default function MobileLibrary({
     // #93: remember the asset under the fingers; the layout effect below
     // scrolls it back into place once the new column count has reflowed.
     const element = scrollRef.current;
-    if (!element || pinchAnchor.current) return;
+    if (!element) return;
     const rect = element.getBoundingClientRect();
     const viewportY = midpoint.clientY - rect.top;
     const y = element.scrollTop + viewportY;
