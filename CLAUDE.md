@@ -153,6 +153,22 @@ cd web && npm test
 
 Tailscale Serve, launchd, and docker-compose are documented as the server gains them. See `server/README.md` for the packaging plan.
 
+## Run the demo locally
+
+A synthetic library (a few hundred generated images, no real media) plus a fresh `app.db`, served on 127.0.0.1. Everything lives in the gitignored `demo-data/`. The two logins are throwaway dev credentials printed at startup.
+
+```bash
+.venv/bin/python scripts/dev_demo.py              # build if needed, index, serve on :8000
+.venv/bin/python scripts/dev_demo.py --reset      # wipe demo-data/ and rebuild
+.venv/bin/python scripts/dev_demo.py --build      # also rebuild web/dist
+.venv/bin/python scripts/dev_demo.py --port 8123
+
+# With the server running, in another shell (needs Chrome, or Playwright's chromium):
+cd web && npm run e2e:shots                       # DEMO_URL defaults to http://127.0.0.1:8000
+```
+
+Screenshots land in `web/e2e/screenshots/` (gitignored). `e2e:shots` is not part of `npm test` or CI. Stop the server with `kill $(cat demo-data/server.pid)`. The script sets `PHOTOS_VIEWER_COOKIE_SECURE=false` for its own server process only, so login works over plain HTTP; production defaults are unchanged.
+
 ## The access-control test
 
 This test is in Phase 1 and stays green after every later phase.

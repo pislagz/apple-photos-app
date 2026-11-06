@@ -46,3 +46,10 @@ coverage/
 .claude-handoff.md
 .claude-session*
 .claude/
+
+# Local demo harness output
+demo-data/
+web/e2e/screenshots/
+web/test-results/
+web/playwright-report/
+web/e2e/test-results/
