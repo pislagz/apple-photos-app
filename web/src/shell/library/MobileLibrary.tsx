@@ -44,7 +44,7 @@ export default function MobileLibrary({
   // month length.
   const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId, daysAnchor);
-  const summary = useLibrarySummary(libraryId);
+  const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId);
   const pinchAnchor = useRef<PinchAnchor | null>(null);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
@@ -208,6 +208,7 @@ export default function MobileLibrary({
     }
   }, [pendingScrollKey, rows, rowVirtualizer]);
 
+  const showSummaryError = isTileView && summaryError;
   const isEmpty = isTileView ? summary !== null && rows.length === 0 : items.length === 0 && done;
 
   return (
@@ -259,7 +260,14 @@ export default function MobileLibrary({
         style={{ touchAction: "pan-y" }}
         {...touchHandlers}
       >
-        {isEmpty ? (
+        {showSummaryError ? (
+          <div className="mobile-library__empty" role="alert">
+            <p>Couldn't load your library.</p>
+            <button type="button" className="mobile-library__retry" onClick={retrySummary}>
+              Retry
+            </button>
+          </div>
+        ) : isEmpty ? (
           <p className="mobile-library__empty">No photos yet.</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>

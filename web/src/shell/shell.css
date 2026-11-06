@@ -326,6 +326,12 @@ body {
   color: var(--ios-label-secondary);
 }
 
+.mobile-library__retry {
+  margin-top: 8px;
+  padding: 8px 16px;
+  color: var(--ios-blue, #0a84ff);
+}
+
 /* P1.17 multi-select: a top-left text button mirroring iOS Photos'
    "Select"/"Cancel", symmetric with the account avatar the Shell already
    floats at the top-right. */
