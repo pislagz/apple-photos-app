@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "check-urls": "node ../scripts/check_external_urls.mjs dist"
+    "check-urls": "node ../scripts/check_external_urls.mjs dist",
+    "e2e:shots": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.25",
@@ -16,6 +17,7 @@
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",

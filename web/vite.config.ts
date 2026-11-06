@@ -9,5 +9,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     globals: true,
+    // Playwright smoke tests (`npm run e2e:shots`) need a running demo server.
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
   },
 });

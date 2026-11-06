@@ -37,11 +37,13 @@ placeholder, for tests that exercise WAL replay through the copy step.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import pathlib
 import plistlib
 import shutil
 import sqlite3
+from collections.abc import Sequence
 
 import pillow_heif
 from PIL import Image
@@ -200,16 +202,63 @@ def _build_search_index(search_dir: pathlib.Path) -> None:
         conn.close()
 
 
-def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
-    """Create a `.photoslibrary`-shaped directory under `dest_dir` and return its path."""
-    package_path = dest_dir / "Synthetic.photoslibrary"
+@dataclasses.dataclass(frozen=True)
+class FixtureAsset:
+    """One synthetic asset: the bytes written under `originals/` plus the
+    metadata columns `PhotosDB` reads. `created` is Core Data seconds since
+    2001-01-01 UTC, as Photos stores it."""
+
+    uuid: str
+    filename: str
+    data: bytes
+    uti: str = "public.heic"
+    kind: int = 0  # ZKIND: 0 photo, 1 video
+    created: float = 700000000.0
+    width: int = 100
+    height: int = 100
+    favorite: bool = False
+    hidden: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
+class FixtureAlbum:
+    uuid: str
+    title: str
+    asset_indexes: Sequence[int]  # 0-based positions in the assets list
+
+
+@dataclasses.dataclass(frozen=True)
+class FixturePerson:
+    uuid: str
+    name: str
+    face_uuid: str
+    asset_indexes: Sequence[int]
+
+
+def _default_assets() -> list[FixtureAsset]:
+    return [
+        FixtureAsset(
+            uuid=_ASSET_UUID, filename=_ASSET_FILENAME, data=_build_asset_image_bytes()
+        )
+    ]
+
+
+def build_library(
+    dest_dir: pathlib.Path,
+    assets: Sequence[FixtureAsset],
+    *,
+    albums: Sequence[FixtureAlbum] = (),
+    people: Sequence[FixturePerson] = (),
+    package_name: str = "Synthetic.photoslibrary",
+    wal_favorite_pk: int | None = None,
+) -> pathlib.Path:
+    """Create a `.photoslibrary`-shaped directory holding `assets` under
+    `dest_dir` and return its path. Asset `i` gets `Z_PK` i+1. With
+    `wal_favorite_pk`, that asset's favorite flag is flipped through an
+    uncheckpointed WAL write (see `_write_uncheckpointed_wal_change`)."""
+    package_path = dest_dir / package_name
     database_dir = package_path / "database"
     database_dir.mkdir(parents=True)
-
-    originals_dir = package_path / "originals" / "0"
-    originals_dir.mkdir(parents=True)
-    asset_bytes = _build_asset_image_bytes()
-    (originals_dir / _ASSET_FILENAME).write_bytes(asset_bytes)
 
     sqlite_path = database_dir / "Photos.sqlite"
     conn = sqlite3.connect(str(sqlite_path))
@@ -227,65 +276,109 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
             """,
             (_ROOT_FOLDER_KIND,),
         )
-        conn.execute(
-            """
-            INSERT INTO ZGENERICASSET (
-                Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
-                ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
-                ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER, ZKINDSUBTYPE,
-                ZTRASHEDSTATE, ZHEIGHT, ZWIDTH, ZORIENTATION, ZDEPTHSTATES,
-                ZVISIBILITYSTATE, ZSAVEDASSETTYPE, ZADDEDDATE
+        for pk, asset in enumerate(assets, start=1):
+            directory = asset.uuid[0]
+            originals_dir = package_path / "originals" / directory
+            originals_dir.mkdir(parents=True, exist_ok=True)
+            (originals_dir / asset.filename).write_bytes(asset.data)
+            conn.execute(
+                """
+                INSERT INTO ZGENERICASSET (
+                    Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
+                    ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
+                    ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER, ZKINDSUBTYPE,
+                    ZTRASHEDSTATE, ZHEIGHT, ZWIDTH, ZORIENTATION, ZDEPTHSTATES,
+                    ZVISIBILITYSTATE, ZSAVEDASSETTYPE, ZADDEDDATE
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, NULL, NULL,
+                    0, ?, ?, 0,
+                    0, ?, ?, 1, 0,
+                    0, 3, ?
+                )
+                """,
+                (
+                    pk,
+                    asset.uuid,
+                    asset.created,
+                    asset.created,
+                    int(asset.hidden),
+                    int(asset.favorite),
+                    directory,
+                    asset.filename,
+                    asset.kind,
+                    asset.uti,
+                    asset.height,
+                    asset.width,
+                    asset.created,
+                ),
             )
-            VALUES (
-                1, ?, 700000000.0, 700000000.0, 0,
-                0, '0', ?, NULL, NULL,
-                0, 0, 'public.heic', 0,
-                0, 100, 100, 1, 0,
-                0, 3, 700000000.0
+            conn.execute(
+                """
+                INSERT INTO ZADDITIONALASSETATTRIBUTES (
+                    Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
+                    ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
+                    ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
+                    ZORIGINALORIENTATION, ZORIGINALFILESIZE
+                )
+                VALUES (?, ?, ?, 0, 0, 'UTC', 0, 0, ?, ?, 1, ?)
+                """,
+                (pk, pk, asset.filename, asset.height, asset.width, len(asset.data)),
             )
-            """,
-            (_ASSET_UUID, _ASSET_FILENAME),
-        )
-        conn.execute(
-            """
-            INSERT INTO ZADDITIONALASSETATTRIBUTES (
-                Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
-                ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
-                ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
-                ZORIGINALORIENTATION, ZORIGINALFILESIZE
+        # Non-root albums (joined to assets via Z_26ASSETS, the same table
+        # osxphotos's Photos-5 code path reads) and people (joined via
+        # ZDETECTEDFACE) so the indexer's people/albums walk -- not just the
+        # asset walk -- has non-empty rows to carry through `_write_index`
+        # into `people`/`albums`/`asset_people`/`asset_albums`.
+        for offset, album in enumerate(albums):
+            album_pk = 2 + offset
+            conn.execute(
+                """
+                INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
+                VALUES (?, ?, ?, ?, 1, 0)
+                """,
+                (album_pk, album.uuid, album.title, _ALBUM_KIND),
             )
-            VALUES (1, 1, ?, 0, 0, 'UTC', 0, 0, 100, 100, 1, ?)
-            """,
-            (_ASSET_FILENAME, len(asset_bytes)),
-        )
-        # A second, non-root album (joined to the asset via Z_26ASSETS, the
-        # same table osxphotos's Photos-5 code path reads) and one person
-        # (joined via ZDETECTEDFACE) so the indexer's people/albums walk --
-        # not just the asset walk -- has a non-empty row to carry through
-        # `_write_index` into `people`/`albums`/`asset_people`/`asset_albums`.
-        conn.execute(
-            """
-            INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
-            VALUES (2, ?, 'Test Album', ?, 1, 0)
-            """,
-            (_ALBUM_UUID, _ALBUM_KIND),
-        )
-        conn.execute("INSERT INTO Z_26ASSETS (Z_34ASSETS, Z_26ALBUMS, Z_FOK_34ASSETS) VALUES (1, 2, 1)")
-        conn.execute(
-            """
-            INSERT INTO ZPERSON (Z_PK, ZPERSONUUID, ZFULLNAME, ZFACECOUNT, ZDISPLAYNAME, ZTYPE)
-            VALUES (1, ?, ?, 1, ?, 1)
-            """,
-            (_PERSON_UUID, _PERSON_NAME, _PERSON_NAME),
-        )
-        conn.execute(
-            """
-            INSERT INTO ZDETECTEDFACE (Z_PK, ZUUID, ZPERSON, ZASSET, ZHIDDEN, ZISINTRASH, ZMANUAL)
-            VALUES (1, ?, 1, 1, 0, 0, 0)
-            """,
-            (_FACE_UUID,),
-        )
-        conn.execute("UPDATE ZPERSON SET ZKEYFACE = 1 WHERE Z_PK = 1")
+            for order, index in enumerate(album.asset_indexes, start=1):
+                conn.execute(
+                    "INSERT INTO Z_26ASSETS (Z_34ASSETS, Z_26ALBUMS, Z_FOK_34ASSETS) VALUES (?, ?, ?)",
+                    (index + 1, album_pk, order),
+                )
+        face_pk = 0
+        for person_pk, person in enumerate(people, start=1):
+            conn.execute(
+                """
+                INSERT INTO ZPERSON (Z_PK, ZPERSONUUID, ZFULLNAME, ZFACECOUNT, ZDISPLAYNAME, ZTYPE)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    person_pk,
+                    person.uuid,
+                    person.name,
+                    len(person.asset_indexes),
+                    person.name,
+                ),
+            )
+            first_face_pk = face_pk + 1
+            for index in person.asset_indexes:
+                face_pk += 1
+                face_uuid = (
+                    person.face_uuid
+                    if face_pk == first_face_pk
+                    else f"{person.face_uuid[:-4]}{face_pk:04d}"
+                )
+                conn.execute(
+                    """
+                    INSERT INTO ZDETECTEDFACE (Z_PK, ZUUID, ZPERSON, ZASSET, ZHIDDEN, ZISINTRASH, ZMANUAL)
+                    VALUES (?, ?, ?, ?, 0, 0, 0)
+                    """,
+                    (face_pk, face_uuid, person_pk, index + 1),
+                )
+            conn.execute(
+                "UPDATE ZPERSON SET ZKEYFACE = ? WHERE Z_PK = ?",
+                (first_face_pk, person_pk),
+            )
         conn.commit()
     finally:
         conn.close()
@@ -295,11 +388,23 @@ def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
     # change committed to the WAL but not yet checkpointed into the main
     # file; the copy step in `open_library_readonly` has to pick up and
     # replay that too, not just copy the main file.
-    _write_uncheckpointed_wal_change(sqlite_path)
+    if wal_favorite_pk is not None:
+        _write_uncheckpointed_wal_change(sqlite_path, wal_favorite_pk)
 
     _build_search_index(database_dir / "search")
 
     return package_path
+
+
+def build_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
+    """Create a `.photoslibrary`-shaped directory under `dest_dir` and return its path."""
+    return build_library(
+        dest_dir,
+        _default_assets(),
+        albums=[FixtureAlbum(_ALBUM_UUID, "Test Album", [0])],
+        people=[FixturePerson(_PERSON_UUID, _PERSON_NAME, _FACE_UUID, [0])],
+        wal_favorite_pk=1,
+    )
 
 
 def build_closed_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
@@ -338,12 +443,12 @@ def build_closed_fixture_library(dest_dir: pathlib.Path) -> pathlib.Path:
 _WAL_ONLY_CONNECTIONS: list[sqlite3.Connection] = []
 
 
-def _write_uncheckpointed_wal_change(sqlite_path: pathlib.Path) -> None:
+def _write_uncheckpointed_wal_change(sqlite_path: pathlib.Path, asset_pk: int) -> None:
     """Flip the fixture asset's favorite flag via a WAL-mode write that is
     deliberately left uncheckpointed, so the main db file keeps the old
     value and only the `-wal` file holds the new one."""
     conn = sqlite3.connect(str(sqlite_path))
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("UPDATE ZGENERICASSET SET ZFAVORITE = 1 WHERE Z_PK = 1")
+    conn.execute("UPDATE ZGENERICASSET SET ZFAVORITE = 1 WHERE Z_PK = ?", (asset_pk,))
     conn.commit()
     _WAL_ONLY_CONNECTIONS.append(conn)
