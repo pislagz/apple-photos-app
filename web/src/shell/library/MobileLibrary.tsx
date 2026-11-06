@@ -9,6 +9,7 @@ import SummaryTile from "./SummaryTile";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
+import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
 import { usePinchColumns } from "./usePinchColumns";
 
 const HEADER_ROW_HEIGHT = 32;
@@ -34,6 +35,7 @@ export default function MobileLibrary({
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewKey>("years");
   // Set right before drilling Months -> Days (#126): anchors the Days/All
   // Photos feed's first page at that month instead of the top of the whole
@@ -43,7 +45,19 @@ export default function MobileLibrary({
   const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
   const { items, loading, done, loadMore } = useLibraryAssets(libraryId, daysAnchor);
   const summary = useLibrarySummary(libraryId);
-  const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS);
+  const pinchAnchor = useRef<PinchAnchor | null>(null);
+  const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
+    // #93: remember the asset under the fingers; the layout effect below
+    // scrolls it back into place once the new column count has reflowed.
+    const element = scrollRef.current;
+    if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const viewportY = midpoint.clientY - rect.top;
+    const y = element.scrollTop + viewportY;
+    const row = rowVirtualizer.getVirtualItems().find((r) => r.start <= y && y < r.start + r.size);
+    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize);
+    if (row && assetId) pinchAnchor.current = { assetId, rowFraction: (y - row.start) / row.size, viewportY };
+  });
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   // Set right before drilling Years -> Months, so the scroll effect below
   // can land on the tapped year's own tile once Months' rows exist.
@@ -113,7 +127,6 @@ export default function MobileLibrary({
     }
   }
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
   useLayoutEffect(() => {
@@ -169,6 +182,19 @@ export default function MobileLibrary({
     if (!last || loading || done) return;
     if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
   }, [isTileView, virtualRows, rows.length, loading, done, loadMore]);
+
+  useLayoutEffect(() => {
+    const anchor = pinchAnchor.current;
+    pinchAnchor.current = null;
+    const element = scrollRef.current;
+    if (!anchor || !element) return;
+    const index = findRowIndexByAsset(rows, anchor.assetId);
+    const measured = rowVirtualizer.measurementsCache[index];
+    if (index === -1 || !measured) return;
+    const top = anchoredScrollTop(anchor, measured.start, measured.size, rowVirtualizer.getTotalSize(), element.clientHeight);
+    rowVirtualizer.scrollToOffset(top);
+    // Only columns changing should re-anchor.
+  }, [columns]);
 
   // Lands Months scrolled to the year tile that was tapped, not back at the
   // top -- see `openTile` above. A month's own key ("2022-01") always

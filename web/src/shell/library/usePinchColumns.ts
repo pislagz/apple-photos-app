@@ -30,7 +30,14 @@ export interface PinchColumnsResult {
 // `touch-action: pan-y` on the element these handlers are attached to, so
 // one-finger scrolling still works while two-finger pinch drives this
 // instead of the browser's native pinch-zoom.
-export function usePinchColumns(initial: number, min = MIN_COLUMNS, max = MAX_COLUMNS): PinchColumnsResult {
+// `onBeforeChange` gets the pinch midpoint just before `columns` changes, so
+// the caller can note what is under the fingers and re-anchor after reflow.
+export function usePinchColumns(
+  initial: number,
+  onBeforeChange?: (midpoint: TouchPoint) => void,
+  min = MIN_COLUMNS,
+  max = MAX_COLUMNS,
+): PinchColumnsResult {
   const [columns, setColumns] = useState(initial);
   const startDistance = useRef<number | null>(null);
 
@@ -44,10 +51,14 @@ export function usePinchColumns(initial: number, min = MIN_COLUMNS, max = MAX_CO
     if (event.touches.length !== 2 || startDistance.current === null) return;
     const current = distance(event.touches[0], event.touches[1]);
     const ratio = current / startDistance.current;
+    const [a, b] = [event.touches[0], event.touches[1]];
+    const midpoint = { clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 };
     if (ratio >= STEP_RATIO) {
+      onBeforeChange?.(midpoint);
       setColumns((value) => Math.max(min, value - 1));
       startDistance.current = current;
     } else if (ratio <= 1 / STEP_RATIO) {
+      onBeforeChange?.(midpoint);
       setColumns((value) => Math.min(max, value + 1));
       startDistance.current = current;
     }
