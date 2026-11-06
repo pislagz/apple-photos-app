@@ -43,7 +43,10 @@ export default function MobileLibrary({
   // column, so "-31" is always a safe upper bound regardless of the real
   // month length.
   const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
-  const { items, loading, done, loadMore } = useLibraryAssets(libraryId, daysAnchor);
+  const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
+    libraryId,
+    daysAnchor,
+  );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId);
   const pinchAnchor = useRef<PinchAnchor | null>(null);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
@@ -209,6 +212,8 @@ export default function MobileLibrary({
   }, [pendingScrollKey, rows, rowVirtualizer]);
 
   const showSummaryError = isTileView && summaryError;
+  // #147: Days / All Photos page `/assets`; a failed first page is an error, not an empty library.
+  const showAssetsError = !isTileView && assetsError && items.length === 0;
   const isEmpty = isTileView ? summary !== null && rows.length === 0 : items.length === 0 && done;
 
   return (
@@ -260,10 +265,14 @@ export default function MobileLibrary({
         style={{ touchAction: "pan-y" }}
         {...touchHandlers}
       >
-        {showSummaryError ? (
+        {showSummaryError || showAssetsError ? (
           <div className="mobile-library__empty" role="alert">
             <p>Couldn't load your library.</p>
-            <button type="button" className="mobile-library__retry" onClick={retrySummary}>
+            <button
+              type="button"
+              className="mobile-library__retry"
+              onClick={showSummaryError ? retrySummary : retryAssets}
+            >
               Retry
             </button>
           </div>
@@ -355,6 +364,14 @@ export default function MobileLibrary({
                 </div>
               );
             })}
+          </div>
+        )}
+        {!isTileView && items.length > 0 && assetsError && (
+          <div className="mobile-library__load-error" role="alert">
+            <span>Couldn't load more photos.</span>
+            <button type="button" className="mobile-library__retry" onClick={retryAssets}>
+              Retry
+            </button>
           </div>
         )}
       </div>

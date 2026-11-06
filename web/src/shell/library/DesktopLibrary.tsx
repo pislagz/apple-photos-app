@@ -646,6 +646,14 @@ export default function DesktopLibrary({
             })}
           </div>
         )}
+        {items.length > 0 && error && (
+          <div className="desktop-library__load-error" role="alert">
+            <span>Couldn't load more photos.</span>
+            <button type="button" className="desktop-library__retry" onClick={retry}>
+              Retry
+            </button>
+          </div>
+        )}
       </div>
       {viewerIndex !== null && (
         <DesktopViewer
