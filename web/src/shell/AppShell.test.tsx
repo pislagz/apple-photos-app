@@ -142,7 +142,7 @@ describe("AppShell", () => {
 
     const sections = within(await screen.findByRole("navigation", { name: "Sections" }));
     expect(sections.getByRole("button", { name: "Library" })).toBeEnabled();
-    for (const label of ["Favorites", "Recently Added", "Map", "People"]) {
+    for (const label of ["Favorites", "Recently Added", "Map", "People & Pets"]) {
       expect(sections.getByRole("button", { name: label })).toBeDisabled();
     }
   });

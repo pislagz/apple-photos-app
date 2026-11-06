@@ -1190,6 +1190,21 @@ body {
   right: 4px;
 }
 
+/* Days hero (#127): the same one-photo-per-day row the phone uses, with the
+   date overlaid on the photo. */
+.desktop-library__feature-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 75%);
+  pointer-events: none;
+}
+
 .desktop-library__empty {
   text-align: center;
   padding: 24px;
