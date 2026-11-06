@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
-import { mockFetch } from "../testHelpers";
+import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import DesktopShell from "./DesktopShell";
 
 // Vitest mocks plain CSS imports (no stylesheet to attach them to in
@@ -101,5 +101,69 @@ describe("DesktopShell layout", () => {
 
     const gridRule = css.match(/\.desktop-library__grid\s*\{[^}]*\}/)?.[0] ?? "";
     expect(gridRule).toMatch(/overflow-y:\s*auto/);
+  });
+});
+
+describe("DesktopShell Hidden password prompt (#130)", () => {
+  function setup(reconfirmStatus: number) {
+    const fetchMock = mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      if (url === "/api/auth/reconfirm-password") {
+        return reconfirmStatus === 204 ? noContentResponse() : jsonResponse({ detail: "x" }, reconfirmStatus);
+      }
+      if (url === "/api/auth/lock-hidden") return noContentResponse();
+      if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hidden" }));
+    return fetchMock;
+  }
+
+  it("prompts, then opens Hidden on the correct password and re-locks on leaving", async () => {
+    const fetchMock = setup(204);
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+    expect(await screen.findByText("No hidden photos.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Library/ }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/auth/lock-hidden")).toBe(true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Hidden" }));
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("shows an inline error on a wrong password and a try-later message on 429", async () => {
+    setup(401);
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect password.");
+    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
+  });
+
+  it("shows try-later when locked out", async () => {
+    setup(429);
+    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/try again later/i);
+  });
+
+  it("cancel closes the prompt and stays in the Library", async () => {
+    setup(204);
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
   });
 });

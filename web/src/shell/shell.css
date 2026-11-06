@@ -601,41 +601,138 @@ body {
   }
 }
 
-.hidden-confirm {
+.hidden-unlock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hidden-unlock__card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: 48px 32px;
   text-align: center;
   color: var(--ios-label-secondary);
 }
 
-.hidden-confirm__icon {
-  margin-bottom: 12px;
-  color: var(--ios-label-secondary);
-}
-
-.hidden-confirm h1 {
-  margin: 0 0 8px;
+.hidden-unlock h2 {
+  margin: 8px 0 4px;
   font-size: 20px;
   font-weight: 700;
   color: #1d1d1f;
 }
 
-.hidden-confirm__continue {
-  margin-top: 20px;
+.hidden-unlock p {
+  margin: 0 0 16px;
+}
+
+.hidden-unlock__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 10px;
+  background: var(--ios-card-bg);
+}
+
+.hidden-unlock__error {
+  margin: 10px 0 0;
+  color: #ff3b30;
+  font-size: 13px;
+}
+
+.hidden-unlock__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.hidden-unlock__actions button {
+  flex: 1;
   border: none;
   background: transparent;
   color: var(--accent);
   font-size: 16px;
-  font-weight: 600;
   cursor: pointer;
 }
 
+.hidden-unlock__submit {
+  font-weight: 600;
+}
+
+.hidden-unlock__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* iOS 17: full-screen lock under the nav bar. */
+.hidden-unlock--mobile {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 48px 32px;
+}
+
+.hidden-unlock--mobile .hidden-unlock__card {
+  width: 100%;
+  max-width: 320px;
+}
+
+/* macOS Sequoia: a centered sheet over a dimmed window. */
+.hidden-unlock--desktop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.hidden-unlock--desktop .hidden-unlock__card {
+  width: 300px;
+  padding: 24px;
+  border-radius: 12px;
+  background: var(--ios-card-bg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+.hidden-unlock--desktop .hidden-unlock__input {
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.hidden-unlock--desktop .hidden-unlock__actions {
+  flex-direction: row-reverse;
+}
+
+.hidden-unlock--desktop .hidden-unlock__actions button {
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: rgba(120, 120, 128, 0.16);
+  color: #1d1d1f;
+}
+
+.hidden-unlock--desktop .hidden-unlock__submit {
+  background: var(--accent);
+  color: #fff;
+}
+
 @media (prefers-color-scheme: dark) {
-  .hidden-confirm h1 {
+  .hidden-unlock h2 {
+    color: #fff;
+  }
+  .hidden-unlock--desktop .hidden-unlock__card {
+    background: #2c2c2e;
+  }
+  .hidden-unlock--desktop .hidden-unlock__actions button {
+    color: #fff;
+  }
+  .hidden-unlock--desktop .hidden-unlock__submit {
+    background: var(--accent);
+  }
+  .hidden-unlock__input {
+    background: #1c1c1e;
     color: #fff;
   }
 }

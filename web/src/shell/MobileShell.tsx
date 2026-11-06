@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
+import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
-import HiddenConfirm from "./more/HiddenConfirm";
 import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
 import MoreScreen from "./more/MoreScreen";
@@ -46,8 +46,7 @@ export default function MobileShell({
   const [route, setRoute] = useState<MobileRoute>(() => parseMobileRoute(window.location.pathname));
   // Resets on every navigation (including browser back/forward into
   // `/hidden`), not just on mount -- Apple re-asks every time you open
-  // Hidden, and #130's password re-ask is a later, stronger version of
-  // this same confirm step.
+  // Hidden. #130: the ask is the account password.
   const [hiddenConfirmed, setHiddenConfirmed] = useState(false);
 
   useEffect(() => {
@@ -93,9 +92,20 @@ export default function MobileShell({
     }
     // route.screen === "hidden"
     if (!hiddenConfirmed) {
-      return <HiddenConfirm onConfirm={() => setHiddenConfirmed(true)} onCancel={() => navigate("/more")} />;
+      return (
+        <div className="mobile-screen">
+          <header className="mobile-screen__header">
+            <button type="button" className="mobile-screen__back" onClick={() => navigate("/more")}>
+              <Icon name="chevron" className="mobile-screen__back-icon" />
+              More
+            </button>
+          </header>
+          <HiddenUnlock variant="mobile" onUnlocked={() => setHiddenConfirmed(true)} onCancel={() => navigate("/more")} />
+        </div>
+      );
     }
     return (
+      <HiddenSession>
       <div className="mobile-screen">
         <header className="mobile-screen__header">
           <button type="button" className="mobile-screen__back" onClick={() => navigate("/more")}>
@@ -108,6 +118,7 @@ export default function MobileShell({
           {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
         </div>
       </div>
+      </HiddenSession>
     );
   }
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { MeResponse } from "../api";
 import AccountMenu from "./AccountMenu";
+import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
@@ -62,6 +63,8 @@ export default function DesktopShell({
   onDeepLinkConsumed?: () => void;
 }) {
   const [view, setView] = useState<"library" | "hidden">("library");
+  // #130: Hidden opens only after a password prompt; cancel stays on `view`.
+  const [unlockPrompt, setUnlockPrompt] = useState(false);
 
   return (
     <div className="shell shell--desktop">
@@ -129,7 +132,7 @@ export default function DesktopShell({
                 type="button"
                 aria-current={view === "hidden" ? "page" : undefined}
                 className="sidebar__item"
-                onClick={() => setView("hidden")}
+                onClick={() => view !== "hidden" && setUnlockPrompt(true)}
               >
                 <Icon name="hidden" className="sidebar__icon" />
                 Hidden
@@ -162,14 +165,14 @@ export default function DesktopShell({
       </aside>
       <div className="shell__main">
         {view === "hidden" ? (
-          <>
+          <HiddenSession>
             <header className="toolbar">
               <h1>Hidden</h1>
             </header>
             <main className="shell__content">
               {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} />}
             </main>
-          </>
+          </HiddenSession>
         ) : (
           <main className="shell__content">
             {activeLibraryId !== undefined ? (
@@ -185,6 +188,16 @@ export default function DesktopShell({
           </main>
         )}
       </div>
+      {unlockPrompt && (
+        <HiddenUnlock
+          variant="desktop"
+          onUnlocked={() => {
+            setUnlockPrompt(false);
+            setView("hidden");
+          }}
+          onCancel={() => setUnlockPrompt(false)}
+        />
+      )}
     </div>
   );
 }
