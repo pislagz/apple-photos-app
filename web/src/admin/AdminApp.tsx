@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./admin.css";
 import { ApiError, getMe, login, type MeResponse } from "./api";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
@@ -48,7 +49,7 @@ export default function AdminApp() {
 
   if (me === null) {
     return (
-      <main>
+      <main className="admin-auth">
         <h1>Sign in</h1>
         {loginError && <p role="alert">{loginError}</p>}
         <form onSubmit={handleLogin}>
@@ -68,7 +69,7 @@ export default function AdminApp() {
 
   if (me.role !== "admin") {
     return (
-      <main>
+      <main className="admin-auth">
         <p role="alert">This account is not an admin.</p>
       </main>
     );
@@ -76,7 +77,7 @@ export default function AdminApp() {
 
   return (
     <div className="admin-app">
-      <nav aria-label="Admin sections">
+      <nav className="admin-nav" aria-label="Admin sections">
         <ul>
           {SCREENS.map((entry) => (
             <li key={entry.key}>
@@ -91,7 +92,7 @@ export default function AdminApp() {
           ))}
         </ul>
       </nav>
-      <main>
+      <main className="admin-main">
         {screen === "libraries" && <LibrariesScreen />}
         {screen === "users" && <UsersScreen />}
         {screen === "sessions" && <SessionsScreen />}

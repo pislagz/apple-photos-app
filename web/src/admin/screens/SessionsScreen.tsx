@@ -30,6 +30,7 @@ export default function SessionsScreen() {
       <h1>Sessions</h1>
       {error && <p role="alert">{error}</p>}
 
+      <div className="admin-table-wrap">
       <table>
         <thead>
           <tr>
@@ -54,6 +55,7 @@ export default function SessionsScreen() {
           ))}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

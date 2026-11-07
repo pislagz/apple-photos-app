@@ -62,6 +62,7 @@ export default function AuditLogScreen() {
         <a href={auditLogCsvUrl(filters())}>Export CSV</a>
       </form>
 
+      <div className="admin-table-wrap">
       <table>
         <thead>
           <tr>
@@ -86,6 +87,7 @@ export default function AuditLogScreen() {
           ))}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }
