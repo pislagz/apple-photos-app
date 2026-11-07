@@ -144,6 +144,22 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("April 18, 2024"));
   });
 
+  it("puts the pinned title and Select in one flex top bar (#159)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const title = await screen.findByTestId("pinned-header");
+    const select = screen.getByRole("button", { name: "Select" });
+    const bar = screen.getByTestId("top-bar");
+    expect(title.parentElement).toBe(bar);
+    expect(select.parentElement).toBe(bar);
+    // Select follows the title in flow, so the two cannot overlap.
+    expect(title.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(select);
+    expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
+  });
+
   it("changes the column count on a pinch gesture", async () => {
     const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
     mockAssets(items);

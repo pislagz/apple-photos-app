@@ -151,3 +151,24 @@ test("admin panel", async ({ page }, info) => {
   await page.waitForTimeout(500);
   await shot(page, "10-admin", info.project.name);
 });
+
+test("phone title never overlaps Select or the account button (#159)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone widths only");
+  await signIn(page);
+  const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  for (const label of ["All Photos", "Years", "Months", "Days"]) {
+    await openZoom(page, label);
+    await page.waitForTimeout(300);
+    const select = page.getByRole("button", { name: "Select", exact: true });
+    const title = page.getByTestId("pinned-header");
+    const account = page.locator(".account-menu__trigger");
+    const sb = (await select.count()) ? await select.boundingBox() : null;
+    const tb = (await title.count()) ? await title.boundingBox() : null;
+    const ab = await account.boundingBox();
+    if (sb && tb) expect(intersects(tb, sb), `${label}: title vs Select`).toBe(false);
+    if (tb && ab) expect(intersects(tb, ab), `${label}: title vs account`).toBe(false);
+    if (sb && ab) expect(intersects(sb, ab), `${label}: Select vs account`).toBe(false);
+    if (sb) expect(sb.x + sb.width, `${label}: Select inside viewport`).toBeLessThanOrEqual(info.project.use.viewport!.width);
+  }
+});
