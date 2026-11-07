@@ -30,10 +30,13 @@ export default function MobileLibrary({
   libraryId,
   initialAssetId,
   onInitialAssetOpened,
+  resetSignal = 0,
 }: {
   libraryId: number;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
+  // Bumped by the shell when the already-active Library tab is tapped again.
+  resetSignal?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewKey>("years");
@@ -61,6 +64,18 @@ export default function MobileLibrary({
     const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize);
     if (row && assetId) pinchAnchor.current = { assetId, rowFraction: (y - row.start) / row.size, viewportY };
   });
+  // #146: back to the newest photos -- drop the Month -> Days anchor and
+  // scroll to the top. Re-selecting a zoom tab or the Library tab does this.
+  const backToNewest = useCallback(() => {
+    setDaysAnchor(null);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, []);
+  const lastResetSignal = useRef(resetSignal);
+  useEffect(() => {
+    if (lastResetSignal.current === resetSignal) return;
+    lastResetSignal.current = resetSignal;
+    backToNewest();
+  }, [resetSignal, backToNewest]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   // Set right before drilling Years -> Months, so the scroll effect below
   // can land on the tapped year's own tile once Months' rows exist.
@@ -249,7 +264,7 @@ export default function MobileLibrary({
                 // clear any stale Month -> Days anchor so tapping Days here
                 // starts at the top of the library, not back at the last
                 // drilled-into month.
-                setDaysAnchor(null);
+                backToNewest();
                 setView(item.key);
               }}
             >
