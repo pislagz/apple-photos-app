@@ -151,15 +151,23 @@ export function getHidden(libraryId: number): Promise<AssetListResponse> {
 // anchors the first page at a given local day (#91's Month -> Days
 // drill-down), so landing on a month deep in the library pages back from
 // that month instead of from the top of the whole library.
+// `filter` (#132, desktop Filter By) maps onto the server's `type` and
+// `favorite` query params; "all" sends neither.
+export type AssetFilter = "all" | "favorites" | "photos" | "videos";
+
 export function getAssets(
   libraryId: number,
   cursor: string | null,
   limit = 200,
   to: string | null = null,
+  filter: AssetFilter = "all",
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
   if (to) params.set("to", to);
+  if (filter === "favorites") params.set("favorite", "true");
+  else if (filter === "photos") params.set("type", "photo");
+  else if (filter === "videos") params.set("type", "video");
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
 }
 
