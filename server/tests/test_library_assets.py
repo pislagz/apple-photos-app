@@ -23,7 +23,9 @@ def _client(tmp_path):
     app = create_app()
     conn = app_db.connect(tmp_path / "data")
     app.dependency_overrides[session_auth.get_db] = lambda: conn
-    app.dependency_overrides[session_auth.get_media_cache_dir] = lambda: tmp_path / "media_cache"
+    app.dependency_overrides[session_auth.get_media_cache_dir] = lambda: (
+        tmp_path / "media_cache"
+    )
     return conn, TestClient(app, base_url="https://testserver")
 
 
@@ -33,27 +35,41 @@ def _create_user(conn, username, *, role="user"):
         (username, session_auth.hash_password(VALID_PASSWORD), role),
     )
     conn.commit()
-    return conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+    return conn.execute(
+        "SELECT id FROM users WHERE username = ?", (username,)
+    ).fetchone()["id"]
 
 
 def _create_library(conn, display_name, *, path):
-    conn.execute("INSERT INTO libraries (display_name, path) VALUES (?, ?)", (display_name, str(path)))
+    conn.execute(
+        "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
+        (display_name, str(path)),
+    )
     conn.commit()
-    return conn.execute("SELECT id FROM libraries WHERE display_name = ?", (display_name,)).fetchone()["id"]
+    return conn.execute(
+        "SELECT id FROM libraries WHERE display_name = ?", (display_name,)
+    ).fetchone()["id"]
 
 
 def _assign(conn, user_id, library_id):
-    conn.execute("INSERT INTO library_assignments (user_id, library_id) VALUES (?, ?)", (user_id, library_id))
+    conn.execute(
+        "INSERT INTO library_assignments (user_id, library_id) VALUES (?, ?)",
+        (user_id, library_id),
+    )
     conn.commit()
 
 
 def _login(client, username):
-    response = client.post("/api/auth/login", json={"username": username, "password": VALID_PASSWORD})
+    response = client.post(
+        "/api/auth/login", json={"username": username, "password": VALID_PASSWORD}
+    )
     assert response.status_code == 200, response.text
 
 
 def _unlock_hidden(client):
-    response = client.post("/api/auth/reconfirm-password", json={"password": VALID_PASSWORD})
+    response = client.post(
+        "/api/auth/reconfirm-password", json={"password": VALID_PASSWORD}
+    )
     assert response.status_code == 204, response.text
 
 
@@ -67,10 +83,13 @@ def _insert_asset(conn, library_id, asset_uuid, **overrides):
     }
     names = ", ".join(columns)
     placeholders = ", ".join("?" for _ in columns)
-    conn.execute(f"INSERT INTO assets ({names}) VALUES ({placeholders})", tuple(columns.values()))
+    conn.execute(
+        f"INSERT INTO assets ({names}) VALUES ({placeholders})", tuple(columns.values())
+    )
     conn.commit()
     return conn.execute(
-        "SELECT id FROM assets WHERE library_id = ? AND uuid = ?", (library_id, asset_uuid)
+        "SELECT id FROM assets WHERE library_id = ? AND uuid = ?",
+        (library_id, asset_uuid),
     ).fetchone()["id"]
 
 
@@ -120,7 +139,9 @@ def test_layout_override_is_stored_server_side(tmp_path):
         _create_user(conn, "alice")
         _login(client, "alice")
 
-        response = client.put("/api/me/layout-override", json={"layout_override": "mobile"})
+        response = client.put(
+            "/api/me/layout-override", json={"layout_override": "mobile"}
+        )
         assert response.status_code == 204
 
         assert client.get("/api/me").json()["layout_override"] == "mobile"
@@ -142,7 +163,9 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
         _insert_asset(conn, library_id, "oldest", date_created="2024-01-01T00:00:00")
         _login(client, "alice")
 
-        first_page = client.get(f"/api/libraries/{library_id}/assets", params={"limit": 2})
+        first_page = client.get(
+            f"/api/libraries/{library_id}/assets", params={"limit": 2}
+        )
         assert first_page.status_code == 200
         first_body = first_page.json()
         assert [item["id"] for item in first_body["items"]] == ["newest", "middle"]
@@ -150,10 +173,13 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
 
         # Simulate a re-index inserting a row newer than anything paged so far --
         # it sorts "above" the cursor and must not perturb the next page.
-        _insert_asset(conn, library_id, "inserted-later", date_created="2024-01-05T00:00:00")
+        _insert_asset(
+            conn, library_id, "inserted-later", date_created="2024-01-05T00:00:00"
+        )
 
         second_page = client.get(
-            f"/api/libraries/{library_id}/assets", params={"limit": 2, "cursor": first_body["next_cursor"]}
+            f"/api/libraries/{library_id}/assets",
+            params={"limit": 2, "cursor": first_body["next_cursor"]},
         )
         assert second_page.status_code == 200
         second_body = second_page.json()
@@ -173,7 +199,9 @@ def test_list_assets_filters_by_type(tmp_path):
         _insert_asset(conn, library_id, "a-video", is_video=1)
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"type": "video"})
+        response = client.get(
+            f"/api/libraries/{library_id}/assets", params={"type": "video"}
+        )
 
         assert response.status_code == 200
         assert [item["id"] for item in response.json()["items"]] == ["a-video"]
@@ -190,7 +218,9 @@ def test_list_assets_album_filter_returns_empty_until_phase_2(tmp_path):
         _insert_asset(conn, library_id, "a-photo")
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"album": "anything"})
+        response = client.get(
+            f"/api/libraries/{library_id}/assets", params={"album": "anything"}
+        )
 
         assert response.status_code == 200
         assert response.json() == {"items": [], "next_cursor": None}
@@ -226,7 +256,9 @@ def test_list_assets_album_and_person_filters_stay_empty_with_a_hidden_asset(tmp
         _insert_asset(conn, library_id, "hidden-one", hidden=1)
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"album": "anything"})
+        response = client.get(
+            f"/api/libraries/{library_id}/assets", params={"album": "anything"}
+        )
 
         assert response.status_code == 200
         assert response.json() == {"items": [], "next_cursor": None}
@@ -249,9 +281,14 @@ def test_hidden_endpoint_lists_only_hidden_and_respects_type_filter(tmp_path):
         response = client.get(f"/api/libraries/{library_id}/hidden")
 
         assert response.status_code == 200
-        assert {item["id"] for item in response.json()["items"]} == {"hidden-photo", "hidden-video"}
+        assert {item["id"] for item in response.json()["items"]} == {
+            "hidden-photo",
+            "hidden-video",
+        }
 
-        filtered = client.get(f"/api/libraries/{library_id}/hidden", params={"type": "video"})
+        filtered = client.get(
+            f"/api/libraries/{library_id}/hidden", params={"type": "video"}
+        )
         assert filtered.status_code == 200
         assert [item["id"] for item in filtered.json()["items"]] == ["hidden-video"]
     finally:
@@ -264,19 +301,26 @@ def test_hidden_endpoint_pagination_cursor_works_like_assets(tmp_path):
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "newest", hidden=1, date_created="2024-01-03T00:00:00")
-        _insert_asset(conn, library_id, "oldest", hidden=1, date_created="2024-01-01T00:00:00")
+        _insert_asset(
+            conn, library_id, "newest", hidden=1, date_created="2024-01-03T00:00:00"
+        )
+        _insert_asset(
+            conn, library_id, "oldest", hidden=1, date_created="2024-01-01T00:00:00"
+        )
         _login(client, "alice")
         _unlock_hidden(client)
 
-        first_page = client.get(f"/api/libraries/{library_id}/hidden", params={"limit": 1})
+        first_page = client.get(
+            f"/api/libraries/{library_id}/hidden", params={"limit": 1}
+        )
         assert first_page.status_code == 200
         first_body = first_page.json()
         assert [item["id"] for item in first_body["items"]] == ["newest"]
         assert first_body["next_cursor"] is not None
 
         second_page = client.get(
-            f"/api/libraries/{library_id}/hidden", params={"limit": 1, "cursor": first_body["next_cursor"]}
+            f"/api/libraries/{library_id}/hidden",
+            params={"limit": 1, "cursor": first_body["next_cursor"]},
         )
         assert second_page.status_code == 200
         assert [item["id"] for item in second_page.json()["items"]] == ["oldest"]
@@ -327,7 +371,9 @@ def test_summary_counts_by_year_month_day(tmp_path):
         years_2023 = next(bucket for bucket in body["years"] if bucket["key"] == "2023")
         assert years_2023["count"] == 1
         assert years_2023["key_asset_ids"] == ["c"]
-        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        months_2024_01 = next(
+            bucket for bucket in body["months"] if bucket["key"] == "2024-01"
+        )
         assert months_2024_01["count"] == 2
         assert set(months_2024_01["key_asset_ids"]) == {"a", "b"}
         assert {"key": "2024-01-01", "count": 1} in body["days"]
@@ -335,28 +381,58 @@ def test_summary_counts_by_year_month_day(tmp_path):
         conn.close()
 
 
-def test_summary_key_asset_ids_rank_favorite_then_score_then_recency_and_cap_at_five(tmp_path):
+def test_summary_key_asset_ids_rank_favorite_then_score_then_recency_and_cap_at_five(
+    tmp_path,
+):
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _assign(conn, user_id, library_id)
         # Lower score but favorited -- outranks every non-favorite.
-        _insert_asset(conn, library_id, "favorite", date_created="2024-01-01T00:00:00", favorite=1, score=0.1)
-        _insert_asset(conn, library_id, "high-score", date_created="2024-01-02T00:00:00", score=0.9)
-        _insert_asset(conn, library_id, "low-score", date_created="2024-01-03T00:00:00", score=0.2)
+        _insert_asset(
+            conn,
+            library_id,
+            "favorite",
+            date_created="2024-01-01T00:00:00",
+            favorite=1,
+            score=0.1,
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "high-score",
+            date_created="2024-01-02T00:00:00",
+            score=0.9,
+        )
+        _insert_asset(
+            conn, library_id, "low-score", date_created="2024-01-03T00:00:00", score=0.2
+        )
         _insert_asset(conn, library_id, "no-score", date_created="2024-01-04T00:00:00")
         for day in range(5, 9):
-            _insert_asset(conn, library_id, f"filler-{day}", date_created=f"2024-01-0{day}T00:00:00")
+            _insert_asset(
+                conn,
+                library_id,
+                f"filler-{day}",
+                date_created=f"2024-01-0{day}T00:00:00",
+            )
         _login(client, "alice")
 
         response = client.get(f"/api/libraries/{library_id}/summary")
 
         assert response.status_code == 200
         body = response.json()
-        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        months_2024_01 = next(
+            bucket for bucket in body["months"] if bucket["key"] == "2024-01"
+        )
         assert months_2024_01["count"] == 8
-        assert months_2024_01["key_asset_ids"] == ["favorite", "high-score", "low-score", "filler-8", "filler-7"]
+        assert months_2024_01["key_asset_ids"] == [
+            "favorite",
+            "high-score",
+            "low-score",
+            "filler-8",
+            "filler-7",
+        ]
     finally:
         conn.close()
 
@@ -368,7 +444,9 @@ def test_summary_excludes_hidden(tmp_path):
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _assign(conn, user_id, library_id)
         _insert_asset(conn, library_id, "visible", date_created="2024-01-01T00:00:00")
-        _insert_asset(conn, library_id, "hidden-one", date_created="2024-01-01T00:00:00", hidden=1)
+        _insert_asset(
+            conn, library_id, "hidden-one", date_created="2024-01-01T00:00:00", hidden=1
+        )
         _login(client, "alice")
 
         response = client.get(f"/api/libraries/{library_id}/summary")
@@ -378,7 +456,9 @@ def test_summary_excludes_hidden(tmp_path):
         years_2024 = next(bucket for bucket in body["years"] if bucket["key"] == "2024")
         assert years_2024["count"] == 1
         assert years_2024["key_asset_ids"] == ["visible"]
-        months_2024_01 = next(bucket for bucket in body["months"] if bucket["key"] == "2024-01")
+        months_2024_01 = next(
+            bucket for bucket in body["months"] if bucket["key"] == "2024-01"
+        )
         assert months_2024_01["count"] == 1
         assert months_2024_01["key_asset_ids"] == ["visible"]
         assert {"key": "2024-01-01", "count": 1} in body["days"]
@@ -386,7 +466,9 @@ def test_summary_excludes_hidden(tmp_path):
         conn.close()
 
 
-def test_list_assets_does_not_return_a_next_cursor_on_an_exactly_full_last_page(tmp_path):
+def test_list_assets_does_not_return_a_next_cursor_on_an_exactly_full_last_page(
+    tmp_path,
+):
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
@@ -396,7 +478,9 @@ def test_list_assets_does_not_return_a_next_cursor_on_an_exactly_full_last_page(
         _insert_asset(conn, library_id, "b", date_created="2024-01-01T00:00:00")
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"limit": 2})
+        response = client.get(
+            f"/api/libraries/{library_id}/assets", params={"limit": 2}
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -450,13 +534,15 @@ def test_list_assets_from_to_filters_by_local_day_not_utc_day(tmp_path):
         _login(client, "alice")
 
         included = client.get(
-            f"/api/libraries/{library_id}/assets", params={"from": "2024-01-01", "to": "2024-01-01"}
+            f"/api/libraries/{library_id}/assets",
+            params={"from": "2024-01-01", "to": "2024-01-01"},
         )
         assert included.status_code == 200
         assert [item["id"] for item in included.json()["items"]] == ["late-evening"]
 
         excluded = client.get(
-            f"/api/libraries/{library_id}/assets", params={"from": "2024-01-02", "to": "2024-01-02"}
+            f"/api/libraries/{library_id}/assets",
+            params={"from": "2024-01-02", "to": "2024-01-02"},
         )
         assert excluded.status_code == 200
         assert excluded.json()["items"] == []
@@ -475,11 +561,24 @@ def test_asset_detail_includes_people_and_albums(tmp_path):
             "INSERT INTO people (library_id, uuid, name, display_name) VALUES (?, 'p1', 'Alice', NULL)",
             (library_id,),
         )
-        person_id = conn.execute("SELECT id FROM people WHERE uuid = 'p1'").fetchone()["id"]
-        conn.execute("INSERT INTO asset_people (asset_id, person_id) VALUES (?, ?)", (asset_row_id, person_id))
-        conn.execute("INSERT INTO albums (library_id, uuid, title) VALUES (?, 'al1', 'Trip')", (library_id,))
-        album_id = conn.execute("SELECT id FROM albums WHERE uuid = 'al1'").fetchone()["id"]
-        conn.execute("INSERT INTO asset_albums (asset_id, album_id) VALUES (?, ?)", (asset_row_id, album_id))
+        person_id = conn.execute("SELECT id FROM people WHERE uuid = 'p1'").fetchone()[
+            "id"
+        ]
+        conn.execute(
+            "INSERT INTO asset_people (asset_id, person_id) VALUES (?, ?)",
+            (asset_row_id, person_id),
+        )
+        conn.execute(
+            "INSERT INTO albums (library_id, uuid, title) VALUES (?, 'al1', 'Trip')",
+            (library_id,),
+        )
+        album_id = conn.execute("SELECT id FROM albums WHERE uuid = 'al1'").fetchone()[
+            "id"
+        ]
+        conn.execute(
+            "INSERT INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
+            (asset_row_id, album_id),
+        )
         conn.commit()
         _login(client, "alice")
 
@@ -501,7 +600,9 @@ def test_asset_detail_includes_camera_make_and_model(tmp_path):
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", camera_make="Apple", camera_model="iPhone 15 Pro")
+        _insert_asset(
+            conn, library_id, "a", camera_make="Apple", camera_model="iPhone 15 Pro"
+        )
         _login(client, "alice")
 
         response = client.get(f"/api/libraries/{library_id}/assets/a")
@@ -519,7 +620,9 @@ def test_asset_detail_cross_library_asset_id_404s(tmp_path):
     try:
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
-        other_library_id = _create_library(conn, "L2", path=tmp_path / "L2.photoslibrary")
+        other_library_id = _create_library(
+            conn, "L2", path=tmp_path / "L2.photoslibrary"
+        )
         _assign(conn, user_id, library_id)
         _insert_asset(conn, other_library_id, "in-l2")
         _login(client, "alice")
@@ -548,7 +651,9 @@ def test_asset_detail_unassigned_library_404s(tmp_path):
         conn.close()
 
 
-def _library_root_with_jpeg(tmp_path, name="photo.jpg", *, size=(800, 600), content: bytes | None = None):
+def _library_root_with_jpeg(
+    tmp_path, name="photo.jpg", *, size=(800, 600), content: bytes | None = None
+):
     library_path = tmp_path / "L1.photoslibrary"
     originals = library_path / "originals"
     originals.mkdir(parents=True, exist_ok=True)
@@ -571,7 +676,9 @@ def test_thumb_returns_generated_image(tmp_path, monkeypatch):
         _insert_asset(conn, library_id, "a", path_original=str(file_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+        response = client.get(
+            f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"}
+        )
 
         assert response.status_code == 200
         assert response.headers["content-type"] in ("image/webp", "image/jpeg")
@@ -624,39 +731,65 @@ def test_thumb_prefers_edited_version_when_present(tmp_path, monkeypatch):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     conn, client = _client(tmp_path)
     try:
-        library_path, original_path = _library_root_with_jpeg(tmp_path, name="original.jpg")
+        library_path, original_path = _library_root_with_jpeg(
+            tmp_path, name="original.jpg"
+        )
         edited_path = original_path.parent / "edited.jpg"
-        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(edited_path, format="JPEG")
+        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(
+            edited_path, format="JPEG"
+        )
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path))
+        _insert_asset(
+            conn,
+            library_id,
+            "a",
+            path_original=str(original_path),
+            path_edited=str(edited_path),
+        )
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+        response = client.get(
+            f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"}
+        )
 
         assert response.status_code == 200
-        assert _dominant_channel(response.content) == "r"  # edited.jpg's (200, 60, 10), not original's (10, 20, 30)
+        assert (
+            _dominant_channel(response.content) == "r"
+        )  # edited.jpg's (200, 60, 10), not original's (10, 20, 30)
     finally:
         conn.close()
 
 
-def test_thumb_reverts_to_original_after_edit_removed_with_no_stale_cache(tmp_path, monkeypatch):
+def test_thumb_reverts_to_original_after_edit_removed_with_no_stale_cache(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     conn, client = _client(tmp_path)
     try:
-        library_path, original_path = _library_root_with_jpeg(tmp_path, name="original.jpg")
+        library_path, original_path = _library_root_with_jpeg(
+            tmp_path, name="original.jpg"
+        )
         edited_path = original_path.parent / "edited.jpg"
-        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(edited_path, format="JPEG")
+        Image.new("RGB", (800, 600), color=(200, 60, 10)).save(
+            edited_path, format="JPEG"
+        )
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
         asset_pk = _insert_asset(
-            conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path)
+            conn,
+            library_id,
+            "a",
+            path_original=str(original_path),
+            path_edited=str(edited_path),
         )
         _login(client, "alice")
 
-        edited_response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+        edited_response = client.get(
+            f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"}
+        )
         assert _dominant_channel(edited_response.content) == "r"
 
         # A re-index that picks up a revert clears path_edited via the same
@@ -664,10 +797,14 @@ def test_thumb_reverts_to_original_after_edit_removed_with_no_stale_cache(tmp_pa
         conn.execute("UPDATE assets SET path_edited = NULL WHERE id = ?", (asset_pk,))
         conn.commit()
 
-        reverted_response = client.get(f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"})
+        reverted_response = client.get(
+            f"/api/libraries/{library_id}/thumb/a", params={"size": "grid"}
+        )
 
         assert reverted_response.status_code == 200
-        assert _dominant_channel(reverted_response.content) == "b"  # original.jpg's (10, 20, 30)
+        assert (
+            _dominant_channel(reverted_response.content) == "b"
+        )  # original.jpg's (10, 20, 30)
         assert reverted_response.content != edited_response.content
     finally:
         conn.close()
@@ -676,14 +813,18 @@ def test_thumb_reverts_to_original_after_edit_removed_with_no_stale_cache(tmp_pa
 def test_original_native_download_supports_range_206(tmp_path):
     conn, client = _client(tmp_path)
     try:
-        library_path, file_path = _library_root_with_jpeg(tmp_path, content=b"0123456789")
+        library_path, file_path = _library_root_with_jpeg(
+            tmp_path, content=b"0123456789"
+        )
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
         _insert_asset(conn, library_id, "a", path_original=str(file_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", headers={"Range": "bytes=2-4"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", headers={"Range": "bytes=2-4"}
+        )
 
         assert response.status_code == 206
         assert response.content == b"234"
@@ -704,14 +845,22 @@ def test_original_version_param_selects_edited_or_original_bytes(tmp_path):
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", path_original=str(original_path), path_edited=str(edited_path))
+        _insert_asset(
+            conn,
+            library_id,
+            "a",
+            path_original=str(original_path),
+            path_edited=str(edited_path),
+        )
         _login(client, "alice")
 
         # The route itself always defaults to "original" -- the P1.17b
         # edited-by-default behaviour lives in the client, which passes
         # `version=edited` explicitly once it knows `has_edited` is true.
         default_response = client.get(f"/api/libraries/{library_id}/original/a")
-        edited_response = client.get(f"/api/libraries/{library_id}/original/a", params={"version": "edited"})
+        edited_response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"version": "edited"}
+        )
 
         assert default_response.content == b"original bytes"
         assert edited_response.content == b"edited bytes"
@@ -726,10 +875,14 @@ def test_original_edited_version_404s_when_path_edited_absent(tmp_path):
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", path_original=str(file_path))  # path_edited left NULL
+        _insert_asset(
+            conn, library_id, "a", path_original=str(file_path)
+        )  # path_edited left NULL
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"version": "edited"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"version": "edited"}
+        )
 
         assert response.status_code == 404
     finally:
@@ -745,7 +898,9 @@ def test_original_format_jpeg_transcodes_heic(tmp_path, monkeypatch):
         originals.mkdir(parents=True)
         heic_path = originals / "a.heic"
         buffer = io.BytesIO()
-        Image.new("RGB", (32, 24), color=(120, 160, 200)).save(buffer, format="HEIF", quality=50)
+        Image.new("RGB", (32, 24), color=(120, 160, 200)).save(
+            buffer, format="HEIF", quality=50
+        )
         heic_path.write_bytes(buffer.getvalue())
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
@@ -753,7 +908,9 @@ def test_original_format_jpeg_transcodes_heic(tmp_path, monkeypatch):
         _insert_asset(conn, library_id, "a", path_original=str(heic_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"format": "jpeg"}
+        )
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "image/jpeg"
@@ -773,10 +930,14 @@ def test_original_download_writes_an_audit_row(tmp_path):
         asset_pk = _insert_asset(conn, library_id, "a", path_original=str(file_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"download": "1"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"download": "1"}
+        )
 
         assert response.status_code == 200
-        row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM audit_log WHERE action = 'download'"
+        ).fetchone()
         assert row is not None
         assert row["user_id"] == user_id
         assert row["library_id"] == library_id
@@ -802,7 +963,10 @@ def test_original_without_download_marker_writes_no_audit_row(tmp_path):
         response = client.get(f"/api/libraries/{library_id}/original/a")
 
         assert response.status_code == 200
-        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+        assert (
+            conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+            is None
+        )
     finally:
         conn.close()
 
@@ -817,16 +981,22 @@ def test_original_download_marker_writes_exactly_one_audit_row(tmp_path):
         _insert_asset(conn, library_id, "a", path_original=str(file_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"download": "1"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"download": "1"}
+        )
 
         assert response.status_code == 200
-        rows = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM audit_log WHERE action = 'download'"
+        ).fetchall()
         assert len(rows) == 1
     finally:
         conn.close()
 
 
-def test_original_download_of_another_users_library_404s_and_writes_no_audit_row(tmp_path):
+def test_original_download_of_another_users_library_404s_and_writes_no_audit_row(
+    tmp_path,
+):
     conn, client = _client(tmp_path)
     try:
         library_path, file_path = _library_root_with_jpeg(tmp_path)
@@ -840,25 +1010,37 @@ def test_original_download_of_another_users_library_404s_and_writes_no_audit_row
         response = client.get(f"/api/libraries/{library_id}/original/a")
 
         assert response.status_code == 404
-        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+        assert (
+            conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+            is None
+        )
     finally:
         conn.close()
 
 
-def test_original_download_of_missing_edited_version_404s_and_writes_no_audit_row(tmp_path):
+def test_original_download_of_missing_edited_version_404s_and_writes_no_audit_row(
+    tmp_path,
+):
     conn, client = _client(tmp_path)
     try:
         library_path, file_path = _library_root_with_jpeg(tmp_path)
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", path_original=str(file_path))  # path_edited left NULL
+        _insert_asset(
+            conn, library_id, "a", path_original=str(file_path)
+        )  # path_edited left NULL
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"version": "edited"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a", params={"version": "edited"}
+        )
 
         assert response.status_code == 404
-        assert conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone() is None
+        assert (
+            conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+            is None
+        )
     finally:
         conn.close()
 
@@ -872,7 +1054,9 @@ def test_original_format_jpeg_download_writes_an_audit_row(tmp_path, monkeypatch
         originals.mkdir(parents=True)
         heic_path = originals / "a.heic"
         buffer = io.BytesIO()
-        Image.new("RGB", (32, 24), color=(120, 160, 200)).save(buffer, format="HEIF", quality=50)
+        Image.new("RGB", (32, 24), color=(120, 160, 200)).save(
+            buffer, format="HEIF", quality=50
+        )
         heic_path.write_bytes(buffer.getvalue())
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
@@ -880,10 +1064,15 @@ def test_original_format_jpeg_download_writes_an_audit_row(tmp_path, monkeypatch
         _insert_asset(conn, library_id, "a", path_original=str(heic_path))
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg", "download": "1"})
+        response = client.get(
+            f"/api/libraries/{library_id}/original/a",
+            params={"format": "jpeg", "download": "1"},
+        )
 
         assert response.status_code == 200
-        row = conn.execute("SELECT * FROM audit_log WHERE action = 'download'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM audit_log WHERE action = 'download'"
+        ).fetchone()
         assert row is not None
         assert row["user_id"] == user_id
         assert row["detail"] == "version=original format=jpeg"
@@ -898,7 +1087,9 @@ def test_livephoto_video_missing_404s(tmp_path):
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "a", path_original=str(file_path))  # no path_live_photo
+        _insert_asset(
+            conn, library_id, "a", path_original=str(file_path)
+        )  # no path_live_photo
         _login(client, "alice")
 
         response = client.get(f"/api/libraries/{library_id}/livephoto/a/video")
@@ -944,8 +1135,11 @@ def test_livephoto_video_prefers_edited_over_original(tmp_path):
         library_id = _create_library(conn, "L1", path=library_path)
         _assign(conn, user_id, library_id)
         _insert_asset(
-            conn, library_id, "a",
-            path_live_photo=str(original_video), path_edited_live_photo=str(edited_video),
+            conn,
+            library_id,
+            "a",
+            path_live_photo=str(original_video),
+            path_edited_live_photo=str(edited_video),
         )
         _login(client, "alice")
 
@@ -1015,7 +1209,9 @@ def test_hidden_unlock_expires(tmp_path):
         _assign(conn, user_id, library_id)
         _login(client, "alice")
         _unlock_hidden(client)
-        conn.execute("UPDATE sessions SET hidden_unlocked_until = datetime('now', '-1 seconds')")
+        conn.execute(
+            "UPDATE sessions SET hidden_unlocked_until = datetime('now', '-1 seconds')"
+        )
         conn.commit()
 
         assert client.get(f"/api/libraries/{library_id}/hidden").status_code == 403
@@ -1038,16 +1234,46 @@ def test_foreign_library_hidden_still_404s_even_when_unlocked(tmp_path):
         conn.close()
 
 
-def test_favorite_filter_lists_only_favorites_and_combines_with_type_and_cursor(tmp_path):
+def test_favorite_filter_lists_only_favorites_and_combines_with_type_and_cursor(
+    tmp_path,
+):
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
         library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _assign(conn, user_id, library_id)
-        _insert_asset(conn, library_id, "fav-photo-new", favorite=1, is_video=0, date_created="2024-01-05T00:00:00")
-        _insert_asset(conn, library_id, "plain-photo", favorite=0, is_video=0, date_created="2024-01-04T00:00:00")
-        _insert_asset(conn, library_id, "fav-video", favorite=1, is_video=1, date_created="2024-01-03T00:00:00")
-        _insert_asset(conn, library_id, "fav-photo-old", favorite=1, is_video=0, date_created="2024-01-02T00:00:00")
+        _insert_asset(
+            conn,
+            library_id,
+            "fav-photo-new",
+            favorite=1,
+            is_video=0,
+            date_created="2024-01-05T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "plain-photo",
+            favorite=0,
+            is_video=0,
+            date_created="2024-01-04T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "fav-video",
+            favorite=1,
+            is_video=1,
+            date_created="2024-01-03T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "fav-photo-old",
+            favorite=1,
+            is_video=0,
+            date_created="2024-01-02T00:00:00",
+        )
         _login(client, "alice")
         url = f"/api/libraries/{library_id}/assets"
 
@@ -1062,11 +1288,19 @@ def test_favorite_filter_lists_only_favorites_and_combines_with_type_and_cursor(
         assert ids(favorite="true", type="photo") == ["fav-photo-new", "fav-photo-old"]
         assert ids(favorite="true", type="video") == ["fav-video"]
 
-        first = client.get(url, params={"favorite": "true", "type": "photo", "limit": 1}).json()
+        first = client.get(
+            url, params={"favorite": "true", "type": "photo", "limit": 1}
+        ).json()
         assert [item["id"] for item in first["items"]] == ["fav-photo-new"]
         assert first["next_cursor"]
         second = client.get(
-            url, params={"favorite": "true", "type": "photo", "limit": 1, "cursor": first["next_cursor"]}
+            url,
+            params={
+                "favorite": "true",
+                "type": "photo",
+                "limit": 1,
+                "cursor": first["next_cursor"],
+            },
         ).json()
         assert [item["id"] for item in second["items"]] == ["fav-photo-old"]
         assert second["next_cursor"] is None

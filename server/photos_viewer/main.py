@@ -28,7 +28,9 @@ from .session_auth import (
 from .session_auth import router as auth_router
 
 # server/photos_viewer/main.py -> server/photos_viewer -> server -> repo root
-_DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+_DEFAULT_WEB_DIST_DIR = (
+    pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+)
 
 # Session/account state that must never be served from a disk or history
 # cache -- `/api/me` and `/api/auth/*` carry who-is-signed-in, `/api/setup/*`
@@ -38,7 +40,9 @@ _NO_STORE_PREFIXES = ("/api/me", "/api/auth/", "/api/setup/", "/api/admin/")
 
 
 class _NoStoreMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
         if request.url.path.startswith(_NO_STORE_PREFIXES):
             response.headers["Cache-Control"] = "no-store"

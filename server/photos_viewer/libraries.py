@@ -129,7 +129,9 @@ def library_is_locked(package_path: str | pathlib.Path) -> bool:
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=1)
         try:
-            conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;").fetchall()
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+            ).fetchall()
         finally:
             conn.close()
     except sqlite3.Error:
@@ -184,4 +186,6 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
         if tempdir is not None:
             shutil.rmtree(tempdir, ignore_errors=True)
         raise
-    return OpenLibrary(db=db, library_path=package_path, open_mode=open_mode, _tempdir=tempdir)
+    return OpenLibrary(
+        db=db, library_path=package_path, open_mode=open_mode, _tempdir=tempdir
+    )

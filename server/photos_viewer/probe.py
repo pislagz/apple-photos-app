@@ -18,7 +18,10 @@ from .libraries import UnsupportedPhotosVersionError, open_library_readonly
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
-        print("usage: python -m photos_viewer.probe /path/to/Library.photoslibrary", file=sys.stderr)
+        print(
+            "usage: python -m photos_viewer.probe /path/to/Library.photoslibrary",
+            file=sys.stderr,
+        )
         return 2
 
     try:

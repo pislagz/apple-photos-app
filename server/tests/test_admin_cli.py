@@ -84,7 +84,9 @@ def test_unlock_clear_ip_limits_also_clears_the_per_client_counters(data_dir):
         conn.close()
 
 
-def test_unlock_clear_ip_limits_restores_login_after_hitting_the_coarse_per_peer_ceiling(data_dir, monkeypatch):
+def test_unlock_clear_ip_limits_restores_login_after_hitting_the_coarse_per_peer_ceiling(
+    data_dir, monkeypatch
+):
     """Issue #22 B: `--clear-ip-limits` is also the recovery for
     `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`'s shared lockout (see
     `server/README.md`), not just the fine per-client limit -- both counters
@@ -94,8 +96,15 @@ def test_unlock_clear_ip_limits_restores_login_after_hitting_the_coarse_per_peer
     conn = app_db.connect(data_dir)
     try:
         for user in range(9):
-            session_auth.record_ip_login_failure(conn, f"tailscale-user:rotating-{user}", "172.17.0.1")
-        assert session_auth.is_ip_locked_out(conn, "tailscale-user:rotating-9", "172.17.0.1") is True
+            session_auth.record_ip_login_failure(
+                conn, f"tailscale-user:rotating-{user}", "172.17.0.1"
+            )
+        assert (
+            session_auth.is_ip_locked_out(
+                conn, "tailscale-user:rotating-9", "172.17.0.1"
+            )
+            is True
+        )
     finally:
         conn.close()
 
@@ -104,7 +113,12 @@ def test_unlock_clear_ip_limits_restores_login_after_hitting_the_coarse_per_peer
     assert exit_code == 0
     conn = app_db.connect(data_dir)
     try:
-        assert session_auth.is_ip_locked_out(conn, "tailscale-user:rotating-9", "172.17.0.1") is False
+        assert (
+            session_auth.is_ip_locked_out(
+                conn, "tailscale-user:rotating-9", "172.17.0.1"
+            )
+            is False
+        )
     finally:
         conn.close()
 
@@ -146,8 +160,12 @@ def test_unlock_writes_an_audit_row_with_the_cli_actor(data_dir):
 
     conn = app_db.connect(data_dir)
     try:
-        bob_id = conn.execute("SELECT id FROM users WHERE username = 'bob'").fetchone()["id"]
-        row = conn.execute("SELECT * FROM audit_log WHERE action = 'unlock_user'").fetchone()
+        bob_id = conn.execute("SELECT id FROM users WHERE username = 'bob'").fetchone()[
+            "id"
+        ]
+        row = conn.execute(
+            "SELECT * FROM audit_log WHERE action = 'unlock_user'"
+        ).fetchone()
     finally:
         conn.close()
     assert row["actor"] == "cli"
@@ -211,14 +229,18 @@ def test_allowlist_clear_writes_an_audit_row_with_the_cli_actor(data_dir):
 
     conn = app_db.connect(data_dir)
     try:
-        row = conn.execute("SELECT * FROM audit_log WHERE action = 'set_tailnet_allowlist'").fetchone()
+        row = conn.execute(
+            "SELECT * FROM audit_log WHERE action = 'set_tailnet_allowlist'"
+        ).fetchone()
     finally:
         conn.close()
     assert row["actor"] == "cli"
     assert row["detail"] == "count=0"
 
 
-def test_allowlist_show_refuses_to_run_against_a_data_dir_with_no_app_db(data_dir, capsys):
+def test_allowlist_show_refuses_to_run_against_a_data_dir_with_no_app_db(
+    data_dir, capsys
+):
     exit_code = admin.main(["allowlist", "show"])
 
     assert exit_code != 0
@@ -227,7 +249,9 @@ def test_allowlist_show_refuses_to_run_against_a_data_dir_with_no_app_db(data_di
     assert list(data_dir.glob("*")) == []
 
 
-def test_allowlist_clear_refuses_to_run_against_a_data_dir_with_no_app_db(data_dir, capsys):
+def test_allowlist_clear_refuses_to_run_against_a_data_dir_with_no_app_db(
+    data_dir, capsys
+):
     exit_code = admin.main(["allowlist", "clear"])
 
     assert exit_code != 0

@@ -46,7 +46,18 @@ SIZES: dict[str, int] = {"grid": 300, "grid2x": 600, "preview": 1600}
 DEFAULT_QUALITY = 82
 DEFAULT_CACHE_SIZE_LIMIT_BYTES = 5 * 1024**3
 
-_RAW_EXTENSIONS = {".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".raf", ".dng", ".pef", ".srw"}
+_RAW_EXTENSIONS = {
+    ".cr2",
+    ".cr3",
+    ".nef",
+    ".arw",
+    ".orf",
+    ".rw2",
+    ".raf",
+    ".dng",
+    ".pef",
+    ".srw",
+}
 # A video's `path_derivatives` entry, when present, is a pre-rendered JPEG
 # poster frame -- decode it like any other image instead of paying for an
 # ffmpeg still extraction.
@@ -89,11 +100,18 @@ def generate(
         raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
     target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
-    chosen = _resolve_source(source_path, [pathlib.Path(d) for d in derivatives], target_px, is_video=is_video)
+    chosen = _resolve_source(
+        source_path,
+        [pathlib.Path(d) for d in derivatives],
+        target_px,
+        is_video=is_video,
+    )
     return _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
 
 
-def _generate_from_chosen(chosen: pathlib.Path, target_px: int, quality: int, *, is_video: bool) -> GeneratedImage:
+def _generate_from_chosen(
+    chosen: pathlib.Path, target_px: int, quality: int, *, is_video: bool
+) -> GeneratedImage:
     image = _decode(chosen, is_video=is_video, target_px=target_px)
     return _resize_and_encode(image, target_px, quality=quality)
 
@@ -114,8 +132,13 @@ def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes
 
 
 def cache_key(
-    library_id: int, asset_uuid: str, size: str, source_path: str | pathlib.Path, source_mtime_ns: int,
-    size_px: int, quality: int,
+    library_id: int,
+    asset_uuid: str,
+    size: str,
+    source_path: str | pathlib.Path,
+    source_mtime_ns: int,
+    size_px: int,
+    quality: int,
 ) -> str:
     # `source_path` is part of the key, not just its mtime: an edit or a
     # revert (P1.17b) can swap which file backs an asset_uuid between two
@@ -148,12 +171,18 @@ def get_or_generate(
     target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
     derivative_paths = [pathlib.Path(d) for d in derivatives]
-    chosen = _resolve_source(source_path, derivative_paths, target_px, is_video=is_video)
+    chosen = _resolve_source(
+        source_path, derivative_paths, target_px, is_video=is_video
+    )
     try:
         source_mtime_ns = chosen.stat().st_mtime_ns
     except OSError as exc:
-        raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality)
+        raise MediaBackendError(
+            f"No usable original or derivative file for asset {asset_uuid}"
+        ) from exc
+    key = cache_key(
+        library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality
+    )
     cache_dir = pathlib.Path(cache_dir)
     cached = _read_cache(cache_dir, key)
     if cached is not None:
@@ -183,7 +212,9 @@ def get_or_generate_jpeg(
         source_mtime_ns = source_path.stat().st_mtime_ns
     except OSError as exc:
         raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92)
+    key = cache_key(
+        library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92
+    )
     cache_dir = pathlib.Path(cache_dir)
     cached_path = _cache_file(cache_dir, key, "jpg")
     if cached_path.exists():
@@ -207,7 +238,9 @@ def _read_cache(cache_dir: pathlib.Path, key: str) -> GeneratedImage | None:
     return None
 
 
-def _write_cache(cache_dir: pathlib.Path, key: str, extension: str, data: bytes) -> None:
+def _write_cache(
+    cache_dir: pathlib.Path, key: str, extension: str, data: bytes
+) -> None:
     """Write via a temp file in the same directory plus `os.replace()`, so
     a concurrent reader of this cache path never observes a partial file."""
     path = _cache_file(cache_dir, key, extension)
@@ -253,7 +286,11 @@ def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int) -> None:
 
 
 def _resolve_source(
-    original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int, *, is_video: bool
+    original: pathlib.Path,
+    derivatives: Sequence[pathlib.Path],
+    target_px: int,
+    *,
+    is_video: bool,
 ) -> pathlib.Path:
     """The file `_decode()` will actually read. For a video, a poster-image
     derivative (a pre-rendered JPEG frame) when one decodes cleanly,
@@ -276,7 +313,9 @@ def _resolve_source(
     return _pick_source(original, derivatives, target_px)
 
 
-def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int) -> pathlib.Path:
+def _pick_source(
+    original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int
+) -> pathlib.Path:
     """The first derivative whose longest edge covers `target_px`, probing
     each candidate at most once and stopping as soon as one is sufficient.
     Falls back to `original` when it exists, otherwise to the largest
@@ -301,7 +340,9 @@ def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], ta
     return original
 
 
-def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None) -> Image.Image:
+def _decode(
+    path: pathlib.Path, *, is_video: bool, target_px: int | None = None
+) -> Image.Image:
     if sys.platform == "darwin":
         for tool in (_try_sips, _try_qlmanage):
             image = tool(path)
@@ -313,7 +354,9 @@ def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None)
         image = _try_rawpy(path)
         if image is not None:
             return image
-        raise MediaBackendError(f"{path.name} is a RAW file and the optional rawpy decoder is not installed")
+        raise MediaBackendError(
+            f"{path.name} is a RAW file and the optional rawpy decoder is not installed"
+        )
     try:
         image = Image.open(path)
         if target_px is not None:
@@ -326,12 +369,16 @@ def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None)
         image.load()
         return image
     except Image.DecompressionBombError as exc:
-        raise MediaBackendError(f"{path.name} decoded to an unreasonably large image: {exc}") from exc
+        raise MediaBackendError(
+            f"{path.name} decoded to an unreasonably large image: {exc}"
+        ) from exc
     except Exception as exc:
         raise MediaBackendError(f"No decoder could open {path.name}: {exc}") from exc
 
 
-def _resize_and_encode(image: Image.Image, target_px: int, *, quality: int = DEFAULT_QUALITY) -> GeneratedImage:
+def _resize_and_encode(
+    image: Image.Image, target_px: int, *, quality: int = DEFAULT_QUALITY
+) -> GeneratedImage:
     with image:
         oriented = ImageOps.exif_transpose(image) or image
         if oriented.mode not in ("RGB", "L"):
@@ -349,7 +396,9 @@ def _resize_and_encode(image: Image.Image, target_px: int, *, quality: int = DEF
 
 def _run_tool(args: list[str]) -> bool:
     try:
-        subprocess.run(args, check=True, capture_output=True, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
+        subprocess.run(
+            args, check=True, capture_output=True, timeout=_SUBPROCESS_TIMEOUT_SECONDS
+        )
     except (OSError, subprocess.SubprocessError):
         return False
     return True
@@ -368,7 +417,9 @@ def _try_sips(path: pathlib.Path) -> Image.Image | None:
         return None
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "out.jpg"
-        if not _run_tool(["sips", "-s", "format", "jpeg", str(path), "--out", str(out)]):
+        if not _run_tool(
+            ["sips", "-s", "format", "jpeg", str(path), "--out", str(out)]
+        ):
             return None
         if not out.exists():
             return None
@@ -382,7 +433,9 @@ def _try_qlmanage(path: pathlib.Path) -> Image.Image | None:
     if shutil.which("qlmanage") is None:
         return None
     with tempfile.TemporaryDirectory() as tmp:
-        if not _run_tool(["qlmanage", "-t", "-s", str(SIZES["preview"]), "-o", tmp, str(path)]):
+        if not _run_tool(
+            ["qlmanage", "-t", "-s", str(SIZES["preview"]), "-o", tmp, str(path)]
+        ):
             return None
         produced = pathlib.Path(tmp) / f"{path.name}.png"
         if not produced.exists():
@@ -395,17 +448,23 @@ def _try_qlmanage(path: pathlib.Path) -> Image.Image | None:
 
 def _decode_video_still(path: pathlib.Path) -> Image.Image:
     if shutil.which("ffmpeg") is None:
-        raise MediaBackendError(f"No video decoder (ffmpeg not found on PATH) for {path.name}")
+        raise MediaBackendError(
+            f"No video decoder (ffmpeg not found on PATH) for {path.name}"
+        )
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "still.jpg"
         if not _run_tool(["ffmpeg", "-y", "-i", str(path), "-vframes", "1", str(out)]):
-            raise MediaBackendError(f"ffmpeg could not extract a still frame from {path.name}")
+            raise MediaBackendError(
+                f"ffmpeg could not extract a still frame from {path.name}"
+            )
         if not out.exists():
             raise MediaBackendError(f"ffmpeg produced no output for {path.name}")
         try:
             return _load_and_close(out)
         except OSError as exc:
-            raise MediaBackendError(f"ffmpeg's still frame for {path.name} was unreadable: {exc}") from exc
+            raise MediaBackendError(
+                f"ffmpeg's still frame for {path.name} was unreadable: {exc}"
+            ) from exc
 
 
 def _try_rawpy(path: pathlib.Path) -> Image.Image | None:

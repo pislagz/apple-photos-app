@@ -102,7 +102,8 @@ def sqlite_signature(package_path: str | pathlib.Path) -> str:
     checkpointed into the main file still changes the signature."""
     sqlite_path = pathlib.Path(package_path) / "database" / "Photos.sqlite"
     return "|".join(
-        _file_signature(sqlite_path.with_name(sqlite_path.name + suffix)) for suffix in ("", "-wal", "-shm")
+        _file_signature(sqlite_path.with_name(sqlite_path.name + suffix))
+        for suffix in ("", "-wal", "-shm")
     )
 
 
@@ -121,7 +122,9 @@ def index_library(
     the idempotency P1.6 requires. Returns `True` after a completed
     (re-)index, whether or not it changed any row.
     """
-    row = db.execute("SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)).fetchone()
+    row = db.execute(
+        "SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)
+    ).fetchone()
     signature = sqlite_signature(package_path)
     if not force and row is not None and row["last_indexed_signature"] == signature:
         return False
@@ -179,7 +182,13 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
     for person in photosdb.person_info:
         cursor = db.execute(
             "INSERT INTO people (library_id, uuid, name, display_name, face_count) VALUES (?, ?, ?, ?, ?)",
-            (library_id, person.uuid, person.name, person.display_name, person.facecount),
+            (
+                library_id,
+                person.uuid,
+                person.name,
+                person.display_name,
+                person.facecount,
+            ),
         )
         person_ids[person.uuid] = cursor.lastrowid
 
@@ -254,7 +263,8 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
                 ),
             )
             asset_id = db.execute(
-                "SELECT id FROM assets WHERE library_id = ? AND uuid = ?", (library_id, photo.uuid)
+                "SELECT id FROM assets WHERE library_id = ? AND uuid = ?",
+                (library_id, photo.uuid),
             ).fetchone()["id"]
 
             for person in photo.person_info:

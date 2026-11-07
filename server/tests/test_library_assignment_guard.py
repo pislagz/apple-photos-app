@@ -21,7 +21,9 @@ def _probe_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/libraries/{library_id}/_probe")
-    def probe(library: object = Depends(session_auth.require_library_assignment)) -> dict:
+    def probe(
+        library: object = Depends(session_auth.require_library_assignment),
+    ) -> dict:
         return {"id": library["id"], "display_name": library["display_name"]}
 
     return router
@@ -46,7 +48,9 @@ def _create_user(conn, username, *, role="user", disabled=False):
         (username, session_auth.hash_password(VALID_PASSWORD), role, int(disabled)),
     )
     conn.commit()
-    return conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+    return conn.execute(
+        "SELECT id FROM users WHERE username = ?", (username,)
+    ).fetchone()["id"]
 
 
 def _create_library(conn, display_name):
@@ -55,16 +59,23 @@ def _create_library(conn, display_name):
         (display_name, f"/libraries/{display_name}.photoslibrary"),
     )
     conn.commit()
-    return conn.execute("SELECT id FROM libraries WHERE display_name = ?", (display_name,)).fetchone()["id"]
+    return conn.execute(
+        "SELECT id FROM libraries WHERE display_name = ?", (display_name,)
+    ).fetchone()["id"]
 
 
 def _assign(conn, user_id, library_id):
-    conn.execute("INSERT INTO library_assignments (user_id, library_id) VALUES (?, ?)", (user_id, library_id))
+    conn.execute(
+        "INSERT INTO library_assignments (user_id, library_id) VALUES (?, ?)",
+        (user_id, library_id),
+    )
     conn.commit()
 
 
 def _login(client, username):
-    response = client.post("/api/auth/login", json={"username": username, "password": VALID_PASSWORD})
+    response = client.post(
+        "/api/auth/login", json={"username": username, "password": VALID_PASSWORD}
+    )
     assert response.status_code == 200, response.text
 
 
@@ -117,7 +128,9 @@ def test_admin_without_self_assignment_gets_404(tmp_path):
     library to themselves gets 404 on it too, same as any other user."""
     conn, client = _client(tmp_path)
     try:
-        client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+        client.post(
+            "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+        )
         library_id = _create_library(conn, "L1")
         _login(client, "admin")
 
@@ -188,7 +201,9 @@ def test_router_audit_catches_a_route_missing_the_dependency():
     router = APIRouter()
 
     @router.get("/api/libraries/{library_id}/guarded")
-    def guarded(library: object = Depends(session_auth.require_library_assignment)) -> dict:
+    def guarded(
+        library: object = Depends(session_auth.require_library_assignment),
+    ) -> dict:
         return {}
 
     @router.get("/api/libraries/{library_id}/unguarded")
@@ -197,7 +212,9 @@ def test_router_audit_catches_a_route_missing_the_dependency():
 
     app.include_router(router)
 
-    assert session_auth.unguarded_library_routes(app) == ["/api/libraries/{library_id}/unguarded"]
+    assert session_auth.unguarded_library_routes(app) == [
+        "/api/libraries/{library_id}/unguarded"
+    ]
 
 
 def test_router_audit_catches_a_misnamed_path_param():
@@ -211,7 +228,9 @@ def test_router_audit_catches_a_misnamed_path_param():
     router = APIRouter()
 
     @router.get("/api/libraries/{lib}/x")
-    def misnamed(lib: int, library: object = Depends(session_auth.require_library_assignment)) -> dict:
+    def misnamed(
+        lib: int, library: object = Depends(session_auth.require_library_assignment)
+    ) -> dict:
         return {}
 
     app.include_router(router)
@@ -231,7 +250,9 @@ def test_query_string_cannot_override_the_path_library_id(tmp_path):
         _assign(conn, user_id, assigned_id)
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{unassigned_id}/_probe?library_id={assigned_id}")
+        response = client.get(
+            f"/api/libraries/{unassigned_id}/_probe?library_id={assigned_id}"
+        )
 
         assert response.status_code == 404
     finally:
@@ -246,12 +267,17 @@ def test_router_audit_catches_a_path_segment_merely_starting_with_library_id():
     router = APIRouter()
 
     @router.get("/api/libraries/{library_id}x/y")
-    def odd(library_id: str, library: object = Depends(session_auth.require_library_assignment)) -> dict:
+    def odd(
+        library_id: str,
+        library: object = Depends(session_auth.require_library_assignment),
+    ) -> dict:
         return {}
 
     app.include_router(router)
 
-    assert session_auth.unguarded_library_routes(app) == ["/api/libraries/{library_id}x/y"]
+    assert session_auth.unguarded_library_routes(app) == [
+        "/api/libraries/{library_id}x/y"
+    ]
 
 
 def test_router_audit_ignores_routes_outside_the_library_prefix():
