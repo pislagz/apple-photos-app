@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
+import { HiddenSession } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -58,5 +60,70 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("back.jpg")).toBeInTheDocument();
     expect(hiddenCalls).toBe(2);
+  });
+});
+
+// #149: StrictMode's simulated mount/unmount/mount must not lock Hidden
+// between unlock and the first list load.
+describe("HiddenSession lock-on-leave", () => {
+  // The deferred lock from a test's auto-unmount must fire before the next
+  // test installs its own fetch mock.
+  afterEach(async () => {
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
+  function hiddenServer(startLocked: boolean) {
+    let locked = startLocked;
+    const calls: string[] = [];
+    mockFetch((url) => {
+      calls.push(url);
+      if (url === "/api/auth/reconfirm-password") {
+        locked = false;
+        return noContentResponse();
+      }
+      if (url === "/api/auth/lock-hidden") {
+        locked = true;
+        return noContentResponse();
+      }
+      if (url === "/api/libraries/1/hidden") {
+        if (locked) return jsonResponse(LOCKED, 403);
+        return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    return calls;
+  }
+
+  it("under StrictMode, unlock then first load succeeds with no lock call", async () => {
+    const calls = hiddenServer(true);
+    render(
+      <StrictMode>
+        <HiddenSession>
+          <HiddenView libraryId={1} variant="mobile" onCancel={() => {}} />
+        </HiddenSession>
+      </StrictMode>,
+    );
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).not.toContain("/api/auth/lock-hidden");
+  });
+
+  it("a real unmount still locks", async () => {
+    const calls = hiddenServer(false);
+    const { unmount } = render(
+      <StrictMode>
+        <HiddenSession>
+          <p>open</p>
+        </HiddenSession>
+      </StrictMode>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).not.toContain("/api/auth/lock-hidden");
+    unmount();
+    await waitFor(() => expect(calls).toContain("/api/auth/lock-hidden"));
   });
 });
