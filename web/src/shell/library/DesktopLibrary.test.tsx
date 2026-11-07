@@ -361,6 +361,37 @@ describe("DesktopLibrary", () => {
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
   });
 
+  it("in the Days view every card is labelled with its own single day, never a range (#157)", async () => {
+    const items = [
+      makeItem("d1a", "2025-09-19T10:00:00"),
+      makeItem("d1b", "2025-09-19T09:00:00"),
+      makeItem("d2", "2024-01-02T10:00:00"),
+      makeItem("d3", "2023-09-05T10:00:00"),
+    ];
+    mockAssets(items);
+
+    const { container } = render(<DesktopLibrary libraryId={1} fixedView="days" />);
+    await screen.findAllByRole("img");
+
+    expect(container.querySelector(".desktop-library__date-range")).toBeNull();
+    const captions = Array.from(container.querySelectorAll(".desktop-library__feature-caption")).map(
+      (el) => el.textContent ?? "",
+    );
+    expect(captions).toHaveLength(3);
+    expect(new Set(captions).size).toBe(3);
+    for (const text of captions) expect(text).not.toMatch(/[–-]\s/);
+    expect(captions[0]).toContain("19");
+    expect(captions[0]).toContain("2025");
+    expect(captions[2]).toContain("2023");
+  });
+
+  it("keeps the date-range title in All Photos", async () => {
+    mockAssets([makeItem("a", "2025-09-19T10:00:00"), makeItem("b", "2023-09-05T10:00:00")]);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–");
+  });
+
   it("starts on initialView and scrolls to initialScrollAssetId (#152)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
