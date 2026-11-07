@@ -178,6 +178,13 @@ export default function DesktopLibrary({
     overscan: 6,
   });
 
+  // Row heights depend on the container width and column count, but the
+  // virtualizer caches sizes per index; drop the cache when they change so a
+  // window resize does not leave rows overlapping the Days lead photo (#153).
+  useLayoutEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowVirtualizer, containerWidth, columns]);
+
   const virtualRows = rowVirtualizer.getVirtualItems();
 
   useEffect(() => {
