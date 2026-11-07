@@ -20,7 +20,12 @@ describe("mobile view-switch pill (#117)", () => {
   });
 
   it("tightens item padding on 320px phones", () => {
-    expect(css).toMatch(/@media \(max-width: 359px\)\s*\{\s*\.mobile-library__view-switch-item\s*\{[^}]*padding:\s*6px 8px/);
+    expect(css).toMatch(/@container mobile-library \(max-width: 359px\)\s*\{\s*\.mobile-library__view-switch-item\s*\{[^}]*padding:\s*6px 8px/);
+  });
+
+  it("keys the compact layout to the container width, not the viewport (#155)", () => {
+    expect(rule(".mobile-library")).toMatch(/container:\s*mobile-library\s*\/\s*inline-size/);
+    expect(css).not.toMatch(/@media \(max-width: 359px\)\s*\{\s*\.mobile-library__view-switch/);
   });
 
   it("reserves bottom padding so the pill never covers the last Days caption", () => {

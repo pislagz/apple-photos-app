@@ -88,6 +88,8 @@ body {
   min-height: 0;
   position: relative;
   background: #fff;
+  /* The view-switch sizes itself from this box, not the viewport (#155). */
+  container: mobile-library / inline-size;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -166,8 +168,9 @@ body {
   flex: 0 0 auto;
 }
 
-/* 320px-wide phones: tighten so all four labels still fit on one line. */
-@media (max-width: 359px) {
+/* Narrow container (320px phones, or any narrower host): tighten so all four
+   labels still fit on one line. Keyed to the container, not the viewport. */
+@container mobile-library (max-width: 359px) {
   .mobile-library__view-switch-item {
     font-size: 12px;
     padding: 6px 8px;
