@@ -378,6 +378,18 @@ def _get_asset_or_404(db: sqlite3.Connection, library_id: int, asset_id: str) ->
     return row
 
 
+def _get_media_asset_or_404(
+    db: sqlite3.Connection, library_id: int, asset_id: str, session: sqlite3.Row
+) -> sqlite3.Row:
+    """`_get_asset_or_404` for the byte-serving routes: a hidden asset's
+    media needs the same Hidden unlock as the Hidden list (#151). Checked
+    after the lookup so a foreign or unknown id still 404s."""
+    asset = _get_asset_or_404(db, library_id, asset_id)
+    if asset["hidden"]:
+        session_auth.require_hidden_unlocked(session, db)
+    return asset
+
+
 @router.get("/api/libraries/{library_id}/assets/{asset_id}", response_model=AssetDetailResponse)
 def asset_detail(
     asset_id: str,
@@ -458,10 +470,11 @@ def asset_thumb(
     asset_id: str,
     size: Literal["grid", "grid2x", "preview"] = "grid",
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
     cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ) -> Response:
-    asset = _get_asset_or_404(db, library["id"], asset_id)
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     edited, original, derivative = asset["path_edited"], asset["path_original"], asset["path_derivative"]
     if not edited and not original and not derivative:
         raise HTTPException(status_code=404, detail="not found")
@@ -507,7 +520,7 @@ def asset_original(
     db: sqlite3.Connection = Depends(session_auth.get_db),
     cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ):
-    asset = _get_asset_or_404(db, library["id"], asset_id)
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     raw_path = asset["path_edited"] if version == "edited" else asset["path_original"]
     if not raw_path:
         raise HTTPException(status_code=404, detail="not found")
@@ -557,9 +570,10 @@ def asset_original(
 def asset_live_photo_video(
     asset_id: str,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ):
-    asset = _get_asset_or_404(db, library["id"], asset_id)
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     raw_path = asset["path_edited_live_photo"] or asset["path_live_photo"]
     if not raw_path:
         raise HTTPException(status_code=404, detail="not found")

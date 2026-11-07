@@ -285,7 +285,8 @@ def test_hidden_endpoint_pagination_cursor_works_like_assets(tmp_path):
 
 
 def test_asset_detail_thumb_and_original_work_for_a_hidden_asset(tmp_path, monkeypatch):
-    """Hidden assets stay viewable by uuid -- only *lists* exclude them."""
+    """Hidden assets stay viewable by uuid -- only *lists* exclude them. Their
+    media needs the Hidden unlock (#151); the metadata detail does not."""
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     conn, client = _client(tmp_path)
     try:
@@ -300,6 +301,7 @@ def test_asset_detail_thumb_and_original_work_for_a_hidden_asset(tmp_path, monke
         assert detail.status_code == 200
         assert detail.json()["hidden"] is True
 
+        _unlock_hidden(client)
         assert client.get(f"/api/libraries/{library_id}/thumb/a").status_code == 200
         assert client.get(f"/api/libraries/{library_id}/original/a").status_code == 200
     finally:
@@ -1070,5 +1072,58 @@ def test_favorite_filter_lists_only_favorites_and_combines_with_type_and_cursor(
         ).json()
         assert [item["id"] for item in second["items"]] == ["fav-photo-old"]
         assert second["next_cursor"] is None
+    finally:
+        conn.close()
+
+
+def test_hidden_asset_media_requires_the_hidden_unlock(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "hid", hidden=1, path_original=str(file_path))
+        _insert_asset(conn, library_id, "vis", path_original=str(file_path))
+        _login(client, "alice")
+        base = f"/api/libraries/{library_id}"
+        hidden_urls = [f"{base}/thumb/hid", f"{base}/original/hid", f"{base}/original/hid?format=jpeg"]
+        visible_urls = [f"{base}/thumb/vis", f"{base}/original/vis"]
+
+        for url in hidden_urls:
+            locked = client.get(url)
+            assert locked.status_code == 403, url
+            assert locked.json()["detail"]["code"] == "hidden_locked"
+        for url in visible_urls:
+            assert client.get(url).status_code == 200, url
+        assert client.get(f"{base}/thumb/missing").status_code == 404
+
+        _unlock_hidden(client)
+        for url in hidden_urls + visible_urls:
+            assert client.get(url).status_code == 200, url
+
+        assert client.post("/api/auth/lock-hidden", json={}).status_code == 204
+        for url in hidden_urls:
+            assert client.get(url).status_code == 403, url
+        for url in visible_urls:
+            assert client.get(url).status_code == 200, url
+    finally:
+        conn.close()
+
+
+def test_hidden_live_photo_video_requires_the_hidden_unlock(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "hid", hidden=1, path_live_photo=str(file_path))
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/livephoto/hid/video"
+
+        assert client.get(url).status_code == 403
+        _unlock_hidden(client)
+        assert client.get(url).status_code == 200
     finally:
         conn.close()
