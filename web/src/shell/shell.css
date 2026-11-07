@@ -326,6 +326,12 @@ body {
   color: var(--ios-label-secondary);
 }
 
+.mobile-library__retry {
+  margin-top: 8px;
+  padding: 8px 16px;
+  color: var(--accent);
+}
+
 /* P1.17 multi-select: a top-left text button mirroring iOS Photos'
    "Select"/"Cancel", symmetric with the account avatar the Shell already
    floats at the top-right. */
@@ -1221,6 +1227,31 @@ body {
   text-align: center;
   padding: 24px;
   color: var(--sequoia-text-secondary);
+}
+
+.desktop-library__load-error,
+.mobile-library__load-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  color: var(--sequoia-text-secondary);
+}
+
+.mobile-library__load-error {
+  color: var(--ios-label-secondary);
+}
+
+.mobile-library__load-error .mobile-library__retry,
+.desktop-library__load-error .desktop-library__retry {
+  margin-top: 0;
+}
+
+.desktop-library__retry {
+  margin-top: 8px;
+  padding: 4px 14px;
+  color: var(--accent);
 }
 
 /* P1.17 grid context menu: right-click Download/Copy Link on a single
