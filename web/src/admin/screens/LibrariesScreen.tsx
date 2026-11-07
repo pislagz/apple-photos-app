@@ -93,6 +93,7 @@ export default function LibrariesScreen() {
         <button type="submit">Add library</button>
       </form>
 
+      <div className="admin-table-wrap">
       <table>
         <thead>
           <tr>
@@ -143,6 +144,7 @@ export default function LibrariesScreen() {
           })}
         </tbody>
       </table>
+      </div>
     </section>
   );
 }

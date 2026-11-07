@@ -1,0 +1,333 @@
+/* Admin panel: System Settings-like sidebar and grouped forms (SPEC.md
+   "Admin panel"). Imported by AdminApp itself so the /admin entry carries
+   its own styles. Tokens come from :root in ../shell/shell.css; light/dark
+   follow the system like the rest of the app. */
+:root {
+  --admin-bg: #f2f2f7;
+  --admin-card: #ffffff;
+  --admin-text: #1d1d1f;
+  --admin-text-2: #6e6e73;
+  --admin-line: rgba(60, 60, 67, 0.2);
+  --admin-fill: rgba(120, 120, 128, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --admin-bg: #000000;
+    --admin-card: #1c1c1e;
+    --admin-text: #f5f5f7;
+    --admin-text-2: #98989f;
+    --admin-line: rgba(84, 84, 88, 0.6);
+    --admin-fill: rgba(120, 120, 128, 0.24);
+  }
+}
+
+body:has(.admin-app, .admin-auth) {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+.admin-app,
+.admin-auth {
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--admin-text);
+}
+
+.admin-app {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+/* Sidebar */
+.admin-nav {
+  padding: 20px 10px;
+  background: var(--sequoia-sidebar-bg);
+  border-right: 1px solid var(--sequoia-border);
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-nav {
+    background: rgba(30, 30, 30, 0.82);
+    border-right-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.admin-nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-nav button {
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--admin-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-nav button[aria-current="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Content */
+.admin-main {
+  min-width: 0;
+  padding: 28px 32px 48px;
+  max-width: 980px;
+  width: 100%;
+}
+
+.admin-main h1,
+.admin-auth h1 {
+  margin: 0 0 18px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.admin-main h2 {
+  margin: 28px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--admin-text-2);
+}
+
+.admin-main p {
+  margin: 0 0 12px;
+  color: var(--admin-text-2);
+}
+
+.admin-main [role="alert"],
+.admin-auth [role="alert"] {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 59, 48, 0.12);
+  color: #d70015;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-main [role="alert"],
+  .admin-auth [role="alert"] {
+    color: #ff6961;
+  }
+}
+
+.admin-main code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.admin-main a {
+  color: var(--accent);
+}
+
+/* Grouped forms: one rounded card, label on the left, control on the right */
+.admin-main form,
+.admin-auth form {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 20px;
+  padding: 4px 16px 12px;
+  border-radius: 12px;
+  background: var(--admin-card);
+}
+
+.admin-main label,
+.admin-auth label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.admin-main label:has(textarea) {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.admin-main label > :is(input, select),
+.admin-auth label > input {
+  flex: 0 1 280px;
+  min-width: 0;
+}
+
+.admin-app input:not([type="checkbox"]),
+.admin-app select,
+.admin-app textarea,
+.admin-auth input {
+  padding: 6px 10px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  font: inherit;
+}
+
+.admin-app textarea {
+  resize: vertical;
+}
+
+.admin-app input:focus-visible,
+.admin-app select:focus-visible,
+.admin-app textarea:focus-visible,
+.admin-app button:focus-visible,
+.admin-auth input:focus-visible,
+.admin-auth button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.admin-app input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+/* Buttons */
+.admin-main button,
+.admin-auth button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--admin-fill);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-main form > button[type="submit"],
+.admin-auth form > button[type="submit"] {
+  align-self: flex-start;
+  margin-top: 12px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.admin-main form > a {
+  align-self: flex-start;
+  margin-top: 10px;
+}
+
+/* Tables: a card that scrolls sideways inside itself, never the page */
+.admin-table-wrap {
+  margin: 0 0 20px;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: var(--admin-card);
+}
+
+.admin-main table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-main th,
+.admin-main td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--admin-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-main th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-text-2);
+  white-space: nowrap;
+}
+
+.admin-main tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-main td button {
+  margin: 0 6px 6px 0;
+}
+
+.admin-main td ul,
+.admin-main section > ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.admin-main section > ul {
+  padding: 8px 16px 8px 34px;
+  border-radius: 12px;
+  background: var(--admin-card);
+}
+
+.admin-main section > ul:empty {
+  display: none;
+}
+
+/* Sign-in / not-admin */
+.admin-auth {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 15vh 20px 40px;
+}
+
+/* Phone: sidebar becomes a scrollable top strip, forms stack */
+@media (max-width: 700px) {
+  .admin-app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .admin-nav {
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--sequoia-border);
+    overflow-x: auto;
+  }
+
+  .admin-nav ul {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .admin-nav button {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .admin-main {
+    padding: 20px 16px 40px;
+  }
+
+  .admin-main label,
+  .admin-auth label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .admin-main label > :is(input, select),
+  .admin-auth label > input {
+    flex: none;
+    width: 100%;
+  }
+
+  /* 16px stops iOS zooming into focused fields */
+  .admin-app input:not([type="checkbox"]),
+  .admin-app select,
+  .admin-app textarea,
+  .admin-auth input {
+    font-size: 16px;
+  }
+}

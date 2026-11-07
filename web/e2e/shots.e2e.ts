@@ -161,12 +161,26 @@ test("hidden asks for the password again", async ({ page }, info) => {
 });
 
 test("admin panel", async ({ page }, info) => {
-  test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page, ADMIN);
   await page.goto("/admin");
   await expect(page.getByRole("heading").first()).toBeVisible();
   await page.waitForTimeout(500);
   await shot(page, "10-admin", info.project.name);
+
+  // #158: styled, and no page-level horizontal overflow on any screen.
+  await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
+  const nav = page.getByRole("navigation", { name: "Admin sections" });
+  for (const [i, label] of ["Libraries", "Users", "Sessions", "Audit log", "Settings"].entries()) {
+    await nav.getByRole("button", { name: label }).click();
+    await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(scrollWidth, `${label} overflows horizontally`).toBeLessThanOrEqual(innerWidth);
+    await page.screenshot({ path: `${SHOTS}/${info.project.name}-10-admin-${i + 1}-${label.toLowerCase().replace(" ", "-")}.png` });
+  }
 });
 
 test("phone title never overlaps Select or the account button (#159)", async ({ page }, info) => {
