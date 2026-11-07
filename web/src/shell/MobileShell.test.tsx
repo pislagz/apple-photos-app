@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MeResponse } from "../api";
+import type { AssetListItem, MeResponse } from "../api";
 import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import MobileShell from "./MobileShell";
 
@@ -110,6 +110,108 @@ describe("MobileShell tab switching", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
     expect(await screen.findByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("MobileShell Library tab re-tap (#146)", () => {
+  function makeItem(id: string, date: string): AssetListItem {
+    return {
+      id,
+      filename: `${id}.jpg`,
+      date,
+      is_video: false,
+      is_live_photo: false,
+      favorite: false,
+      width: 100,
+      height: 100,
+      duration: null,
+    };
+  }
+
+  const items = [
+    makeItem("recent", "2024-05-10T10:00:00"),
+    ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+  ];
+
+  function mockLibrary() {
+    return mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") {
+        const bucket = (length: number) => {
+          const byKey = new Map<string, number>();
+          for (const item of items) {
+            const key = (item.date ?? "").slice(0, length);
+            byKey.set(key, (byKey.get(key) ?? 0) + 1);
+          }
+          return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+        };
+        return {
+          years: bucket(4).map(([key, count]) => ({ key, count, key_asset_ids: [] })),
+          months: bucket(7).map(([key, count]) => ({
+            key,
+            count,
+            key_asset_ids: items.filter((i) => (i.date ?? "").startsWith(key)).slice(0, 5).map((i) => i.id),
+          })),
+          days: bucket(10).map(([key, count]) => ({ key, count })),
+        };
+      }
+      const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
+      if (match) {
+        const params = new URLSearchParams(match[1]);
+        const to = params.get("to");
+        const pool = to ? items.filter((item) => (item.date ?? "").slice(0, 10) <= to) : items;
+        return { items: pool, next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+  }
+
+  function renderMobile() {
+    return render(
+      <MobileShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+  }
+
+  async function drillToOlderMonth() {
+    fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
+    fireEvent.click(await screen.findByText("January 2022"));
+    await waitFor(() => expect(screen.queryByAltText("recent.jpg")).toBeNull());
+    expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument();
+  }
+
+  it("returns to the newest photos when the already-active Library tab is tapped", async () => {
+    mockLibrary();
+    renderMobile();
+    await drillToOlderMonth();
+
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }));
+    expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(primary.getByRole("button", { name: "Library" }));
+
+    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+  });
+
+  it("only navigates, without resetting, when Library is tapped from another tab", async () => {
+    mockLibrary();
+    renderMobile();
+    await drillToOlderMonth();
+
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }));
+    fireEvent.click(primary.getByRole("button", { name: "More" }));
+    expect(window.location.pathname).toBe("/more");
+    fireEvent.click(primary.getByRole("button", { name: "Library" }));
+
+    expect(window.location.pathname).toBe("/");
+    expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+    // Still on the older month: the anchor survived the round trip.
+    expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument();
+    expect(screen.queryByAltText("recent.jpg")).toBeNull();
   });
 });
 
