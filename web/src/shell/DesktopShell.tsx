@@ -53,6 +53,13 @@ export default function DesktopShell({
 }) {
   const [view, setView] = useState<"library" | "days" | "hidden">("library");
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
+  // #152: one-shot start state for the Library opened from a Days double-click.
+  // Cleared on the next sidebar choice; tied to a library so a switch drops it.
+  const [dayStart, setDayStart] = useState<{ libraryId: number; assetId: string } | null>(null);
+  function selectView(next: "library" | "days" | "hidden") {
+    setDayStart(null);
+    setView(next);
+  }
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
   return (
@@ -65,7 +72,7 @@ export default function DesktopShell({
                 type="button"
                 aria-current={view === "library" ? "page" : undefined}
                 className="sidebar__item"
-                onClick={() => setView("library")}
+                onClick={() => selectView("library")}
               >
                 <Icon name="library" className="sidebar__icon" />
                 Library
@@ -76,7 +83,7 @@ export default function DesktopShell({
                 type="button"
                 aria-current={view === "days" ? "page" : undefined}
                 className="sidebar__item"
-                onClick={() => setView("days")}
+                onClick={() => selectView("days")}
               >
                 <Icon name="days" className="sidebar__icon" />
                 Days
@@ -171,6 +178,16 @@ export default function DesktopShell({
               <DesktopLibrary
                 key={`${activeLibraryId}-${view}`}
                 fixedView={view === "days" ? "days" : undefined}
+                onOpenDay={
+                  view === "days"
+                    ? (id) => {
+                        setDayStart({ libraryId: activeLibraryId, assetId: id });
+                        setView("library");
+                      }
+                    : undefined
+                }
+                initialView={dayStart?.libraryId === activeLibraryId ? "all" : undefined}
+                initialScrollAssetId={dayStart?.libraryId === activeLibraryId ? dayStart.assetId : undefined}
                 libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}

@@ -84,6 +84,9 @@ export default function DesktopLibrary({
   initialAssetId,
   onInitialAssetOpened,
   fixedView,
+  onOpenDay,
+  initialView,
+  initialScrollAssetId,
 }: {
   libraryId: number;
   initialAssetId?: string;
@@ -91,12 +94,15 @@ export default function DesktopLibrary({
   // Sidebar-driven view (Days, #127): pins the view and hides the
   // Years/Months/All Photos switch.
   fixedView?: ViewKey;
+  // #152: in the fixed Days view, opening a day hands off to the shell
+  // (which shows Library > All Photos) instead of opening the Viewer.
+  onOpenDay?: (id: string) => void;
+  // One-shot start state, read on mount only (#152).
+  initialView?: ViewKey;
+  initialScrollAssetId?: string;
 }) {
-  const [switchedView, setView] = useState<ViewKey>("years");
-  // Double-clicking a day leaves the pinned Days view for All Photos (#152);
-  // from then on the Years/Months/All Photos switch is shown and in charge.
-  const [leftFixedView, setLeftFixedView] = useState(false);
-  const view = leftFixedView ? switchedView : (fixedView ?? switchedView);
+  const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
+  const view = fixedView ?? switchedView;
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
   const [searchValue, setSearchValue] = useState("");
@@ -244,7 +250,7 @@ export default function DesktopLibrary({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
-  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(initialScrollAssetId ?? null);
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
 
@@ -276,17 +282,15 @@ export default function DesktopLibrary({
         setView("all");
         return;
       }
-      // Sequoia opens the whole day, not one photo: All Photos scrolled to it.
-      if (view === "days") {
-        setPendingScrollId(id);
-        setView("all");
-        setLeftFixedView(true);
+      // Sequoia opens the whole day, not one photo (#152).
+      if (view === "days" && onOpenDay) {
+        onOpenDay(id);
         return;
       }
       const index = items.findIndex((item) => item.id === id);
       if (index !== -1) setViewerIndex(index);
     },
-    [items, view],
+    [items, view, onOpenDay],
   );
 
   const handleGridKeyDown = useCallback(
@@ -477,7 +481,7 @@ export default function DesktopLibrary({
           />
         </div>
         <div className="desktop-library__spacer" />
-        {(fixedView === undefined || leftFixedView) && (
+        {fixedView === undefined && (
         <div role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
             <button
