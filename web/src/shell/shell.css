@@ -1248,6 +1248,38 @@ body {
   margin-top: 0;
 }
 
+.hidden-view__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 2px;
+}
+
+.hidden-view--desktop .hidden-view__grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px;
+  padding: 8px;
+}
+
+.hidden-view__cell {
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: #e5e5ea;
+  cursor: pointer;
+}
+
+.hidden-view__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hidden-view__sentinel {
+  height: 1px;
+}
+
 .hidden-view--error {
   text-align: center;
   padding: 24px;

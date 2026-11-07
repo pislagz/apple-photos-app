@@ -167,7 +167,7 @@ describe("AppShell", () => {
     fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
-    expect(await screen.findByText("IMG_0002.HEIC")).toBeInTheDocument();
+    expect(await screen.findByAltText("IMG_0002.HEIC")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hidden" })).toBeInTheDocument();
   });
 
