@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { cellHeight, computeCellSize, GRID_GAP, gridRowHeight } from "./gridMetrics";
+import {
+  computeCellSize,
+  FEATURE_ASPECT,
+  FEATURE_MAX_WIDTH,
+  featureHeight,
+  featureRowHeight,
+  featureWidth,
+  GRID_GAP,
+  gridRowHeight,
+} from "./gridMetrics";
 
 describe("gridMetrics", () => {
   it("cells plus gaps exactly fill the container width", () => {
@@ -16,11 +25,17 @@ describe("gridMetrics", () => {
 
   it("rows add one trailing gap so vertical spacing matches horizontal", () => {
     const size = computeCellSize(1000, 6);
-    expect(gridRowHeight(size, false)).toBe(size + GRID_GAP);
+    expect(gridRowHeight(size)).toBe(size + GRID_GAP);
   });
 
-  it("feature rows span two cells plus the gap between them", () => {
-    expect(cellHeight(100, true)).toBe(100 * 2 + GRID_GAP);
-    expect(gridRowHeight(100, true)).toBe(100 * 2 + GRID_GAP * 2);
+  it("Days lead photo is capped in width and keeps a 2:1 aspect (#153)", () => {
+    for (const width of [1200, 1920, 2560]) {
+      expect(featureWidth(width)).toBe(FEATURE_MAX_WIDTH);
+      expect(featureHeight(width)).toBe(FEATURE_MAX_WIDTH / FEATURE_ASPECT);
+    }
+    expect(featureWidth(700)).toBe(700);
+    expect(featureHeight(700)).toBe(350);
+    expect(featureWidth(0)).toBe(0);
+    expect(featureRowHeight(1920)).toBe(featureHeight(1920) + GRID_GAP);
   });
 });
