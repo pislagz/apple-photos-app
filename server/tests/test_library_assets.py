@@ -286,7 +286,7 @@ def test_hidden_endpoint_pagination_cursor_works_like_assets(tmp_path):
 
 def test_asset_detail_thumb_and_original_work_for_a_hidden_asset(tmp_path, monkeypatch):
     """Hidden assets stay viewable by uuid -- only *lists* exclude them. Their
-    media needs the Hidden unlock (#151); the metadata detail does not."""
+    metadata and media need the Hidden unlock (#151)."""
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     conn, client = _client(tmp_path)
     try:
@@ -297,11 +297,12 @@ def test_asset_detail_thumb_and_original_work_for_a_hidden_asset(tmp_path, monke
         _insert_asset(conn, library_id, "a", hidden=1, path_original=str(file_path))
         _login(client, "alice")
 
+        assert client.get(f"/api/libraries/{library_id}/assets/a").status_code == 403
+
+        _unlock_hidden(client)
         detail = client.get(f"/api/libraries/{library_id}/assets/a")
         assert detail.status_code == 200
         assert detail.json()["hidden"] is True
-
-        _unlock_hidden(client)
         assert client.get(f"/api/libraries/{library_id}/thumb/a").status_code == 200
         assert client.get(f"/api/libraries/{library_id}/original/a").status_code == 200
     finally:
@@ -1025,6 +1026,37 @@ def test_hidden_unlock_expires(tmp_path):
         conn.close()
 
 
+def test_hidden_unlock_slides_only_when_less_than_half_the_window_is_left(tmp_path):
+    # Hidden thumbnails also go through the unlock check (#151); a DB write
+    # per thumbnail request would serialise grid loads, so the sliding
+    # window is only rewritten once it is past its half-life.
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _login(client, "alice")
+        _unlock_hidden(client)
+        url = f"/api/libraries/{library_id}/hidden"
+
+        def until() -> str:
+            return conn.execute("SELECT hidden_unlocked_until FROM sessions").fetchone()[0]
+
+        conn.execute("UPDATE sessions SET hidden_unlocked_until = datetime('now', '+250 seconds')")
+        conn.commit()
+        fresh = until()
+        assert client.get(url).status_code == 200
+        assert until() == fresh
+
+        conn.execute("UPDATE sessions SET hidden_unlocked_until = datetime('now', '+60 seconds')")
+        conn.commit()
+        stale = until()
+        assert client.get(url).status_code == 200
+        assert until() > stale
+    finally:
+        conn.close()
+
+
 def test_foreign_library_hidden_still_404s_even_when_unlocked(tmp_path):
     conn, client = _client(tmp_path)
     try:
@@ -1097,10 +1129,17 @@ def test_hidden_asset_media_requires_the_hidden_unlock(tmp_path):
         for url in visible_urls:
             assert client.get(url).status_code == 200, url
         assert client.get(f"{base}/thumb/missing").status_code == 404
+        assert client.get(f"{base}/assets/hid").status_code == 403
+        assert client.get(f"{base}/assets/vis").status_code == 200
 
         _unlock_hidden(client)
+        assert client.get(f"{base}/assets/hid").status_code == 200
         for url in hidden_urls + visible_urls:
             assert client.get(url).status_code == 200, url
+        for url in hidden_urls:
+            assert client.get(url).headers["cache-control"] == "private, no-store", url
+        for url in visible_urls:
+            assert "no-store" not in client.get(url).headers.get("cache-control", ""), url
 
         assert client.post("/api/auth/lock-hidden", json={}).status_code == 204
         for url in hidden_urls:
@@ -1124,6 +1163,8 @@ def test_hidden_live_photo_video_requires_the_hidden_unlock(tmp_path):
 
         assert client.get(url).status_code == 403
         _unlock_hidden(client)
-        assert client.get(url).status_code == 200
+        unlocked = client.get(url)
+        assert unlocked.status_code == 200
+        assert unlocked.headers["cache-control"] == "private, no-store"
     finally:
         conn.close()

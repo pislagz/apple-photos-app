@@ -381,8 +381,8 @@ def _get_asset_or_404(db: sqlite3.Connection, library_id: int, asset_id: str) ->
 def _get_media_asset_or_404(
     db: sqlite3.Connection, library_id: int, asset_id: str, session: sqlite3.Row
 ) -> sqlite3.Row:
-    """`_get_asset_or_404` for the byte-serving routes: a hidden asset's
-    media needs the same Hidden unlock as the Hidden list (#151). Checked
+    """`_get_asset_or_404` for the detail and byte-serving routes: a hidden
+    asset's metadata and media need the same Hidden unlock as the Hidden list (#151). Checked
     after the lookup so a foreign or unknown id still 404s."""
     asset = _get_asset_or_404(db, library_id, asset_id)
     if asset["hidden"]:
@@ -390,13 +390,23 @@ def _get_media_asset_or_404(
     return asset
 
 
+def _media_cache_headers(asset: sqlite3.Row) -> dict[str, str]:
+    """A hidden asset's bytes must not outlive the Hidden unlock in the
+    browser cache (#151): FileResponse sends Last-Modified/ETag, which lets
+    browsers heuristically cache and re-show them after a re-lock."""
+    return {"Cache-Control": "private, no-store"} if asset["hidden"] else {}
+
+
 @router.get("/api/libraries/{library_id}/assets/{asset_id}", response_model=AssetDetailResponse)
 def asset_detail(
     asset_id: str,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetDetailResponse:
-    asset = _get_asset_or_404(db, library["id"], asset_id)
+    # A hidden asset's metadata (place, people, albums) is gated like its
+    # media (#151).
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     people = [
         row["display_name"] or row["name"]
         for row in db.execute(
@@ -506,7 +516,7 @@ def asset_thumb(
         # exists but no backend here could decode it (an unsupported RAW
         # variant, a corrupt file, a decompression-bomb guard trip).
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    return Response(content=result.data, media_type=result.content_type)
+    return Response(content=result.data, media_type=result.content_type, headers=_media_cache_headers(asset))
 
 
 @router.get("/api/libraries/{library_id}/original/{asset_id}")
@@ -552,7 +562,7 @@ def asset_original(
         return Response(
             content=data,
             media_type="image/jpeg",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', **_media_cache_headers(asset)},
         )
 
     if not file_path.exists():
@@ -563,7 +573,12 @@ def asset_original(
             db, "download", user_id=session["user_id"], library_id=library["id"], asset_id=asset["id"],
             detail=f"version={version}",
         )
-    return FileResponse(file_path, media_type=media_type or "application/octet-stream", filename=file_path.name)
+    return FileResponse(
+        file_path,
+        media_type=media_type or "application/octet-stream",
+        filename=file_path.name,
+        headers=_media_cache_headers(asset),
+    )
 
 
 @router.get("/api/libraries/{library_id}/livephoto/{asset_id}/video")
@@ -581,4 +596,6 @@ def asset_live_photo_video(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="not found")
     media_type, _ = mimetypes.guess_type(file_path.name)
-    return FileResponse(file_path, media_type=media_type or "video/quicktime", filename=file_path.name)
+    return FileResponse(
+        file_path, media_type=media_type or "video/quicktime", filename=file_path.name, headers=_media_cache_headers(asset)
+    )
