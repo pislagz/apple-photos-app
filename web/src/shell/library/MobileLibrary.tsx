@@ -233,22 +233,25 @@ export default function MobileLibrary({
 
   return (
     <div className="mobile-library">
-      {view === "all" && (
-        <div
-          className={`mobile-library__pinned-header${selectMode ? " mobile-library__pinned-header--select" : ""}`}
-          data-testid="pinned-header"
-        >
-          {pinnedLabel}
+      {(view === "all" || !isTileView) && (
+        // One flex row so the title can never sit under Select: the title
+        // shrinks and ellipsizes, Select keeps its natural width.
+        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim={view === "all"}>
+          {view === "all" && (
+            <div className="mobile-library__pinned-header" data-testid="pinned-header">
+              {pinnedLabel}
+            </div>
+          )}
+          {!isTileView && (
+            <button
+              type="button"
+              className="mobile-library__select-button"
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            >
+              {selectMode ? "Cancel" : "Select"}
+            </button>
+          )}
         </div>
-      )}
-      {!isTileView && (
-        <button
-          type="button"
-          className="mobile-library__select-button"
-          onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-        >
-          {selectMode ? "Cancel" : "Select"}
-        </button>
       )}
       {!selectMode && (
         <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">

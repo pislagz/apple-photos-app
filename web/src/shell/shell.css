@@ -100,26 +100,38 @@ body {
    gradient scrim keeps the white text legible over whatever photo scrolls
    underneath. The grid fills the full height behind it (no top padding),
    so this must stay position:absolute rather than taking flex space. */
-.mobile-library__pinned-header {
+/* Title (left) and Select (right) share one flex row. The right padding
+   keeps the row clear of the account button that .shell__header floats at
+   the top-right (32px wide + 12px inset). */
+.mobile-library__top-bar {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 44px;
   pointer-events: none;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 28px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 56px 28px 16px;
+}
+
+.mobile-library__top-bar[data-scrim="true"] {
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
+}
+
+.mobile-library__pinned-header {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 28px;
   font-weight: 700;
   color: #fff;
   letter-spacing: -0.3px;
-}
-
-/* P1.17 follow-up: in Select mode the "Cancel" button occupies the same
-   top-left corner as the large title text -- push the title right so the
-   two don't overlap. */
-.mobile-library__pinned-header--select {
-  padding-left: 72px;
 }
 
 .mobile-library__view-switch {
@@ -336,15 +348,17 @@ body {
    "Select"/"Cancel", symmetric with the account avatar the Shell already
    floats at the top-right. */
 .mobile-library__select-button {
-  position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 10px);
-  left: 16px;
-  z-index: 2;
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-height: 32px;
+  padding: 0 4px;
+  pointer-events: auto;
   border: none;
   background: transparent;
   color: #fff;
   font-size: 15px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 
