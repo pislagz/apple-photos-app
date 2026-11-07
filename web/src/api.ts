@@ -142,8 +142,12 @@ export interface AssetListResponse {
 
 // Apple Photos' Hidden album (P1.13): the only list a hidden asset appears
 // in. Every other route excludes it.
-export function getHidden(libraryId: number): Promise<AssetListResponse> {
-  return request<AssetListResponse>(`/api/libraries/${libraryId}/hidden`);
+export function getHidden(libraryId: number, cursor: string | null = null, limit?: number): Promise<AssetListResponse> {
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  if (limit) params.set("limit", String(limit));
+  const query = params.toString();
+  return request<AssetListResponse>(`/api/libraries/${libraryId}/hidden${query ? `?${query}` : ""}`);
 }
 
 // P1.14 mobile Library: the Years/Months/Days/All Photos feed. Never
