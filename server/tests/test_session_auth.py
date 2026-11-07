@@ -624,7 +624,9 @@ def test_prune_expired_sessions_is_throttled_to_about_once_a_minute(tmp_path, mo
         (still_there,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
         assert still_there == 1
 
-        monkeypatch.setattr(session_auth, "_last_session_prune_at", 0.0)
+        # float("-inf"), not 0.0: time.monotonic() is close to boot time on a fresh CI
+        # runner, so 0.0 can still be inside the 60 s throttle window.
+        monkeypatch.setattr(session_auth, "_last_session_prune_at", float("-inf"))
         session_auth._prune_expired_sessions(conn)
         (pruned,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
         assert pruned == 0
