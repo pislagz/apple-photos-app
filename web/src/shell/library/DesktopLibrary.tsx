@@ -580,7 +580,9 @@ export default function DesktopLibrary({
         onKeyDown={handleGridKeyDown}
         onMouseDown={handleGridMouseDown}
       >
-        {dateRangeLabel && <div className="desktop-library__date-range">{dateRangeLabel}</div>}
+        {/* #157: Days labels each card with its own day (feature caption);
+            the loaded-library range would sit on top of the first card. */}
+        {dateRangeLabel && view !== "days" && <div className="desktop-library__date-range">{dateRangeLabel}</div>}
         {items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
             <p>Couldn't load your library.</p>
