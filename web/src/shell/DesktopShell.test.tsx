@@ -225,3 +225,47 @@ describe("DesktopShell Hidden password prompt (#130)", () => {
     expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
   });
 });
+
+describe("DesktopShell Days double-click (#152)", () => {
+  it("opens Library > All Photos, and the sidebar Days item goes back to Days", async () => {
+    const items = ["a", "b"].map((id, i) => ({
+      id,
+      filename: `${id}.jpg`,
+      date: `2024-05-${10 - i}T10:00:00`,
+      is_video: false,
+      is_live_photo: false,
+      favorite: false,
+      width: 100,
+      height: 100,
+      duration: null,
+    }));
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Days" }));
+    await screen.findAllByRole("img");
+    expect(screen.queryByRole("tab")).toBeNull();
+    fireEvent.doubleClick(container.querySelector('[data-asset-id="b"]') as HTMLElement);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Days" })).not.toHaveAttribute("aria-current");
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Days" }));
+    await waitFor(() => expect(screen.queryByRole("tab")).toBeNull());
+    expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
+  });
+});

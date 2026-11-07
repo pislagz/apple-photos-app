@@ -342,6 +342,40 @@ describe("DesktopLibrary", () => {
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
   });
 
+  it("in the Days view, double-click and Enter hand the day to onOpenDay instead of opening the Viewer (#152)", async () => {
+    const items = [makeItem("recent", "2024-05-10T10:00:00"), makeItem("old", "2022-01-08T10:00:00")];
+    mockAssets(items);
+    const onOpenDay = vi.fn();
+
+    const { container } = render(<DesktopLibrary libraryId={1} fixedView="days" onOpenDay={onOpenDay} />);
+    await screen.findAllByRole("img");
+    expect(screen.queryByRole("tab")).toBeNull();
+
+    const cell = cells(container).find((c) => c.getAttribute("data-asset-id") === "old") as HTMLElement;
+    fireEvent.doubleClick(cell);
+    expect(onOpenDay).toHaveBeenLastCalledWith("old");
+
+    fireEvent.click(cell);
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "Enter" });
+    expect(onOpenDay).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+  });
+
+  it("starts on initialView and scrolls to initialScrollAssetId (#152)", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 8 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(8 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    render(<DesktopLibrary libraryId={1} initialView="all" initialScrollAssetId="jan22-7" />);
+    await screen.findAllByRole("img");
+
+    expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByTestId("desktop-library-grid").scrollTop).toBeGreaterThan(0));
+    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+  });
+
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
