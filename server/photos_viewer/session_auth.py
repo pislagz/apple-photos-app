@@ -1138,21 +1138,27 @@ def lock_hidden(
 
 def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> None:
     """403 `hidden_locked` unless a recent reconfirm unlocked this session.
-    Each allowed call slides the window forward so paging through Hidden
-    does not re-prompt mid-browse."""
-    unlocked = db.execute(
-        "SELECT 1 FROM sessions WHERE id = ? AND hidden_unlocked_until > datetime('now')",
-        (session["id"],),
+    Allowed calls slide the window forward so paging through Hidden does
+    not re-prompt mid-browse. The slide is only written once less than half
+    the window is left: hidden thumbnails/originals also call this (#151),
+    and a DB write per image request would serialise a whole grid of
+    thumbnail loads on SQLite's write lock."""
+    row = db.execute(
+        "SELECT hidden_unlocked_until > datetime('now') AS unlocked,"
+        " hidden_unlocked_until < datetime('now', ?) AS stale"
+        " FROM sessions WHERE id = ?",
+        (f"+{HIDDEN_UNLOCK_SECONDS // 2} seconds", session["id"]),
     ).fetchone()
-    if unlocked is None:
+    if row is None or not row["unlocked"]:
         raise HTTPException(
             status_code=403, detail={"code": "hidden_locked", "message": "password required to open Hidden"}
         )
-    db.execute(
-        "UPDATE sessions SET hidden_unlocked_until = datetime('now', ?) WHERE id = ?",
-        (f"+{HIDDEN_UNLOCK_SECONDS} seconds", session["id"]),
-    )
-    db.commit()
+    if row["stale"]:
+        db.execute(
+            "UPDATE sessions SET hidden_unlocked_until = datetime('now', ?) WHERE id = ?",
+            (f"+{HIDDEN_UNLOCK_SECONDS} seconds", session["id"]),
+        )
+        db.commit()
 
 
 @router.post("/api/auth/logout", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
