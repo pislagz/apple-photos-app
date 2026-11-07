@@ -85,10 +85,22 @@ export function HiddenUnlock({
 
 // Mounted only while Hidden is open: unmounting (leaving the screen, route
 // change, browser back) re-locks it on the server so the next visit asks again.
+// The lock is deferred one tick and cancelled if the effect re-runs: React
+// StrictMode (dev) simulates mount/unmount/mount, and an immediate lock there
+// would land between unlock and the first list load (#149). The ref survives
+// that simulated remount; a real unmount never re-runs the effect, so it locks.
 export function HiddenSession({ children }: { children: ReactNode }) {
+  const pendingLock = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
+    if (pendingLock.current !== null) {
+      clearTimeout(pendingLock.current);
+      pendingLock.current = null;
+    }
     return () => {
-      lockHidden().catch(() => {});
+      pendingLock.current = setTimeout(() => {
+        pendingLock.current = null;
+        lockHidden().catch(() => {});
+      }, 0);
     };
   }, []);
   return <>{children}</>;
