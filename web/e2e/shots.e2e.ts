@@ -172,3 +172,21 @@ test("phone title never overlaps Select or the account button (#159)", async ({ 
     if (sb) expect(sb.x + sb.width, `${label}: Select inside viewport`).toBeLessThanOrEqual(info.project.use.viewport!.width);
   }
 });
+
+test("desktop Days lead photo stays capped in wide windows (#153)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop only");
+  await signIn(page);
+  for (const [width, height] of [
+    [1440, 900],
+    [1920, 1080],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await openZoom(page, "Days");
+    await page.waitForTimeout(400);
+    const box = await cells(page).first().boundingBox();
+    expect(box, `${width}: lead photo`).not.toBeNull();
+    expect(box!.width, `${width}: lead width`).toBeLessThanOrEqual(960);
+    expect(box!.height, `${width}: lead height`).toBeLessThanOrEqual(480);
+    expect(box!.width / box!.height, `${width}: lead aspect`).toBeLessThanOrEqual(2.05);
+  }
+});

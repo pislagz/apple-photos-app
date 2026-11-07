@@ -5,7 +5,14 @@ import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
-import { cellHeight, computeCellSize, GRID_GAP, gridRowHeight } from "./gridMetrics";
+import {
+  computeCellSize,
+  featureHeight,
+  featureRowHeight,
+  featureWidth,
+  GRID_GAP,
+  gridRowHeight,
+} from "./gridMetrics";
 import { buildRows } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -163,7 +170,11 @@ export default function DesktopLibrary({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) =>
-      rows[index].type === "header" ? HEADER_ROW_HEIGHT : gridRowHeight(cellSize, rows[index].type === "feature"),
+      rows[index].type === "header"
+        ? HEADER_ROW_HEIGHT
+        : rows[index].type === "feature"
+          ? featureRowHeight(containerWidth)
+          : gridRowHeight(cellSize),
     overscan: 6,
   });
 
@@ -619,7 +630,9 @@ export default function DesktopLibrary({
                     display: "grid",
                     gap: GRID_GAP,
                     alignContent: "start",
-                    gridTemplateColumns: row.type === "feature" ? "1fr" : `repeat(${columns}, 1fr)`,
+                    gridTemplateColumns:
+                      row.type === "feature" ? `${featureWidth(containerWidth)}px` : `repeat(${columns}, 1fr)`,
+                    justifyContent: row.type === "feature" ? "center" : undefined,
                   }}
                   className="desktop-library__row-grid"
                 >
@@ -633,7 +646,7 @@ export default function DesktopLibrary({
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
-                        style={{ height: cellHeight(cellSize, row.type === "feature") }}
+                        style={{ height: row.type === "feature" ? featureHeight(containerWidth) : cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
                         onDoubleClick={() => handleOpen(item.id)}
                         onContextMenu={(event) => handleCellContextMenu(event, item.id)}
