@@ -8,7 +8,10 @@ or a `data/` directory anywhere in the repo.
 
 from __future__ import annotations
 
+import logging
 import pathlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
@@ -28,6 +31,8 @@ from .session_auth import (
 )
 from .session_auth import router as auth_router
 
+logger = logging.getLogger(__name__)
+
 # server/photos_viewer/main.py -> server/photos_viewer -> server -> repo root
 _DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
@@ -35,7 +40,8 @@ _DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / 
 # cache -- `/api/me` and `/api/auth/*` carry who-is-signed-in, `/api/setup/*`
 # is the first-run admin flow, and `/api/admin/*` is every admin JSON
 # response (users, sessions, audit log, settings).
-_NO_STORE_PREFIXES = ("/api/me", "/api/auth/", "/api/setup/", "/api/admin/")
+_NO_STORE_PREFIXES = ("/api/me/", "/api/auth/", "/api/setup/", "/api/admin/")
+_NO_STORE_EXACT = ("/api/me",)
 
 
 # P1.20. The one external host is the OSM raster tile server, on connect-src
@@ -59,7 +65,8 @@ class _NoStoreMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
-        if request.url.path.startswith(_NO_STORE_PREFIXES):
+        path = request.url.path
+        if path in _NO_STORE_EXACT or path.startswith(_NO_STORE_PREFIXES):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -105,10 +112,39 @@ def _mount_web_app(app: FastAPI, dist_dir: pathlib.Path) -> None:
         return FileResponse(safe_path)
 
 
+def _reset_stale_indexing_on_startup(app: FastAPI) -> None:
+    # Respects `get_data_dir`'s dependency override in tests. Skips entirely
+    # when no `app.db` exists yet at that path -- `connect()` would otherwise
+    # create one, which a plain `GET /api/health` (no library ever
+    # registered) must never do.
+    data_dir = app.dependency_overrides.get(get_data_dir, get_data_dir)()
+    if not app_db.db_path(data_dir).exists():
+        return
+    conn = app_db.connect(data_dir)
+    try:
+        reset_stale_indexing_state(conn)
+    finally:
+        conn.close()
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    _reset_stale_indexing_on_startup(app)
+    # Stat-only polling for replaced/copying libraries (P1.22). Resolves the
+    # data dir on every pass so it follows `app.db` appearing later.
+    checker = LibraryChecker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
+    app.state.library_checker = checker
+    checker.start()
+    try:
+        yield
+    finally:
+        checker.stop()
+
+
 def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     validate_public_origins_env()
     validate_trusted_proxies_env()
-    app = FastAPI()
+    app = FastAPI(lifespan=_lifespan)
     app.add_middleware(_NoStoreMiddleware)
     app.include_router(auth_router)
     app.include_router(library_admin_router)
@@ -120,37 +156,11 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
         return {"status": "ok"}
 
     dist_dir = web_dist_dir if web_dist_dir is not None else _DEFAULT_WEB_DIST_DIR
-    if dist_dir.is_dir():
+    if (dist_dir / "index.html").is_file():
         _mount_web_app(app, dist_dir)
-
-    @app.on_event("startup")
-    def _reset_stale_indexing_on_startup() -> None:
-        # Respects `get_data_dir`'s dependency override in tests. Skips
-        # entirely when no `app.db` exists yet at that path -- `connect()`
-        # would otherwise create one, which a plain `GET /api/health` (no
-        # library ever registered) must never do.
-        data_dir = app.dependency_overrides.get(get_data_dir, get_data_dir)()
-        if not app_db.db_path(data_dir).exists():
-            return
-        conn = app_db.connect(data_dir)
-        try:
-            reset_stale_indexing_state(conn)
-        finally:
-            conn.close()
-
-    @app.on_event("startup")
-    def _start_library_checker() -> None:
-        # Stat-only polling for replaced/copying libraries (P1.22). Resolves
-        # the data dir on every pass so it follows `app.db` appearing later.
-        checker = LibraryChecker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
-        app.state.library_checker = checker
-        checker.start()
-
-    @app.on_event("shutdown")
-    def _stop_library_checker() -> None:
-        checker = getattr(app.state, "library_checker", None)
-        if checker is not None:
-            checker.stop()
+    elif dist_dir.is_dir():
+        # A half-finished build: mounting would make every non-API path 500.
+        logger.warning("%s has no index.html; the web app is not served (run `npm run build`)", dist_dir)
 
     return app
 

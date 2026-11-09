@@ -719,7 +719,15 @@ def reject_cross_site_requests(request: Request) -> None:
     `--forwarded-allow-ips`, e.g. a Docker bridge gateway by default).
     """
     content_type = request.headers.get("content-type", "")
-    if not content_type.split(";", 1)[0].strip().lower() == "application/json":
+    # A bare DELETE has no body, so no client sends a Content-Type for it. A
+    # cross-site form can't issue DELETE at all, so the Origin check below
+    # is the whole guard for that case.
+    bodyless_delete = (
+        request.method == "DELETE"
+        and request.headers.get("content-length", "0") == "0"
+        and "transfer-encoding" not in request.headers
+    )
+    if not bodyless_delete and content_type.split(";", 1)[0].strip().lower() != "application/json":
         raise HTTPException(status_code=415, detail="Content-Type must be application/json")
 
     origin = request.headers.get("origin")

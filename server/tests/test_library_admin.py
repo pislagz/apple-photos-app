@@ -371,7 +371,9 @@ def test_library_status_does_not_write_into_the_package(tmp_path):
     # creates a `-shm`/`-wal` pair if neither already exists, which is a
     # write into the package -- forbidden even for an admin-only status
     # check. Add/rename/remove exercise the same package, each with their
-    # own status read in between.
+    # own status read in between. Largely superseded by the closed-library
+    # test below (stronger snapshot, no pre-existing -wal/-shm); this one
+    # still covers a library with an open WAL connection.
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
@@ -426,9 +428,13 @@ def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
         assert reindex_response.status_code == 200
         assert reindex_response.json()["asset_count"] == 1
 
-        client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
-        client.get(f"/api/admin/libraries/{added['id']}/status")
-        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+        rename_response = client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
+        assert rename_response.status_code == 200
+        assert client.get(f"/api/admin/libraries/{added['id']}/status").status_code == 200
+        remove_response = client.delete(
+            f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"}
+        )
+        assert remove_response.status_code == 204
 
         after = _full_snapshot(package_path)
         new_paths = set(after) - set(before)
@@ -769,5 +775,93 @@ def test_non_admin_is_403_on_every_library_admin_route(tmp_path):
             client.post("/api/admin/libraries/1/reindex", headers={"content-type": "application/json"}).status_code
             == 403
         )
+    finally:
+        conn.close()
+
+
+def test_add_library_resolves_the_path_before_the_duplicate_check(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        first = client.post("/api/admin/libraries", json={"path": str(package_path)})
+        assert first.status_code == 201
+        assert first.json()["path"] == str(package_path.resolve())
+
+        (tmp_path / "elsewhere").mkdir()
+        indirect = tmp_path / "elsewhere" / ".." / package_path.name
+        second = client.post("/api/admin/libraries", json={"path": str(indirect)})
+
+        assert second.status_code == 409
+        assert len(client.get("/api/admin/libraries").json()) == 1
+    finally:
+        conn.close()
+
+
+def test_add_library_for_a_folder_that_is_not_a_library_gets_a_plain_message(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        folder = tmp_path / "Fake.photoslibrary"
+        folder.mkdir()
+
+        response = client.post("/api/admin/libraries", json={"path": str(folder)})
+
+        assert response.status_code == 400
+        assert "is not a Photos library" in response.json()["detail"]
+        assert "could not open" not in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_remove_library_without_a_content_type_succeeds(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        response = client.delete(f"/api/admin/libraries/{added['id']}")
+
+        assert response.status_code == 204
+    finally:
+        conn.close()
+
+
+def test_bodyless_delete_still_checks_origin(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+
+        response = client.delete(
+            f"/api/admin/libraries/{added['id']}", headers={"origin": "https://evil.example"}
+        )
+
+        assert response.status_code == 403
+        assert len(client.get("/api/admin/libraries").json()) == 1
+    finally:
+        conn.close()
+
+
+def test_status_total_size_excludes_hidden_assets(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        visible = client.get(f"/api/admin/libraries/{added['id']}/status").json()["total_size_bytes"]
+        # Add a hidden asset to the index with a large size.
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(assets)")]
+        row = dict(conn.execute("SELECT * FROM assets WHERE library_id = ?", (added["id"],)).fetchone())
+        row.update({"uuid": "hidden-extra", "hidden": 1, "original_filesize": 1000})
+        if "id" in row:
+            del row["id"]
+            columns.remove("id")
+        conn.execute(
+            f"INSERT INTO assets ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+            [row[c] for c in columns],
+        )
+        conn.commit()
+
+        body = client.get(f"/api/admin/libraries/{added['id']}/status").json()
+
+        assert body["total_size_bytes"] == visible
     finally:
         conn.close()
