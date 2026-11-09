@@ -63,6 +63,14 @@ describe("mobileRoutePath", () => {
   });
 });
 
+describe("People routes (P2.2)", () => {
+  it("round-trips a person", () => {
+    const route: MobileRoute = { tab: "more", screen: "people", personId: "P-1" };
+    expect(mobileRoutePath(route)).toBe("/people/P-1");
+    expect(parseMobileRoute("/people/P-1")).toEqual(route);
+  });
+});
+
 describe("Albums routes (P2.1)", () => {
   it("round-trips a folder, an album and a smart album", () => {
     for (const route of [
