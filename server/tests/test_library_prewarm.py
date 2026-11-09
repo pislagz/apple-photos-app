@@ -308,3 +308,26 @@ def test_a_new_worker_resumes_a_job_left_running(tmp_path, generations):
         assert worker._run_one(tmp_path) is False  # nothing left running
     finally:
         conn.close()
+
+
+def test_unmounted_drive_mid_job_keeps_cursor_and_failed_count(tmp_path, generations):
+    import shutil
+
+    conn, client, lib, package = _setup(tmp_path, count=4)
+    try:
+        _start(client, lib)
+        library_prewarm.run_library(tmp_path, lib, max_assets=2, pause_s=0)
+        moved = tmp_path / "ejected"
+        shutil.move(str(package), str(moved))
+        assert library_prewarm.run_library(tmp_path, lib, pause_s=0) == "running"
+        status = client.get(f"/api/admin/libraries/{lib}/status").json()["prewarm"]
+        assert (
+            status["state"] == "running"
+            and status["done"] == 2
+            and status["failed"] == 0
+        )
+        shutil.move(str(moved), str(package))
+        assert library_prewarm.run_library(tmp_path, lib, pause_s=0) == "done"
+        assert len(_cache_files(tmp_path, lib)) == 4 * 2
+    finally:
+        conn.close()

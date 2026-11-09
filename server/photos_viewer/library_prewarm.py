@@ -186,6 +186,11 @@ def run_library(
                 _set_state(db, library_id, "done")
                 return "done"
             ok = _warm_asset(db, cache_dir, library, asset)
+            if not ok and not pathlib.Path(library["path"]).exists():
+                # The drive went away mid-job: keep the cursor and the job
+                # running so the worker retries once it is mounted again,
+                # instead of counting every remaining asset as failed.
+                return "running"
             # Re-check: a pause/clear that landed during the decode wins, so
             # the cursor does not move over a stale state.
             if _current_state(db, library_id) != "running":
