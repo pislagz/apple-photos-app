@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
 import MobileLibrary from "./MobileLibrary";
+import { useFakeLayout } from "../../testLayout";
+
+// Virtualized grids need a sized viewport; jsdom has none (#88).
+useFakeLayout();
 
 function makeItem(id: string, date: string): AssetListItem {
   return {
