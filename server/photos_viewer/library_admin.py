@@ -113,9 +113,12 @@ def _run_summary(row: sqlite3.Row) -> RunSummary:
     )
 
 
-def _recent_runs(db: sqlite3.Connection, library_id: int, limit: int = 10) -> list[RunSummary]:
+def _recent_runs(
+    db: sqlite3.Connection, library_id: int, limit: int = 10
+) -> list[RunSummary]:
     rows = db.execute(
-        "SELECT * FROM library_index_runs WHERE library_id = ? ORDER BY id DESC LIMIT ?", (library_id, limit)
+        "SELECT * FROM library_index_runs WHERE library_id = ? ORDER BY id DESC LIMIT ?",
+        (library_id, limit),
     ).fetchall()
     return [_run_summary(row) for row in rows]
 
@@ -126,14 +129,22 @@ class ReplaceSuggestion(BaseModel):
     message: str
 
 
-def _suggest_replacement(db: sqlite3.Connection, path: pathlib.Path) -> ReplaceSuggestion | None:
+def _suggest_replacement(
+    db: sqlite3.Connection, path: pathlib.Path
+) -> ReplaceSuggestion | None:
     if path.exists():
         return None
     try:
-        candidates = sorted(p for p in path.parent.iterdir() if p.suffix == ".photoslibrary" and p.is_dir())
+        candidates = sorted(
+            p
+            for p in path.parent.iterdir()
+            if p.suffix == ".photoslibrary" and p.is_dir()
+        )
     except OSError:
         return None
-    registered = {pathlib.Path(r["path"]) for r in db.execute("SELECT path FROM libraries")}
+    registered = {
+        pathlib.Path(r["path"]) for r in db.execute("SELECT path FROM libraries")
+    }
     for candidate in candidates:
         if candidate not in registered:
             return ReplaceSuggestion(
@@ -179,19 +190,28 @@ def _validate_library_path(path: pathlib.Path) -> None:
             )
         raise HTTPException(status_code=400, detail=f"{path} does not exist")
     if path.suffix != ".photoslibrary":
-        raise HTTPException(status_code=400, detail=f"{path} does not end in .photoslibrary")
+        raise HTTPException(
+            status_code=400, detail=f"{path} does not end in .photoslibrary"
+        )
     if not path.is_dir():
-        raise HTTPException(status_code=400, detail=f"{path} is not a .photoslibrary package")
+        raise HTTPException(
+            status_code=400, detail=f"{path} is not a .photoslibrary package"
+        )
     if not os.access(path, os.R_OK | os.X_OK):
         raise HTTPException(status_code=400, detail=f"{path} is not readable")
     if not (path / "database" / "Photos.sqlite").is_file():
-        raise HTTPException(status_code=400, detail=f"{path} is not a Photos library (no database/Photos.sqlite inside)")
+        raise HTTPException(
+            status_code=400,
+            detail=f"{path} is not a Photos library (no database/Photos.sqlite inside)",
+        )
     try:
         opened = open_library_readonly(path)
     except UnsupportedPhotosVersionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"could not open {path} as a Photos library: {exc}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"could not open {path} as a Photos library: {exc}"
+        ) from exc
     else:
         opened.close()
 
@@ -201,7 +221,12 @@ def _default_display_name(path: pathlib.Path) -> str:
 
 
 def _to_response(row: sqlite3.Row) -> LibraryResponse:
-    return LibraryResponse(id=row["id"], display_name=row["display_name"], path=row["path"], created_at=row["created_at"])
+    return LibraryResponse(
+        id=row["id"],
+        display_name=row["display_name"],
+        path=row["path"],
+        created_at=row["created_at"],
+    )
 
 
 def _get_library_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.Row:
@@ -211,7 +236,9 @@ def _get_library_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.Row:
     return row
 
 
-def _total_size_bytes(db: sqlite3.Connection, library_id: int, path: pathlib.Path) -> int | None:
+def _total_size_bytes(
+    db: sqlite3.Connection, library_id: int, path: pathlib.Path
+) -> int | None:
     """The sum of `assets.original_filesize` of non-hidden assets from the index
     (hidden assets appear in no count or summary), not a fresh
     filesystem walk of a package that can be terabytes. Still `None` when
@@ -220,7 +247,8 @@ def _total_size_bytes(db: sqlite3.Connection, library_id: int, path: pathlib.Pat
     if not path.exists():
         return None
     total = db.execute(
-        "SELECT SUM(original_filesize) FROM assets WHERE library_id = ? AND hidden = 0", (library_id,)
+        "SELECT SUM(original_filesize) FROM assets WHERE library_id = ? AND hidden = 0",
+        (library_id,),
     ).fetchone()[0]
     return total or 0
 
@@ -246,7 +274,11 @@ def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
     except UnsupportedPhotosVersionError as exc:
         warnings.append(LibraryWarning(code="unsupported_version", message=str(exc)))
     except Exception as exc:  # noqa: BLE001 -- any open failure becomes a status warning, not a 500
-        warnings.append(LibraryWarning(code="unreadable", message=f"{path} could not be opened: {exc}"))
+        warnings.append(
+            LibraryWarning(
+                code="unreadable", message=f"{path} could not be opened: {exc}"
+            )
+        )
     else:
         opened.close()
     return warnings
@@ -257,7 +289,9 @@ _mark_indexed = library_watch.mark_indexed
 _mark_index_error = library_watch.mark_index_error
 
 
-def _run_index_job(data_dir: pathlib.Path, library_id: int, path: pathlib.Path, *, force: bool) -> None:
+def _run_index_job(
+    data_dir: pathlib.Path, library_id: int, path: pathlib.Path, *, force: bool
+) -> None:
     """Runs on its own `app.db` connection -- the request's `get_db`
     connection is closed before a `BackgroundTasks` callback runs, and in
     production a fresh connection is handed out per request, so a job that
@@ -279,7 +313,12 @@ def _run_index_job(data_dir: pathlib.Path, library_id: int, path: pathlib.Path, 
         _mark_indexed(conn, library_id)
     except Exception as exc:
         _mark_index_error(conn, library_id, str(exc))
-        logger.warning("background index of library %s (%s) failed", library_id, path, exc_info=True)
+        logger.warning(
+            "background index of library %s (%s) failed",
+            library_id,
+            path,
+            exc_info=True,
+        )
     finally:
         conn.close()
         lock.release()
@@ -309,13 +348,19 @@ def reset_stale_indexing_state(conn: sqlite3.Connection) -> None:
     re-runs the index once (and clears the error) without an admin pressing
     Reindex. A library never indexed at all is picked up by the checker's
     normal pending path instead."""
-    rows = conn.execute("SELECT id FROM libraries WHERE index_state = 'indexing'").fetchall()
+    rows = conn.execute(
+        "SELECT id FROM libraries WHERE index_state = 'indexing'"
+    ).fetchall()
     for row in rows:
         lock = _lock_for(row["id"])
         if lock.acquire(blocking=False):
             try:
-                _mark_index_error(conn, row["id"], "indexing was interrupted and did not finish")
-                conn.execute("UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (row["id"],))
+                _mark_index_error(
+                    conn, row["id"], "indexing was interrupted and did not finish"
+                )
+                conn.execute(
+                    "UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (row["id"],)
+                )
                 conn.commit()
             finally:
                 lock.release()
@@ -328,17 +373,23 @@ def _maybe_reindex(db: sqlite3.Connection, row: sqlite3.Row) -> None:
     library_watch.observe(db, row["id"])
 
 
-def _index_counts(db: sqlite3.Connection, library_id: int, last_indexed_at: str | None) -> dict:
+def _index_counts(
+    db: sqlite3.Connection, library_id: int, last_indexed_at: str | None
+) -> dict:
     if last_indexed_at is None:
         return {"asset_count": None, "video_count": None, "people_count": None}
     return {
         "asset_count": db.execute(
-            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND hidden = 0", (library_id,)
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND hidden = 0",
+            (library_id,),
         ).fetchone()[0],
         "video_count": db.execute(
-            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND is_video = 1 AND hidden = 0", (library_id,)
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND is_video = 1 AND hidden = 0",
+            (library_id,),
         ).fetchone()[0],
-        "people_count": db.execute("SELECT COUNT(*) FROM people WHERE library_id = ?", (library_id,)).fetchone()[0],
+        "people_count": db.execute(
+            "SELECT COUNT(*) FROM people WHERE library_id = ?", (library_id,)
+        ).fetchone()[0],
     }
 
 
@@ -362,7 +413,9 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
         warnings.append(
             LibraryWarning(
                 code="originals_missing",
-                message=optimize_storage_message(last_applied.originals_missing, last_applied.originals_missing_pct),
+                message=optimize_storage_message(
+                    last_applied.originals_missing, last_applied.originals_missing_pct
+                ),
             )
         )
     return LibraryStatusResponse(
@@ -409,7 +462,9 @@ def add_library(
             (display_name, str(path)),
         )
     except sqlite3.IntegrityError as exc:
-        raise HTTPException(status_code=409, detail="this path is already registered") from exc
+        raise HTTPException(
+            status_code=409, detail="this path is already registered"
+        ) from exc
     library_id = cursor.lastrowid
     # The admin who registers a library can see it immediately, without a
     # separate trip to the access matrix; every other user still needs an
@@ -423,14 +478,21 @@ def add_library(
     # it can never roll back this INSERT and turn a bad library path into a
     # 500 that also loses the row.
     db.commit()
-    app_db.write_audit_log(db, "add_library", library_id=library_id, actor=admin["username"], detail=str(path))
+    app_db.write_audit_log(
+        db,
+        "add_library",
+        library_id=library_id,
+        actor=admin["username"],
+        detail=str(path),
+    )
     _schedule_index_job(background_tasks, data_dir, library_id, path, force=True)
     return _to_response(_get_library_or_404(db, library_id))
 
 
 @router.get("/api/admin/libraries", response_model=list[LibraryResponse])
 def list_libraries(
-    admin: sqlite3.Row = Depends(session_auth.require_admin), db: sqlite3.Connection = Depends(session_auth.get_db)
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> list[LibraryResponse]:
     rows = db.execute("SELECT * FROM libraries ORDER BY id").fetchall()
     return [_to_response(row) for row in rows]
@@ -448,8 +510,17 @@ def rename_library(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> LibraryResponse:
     _get_library_or_404(db, library_id)
-    db.execute("UPDATE libraries SET display_name = ? WHERE id = ?", (payload.display_name, library_id))
-    app_db.write_audit_log(db, "rename_library", library_id=library_id, actor=admin["username"], detail=payload.display_name)
+    db.execute(
+        "UPDATE libraries SET display_name = ? WHERE id = ?",
+        (payload.display_name, library_id),
+    )
+    app_db.write_audit_log(
+        db,
+        "rename_library",
+        library_id=library_id,
+        actor=admin["username"],
+        detail=payload.display_name,
+    )
     return _to_response(_get_library_or_404(db, library_id))
 
 
@@ -476,7 +547,9 @@ def remove_library(
     )
 
 
-@router.get("/api/admin/libraries/{library_id}/status", response_model=LibraryStatusResponse)
+@router.get(
+    "/api/admin/libraries/{library_id}/status", response_model=LibraryStatusResponse
+)
 def library_status(
     library_id: int,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
@@ -496,14 +569,16 @@ def reindex_library(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> LibraryStatusResponse:
-    """"Index now": skips the stability wait and forces a fresh walk even if
+    """ "Index now": skips the stability wait and forces a fresh walk even if
     the sqlite signature hasn't changed. Still runs the readiness checks, so
     a half-copied package is refused with the reason. Synchronous because its
     response body reports the fresh counts."""
     row = _get_library_or_404(db, library_id)
     path = pathlib.Path(row["path"])
     if not path.exists():
-        raise HTTPException(status_code=400, detail=f"{path} is not reachable -- is the drive mounted?")
+        raise HTTPException(
+            status_code=400, detail=f"{path} is not reachable -- is the drive mounted?"
+        )
     lock = _lock_for(library_id)
     lock.acquire()
     try:
@@ -511,20 +586,32 @@ def reindex_library(
         opened, reason = library_watch.check_ready(path)
         if opened is None:
             _mark_indexed(db, library_id)
-            raise HTTPException(status_code=400, detail=f"could not re-index {path}: {reason}")
+            raise HTTPException(
+                status_code=400, detail=f"could not re-index {path}: {reason}"
+            )
         try:
-            indexer.index_library(db, library_id, path, force=True, trigger="admin", opened=opened)
+            indexer.index_library(
+                db, library_id, path, force=True, trigger="admin", opened=opened
+            )
         except UnsupportedPhotosVersionError as exc:
             _mark_index_error(db, library_id, str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             _mark_index_error(db, library_id, str(exc))
-            raise HTTPException(status_code=400, detail=f"could not re-index {path}: {exc}") from exc
+            raise HTTPException(
+                status_code=400, detail=f"could not re-index {path}: {exc}"
+            ) from exc
         else:
             _mark_indexed(db, library_id)
     finally:
         lock.release()
-    app_db.write_audit_log(db, "reindex_library", library_id=library_id, actor=admin["username"], detail=str(path))
+    app_db.write_audit_log(
+        db,
+        "reindex_library",
+        library_id=library_id,
+        actor=admin["username"],
+        detail=str(path),
+    )
     return _build_status(db, _get_library_or_404(db, library_id))
 
 
@@ -552,27 +639,47 @@ class ReplacePreview(BaseModel):
 LOW_OVERLAP = 0.5
 
 
-def _preview_replace(db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib.Path) -> ReplacePreview:
+def _preview_replace(
+    db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib.Path
+) -> ReplacePreview:
     """Reads the new package on `open_library_readonly`'s temp copy only."""
     _validate_library_path(new_path)
-    other = db.execute("SELECT id FROM libraries WHERE path = ? AND id != ?", (str(new_path), row["id"])).fetchone()
+    other = db.execute(
+        "SELECT id FROM libraries WHERE path = ? AND id != ?",
+        (str(new_path), row["id"]),
+    ).fetchone()
     if other is not None:
-        raise HTTPException(status_code=409, detail="this path is already registered as another library")
+        raise HTTPException(
+            status_code=409, detail="this path is already registered as another library"
+        )
     opened = open_library_readonly(new_path)
     try:
         new_uuids: set[str] = set()
         missing = 0
         for photo in opened.db.photos():
             new_uuids.add(photo.uuid)
-            if photo.path_derivatives and not (photo.path and os.path.exists(photo.path)):
+            if photo.path_derivatives and not (
+                photo.path and os.path.exists(photo.path)
+            ):
                 missing += 1
-        new_store_uuid = indexer.read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
+        new_store_uuid = (
+            indexer.read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
+        )
     finally:
         opened.close()
-    old_uuids = {r["uuid"] for r in db.execute("SELECT uuid FROM assets WHERE library_id = ?", (row["id"],))}
+    old_uuids = {
+        r["uuid"]
+        for r in db.execute(
+            "SELECT uuid FROM assets WHERE library_id = ?", (row["id"],)
+        )
+    }
     overlap = len(old_uuids & new_uuids) / len(old_uuids) if old_uuids else 1.0
     old_store_uuid = row["store_uuid"]
-    match = None if old_store_uuid is None or new_store_uuid is None else old_store_uuid == new_store_uuid
+    match = (
+        None
+        if old_store_uuid is None or new_store_uuid is None
+        else old_store_uuid == new_store_uuid
+    )
     pct = 100.0 * missing / len(new_uuids) if new_uuids else 0.0
     warnings: list[LibraryWarning] = []
     if overlap < LOW_OVERLAP:
@@ -585,10 +692,17 @@ def _preview_replace(db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib
         )
     if match is False:
         warnings.append(
-            LibraryWarning(code="store_uuid_differs", message="The new package has a different library identity.")
+            LibraryWarning(
+                code="store_uuid_differs",
+                message="The new package has a different library identity.",
+            )
         )
     if pct >= OPTIMIZE_STORAGE_WARN_PCT:
-        warnings.append(LibraryWarning(code="originals_missing", message=optimize_storage_message(missing, pct)))
+        warnings.append(
+            LibraryWarning(
+                code="originals_missing", message=optimize_storage_message(missing, pct)
+            )
+        )
     return ReplacePreview(
         path=str(new_path),
         confirmed=False,
@@ -625,34 +739,54 @@ def replace_library(
     detail = f"old={row['path']} new={new_path} overlap={preview.overlap:.3f} store_uuid_match={preview.store_uuid_match}"
     if not payload.confirm:
         app_db.write_audit_log(
-            db, "library.replace.previewed", library_id=library_id, actor=admin["username"], detail=detail
+            db,
+            "library.replace.previewed",
+            library_id=library_id,
+            actor=admin["username"],
+            detail=detail,
         )
         return preview
     blockers = [w for w in preview.warnings if w.code != "originals_missing"]
     if blockers and not payload.replace_anyway:
-        raise HTTPException(status_code=409, detail="; ".join(w.message for w in blockers))
+        raise HTTPException(
+            status_code=409, detail="; ".join(w.message for w in blockers)
+        )
     lock = _lock_for(library_id)
     lock.acquire()
     try:
         opened, reason = library_watch.check_ready(new_path)
         if opened is None:
-            raise HTTPException(status_code=400, detail=f"{new_path} is not ready: {reason}")
+            raise HTTPException(
+                status_code=400, detail=f"{new_path} is not ready: {reason}"
+            )
         old_path = row["path"]
-        db.execute("UPDATE libraries SET path = ? WHERE id = ?", (str(new_path), library_id))
+        db.execute(
+            "UPDATE libraries SET path = ? WHERE id = ?", (str(new_path), library_id)
+        )
         db.commit()
         try:
             _mark_indexing(db, library_id)
-            indexer.index_library(db, library_id, new_path, force=True, trigger="replace", opened=opened)
+            indexer.index_library(
+                db, library_id, new_path, force=True, trigger="replace", opened=opened
+            )
             _mark_indexed(db, library_id)
         except Exception as exc:
-            db.execute("UPDATE libraries SET path = ? WHERE id = ?", (old_path, library_id))
+            db.execute(
+                "UPDATE libraries SET path = ? WHERE id = ?", (old_path, library_id)
+            )
             db.commit()
             _mark_index_error(db, library_id, str(exc))
-            raise HTTPException(status_code=400, detail=f"could not index {new_path}: {exc}") from exc
+            raise HTTPException(
+                status_code=400, detail=f"could not index {new_path}: {exc}"
+            ) from exc
     finally:
         lock.release()
     app_db.write_audit_log(
-        db, "library.replace.confirmed", library_id=library_id, actor=admin["username"], detail=detail
+        db,
+        "library.replace.confirmed",
+        library_id=library_id,
+        actor=admin["username"],
+        detail=detail,
     )
     preview.confirmed = True
     preview.status = _build_status(db, _get_library_or_404(db, library_id))

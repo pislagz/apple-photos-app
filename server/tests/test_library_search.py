@@ -305,11 +305,16 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("DROP TABLE passkey_challenges")  # migration 22
         db.execute("DROP TABLE passkeys")
         db.execute("DROP TABLE prewarm_jobs")  # migration 23
-        db.execute("INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')")
+        db.execute(
+            "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')"
+        )
         db.execute("INSERT INTO libraries (display_name, path) VALUES ('B', 'b')")
         db.commit()
         app_db.migrate(db)
-        flags = {r["display_name"]: r["reindex_needed"] for r in db.execute("SELECT * FROM libraries")}
+        flags = {
+            r["display_name"]: r["reindex_needed"]
+            for r in db.execute("SELECT * FROM libraries")
+        }
         assert flags == {"A": 1, "B": 0}
     finally:
         db.close()

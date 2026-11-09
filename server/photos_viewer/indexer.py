@@ -105,7 +105,8 @@ def sqlite_signature(package_path: str | pathlib.Path) -> str:
     checkpointed into the main file still changes the signature."""
     sqlite_path = pathlib.Path(package_path) / "database" / "Photos.sqlite"
     return "|".join(
-        _file_signature(sqlite_path.with_name(sqlite_path.name + suffix)) for suffix in ("", "-wal", "-shm")
+        _file_signature(sqlite_path.with_name(sqlite_path.name + suffix))
+        for suffix in ("", "-wal", "-shm")
     )
 
 
@@ -126,7 +127,11 @@ def read_store_uuid(sqlite_path: pathlib.Path) -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return (
+        datetime.datetime.now(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def index_library(
@@ -151,7 +156,9 @@ def index_library(
     changed assets are deleted from `cache_dir` (default: `media_cache/` next
     to `app.db`).
     """
-    row = db.execute("SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)).fetchone()
+    row = db.execute(
+        "SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)
+    ).fetchone()
     signature = sqlite_signature(package_path)
     if not force and row is not None and row["last_indexed_signature"] == signature:
         if opened is not None:
@@ -162,7 +169,9 @@ def index_library(
     if opened is None:
         opened = libraries.open_library_readonly(package_path)
     try:
-        purge = _write_index_and_update_signature(db, library_id, opened, signature, trigger, started_at)
+        purge = _write_index_and_update_signature(
+            db, library_id, opened, signature, trigger, started_at
+        )
     finally:
         opened.close()
     _purge_cache(db, library_id, purge, cache_dir)
@@ -170,14 +179,24 @@ def index_library(
 
 
 def _purge_cache(
-    db: sqlite3.Connection, library_id: int, uuids: list[str], cache_dir: str | pathlib.Path | None
+    db: sqlite3.Connection,
+    library_id: int,
+    uuids: list[str],
+    cache_dir: str | pathlib.Path | None,
 ) -> None:
     """Best effort, after the commit: a leftover thumbnail is harmless (the
     LRU takes it), a failed purge must not fail an index that applied."""
     if not uuids:
         return
     if cache_dir is None:
-        main = next((r["file"] for r in db.execute("PRAGMA database_list") if r["name"] == "main"), "")
+        main = next(
+            (
+                r["file"]
+                for r in db.execute("PRAGMA database_list")
+                if r["name"] == "main"
+            ),
+            "",
+        )
         if not main:
             return
         cache_dir = pathlib.Path(main).parent / "media_cache"
@@ -203,10 +222,15 @@ def _write_index_and_update_signature(
         db.execute("BEGIN IMMEDIATE")
     try:
         counts, purge = _write_index(
-            db, library_id, opened.db, batch_size=INDEX_BATCH_SIZE if own_transaction else None
+            db,
+            library_id,
+            opened.db,
+            batch_size=INDEX_BATCH_SIZE if own_transaction else None,
         )
         store_uuid = read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
-        asset_count = db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0]
+        asset_count = db.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)
+        ).fetchone()[0]
         # Applying a valid copy also ends any "Being updated" state, in the
         # same commit as the new index.
         db.execute(
@@ -255,10 +279,19 @@ _UPSERT_ASSET_SQL = (
 INDEX_BATCH_SIZE = 5000
 
 
-_FACE_ERRORS = (KeyError, IndexError, TypeError, ValueError, AttributeError, ZeroDivisionError)
+_FACE_ERRORS = (
+    KeyError,
+    IndexError,
+    TypeError,
+    ValueError,
+    AttributeError,
+    ZeroDivisionError,
+)
 
 
-def _write_faces(db: sqlite3.Connection, asset_id: int, photo, person_ids: dict[str, int]) -> None:
+def _write_faces(
+    db: sqlite3.Connection, asset_id: int, photo, person_ids: dict[str, int]
+) -> None:
     """Face rectangles for the People cover crop. Photos stores a face in a
     bottom-left-origin frame of the unrotated image; `mwg_rs_area` is
     osxphotos' conversion to the displayed frame (centre x/y, size w/h)."""
@@ -303,7 +336,9 @@ def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> None:
     db.execute("DELETE FROM asset_labels WHERE asset_id = ?", (asset_id,))
     found: dict[str, str] = {}
     try:
-        for label, normalized in zip(photo.labels, photo.labels_normalized, strict=False):
+        for label, normalized in zip(
+            photo.labels, photo.labels_normalized, strict=False
+        ):
             found.setdefault(normalized, label)
         info = photo.search_info
         for field in _EXTRA_SEARCH_FIELDS:
@@ -362,7 +397,13 @@ def _write_index(
         seen_folders.add(folder.uuid)
         db.execute(
             "INSERT INTO folders (library_id, uuid, title, parent_uuid, list_order) VALUES (?, ?, ?, ?, ?)",
-            (library_id, folder.uuid, folder.title, parent_uuid, folder.library_list_order[-1]),
+            (
+                library_id,
+                folder.uuid,
+                folder.title,
+                parent_uuid,
+                folder.library_list_order[-1],
+            ),
         )
         pending.extend((child, folder.uuid) for child in folder.subfolders)
 
@@ -390,13 +431,24 @@ def _write_index(
     # assets actually gone from the library, in one statement, without
     # building a giant `NOT IN (...)` parameter list.
     old_rows = {
-        row["uuid"]: (row["path_edited"], row["date_modified"], row["original_filesize"], row["hidden"])
+        row["uuid"]: (
+            row["path_edited"],
+            row["date_modified"],
+            row["original_filesize"],
+            row["hidden"],
+        )
         for row in db.execute(
             "SELECT uuid, path_edited, date_modified, original_filesize, hidden FROM assets WHERE library_id = ?",
             (library_id,),
         )
     }
-    counts = {"added": 0, "removed": 0, "changed": 0, "hidden_changed": 0, "originals_missing": 0}
+    counts = {
+        "added": 0,
+        "removed": 0,
+        "changed": 0,
+        "hidden_changed": 0,
+        "originals_missing": 0,
+    }
     purge: list[str] = []
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
@@ -415,7 +467,11 @@ def _write_index(
             if old is None:
                 counts["added"] += 1
             else:
-                if old[:3] != (photo.path_edited, date_modified, photo.original_filesize):
+                if old[:3] != (
+                    photo.path_edited,
+                    date_modified,
+                    photo.original_filesize,
+                ):
                     counts["changed"] += 1
                     purge.append(photo.uuid)
                 if old[3] != int(photo.hidden):
@@ -471,7 +527,8 @@ def _write_index(
                 ),
             )
             asset_id = db.execute(
-                "SELECT id FROM assets WHERE library_id = ? AND uuid = ?", (library_id, photo.uuid)
+                "SELECT id FROM assets WHERE library_id = ? AND uuid = ?",
+                (library_id, photo.uuid),
             ).fetchone()["id"]
 
             for person in photo.person_info:

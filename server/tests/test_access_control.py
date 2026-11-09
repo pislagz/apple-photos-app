@@ -174,7 +174,10 @@ def requests_for(path, method, library):
             variants = [{"params": {"q": "test"}}]
         elif path.endswith("/zip"):
             ids = [a["uuid"] for a in library["assets"].values()]
-            variants = [{"json": {"asset_ids": ids, "format": fmt}} for fmt in ("native", "jpeg")]
+            variants = [
+                {"json": {"asset_ids": ids, "format": fmt}}
+                for fmt in ("native", "jpeg")
+            ]
         else:
             variants = [{}]
         out.extend((url, {"method": method, **variant}) for variant in variants)
@@ -291,7 +294,9 @@ def test_zip_of_foreign_asset_ids_through_own_library_404s(world):
     foreign = [a["uuid"] for a in victim["assets"].values()]
     mixed = [next(iter(own["assets"].values()))["uuid"], *foreign]
     for ids in (foreign, mixed):
-        response = client.post(f"/api/libraries/{own['id']}/zip", json={"asset_ids": ids})
+        response = client.post(
+            f"/api/libraries/{own['id']}/zip", json={"asset_ids": ids}
+        )
         assert_nothing_returned(response, victim, "zip foreign ids")
         assert response.status_code == 404
 

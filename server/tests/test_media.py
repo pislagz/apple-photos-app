@@ -23,7 +23,11 @@ def _snapshot(package_path: pathlib.Path) -> dict:
     for path in sorted(package_path.rglob("*")):
         rel = str(path.relative_to(package_path))
         stat = path.stat()
-        snapshot[rel] = ("dir", stat.st_mtime_ns) if path.is_dir() else (stat.st_size, stat.st_mtime_ns)
+        snapshot[rel] = (
+            ("dir", stat.st_mtime_ns)
+            if path.is_dir()
+            else (stat.st_size, stat.st_mtime_ns)
+        )
     return snapshot
 
 
@@ -59,7 +63,9 @@ def test_derivative_preferred_when_large_enough(tmp_path, monkeypatch):
     small_derivative = tmp_path / "derivative_small.jpg"
     Image.new("RGB", (400, 300), color=(4, 5, 6)).save(small_derivative, format="JPEG")
 
-    picked = media._pick_source(original, [small_derivative], target_px=media.SIZES["grid"])
+    picked = media._pick_source(
+        original, [small_derivative], target_px=media.SIZES["grid"]
+    )
 
     assert picked == small_derivative
 
@@ -70,7 +76,9 @@ def test_derivative_too_small_falls_back_to_original(tmp_path):
     tiny_derivative = tmp_path / "derivative_tiny.jpg"
     Image.new("RGB", (50, 40)).save(tiny_derivative, format="JPEG")
 
-    picked = media._pick_source(original, [tiny_derivative], target_px=media.SIZES["preview"])
+    picked = media._pick_source(
+        original, [tiny_derivative], target_px=media.SIZES["preview"]
+    )
 
     assert picked == original
 
@@ -83,7 +91,9 @@ def test_missing_raw_decoder_raises_a_clear_error_without_crashing(tmp_path):
         media.generate(raw_path, "grid")
 
 
-def test_missing_video_decoder_raises_a_clear_error_without_crashing(tmp_path, monkeypatch):
+def test_missing_video_decoder_raises_a_clear_error_without_crashing(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     video_path = tmp_path / "IMG_0003.MOV"
     video_path.write_bytes(b"not a real video file")
@@ -108,13 +118,21 @@ def test_get_or_generate_caches_under_the_data_dir(tmp_path, monkeypatch):
     cache_dir = tmp_path / "cache"
 
     first = media.get_or_generate(
-        cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=source_path
+        cache_dir,
+        library_id=1,
+        asset_uuid="asset-uuid",
+        size="grid",
+        source_path=source_path,
     )
     cached_files = list(cache_dir.rglob("*"))
     assert any(path.is_file() for path in cached_files)
 
     second = media.get_or_generate(
-        cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=source_path
+        cache_dir,
+        library_id=1,
+        asset_uuid="asset-uuid",
+        size="grid",
+        source_path=source_path,
     )
 
     assert second.data == first.data
@@ -127,9 +145,21 @@ def test_get_or_generate_cache_key_changes_with_source_mtime(tmp_path, monkeypat
     Image.new("RGB", (800, 600)).save(source_path, format="JPEG")
     cache_dir = tmp_path / "cache"
 
-    media.get_or_generate(cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=source_path)
+    media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="asset-uuid",
+        size="grid",
+        source_path=source_path,
+    )
     key_before = media.cache_key(
-        1, "asset-uuid", "grid", source_path, source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY
+        1,
+        "asset-uuid",
+        "grid",
+        source_path,
+        source_path.stat().st_mtime_ns,
+        media.SIZES["grid"],
+        media.DEFAULT_QUALITY,
     )
 
     # A re-index that re-fetches a changed original touches its mtime; the
@@ -138,7 +168,13 @@ def test_get_or_generate_cache_key_changes_with_source_mtime(tmp_path, monkeypat
     new_mtime_ns = source_path.stat().st_mtime_ns + 1_000_000_000
     os.utime(source_path, ns=(new_mtime_ns, new_mtime_ns))
     key_after = media.cache_key(
-        1, "asset-uuid", "grid", source_path, source_path.stat().st_mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY
+        1,
+        "asset-uuid",
+        "grid",
+        source_path,
+        source_path.stat().st_mtime_ns,
+        media.SIZES["grid"],
+        media.DEFAULT_QUALITY,
     )
 
     assert key_before != key_after
@@ -150,8 +186,18 @@ def test_get_or_generate_cache_key_changes_with_quality(tmp_path, monkeypatch):
     Image.new("RGB", (800, 600)).save(source_path, format="JPEG")
     mtime_ns = source_path.stat().st_mtime_ns
 
-    key_default = media.cache_key(1, "asset-uuid", "grid", source_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
-    key_other_quality = media.cache_key(1, "asset-uuid", "grid", source_path, mtime_ns, media.SIZES["grid"], 40)
+    key_default = media.cache_key(
+        1,
+        "asset-uuid",
+        "grid",
+        source_path,
+        mtime_ns,
+        media.SIZES["grid"],
+        media.DEFAULT_QUALITY,
+    )
+    key_other_quality = media.cache_key(
+        1, "asset-uuid", "grid", source_path, mtime_ns, media.SIZES["grid"], 40
+    )
 
     assert key_default != key_other_quality
 
@@ -166,13 +212,31 @@ def test_get_or_generate_cache_key_changes_with_source_path(tmp_path):
     mtime_ns = original_path.stat().st_mtime_ns
     os.utime(edited_path, ns=(mtime_ns, mtime_ns))
 
-    key_original = media.cache_key(1, "asset-uuid", "grid", original_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
-    key_edited = media.cache_key(1, "asset-uuid", "grid", edited_path, mtime_ns, media.SIZES["grid"], media.DEFAULT_QUALITY)
+    key_original = media.cache_key(
+        1,
+        "asset-uuid",
+        "grid",
+        original_path,
+        mtime_ns,
+        media.SIZES["grid"],
+        media.DEFAULT_QUALITY,
+    )
+    key_edited = media.cache_key(
+        1,
+        "asset-uuid",
+        "grid",
+        edited_path,
+        mtime_ns,
+        media.SIZES["grid"],
+        media.DEFAULT_QUALITY,
+    )
 
     assert key_original != key_edited
 
 
-def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(tmp_path, monkeypatch):
+def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     missing_original = tmp_path / "optimized_away.heic"
     derivative = tmp_path / "derivative.jpg"
@@ -205,31 +269,43 @@ def test_get_or_generate_with_missing_original_uses_a_sufficient_derivative(tmp_
     assert [path for path in cache_dir.rglob("*") if path.is_file()] == cached_files
 
 
-def test_get_or_generate_with_missing_original_and_no_derivative_raises_media_backend_error(tmp_path):
+def test_get_or_generate_with_missing_original_and_no_derivative_raises_media_backend_error(
+    tmp_path,
+):
     missing_original = tmp_path / "optimized_away.heic"
     cache_dir = tmp_path / "cache"
 
     with pytest.raises(media.MediaBackendError, match="asset-uuid"):
         media.get_or_generate(
-            cache_dir, library_id=1, asset_uuid="asset-uuid", size="grid", source_path=missing_original
+            cache_dir,
+            library_id=1,
+            asset_uuid="asset-uuid",
+            size="grid",
+            source_path=missing_original,
         )
 
     assert not cache_dir.exists()
 
 
-def test_pick_source_skips_a_decompression_bomb_derivative_and_falls_back_to_original(tmp_path, monkeypatch):
+def test_pick_source_skips_a_decompression_bomb_derivative_and_falls_back_to_original(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.Image, "MAX_IMAGE_PIXELS", 10)
     original = tmp_path / "original.jpg"
     Image.new("RGB", (400, 300)).save(original, format="JPEG")
     bomb_derivative = tmp_path / "derivative_bomb.jpg"
     Image.new("RGB", (400, 300)).save(bomb_derivative, format="JPEG")
 
-    picked = media._pick_source(original, [bomb_derivative], target_px=media.SIZES["grid"])
+    picked = media._pick_source(
+        original, [bomb_derivative], target_px=media.SIZES["grid"]
+    )
 
     assert picked == original
 
 
-def test_generate_raises_a_clean_error_for_a_decompression_bomb_source(tmp_path, monkeypatch):
+def test_generate_raises_a_clean_error_for_a_decompression_bomb_source(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     monkeypatch.setattr(media.Image, "MAX_IMAGE_PIXELS", 10)
     source_path = tmp_path / "plain.jpg"
@@ -252,7 +328,9 @@ def test_video_poster_derivative_is_preferred_over_ffmpeg(tmp_path, monkeypatch)
     assert max(decoded.size) <= media.SIZES["grid"]
 
 
-def test_missing_original_falls_back_to_the_largest_insufficient_derivative(tmp_path, monkeypatch):
+def test_missing_original_falls_back_to_the_largest_insufficient_derivative(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     missing_original = tmp_path / "optimized_away.heic"
     smaller = tmp_path / "derivative_small.jpg"
@@ -260,7 +338,9 @@ def test_missing_original_falls_back_to_the_largest_insufficient_derivative(tmp_
     larger = tmp_path / "derivative_larger.jpg"
     Image.new("RGB", (300, 200)).save(larger, format="JPEG")
 
-    picked = media._pick_source(missing_original, [smaller, larger], target_px=media.SIZES["preview"])
+    picked = media._pick_source(
+        missing_original, [smaller, larger], target_px=media.SIZES["preview"]
+    )
 
     assert picked == larger
 
@@ -271,8 +351,13 @@ def test_write_cache_is_atomic_and_leaves_no_temp_files(tmp_path):
     media._write_cache(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg", b"some bytes")
 
     files = list(cache_dir.rglob("*"))
-    assert [path for path in files if path.is_file()] == [media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg")]
-    assert media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg").read_bytes() == b"some bytes"
+    assert [path for path in files if path.is_file()] == [
+        media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg")
+    ]
+    assert (
+        media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg").read_bytes()
+        == b"some bytes"
+    )
 
 
 def test_evict_if_needed_removes_oldest_files_first(tmp_path):
@@ -291,7 +376,9 @@ def test_evict_if_needed_removes_oldest_files_first(tmp_path):
     assert newest.exists()
 
 
-def test_get_or_generate_evicts_the_older_entry_when_over_the_cache_size_limit(tmp_path, monkeypatch):
+def test_get_or_generate_evicts_the_older_entry_when_over_the_cache_size_limit(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     cache_dir = tmp_path / "cache"
     first_source = tmp_path / "first.jpg"
@@ -299,7 +386,13 @@ def test_get_or_generate_evicts_the_older_entry_when_over_the_cache_size_limit(t
     second_source = tmp_path / "second.jpg"
     Image.new("RGB", (800, 600), color=(2, 2, 2)).save(second_source, format="JPEG")
 
-    media.get_or_generate(cache_dir, library_id=1, asset_uuid="first", size="grid", source_path=first_source)
+    media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="first",
+        size="grid",
+        source_path=first_source,
+    )
     first_cached = next(path for path in cache_dir.rglob("*") if path.is_file())
     one_entry_limit = first_cached.stat().st_size + 10
 
@@ -331,7 +424,9 @@ def test_cache_writes_under_the_limit_scan_the_directory_once(tmp_path, monkeypa
     monkeypatch.setattr(media, "_scan_cache", lambda d: scans.append(d) or real_scan(d))
 
     for i in range(5):
-        media._note_cache_write(cache_dir, 10_000, _write_entry(cache_dir, f"asset{i}", 100))
+        media._note_cache_write(
+            cache_dir, 10_000, _write_entry(cache_dir, f"asset{i}", 100)
+        )
 
     assert len(scans) == 1
 
@@ -355,20 +450,39 @@ def test_cache_eviction_runs_in_batches_down_to_the_low_water_mark(tmp_path):
     assert not paths[0].exists()
 
 
-def test_cache_read_refreshes_mtime_so_a_viewed_entry_outlives_an_unviewed_one(tmp_path, monkeypatch):
+def test_cache_read_refreshes_mtime_so_a_viewed_entry_outlives_an_unviewed_one(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     cache_dir = tmp_path / "cache"
     sources = {}
     for name in ("viewed", "unviewed", "new"):
         sources[name] = tmp_path / f"{name}.jpg"
-        Image.new("RGB", (800, 600), color=(len(name), 1, 1)).save(sources[name], format="JPEG")
+        Image.new("RGB", (800, 600), color=(len(name), 1, 1)).save(
+            sources[name], format="JPEG"
+        )
     for name in ("viewed", "unviewed"):
-        media.get_or_generate(cache_dir, library_id=1, asset_uuid=name, size="grid", source_path=sources[name])
-    cached = {name: next(media.asset_cache_dir(cache_dir, 1, name).iterdir()) for name in ("viewed", "unviewed")}
+        media.get_or_generate(
+            cache_dir,
+            library_id=1,
+            asset_uuid=name,
+            size="grid",
+            source_path=sources[name],
+        )
+    cached = {
+        name: next(media.asset_cache_dir(cache_dir, 1, name).iterdir())
+        for name in ("viewed", "unviewed")
+    }
     os.utime(cached["viewed"], ns=(1_000_000_000, 1_000_000_000))
     os.utime(cached["unviewed"], ns=(2_000_000_000, 2_000_000_000))
 
-    media.get_or_generate(cache_dir, library_id=1, asset_uuid="viewed", size="grid", source_path=sources["viewed"])
+    media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="viewed",
+        size="grid",
+        source_path=sources["viewed"],
+    )
     entry = cached["viewed"].stat().st_size
     media.get_or_generate(
         cache_dir,
@@ -404,11 +518,22 @@ def test_cache_limit_zero_neither_reads_nor_writes_the_cache(tmp_path, monkeypat
     Image.new("RGB", (800, 600), color=(1, 1, 1)).save(source, format="JPEG")
 
     result = media.get_or_generate(
-        cache_dir, library_id=1, asset_uuid="a", size="grid", source_path=source, cache_size_limit_bytes=0
+        cache_dir,
+        library_id=1,
+        asset_uuid="a",
+        size="grid",
+        source_path=source,
+        cache_size_limit_bytes=0,
     )
     data = media.get_or_generate_jpeg(
-        cache_dir, library_id=1, asset_uuid="a", source_path=source, cache_size_limit_bytes=0
+        cache_dir,
+        library_id=1,
+        asset_uuid="a",
+        source_path=source,
+        cache_size_limit_bytes=0,
     )
 
     assert result.data and data
-    assert not cache_dir.exists() or not [p for p in cache_dir.rglob("*") if p.is_file()]
+    assert not cache_dir.exists() or not [
+        p for p in cache_dir.rglob("*") if p.is_file()
+    ]

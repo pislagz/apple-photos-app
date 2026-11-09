@@ -29,7 +29,9 @@ def test_migrate_creates_expected_tables(tmp_path):
     try:
         tables = {
             row[0]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
         }
     finally:
         conn.close()
@@ -55,7 +57,9 @@ def test_connect_creates_app_db_under_the_given_directory(tmp_path):
 
 def test_migrate_is_idempotent(tmp_path):
     first = app_db.connect(tmp_path)
-    first.execute("INSERT INTO users (username, password_hash, role) VALUES ('a', 'h', 'admin')")
+    first.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES ('a', 'h', 'admin')"
+    )
     first.commit()
     first.close()
 
@@ -101,9 +105,14 @@ def test_connecting_an_already_migrated_db_does_not_take_the_write_lock(tmp_path
         blocker.close()
 
 
-def test_a_failing_migration_leaves_the_version_and_schema_unchanged(tmp_path, monkeypatch):
+def test_a_failing_migration_leaves_the_version_and_schema_unchanged(
+    tmp_path, monkeypatch
+):
     app_db.connect(tmp_path).close()
-    broken_migrations = [*app_db._MIGRATIONS, ["CREATE TABLE this_is_fine (id INTEGER)", "NOT VALID SQL"]]
+    broken_migrations = [
+        *app_db._MIGRATIONS,
+        ["CREATE TABLE this_is_fine (id INTEGER)", "NOT VALID SQL"],
+    ]
     monkeypatch.setattr(app_db, "_MIGRATIONS", broken_migrations)
 
     conn = sqlite3.connect(app_db.db_path(tmp_path))
@@ -115,25 +124,37 @@ def test_a_failing_migration_leaves_the_version_and_schema_unchanged(tmp_path, m
         (version,) = conn.execute("PRAGMA user_version").fetchone()
         assert version == len(app_db._MIGRATIONS) - 1
 
-        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
         assert "this_is_fine" not in tables
     finally:
         conn.close()
 
 
-def test_migration_17_flags_already_indexed_libraries_for_a_reindex(tmp_path, monkeypatch):
+def test_migration_17_flags_already_indexed_libraries_for_a_reindex(
+    tmp_path, monkeypatch
+):
     """#100: libraries indexed before the duration/camera/score columns
     existed get `reindex_needed`; never-indexed ones do not."""
     full = app_db._MIGRATIONS
     monkeypatch.setattr(app_db, "_MIGRATIONS", full[:16])
     conn = app_db.connect(tmp_path)
-    conn.execute("INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', '/a', 'sig')")
+    conn.execute(
+        "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', '/a', 'sig')"
+    )
     conn.execute("INSERT INTO libraries (display_name, path) VALUES ('B', '/b')")
     conn.commit()
     monkeypatch.setattr(app_db, "_MIGRATIONS", full)
     app_db.migrate(conn)
     try:
-        flags = {r["display_name"]: r["reindex_needed"] for r in conn.execute("SELECT * FROM libraries")}
+        flags = {
+            r["display_name"]: r["reindex_needed"]
+            for r in conn.execute("SELECT * FROM libraries")
+        }
         assert flags == {"A": 1, "B": 0}
     finally:
         conn.close()

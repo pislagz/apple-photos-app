@@ -55,23 +55,36 @@ def _lock_for(library_id: int) -> threading.Lock:
 
 
 def mark_indexing(db: sqlite3.Connection, library_id: int) -> None:
-    db.execute("UPDATE libraries SET index_state = 'indexing', index_error = NULL WHERE id = ?", (library_id,))
+    db.execute(
+        "UPDATE libraries SET index_state = 'indexing', index_error = NULL WHERE id = ?",
+        (library_id,),
+    )
     db.commit()
 
 
 def mark_indexed(db: sqlite3.Connection, library_id: int) -> None:
-    db.execute("UPDATE libraries SET index_state = 'idle', index_error = NULL WHERE id = ?", (library_id,))
+    db.execute(
+        "UPDATE libraries SET index_state = 'idle', index_error = NULL WHERE id = ?",
+        (library_id,),
+    )
     db.commit()
 
 
 def mark_index_error(db: sqlite3.Connection, library_id: int, error: str) -> None:
-    db.execute("UPDATE libraries SET index_state = 'error', index_error = ? WHERE id = ?", (error, library_id))
+    db.execute(
+        "UPDATE libraries SET index_state = 'error', index_error = ? WHERE id = ?",
+        (error, library_id),
+    )
     db.commit()
 
 
 def _iso(now: datetime.datetime | None = None) -> str:
     now = now or datetime.datetime.now(datetime.UTC)
-    return now.astimezone(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return (
+        now.astimezone(datetime.UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _parse(value: str) -> datetime.datetime:
@@ -87,7 +100,9 @@ def _int_setting(db: sqlite3.Connection, key: str, default: int) -> int:
 
 
 def check_interval_minutes(db: sqlite3.Connection) -> int:
-    return _int_setting(db, "library_check_interval_minutes", DEFAULT_CHECK_INTERVAL_MINUTES)
+    return _int_setting(
+        db, "library_check_interval_minutes", DEFAULT_CHECK_INTERVAL_MINUTES
+    )
 
 
 def stable_minutes(db: sqlite3.Connection) -> int:
@@ -95,7 +110,9 @@ def stable_minutes(db: sqlite3.Connection) -> int:
 
 
 def show_updated_note(db: sqlite3.Connection) -> bool:
-    return bool(_int_setting(db, "show_library_updated_note", DEFAULT_SHOW_UPDATED_NOTE))
+    return bool(
+        _int_setting(db, "show_library_updated_note", DEFAULT_SHOW_UPDATED_NOTE)
+    )
 
 
 def fingerprint(package_path: str | pathlib.Path) -> str | None:
@@ -125,7 +142,9 @@ def fingerprint(package_path: str | pathlib.Path) -> str | None:
     return f"{indexer.sqlite_signature(package_path)}#{count}:{total}#{package_mtime}"
 
 
-def check_ready(package_path: pathlib.Path) -> tuple[libraries.OpenLibrary | None, str | None]:
+def check_ready(
+    package_path: pathlib.Path,
+) -> tuple[libraries.OpenLibrary | None, str | None]:
     """Readiness checks, all read-only and on the temp copy. Returns the
     opened library (caller owns and closes it) or a human-readable reason it
     is not ready yet."""
@@ -135,7 +154,10 @@ def check_ready(package_path: pathlib.Path) -> tuple[libraries.OpenLibrary | Non
             return None, "Photos.sqlite is missing or empty"
     except OSError as exc:
         return None, f"Photos.sqlite is not readable yet: {exc}"
-    if not (package_path / "originals").is_dir() and not (package_path / "resources" / "derivatives").is_dir():
+    if (
+        not (package_path / "originals").is_dir()
+        and not (package_path / "resources" / "derivatives").is_dir()
+    ):
         return None, "the originals folder has not been copied yet"
     try:
         opened = libraries.open_library_readonly(package_path)
@@ -156,7 +178,9 @@ def check_ready(package_path: pathlib.Path) -> tuple[libraries.OpenLibrary | Non
 
 def _check_opened(opened: libraries.OpenLibrary) -> str | None:
     if opened.sqlite_path is not None:
-        conn = sqlite3.connect(f"{opened.sqlite_path.resolve().as_uri()}?mode=ro", uri=True)
+        conn = sqlite3.connect(
+            f"{opened.sqlite_path.resolve().as_uri()}?mode=ro", uri=True
+        )
         try:
             result = conn.execute("PRAGMA quick_check").fetchone()
         finally:
@@ -167,7 +191,12 @@ def _check_opened(opened: libraries.OpenLibrary) -> str | None:
     sample = random.sample(photos, min(SAMPLE_SIZE, len(photos)))
     missing = 0
     for photo in sample:
-        candidates = [photo.path, photo.path_edited, photo.path_raw, *(photo.path_derivatives or [])]
+        candidates = [
+            photo.path,
+            photo.path_edited,
+            photo.path_raw,
+            *(photo.path_derivatives or []),
+        ]
         if not any(candidate and os.path.exists(candidate) for candidate in candidates):
             missing += 1
     if sample and missing / len(sample) > MAX_MISSING_SAMPLE_FRACTION:
@@ -184,7 +213,12 @@ def _prune_runs(db: sqlite3.Connection, library_id: int) -> None:
 
 
 def _record_run(
-    db: sqlite3.Connection, library_id: int, trigger: str, outcome: str, started_at: str, error: str | None
+    db: sqlite3.Connection,
+    library_id: int,
+    trigger: str,
+    outcome: str,
+    started_at: str,
+    error: str | None,
 ) -> None:
     db.execute(
         "INSERT INTO library_index_runs (library_id, trigger, started_at, finished_at, outcome, error) "
@@ -199,7 +233,9 @@ def _get_row(db: sqlite3.Connection, library_id: int) -> sqlite3.Row | None:
     return db.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
 
 
-def observe(db: sqlite3.Connection, library_id: int, *, now: datetime.datetime | None = None) -> str:
+def observe(
+    db: sqlite3.Connection, library_id: int, *, now: datetime.datetime | None = None
+) -> str:
     """One stat-only look at a library; updates its pending / missing state.
 
     Returns `missing`, `ok`, `pending` (fingerprint changed this check, or
@@ -221,11 +257,17 @@ def observe(db: sqlite3.Connection, library_id: int, *, now: datetime.datetime |
             )
             db.commit()
             app_db.write_audit_log(
-                db, "library.file_missing", library_id=library_id, actor=SYSTEM_ACTOR, detail=str(path)
+                db,
+                "library.file_missing",
+                library_id=library_id,
+                actor=SYSTEM_ACTOR,
+                detail=str(path),
             )
         return "missing"
     if row["missing_since"] is not None:
-        db.execute("UPDATE libraries SET missing_since = NULL WHERE id = ?", (library_id,))
+        db.execute(
+            "UPDATE libraries SET missing_since = NULL WHERE id = ?", (library_id,)
+        )
         db.commit()
     if indexer.sqlite_signature(path) == row["last_indexed_signature"]:
         if row["pending_signature"] is not None:
@@ -239,7 +281,12 @@ def observe(db: sqlite3.Connection, library_id: int, *, now: datetime.datetime |
     if row["pending_signature"] != fp:
         db.execute(
             "UPDATE libraries SET pending_signature = ?, pending_since = ?, pending_reason = ? WHERE id = ?",
-            (fp, iso, "a new copy of this library was detected and is being checked", library_id),
+            (
+                fp,
+                iso,
+                "a new copy of this library was detected and is being checked",
+                library_id,
+            ),
         )
         db.commit()
         return "pending"
@@ -270,12 +317,17 @@ def try_apply(db: sqlite3.Connection, library_id: int, *, trigger: str = "auto")
                 )
             if reason != row["pending_reason"]:
                 _record_run(db, library_id, trigger, "not_ready", started_at, reason)
-            db.execute("UPDATE libraries SET pending_reason = ? WHERE id = ?", (reason, library_id))
+            db.execute(
+                "UPDATE libraries SET pending_reason = ? WHERE id = ?",
+                (reason, library_id),
+            )
             db.commit()
             return "not_ready"
         try:
             mark_indexing(db, library_id)
-            indexer.index_library(db, library_id, path, force=True, trigger=trigger, opened=opened)
+            indexer.index_library(
+                db, library_id, path, force=True, trigger=trigger, opened=opened
+            )
             mark_indexed(db, library_id)
         except Exception as exc:
             error = str(exc)
@@ -286,16 +338,28 @@ def try_apply(db: sqlite3.Connection, library_id: int, *, trigger: str = "auto")
             db.execute(
                 "UPDATE libraries SET pending_signature = COALESCE(pending_signature, ?), "
                 "pending_since = COALESCE(pending_since, ?), pending_reason = ? WHERE id = ?",
-                (fingerprint(path) or "", started_at, f"indexing failed: {error}", library_id),
+                (
+                    fingerprint(path) or "",
+                    started_at,
+                    f"indexing failed: {error}",
+                    library_id,
+                ),
             )
             db.commit()
             app_db.write_audit_log(
-                db, "library.update.failed", library_id=library_id, actor=SYSTEM_ACTOR, detail=error
+                db,
+                "library.update.failed",
+                library_id=library_id,
+                actor=SYSTEM_ACTOR,
+                detail=error,
             )
-            logger.warning("applying library %s (%s) failed", library_id, path, exc_info=True)
+            logger.warning(
+                "applying library %s (%s) failed", library_id, path, exc_info=True
+            )
             return "failed"
         run = db.execute(
-            "SELECT * FROM library_index_runs WHERE library_id = ? ORDER BY id DESC LIMIT 1", (library_id,)
+            "SELECT * FROM library_index_runs WHERE library_id = ? ORDER BY id DESC LIMIT 1",
+            (library_id,),
         ).fetchone()
         _prune_runs(db, library_id)
         db.commit()
@@ -311,7 +375,9 @@ def try_apply(db: sqlite3.Connection, library_id: int, *, trigger: str = "auto")
         lock.release()
 
 
-def check_library(db: sqlite3.Connection, library_id: int, *, now: datetime.datetime | None = None) -> str:
+def check_library(
+    db: sqlite3.Connection, library_id: int, *, now: datetime.datetime | None = None
+) -> str:
     state = observe(db, library_id, now=now)
     if state == "stable":
         return try_apply(db, library_id, trigger="auto")
@@ -332,7 +398,9 @@ def reindex_if_needed(db: sqlite3.Connection, library_id: int) -> str:
     if not lock.acquire(blocking=False):
         return "ok"
     try:
-        indexer.index_library(db, library_id, pathlib.Path(row["path"]), force=True, trigger="auto")
+        indexer.index_library(
+            db, library_id, pathlib.Path(row["path"]), force=True, trigger="auto"
+        )
         # #73: a startup reset leaves an "interrupted" error behind; a
         # successful re-index supersedes it.
         db.execute(
@@ -342,13 +410,17 @@ def reindex_if_needed(db: sqlite3.Connection, library_id: int) -> str:
         db.commit()
         return "reindexed"
     except Exception:
-        logger.warning("re-indexing library %s after a migration failed", library_id, exc_info=True)
+        logger.warning(
+            "re-indexing library %s after a migration failed", library_id, exc_info=True
+        )
         return "ok"
     finally:
         lock.release()
 
 
-def check_all(db: sqlite3.Connection, *, now: datetime.datetime | None = None) -> dict[int, str]:
+def check_all(
+    db: sqlite3.Connection, *, now: datetime.datetime | None = None
+) -> dict[int, str]:
     results: dict[int, str] = {}
     for row in db.execute("SELECT id FROM libraries ORDER BY id").fetchall():
         try:
@@ -363,7 +435,9 @@ def availability(row: sqlite3.Row) -> tuple[bool, str | None]:
     if row["missing_since"] is not None:
         return True, f"Library file missing since {_display(row['missing_since'])}"
     if row["pending_signature"] is not None:
-        return True, row["pending_reason"] or "A new copy of this library is being checked"
+        return True, row[
+            "pending_reason"
+        ] or "A new copy of this library is being checked"
     return False, None
 
 
@@ -385,7 +459,9 @@ def _display(iso: str) -> str:
 def within_days(iso: str | None, days: int) -> bool:
     if not iso:
         return False
-    return (datetime.datetime.now(datetime.UTC) - _parse(iso)).total_seconds() <= days * 86400
+    return (
+        datetime.datetime.now(datetime.UTC) - _parse(iso)
+    ).total_seconds() <= days * 86400
 
 
 def pending_too_long(row: sqlite3.Row, *, now: datetime.datetime | None = None) -> bool:

@@ -42,7 +42,9 @@ from .session_passkeys import router as passkeys_router
 logger = logging.getLogger(__name__)
 
 # server/photos_viewer/main.py -> server/photos_viewer -> server -> repo root
-_DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+_DEFAULT_WEB_DIST_DIR = (
+    pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+)
 
 # Session/account state that must never be served from a disk or history
 # cache -- `/api/me` and `/api/auth/*` carry who-is-signed-in, `/api/setup/*`
@@ -70,7 +72,9 @@ CONTENT_SECURITY_POLICY = (
 
 
 class _NoStoreMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         path = request.url.path
@@ -140,11 +144,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     _reset_stale_indexing_on_startup(app)
     # Stat-only polling for replaced/copying libraries (P1.22). Resolves the
     # data dir on every pass so it follows `app.db` appearing later.
-    checker = LibraryChecker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
+    checker = LibraryChecker(
+        lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)()
+    )
     app.state.library_checker = checker
     checker.start()
     # Resumes any pre-warm job left `running` by a previous process (P3.3).
-    prewarm_worker = PrewarmWorker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
+    prewarm_worker = PrewarmWorker(
+        lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)()
+    )
     app.state.prewarm_worker = prewarm_worker
     prewarm_worker.start()
     try:
@@ -180,7 +188,10 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
         _mount_web_app(app, dist_dir)
     elif dist_dir.is_dir():
         # A half-finished build: mounting would make every non-API path 500.
-        logger.warning("%s has no index.html; the web app is not served (run `npm run build`)", dist_dir)
+        logger.warning(
+            "%s has no index.html; the web app is not served (run `npm run build`)",
+            dist_dir,
+        )
 
     return app
 
