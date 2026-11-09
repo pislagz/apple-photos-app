@@ -67,7 +67,12 @@ export default function ReplaceDialog({
       <form onSubmit={handlePreview}>
         <label>
           New path
-          <input value={path} onChange={(event) => setPath(event.target.value)} placeholder="/libraries/Alice 2026.photoslibrary" />
+          <input value={path} onChange={(event) => {
+              // A preview (and any "Replace anyway") belongs to the path it was made for.
+              setPath(event.target.value);
+              setPreview(null);
+              setAnyway(false);
+            }} placeholder="/libraries/Alice 2026.photoslibrary" />
         </label>
         <button type="submit" disabled={busy || path.trim() === ""}>
           Preview

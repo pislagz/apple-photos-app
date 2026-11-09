@@ -167,6 +167,23 @@ describe("Replace library file dialog", () => {
     expect(replaceBodies(fetchMock)[1]).toEqual({ path: PREVIEW.path, confirm: true, replace_anyway: true });
   });
 
+  it("drops the preview and the override when the path is edited after previewing", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/libraries/1/replace") {
+        return { ...PREVIEW, warnings: [{ code: "low_overlap", message: "Only 0% of the current photos are in the new file." }] };
+      }
+      throw new Error("unexpected request: " + url);
+    });
+    await openDialog();
+    fireEvent.click(await screen.findByLabelText("Replace anyway"));
+
+    fireEvent.change(screen.getByLabelText("New path"), { target: { value: "/libraries/Other.photoslibrary" } });
+    expect(screen.queryByRole("list", { name: "Replace preview" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Replace anyway")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Replace( anyway)?$/ })).not.toBeInTheDocument();
+  });
+
   it("shows the server's refusal and keeps the dialog open", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
