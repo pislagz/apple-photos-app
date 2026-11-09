@@ -333,6 +333,13 @@ def reindex_if_needed(db: sqlite3.Connection, library_id: int) -> str:
         return "ok"
     try:
         indexer.index_library(db, library_id, pathlib.Path(row["path"]), force=True, trigger="auto")
+        # #73: a startup reset leaves an "interrupted" error behind; a
+        # successful re-index supersedes it.
+        db.execute(
+            "UPDATE libraries SET index_state = 'idle', index_error = NULL WHERE id = ? AND index_state = 'error'",
+            (library_id,),
+        )
+        db.commit()
         return "reindexed"
     except Exception:
         logger.warning("re-indexing library %s after a migration failed", library_id, exc_info=True)

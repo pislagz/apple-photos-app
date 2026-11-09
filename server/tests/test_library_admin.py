@@ -241,6 +241,7 @@ def test_reset_stale_indexing_state_clears_a_library_whose_job_died(tmp_path):
         row = conn.execute("SELECT index_state, index_error FROM libraries WHERE id = ?", (library_id,)).fetchone()
         assert row["index_state"] == "error"
         assert row["index_error"]
+        assert conn.execute("SELECT reindex_needed FROM libraries WHERE id = ?", (library_id,)).fetchone()[0] == 1
     finally:
         conn.close()
 
@@ -848,5 +849,24 @@ def test_flagged_library_is_reindexed_in_place_without_going_pending(tmp_path):
         ).fetchone()[0]
         assert stale == 0
         assert library_watch.check_library(conn, library_id) == "ok"
+    finally:
+        conn.close()
+
+
+def test_interrupted_index_is_requeued_and_error_cleared(tmp_path):
+    """#73: a startup reset of an interrupted library re-indexes it on the
+    next background check and clears the "interrupted" error."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        library_id = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()["id"]
+        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        conn.commit()
+
+        library_admin.reset_stale_indexing_state(conn)
+        assert library_watch.check_library(conn, library_id) == "reindexed"
+
+        row = conn.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        assert row["index_state"] == "idle" and row["index_error"] is None and row["reindex_needed"] == 0
     finally:
         conn.close()

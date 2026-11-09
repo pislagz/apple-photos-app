@@ -302,13 +302,20 @@ def reset_stale_indexing_state(conn: sqlite3.Connection) -> None:
     only in this process's memory, so after a restart it is never actually
     held; any library whose lock is free but whose stored state still says
     "indexing" was abandoned mid-job, not genuinely in progress. Safe to call
-    on every process start: a live job holds its lock, so this skips it."""
+    on every process start: a live job holds its lock, so this skips it.
+
+    #73: also flags the library `reindex_needed`, so the background checker
+    re-runs the index once (and clears the error) without an admin pressing
+    Reindex. A library never indexed at all is picked up by the checker's
+    normal pending path instead."""
     rows = conn.execute("SELECT id FROM libraries WHERE index_state = 'indexing'").fetchall()
     for row in rows:
         lock = _lock_for(row["id"])
         if lock.acquire(blocking=False):
             try:
                 _mark_index_error(conn, row["id"], "indexing was interrupted and did not finish")
+                conn.execute("UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (row["id"],))
+                conn.commit()
             finally:
                 lock.release()
 
