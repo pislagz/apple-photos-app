@@ -354,6 +354,15 @@ _MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX idx_library_index_runs_library ON library_index_runs(library_id, id)",
     ],
+    # 17 (#100): migrations 12-14 added asset columns (duration, camera,
+    # score) that only a fresh walk can fill. Flag every already-indexed
+    # library so the background checker re-indexes it once, in place (the
+    # library stays served meanwhile), instead of leaving the new columns
+    # NULL until the library file next changes.
+    [
+        "ALTER TABLE libraries ADD COLUMN reindex_needed INTEGER NOT NULL DEFAULT 0",
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

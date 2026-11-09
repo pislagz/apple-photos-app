@@ -119,3 +119,21 @@ def test_a_failing_migration_leaves_the_version_and_schema_unchanged(tmp_path, m
         assert "this_is_fine" not in tables
     finally:
         conn.close()
+
+
+def test_migration_17_flags_already_indexed_libraries_for_a_reindex(tmp_path, monkeypatch):
+    """#100: libraries indexed before the duration/camera/score columns
+    existed get `reindex_needed`; never-indexed ones do not."""
+    full = app_db._MIGRATIONS
+    monkeypatch.setattr(app_db, "_MIGRATIONS", full[:16])
+    conn = app_db.connect(tmp_path)
+    conn.execute("INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', '/a', 'sig')")
+    conn.execute("INSERT INTO libraries (display_name, path) VALUES ('B', '/b')")
+    conn.commit()
+    monkeypatch.setattr(app_db, "_MIGRATIONS", full)
+    app_db.migrate(conn)
+    try:
+        flags = {r["display_name"]: r["reindex_needed"] for r in conn.execute("SELECT * FROM libraries")}
+        assert flags == {"A": 1, "B": 0}
+    finally:
+        conn.close()

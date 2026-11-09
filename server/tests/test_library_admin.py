@@ -821,3 +821,28 @@ def test_status_total_size_excludes_hidden_assets(tmp_path):
         assert body["total_size_bytes"] == visible
     finally:
         conn.close()
+
+
+def test_flagged_library_is_reindexed_in_place_without_going_pending(tmp_path):
+    """#100: after a migration flags a library, the background check refills
+    the new asset columns once; the library never shows "Being updated"."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        library_id = added["id"]
+        conn.execute("UPDATE assets SET duration = NULL, camera_make = 'stale' WHERE library_id = ?", (library_id,))
+        conn.execute("UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (library_id,))
+        conn.commit()
+
+        assert library_watch.check_library(conn, library_id) == "reindexed"
+
+        row = conn.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        assert row["reindex_needed"] == 0 and row["pending_signature"] is None
+        stale = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND camera_make = 'stale'", (library_id,)
+        ).fetchone()[0]
+        assert stale == 0
+        assert library_watch.check_library(conn, library_id) == "ok"
+    finally:
+        conn.close()
