@@ -226,6 +226,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           index={index}
           onSelect={onIndexChange}
           className="desktop-viewer__filmstrip"
+          itemSize={52}
         />
       </div>
       {infoOpen && (
