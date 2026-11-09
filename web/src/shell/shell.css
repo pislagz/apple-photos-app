@@ -1142,8 +1142,54 @@ body {
   color: #1d1d1f;
 }
 
+.desktop-library__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.desktop-library__info-panel {
+  flex: 0 0 280px;
+  background: var(--sequoia-sidebar-bg);
+  border-left: 1px solid var(--sequoia-border);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.desktop-library__info-empty {
+  margin: 0;
+  color: var(--sequoia-text-secondary);
+  text-align: center;
+}
+
+.desktop-library__info-rows__row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sequoia-border);
+}
+
+.desktop-library__info-rows__row dt {
+  font-size: 11px;
+  color: var(--sequoia-text-secondary);
+}
+
+.desktop-library__info-rows__row dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+/* #97: rubber band, drawn in viewport coordinates. */
+.desktop-library__marquee {
+  position: fixed;
+  z-index: 5;
+  pointer-events: none;
+  border: 1px solid rgba(0, 122, 255, 0.9);
+  background: rgba(0, 122, 255, 0.18);
+}
+
 .desktop-library__grid {
   flex: 1 1 auto;
+  min-width: 0;
+  user-select: none;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1158,12 +1204,17 @@ body {
    underneath; pointer-events stay off so it never intercepts clicks or
    the rubber-band drag-select below it. */
 .desktop-library__date-range {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
+  height: 0;
   z-index: 1;
   pointer-events: none;
+}
+
+/* Sticky, so the title stays on the top edge while the grid scrolls (#118);
+   the zero-height wrapper keeps it out of the row layout. */
+.desktop-library__date-range > span {
+  display: block;
   padding: 14px 10px 36px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 100%);
   font-size: 20px;
@@ -1714,8 +1765,6 @@ body {
 }
 
 .mobile-viewer__filmstrip {
-  display: flex;
-  gap: 2px;
   overflow-x: auto;
   padding: 6px 8px 10px;
 }
@@ -1748,9 +1797,9 @@ body {
   bottom: 0;
   max-height: 60%;
   overflow-y: auto;
-  background: rgba(28, 28, 30, 0.95);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* Opaque (#112): at 95% the icon row and filmstrip thumbs showed through. */
+  z-index: 2;
+  background: #1c1c1e;
   border-radius: 14px 14px 0 0;
   padding: 16px;
 }
@@ -1881,8 +1930,6 @@ body {
 }
 
 .desktop-viewer__filmstrip {
-  display: flex;
-  gap: 2px;
   overflow-x: auto;
   padding: 8px 14px;
   background: rgba(0, 0, 0, 0.3);

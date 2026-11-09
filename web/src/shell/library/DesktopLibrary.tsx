@@ -16,6 +16,9 @@ import {
 import { buildRows, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
+import { InfoRows } from "../viewer/InfoRows";
+import { useAssetDetail } from "../viewer/useAssetDetail";
+import { buildInfoRows } from "../viewer/viewerInfo";
 
 const HEADER_ROW_HEIGHT = 28;
 // Desktop toolbar's zoom slider/`+`/`-`: more, smaller columns at the low
@@ -42,6 +45,9 @@ const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
 // own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
 const DESKTOP_VIEWS = VIEWS.filter((item) => item.key !== "days");
 const LOAD_MORE_ROW_MARGIN = 3;
+// Pointer travel before a press on the grid turns into a rubber-band drag, so
+// a plain click on a cell still just selects it (#97).
+const DRAG_THRESHOLD_PX = 4;
 
 // Short form for the Sequoia-style date-range title (sequoia-library-grid.png:
 // "Apr 13, 2021 – Jun 11, 2024" overlaid on the first row). `date` is a naive
@@ -131,6 +137,9 @@ export default function DesktopLibrary({
   const desiredIndexRef = useRef<number | null>(null);
 
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter);
+  // #98: the Info toggle opens an inspector for the focused cell. It only
+  // fetches the JSON detail route while open, never `/original`.
+  const infoDetail = useAssetDetail(libraryId, infoOpen ? focusedId : null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -156,16 +165,6 @@ export default function DesktopLibrary({
   const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
   const cellSize = computeCellSize(containerWidth, columns);
 
-  // Items arrive sorted descending by date (grouping.ts), so the first and
-  // last loaded items are the newest and oldest seen so far.
-  const dateRangeLabel = useMemo(() => {
-    const dated = items.filter((item): item is AssetListItem & { date: string } => Boolean(item.date));
-    if (dated.length === 0) return "";
-    const newest = shortDate(dated[0].date);
-    const oldest = shortDate(dated[dated.length - 1].date);
-    return newest === oldest ? newest : `${oldest} – ${newest}`;
-  }, [items]);
-
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -186,6 +185,28 @@ export default function DesktopLibrary({
   }, [rowVirtualizer, containerWidth, columns]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
+
+  // #118: the title covers the rows actually on screen (the virtualizer's
+  // overscan rows are not), so it follows scroll like sequoia-library-grid.png
+  // and never claims dates from pages that are not on screen. Items are sorted
+  // newest first, so the range runs from the last visible item to the first.
+  const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
+  const viewportHeight = rowVirtualizer.scrollRect?.height ?? 0;
+  const dateRangeLabel = useMemo(() => {
+    const onScreen = virtualRows.filter(
+      (row) => viewportHeight <= 0 || (row.end > scrollOffset && row.start < scrollOffset + viewportHeight),
+    );
+    const dated: string[] = [];
+    for (const virtualRow of onScreen) {
+      const row = rows[virtualRow.index];
+      if (row.type === "header") continue;
+      for (const item of row.items) if (item.date) dated.push(item.date);
+    }
+    if (dated.length === 0) return "";
+    const newest = shortDate(dated[0]);
+    const oldest = shortDate(dated[dated.length - 1]);
+    return newest === oldest ? newest : `${oldest} – ${newest}`;
+  }, [virtualRows, rows, scrollOffset, viewportHeight]);
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
@@ -240,6 +261,7 @@ export default function DesktopLibrary({
 
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
+      if (suppressClickRef.current) return;
       if (event.shiftKey && anchorIdRef.current) {
         const anchorIndex = items.findIndex((candidate) => candidate.id === anchorIdRef.current);
         if (anchorIndex !== -1) {
@@ -378,42 +400,41 @@ export default function DesktopLibrary({
     else cellRefs.current.delete(id);
   }, []);
 
-  // Drag-select: mousedown on the grid background (not a cell, no
-  // modifier) starts a rubber-band; cells whose rendered rect overlaps the
-  // drag rect on mouseup become the selection. Only presently-mounted
-  // (virtualized-visible) cells can be hit, same as a real click. The rect
-  // lives in a ref, not state, so `onUp` always reads the latest bounds
-  // instead of the value captured when this effect was set up.
+  // Drag-select (#97): a left press on the grid -- background or a cell --
+  // arms a rubber band; once the pointer travels DRAG_THRESHOLD_PX it draws the
+  // marquee and updates the selection live from the rendered cell rects, like
+  // macOS Photos. Only presently-mounted (virtualized-visible) cells can be
+  // hit, same as a real click. A drag that started on a cell must not also
+  // fire that cell's click on mouseup, hence `suppressClickRef`.
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
-  const dragRectRef = useRef<{ left: number; top: number; width: number; height: number } | null>(null);
+  const suppressClickRef = useRef(false);
   const [dragActive, setDragActive] = useState(false);
+  const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   const handleGridMouseDown = useCallback((event: React.MouseEvent) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
-    if ((event.target as HTMLElement).closest("[data-asset-id]")) return;
+    const grid = scrollRef.current;
+    // Presses on the scrollbar (right of the content box) are not drags.
+    if (grid && event.clientX >= grid.getBoundingClientRect().left + grid.clientWidth) return;
     dragStartRef.current = { x: event.clientX, y: event.clientY };
-    dragRectRef.current = { left: event.clientX, top: event.clientY, width: 0, height: 0 };
     setDragActive(true);
   }, []);
 
   useEffect(() => {
     if (!dragActive) return;
+    let moved = false;
     function onMove(event: MouseEvent) {
       const start = dragStartRef.current;
       if (!start) return;
-      dragRectRef.current = {
+      if (!moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) < DRAG_THRESHOLD_PX) return;
+      moved = true;
+      const rect = {
         left: Math.min(start.x, event.clientX),
         top: Math.min(start.y, event.clientY),
         width: Math.abs(event.clientX - start.x),
         height: Math.abs(event.clientY - start.y),
       };
-    }
-    function onUp() {
-      const rect = dragRectRef.current;
-      dragStartRef.current = null;
-      dragRectRef.current = null;
-      setDragActive(false);
-      if (!rect || (rect.width < 2 && rect.height < 2)) return;
+      setMarquee(rect);
       const hits = new Set<string>();
       for (const [id, element] of cellRefs.current) {
         const box = element.getBoundingClientRect();
@@ -424,11 +445,27 @@ export default function DesktopLibrary({
           box.top + box.height > rect.top;
         if (overlaps) hits.add(id);
       }
-      if (hits.size > 0) setSelected(hits);
+      setSelected(hits);
+      anchorIdRef.current = null;
+    }
+    function onUp() {
+      dragStartRef.current = null;
+      setMarquee(null);
+      setDragActive(false);
+      if (moved) {
+        suppressClickRef.current = true;
+        // The click that follows this mouseup fires synchronously.
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp, { once: true });
-    return () => window.removeEventListener("mousemove", onMove);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
   }, [dragActive]);
 
   const handleDownload = useCallback(() => {
@@ -601,6 +638,7 @@ export default function DesktopLibrary({
           />
         </div>
       </div>
+      <div className="desktop-library__body">
       <div
         ref={scrollRef}
         className="desktop-library__grid"
@@ -611,7 +649,11 @@ export default function DesktopLibrary({
       >
         {/* #157: Days labels each card with its own day (feature caption);
             the loaded-library range would sit on top of the first card. */}
-        {dateRangeLabel && view !== "days" && <div className="desktop-library__date-range">{dateRangeLabel}</div>}
+        {dateRangeLabel && view !== "days" && (
+          <div className="desktop-library__date-range">
+            <span>{dateRangeLabel}</span>
+          </div>
+        )}
         {items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
             <p>Couldn't load your library.</p>
@@ -673,6 +715,7 @@ export default function DesktopLibrary({
                           src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
                           alt={item.filename ?? ""}
                           loading="lazy"
+                          draggable={false}
                           className="desktop-library__thumb"
                           style={{ objectFit: squareMode ? "cover" : "contain" }}
                         />
@@ -702,6 +745,23 @@ export default function DesktopLibrary({
           </div>
         )}
       </div>
+      {infoOpen && (
+        <aside className="desktop-library__info-panel" data-testid="library-info-panel" aria-label="Info">
+          {infoDetail ? (
+            <InfoRows rows={buildInfoRows(infoDetail, { includeFile: true })} className="desktop-library__info-rows" />
+          ) : (
+            <p className="desktop-library__info-empty">{focusedId ? "Loading…" : "No Selection"}</p>
+          )}
+        </aside>
+      )}
+      </div>
+      {marquee && (
+        <div
+          className="desktop-library__marquee"
+          data-testid="marquee"
+          style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
+        />
+      )}
       {viewerIndex !== null && (
         <DesktopViewer
           libraryId={libraryId}

@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
 import DesktopLibrary from "./DesktopLibrary";
+import { useFakeLayout } from "../../testLayout";
+
+// Virtualized grids need a sized viewport; jsdom has none (#88).
+useFakeLayout();
 
 function makeItem(id: string, date: string, overrides: Partial<AssetListItem> = {}): AssetListItem {
   return {
@@ -683,5 +687,121 @@ describe("DesktopLibrary assets failure (#147)", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(screen.queryByText("No photos yet.")).toBeNull();
     expect(await screen.findAllByRole("img")).not.toHaveLength(0);
+  });
+});
+
+describe("DesktopLibrary date-range title (#118)", () => {
+  it("covers the visible rows only and follows scroll", async () => {
+    // One photo per month, newest first: Dec 2025 back to Jan 2016.
+    const items = Array.from({ length: 120 }, (_, i) => {
+      const year = 2025 - Math.floor((i + 0) / 12);
+      const month = 12 - (i % 12);
+      return makeItem(`m${i}`, `${year}-${String(month).padStart(2, "0")}-15T10:00:00`);
+    });
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByRole("img");
+
+    const label = () => container.querySelector(".desktop-library__date-range")?.textContent ?? "";
+    await waitFor(() => expect(label()).toContain("2025"));
+    expect(label()).not.toContain("2016");
+
+    const grid = screen.getByTestId("desktop-library-grid");
+    grid.scrollTop = 135 * 18;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(label()).not.toContain("2025"));
+    expect(label()).toMatch(/20(1\d|2[0-3])/);
+  });
+});
+
+describe("DesktopLibrary drag-select (#97)", () => {
+  // Cells are laid out by hand: 100px squares, 4 per row, starting at (0, 0).
+  function stubCellRects() {
+    const original = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function rect(this: Element) {
+      const id = this.getAttribute("data-asset-id");
+      if (id === null) return original.call(this);
+      const n = Number(id.slice(1));
+      const left = (n % 4) * 100;
+      const top = Math.floor(n / 4) * 100;
+      return { left, top, width: 100, height: 100, right: left + 100, bottom: top + 100, x: left, y: top, toJSON() {} } as DOMRect;
+    };
+    return () => {
+      Element.prototype.getBoundingClientRect = original;
+    };
+  }
+
+  it("draws a marquee and selects live as the pointer moves, starting on a cell", async () => {
+    const items = Array.from({ length: 8 }, (_, i) => makeItem(`c${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByRole("img");
+    const restore = stubCellRects();
+    try {
+      const grid = screen.getByTestId("desktop-library-grid");
+      const first = grid.querySelector('[data-asset-id="c0"]') as HTMLElement;
+      fireEvent.mouseDown(first, { button: 0, clientX: 10, clientY: 10 });
+      // Below the threshold: no marquee, no selection yet.
+      fireEvent.mouseMove(window, { clientX: 12, clientY: 11 });
+      expect(screen.queryByTestId("marquee")).toBeNull();
+
+      fireEvent.mouseMove(window, { clientX: 150, clientY: 50 });
+      expect(screen.getByTestId("marquee")).toBeInTheDocument();
+      expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+
+      fireEvent.mouseMove(window, { clientX: 150, clientY: 150 });
+      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+
+      fireEvent.mouseUp(window);
+      expect(screen.queryByTestId("marquee")).toBeNull();
+      // The click that follows a drag must not collapse the selection.
+      fireEvent.click(first);
+      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+    } finally {
+      restore();
+    }
+  });
+
+  it("a plain click on a cell still selects only that cell", async () => {
+    mockAssets([makeItem("c0", "2024-05-10T10:00:00"), makeItem("c1", "2024-05-09T10:00:00")]);
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+    const second = grid.querySelector('[data-asset-id="c1"]') as HTMLElement;
+    fireEvent.mouseDown(second, { button: 0, clientX: 5, clientY: 5 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(second);
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+  });
+});
+
+describe("DesktopLibrary Info panel (#98)", () => {
+  it("opens an inspector for the focused cell with the asset's details", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      if (url === "/api/libraries/1/assets/a1")
+        return {
+          id: "a1", filename: "a1.jpg", original_filename: "a1.jpg", title: null, description: null,
+          date_created: "2024-05-10T10:00:00", date_added: "2024-05-10T10:00:00", date_modified: "2024-05-10T10:00:00",
+          favorite: false, hidden: false, is_video: false, is_live_photo: false, is_screenshot: false, is_selfie: false,
+          is_portrait: false, is_panorama: false, is_hdr: false, is_slow_mo: false, is_burst: false, width: 100, height: 100,
+          original_filesize: 2_400_000, latitude: null, longitude: null, place: null, place_country_code: null,
+          place_address: null, camera_make: "Apple", camera_model: "iPhone 15 Pro", has_edited: false,
+          has_live_photo_video: false, people: [], albums: [],
+        } satisfies AssetDetailResponse;
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    const cell = (await screen.findAllByTestId("library-cell"))[0];
+
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.getByTestId("library-info-panel")).toHaveTextContent("No Selection");
+
+    fireEvent.click(cell);
+    await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("iPhone 15 Pro"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    expect(screen.queryByTestId("library-info-panel")).toBeNull();
   });
 });
