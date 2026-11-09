@@ -17,7 +17,11 @@ from photos_viewer import (
     session_auth,
 )
 from photos_viewer.main import create_app
-from tests.fixtures import HIDDEN_ASSET_UUID, build_closed_fixture_library, build_fixture_library
+from tests.fixtures import (
+    HIDDEN_ASSET_UUID,
+    build_closed_fixture_library,
+    build_fixture_library,
+)
 
 VALID_PASSWORD = "correct-horse-battery"
 

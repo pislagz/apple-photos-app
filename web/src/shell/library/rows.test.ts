@@ -35,3 +35,10 @@ describe("verticalTarget (#96)", () => {
     expect(verticalTarget(rows, "a2", 1)).toBe("end");
   });
 });
+
+describe("buildRows days view (#104)", () => {
+  it("gives a day with a single photo one full-width feature row and no grid row", () => {
+    const rows = buildRows([item("a", "2024-05-02T10:00:00"), item("b", "2024-05-01T10:00:00")], "days", 3);
+    expect(rows.map((row) => row.type)).toEqual(["feature", "feature"]);
+  });
+});
