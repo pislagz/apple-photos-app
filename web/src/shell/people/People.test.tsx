@@ -163,11 +163,25 @@ describe("mobile People & Pets", () => {
 });
 
 describe("FaceCircle size (#193)", () => {
-  it("uses the larger preview thumb when the face is small, grid2x otherwise", () => {
-    const cover = { asset_id: "c1", x: 0.3, y: 0.4, w: 0.1, h: 0.1 };
-    const { container, rerender } = render(<FaceCircle libraryId={1} cover={cover} />);
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/libraries/1/thumb/c1?size=preview");
-    rerender(<FaceCircle libraryId={1} cover={{ ...cover, w: 0.3 }} />);
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/libraries/1/thumb/c1?size=grid2x");
+  const cover = { asset_id: "c1", x: 0.3, y: 0.4, w: 0.1, h: 0.1 };
+  const srcFor = (w: number, dpr: number) => {
+    vi.stubGlobal("devicePixelRatio", dpr);
+    const { container, unmount } = render(<FaceCircle libraryId={1} cover={{ ...cover, w }} />);
+    const src = container.querySelector("img")?.getAttribute("src");
+    unmount();
+    return src;
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses preview only when the face has fewer pixels than the circle needs", () => {
+    // 140 CSS px circle, face fills 1/1.8 of it: ~78 device px at 1x, ~156 at 2x, ~233 at 3x.
+    const preview = "/api/libraries/1/thumb/c1?size=preview";
+    const grid2x = "/api/libraries/1/thumb/c1?size=grid2x";
+    expect(srcFor(0.1, 1)).toBe(preview); // 60 px < 78
+    expect(srcFor(0.14, 1)).toBe(grid2x); // 84 px >= 78
+    expect(srcFor(0.2, 2)).toBe(preview); // 120 px < 156
+    expect(srcFor(0.3, 2)).toBe(grid2x); // 180 px >= 156
+    expect(srcFor(0.3, 3)).toBe(preview); // 180 px < 233
+    expect(srcFor(0.4, 3)).toBe(grid2x); // 240 px >= 233
   });
 });

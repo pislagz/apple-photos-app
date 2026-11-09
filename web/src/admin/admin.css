@@ -351,6 +351,43 @@ body:has(.admin-app, .admin-auth) {
     padding: 8px 6px;
   }
 
+  /* Users: one card per row (name + role, status, then actions) so nothing
+     scrolls sideways at 390px. The column headings stay for screen readers;
+     the role select and "enabled"/"disabled" read on their own. */
+  .admin-users-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .admin-users-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    border-bottom: 1px solid var(--admin-line);
+  }
+
+  .admin-users-table td {
+    border-bottom: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-users-table td:nth-child(3) {
+    color: var(--admin-text-2);
+    font-size: 13px;
+  }
+
+  .admin-users-table td:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .admin-users-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+
   /* 16px stops iOS zooming into focused fields */
   .admin-app input:not([type="checkbox"]),
   .admin-app select,

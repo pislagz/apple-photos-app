@@ -47,6 +47,9 @@ function cells(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll('[data-testid="library-cell"]'));
 }
 
+// Explicit timeout for the few waits that outlast the 1 s default under CPU load (#201).
+const SLOW_WAIT = { timeout: 8000 };
+
 describe("DesktopLibrary", () => {
   it("renders thumbnails from the thumb endpoint and never requests an original or /hidden", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
@@ -201,7 +204,7 @@ describe("DesktopLibrary", () => {
     mockAssets(items);
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
     const grid = screen.getByTestId("desktop-library-grid");
 
     // Each ArrowDown moves focus a full row (6 columns at the default
@@ -212,10 +215,15 @@ describe("DesktopLibrary", () => {
       fireEvent.keyDown(grid, { key: "ArrowDown" });
     }
 
-    await waitFor(() => {
-      const focused = container.querySelector('[data-asset-id="p240"][data-selected="true"]');
-      expect(focused).not.toBeNull();
-    });
+    // 300 cells plus 40 re-renders: the one wait that outlasts the 1 s default
+    // when the CPU is starved (#201), so it alone gets a longer timeout.
+    await waitFor(
+      () => {
+        const focused = container.querySelector('[data-asset-id="p240"][data-selected="true"]');
+        expect(focused).not.toBeNull();
+      },
+      SLOW_WAIT,
+    );
   });
 
   it("keeps a hidden asset out of the grid, cmd-A selection, and the count", async () => {

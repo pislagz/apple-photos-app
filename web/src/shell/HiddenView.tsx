@@ -27,9 +27,10 @@ const GRID = {
   mobile: { min: 96, gap: 2, pad: 0 },
   desktop: { min: 160, gap: 4, pad: 8 },
 } as const;
+// Assumed scroller height until a real one is measured (see observeElementRect).
+const FALLBACK_HEIGHT = 800;
 // Failed images re-probe the list at most this often; extra failures in the
 // window collapse into one trailing probe (#174).
-const FALLBACK_HEIGHT = 800;
 export const PROBE_MIN_INTERVAL_MS = 2000;
 
 export default function HiddenView({
@@ -192,7 +193,8 @@ export default function HiddenView({
   function changeIndex(next: number) {
     setOpenIndex(next);
     // Swiping/arrowing to the last loaded photo fetches the next page (#174).
-    if (items && next >= items.length - 1) loadMore();
+    // After a failed page the banner's Retry is the way to retry, not a swipe.
+    if (items && next >= items.length - 1 && !pageFailed) loadMore();
   }
 
   useEffect(() => {

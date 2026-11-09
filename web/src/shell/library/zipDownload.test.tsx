@@ -93,10 +93,10 @@ describe("zip honesty and limits (#198)", () => {
     });
   });
 
-  it("marks JPEG progress approximate and shows an indeterminate bar", () => {
+  it("marks JPEG progress total unknown and shows an indeterminate bar", () => {
     const { container } = render(
       <ZipStatus
-        state={{ phase: "downloading", progress: { received: 512, total: 2048, approximate: true } }}
+        state={{ phase: "downloading", progress: { received: 512, total: 2048, totalUnknown: true } }}
         jpeg
         onJpegChange={() => {}}
       />,

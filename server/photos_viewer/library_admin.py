@@ -653,6 +653,20 @@ class ReplacePreview(BaseModel):
 LOW_OVERLAP = 0.5
 
 
+def _source_signature(package: pathlib.Path) -> tuple[tuple[int, int] | None, ...]:
+    """(mtime_ns, size) of the sqlite files the temp copy is taken from, to tell
+    whether the package changed after the copy was made."""
+    sqlite_path = package / "database" / "Photos.sqlite"
+    out: list[tuple[int, int] | None] = []
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            st = sqlite_path.with_name(sqlite_path.name + suffix).stat()
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
 def _preview_replace(
     db: sqlite3.Connection,
     row: sqlite3.Row,
@@ -755,10 +769,13 @@ def replace_library(
     `(library_id, uuid)` and Photos keeps asset UUIDs across copies."""
     row = _get_library_or_404(db, library_id)
     new_path = pathlib.Path(payload.path).resolve()
+    signature = _source_signature(new_path)
     preview, opened = _preview_replace(db, row, new_path, keep_open=payload.confirm)
     detail = f"old={row['path']} new={new_path} overlap={preview.overlap:.3f} store_uuid_match={preview.store_uuid_match}"
     if not payload.confirm:
-        assert opened is None
+        if opened is not None:
+            opened.close()
+            raise RuntimeError("preview kept its handle open without a confirm")
         app_db.write_audit_log(
             db,
             "library.replace.previewed",
@@ -777,8 +794,19 @@ def replace_library(
     lock = _lock_for(library_id)
     lock.acquire()
     try:
-        # The preview's handle is reused; only the readiness checks rerun.
-        assert opened is not None
+        if opened is None:
+            raise RuntimeError("confirmed replace has no open handle")
+        # The temp copy predates the wait for this lock, during which a
+        # re-index or Photos itself may have changed the package. Reopen it
+        # (a second copy, only in that case) so the index reads current data.
+        if _source_signature(new_path) != signature:
+            opened.close()
+            try:
+                opened = open_library_readonly(new_path)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400, detail=f"{new_path} is not ready: {exc}"
+                ) from exc
         reason = library_watch.precheck(new_path) or library_watch.check_opened_ready(
             opened
         )

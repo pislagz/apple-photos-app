@@ -426,6 +426,51 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     await waitFor(() => expect(urls.some((url) => url.includes("cursor=c1"))).toBe(true));
     expect(await findThumb("a3")).toBeInTheDocument();
   });
+
+  it("paging: swiping to the last photo does not retry a failed page; Retry does", async () => {
+    installObserver();
+    const urls: string[] = [];
+    let failCursor = true;
+    mockFetch((url) => {
+      urls.push(url);
+      if (url.startsWith("/api/libraries/1/hidden")) {
+        if (!url.includes("cursor=c1")) return page1;
+        return failCursor ? jsonResponse({ detail: "boom" }, 500) : page2;
+      }
+      return jsonResponse({}, 404);
+    });
+    const cursorCalls = () => urls.filter((url) => url.includes("cursor=c1")).length;
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    await findThumb("a1");
+    await scrollToEnd();
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(cursorCalls()).toBe(1);
+    fireEvent.click(getThumb("a1").closest("button")!);
+    await waitFor(() =>
+      expect(document.querySelector('img[src="/api/libraries/1/thumb/a1?size=preview"]')).not.toBeNull(),
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    if (variant === "mobile") {
+      const stage = screen.getByTestId("mobile-viewer-stage");
+      fireEvent.touchStart(stage, { touches: [{ clientX: 300, clientY: 200 }] });
+      fireEvent.touchMove(stage, { touches: [{ clientX: 180, clientY: 200 }] });
+      fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 180, clientY: 200 }] });
+    } else {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    }
+    await waitFor(() =>
+      expect(document.querySelector('img[src="/api/libraries/1/thumb/a2?size=preview"]')).not.toBeNull(),
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(cursorCalls()).toBe(1);
+    failCursor = false;
+    fireEvent.click(retry);
+    await waitFor(() => expect(cursorCalls()).toBe(2));
+  });
 });
 
 describe("HiddenView virtualization (#174)", () => {
