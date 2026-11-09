@@ -234,6 +234,7 @@ def test_route_enumeration_covers_the_known_routes(world):
         "/summary",
         "/albums",
         "/people",
+        "/map",
         "/assets/{asset_id}",
         "/thumb/{asset_id}",
         "/original/{asset_id}",

@@ -1,0 +1,238 @@
+"""P2.3: map clusters, the basemap setting, and the local PMTiles route."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from photos_viewer import app_db, session_auth
+from photos_viewer.main import create_app
+
+VALID_PASSWORD = "correct-horse-battery"
+
+# (uuid suffix, lat, lon, hidden): three close together near Paris, two in
+# Sydney, one hidden in Paris, one with no location at all.
+PARIS = [(1, 48.8566, 2.3522), (2, 48.8570, 2.3530), (3, 48.8600, 2.3600)]
+SYDNEY = [(4, -33.8688, 151.2093), (5, -33.8690, 151.2100)]
+HIDDEN_PARIS = (6, 48.8567, 2.3523)
+NO_LOCATION = 7
+
+
+def _uuid(n):
+    return f"A0000000-0000-0000-0000-{n:012d}"
+
+
+@pytest.fixture
+def env(tmp_path):
+    app = create_app()
+    conn = app_db.connect(tmp_path / "data")
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    client = TestClient(app, base_url="https://testserver")
+    for name in ("L1", "L2"):
+        (tmp_path / f"{name}.photoslibrary").mkdir()
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
+            (name, str(tmp_path / f"{name}.photoslibrary")),
+        )
+    ids = {
+        r["display_name"]: r["id"]
+        for r in conn.execute("SELECT id, display_name FROM libraries")
+    }
+
+    def add(library, n, lat, lon, hidden=0, uuid=None):
+        conn.execute(
+            "INSERT INTO assets (library_id, uuid, filename, date_created, hidden, "
+            "latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                library,
+                uuid or _uuid(n),
+                f"IMG_{n}.JPG",
+                f"2024-01-0{n}T00:00:00",
+                hidden,
+                lat,
+                lon,
+            ),
+        )
+
+    for n, lat, lon in PARIS + SYDNEY:
+        add(ids["L1"], n, lat, lon)
+    add(ids["L1"], HIDDEN_PARIS[0], HIDDEN_PARIS[1], HIDDEN_PARIS[2], hidden=1)
+    add(ids["L1"], NO_LOCATION, None, None)
+    # The other library has a photo in Paris too.
+    add(ids["L2"], 1, 48.8566, 2.3522, uuid="B0000000-0000-0000-0000-000000000001")
+    conn.commit()
+
+    def login(username, library=None):
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'user')",
+            (username, session_auth.hash_password(VALID_PASSWORD)),
+        )
+        uid = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()["id"]
+        if library:
+            conn.execute(
+                "INSERT INTO library_assignments (user_id, library_id) VALUES (?, ?)",
+                (uid, ids[library]),
+            )
+        conn.commit()
+        r = client.post(
+            "/api/auth/login", json={"username": username, "password": VALID_PASSWORD}
+        )
+        assert r.status_code == 200, r.text
+
+    try:
+        yield conn, client, ids, login, tmp_path
+    finally:
+        conn.close()
+
+
+def test_low_zoom_clusters_and_high_zoom_splits(env):
+    conn, client, ids, login, _ = env
+    login("alice", "L1")
+    url = f"/api/libraries/{ids['L1']}/map"
+    low = client.get(url, params={"zoom": 2}).json()
+    # Two clusters (Paris 3, Sydney 2), not five points; hidden and
+    # null-location assets are not counted.
+    assert [c["count"] for c in low["clusters"]] == [3, 2]
+    assert low["total"] == 5
+    paris = low["clusters"][0]
+    assert paris["cover_id"] == _uuid(3)  # newest visible
+    assert paris["bounds"]["west"] == pytest.approx(2.3522)
+    assert paris["bounds"]["north"] == pytest.approx(48.86)
+    high = client.get(url, params={"zoom": 22}).json()
+    assert [c["count"] for c in high["clusters"]] == [1] * 5
+    assert {c["cover_id"] for c in high["clusters"]} == {_uuid(n) for n in range(1, 6)}
+    # Cluster count equals a direct SQL count.
+    direct = conn.execute(
+        "SELECT COUNT(*) FROM assets WHERE library_id = ? AND hidden = 0 "
+        "AND latitude IS NOT NULL",
+        (ids["L1"],),
+    ).fetchone()[0]
+    assert low["total"] == high["total"] == direct
+
+
+def test_null_location_and_hidden_assets_are_absent(env):
+    _, client, ids, login, _ = env
+    login("alice", "L1")
+    data = client.get(f"/api/libraries/{ids['L1']}/map", params={"zoom": 22}).json()
+    covers = {c["cover_id"] for c in data["clusters"]}
+    assert _uuid(NO_LOCATION) not in covers
+    assert _uuid(HIDDEN_PARIS[0]) not in covers
+
+
+def test_bbox_limits_and_stays_inside_the_library(env):
+    _, client, ids, login, _ = env
+    login("alice", "L1")
+    url = f"/api/libraries/{ids['L1']}/map"
+    paris_box = client.get(url, params={"bbox": "1,47,4,50", "zoom": 2}).json()
+    assert paris_box["total"] == 3
+    # L2's Paris photo is never included for a caller of L1.
+    assert all(c["cover_id"].startswith("A0000000") for c in paris_box["clusters"])
+    nowhere = client.get(url, params={"bbox": "-60,-10,-50,0", "zoom": 2}).json()
+    assert nowhere == {"clusters": [], "total": 0}
+    # West > east crosses the antimeridian: Sydney only if the box wraps it.
+    wrap = client.get(url, params={"bbox": "150,-40,-170,-30", "zoom": 2}).json()
+    assert wrap["total"] == 2
+    for bad in ("1,2,3", "a,b,c,d", "0,50,1,40", "0,0,400,10"):
+        assert client.get(url, params={"bbox": bad}).status_code == 422
+
+
+def test_place_filter_lists_the_photos_of_a_cluster(env):
+    _, client, ids, login, _ = env
+    login("alice", "L1")
+    r = client.get(
+        f"/api/libraries/{ids['L1']}/assets", params={"place": "2.35,48.85,2.37,48.87"}
+    )
+    assert r.status_code == 200
+    assert {i["id"] for i in r.json()["items"]} == {_uuid(n) for n in (1, 2, 3)}
+
+
+def test_404_for_other_users_401_anonymous(env):
+    _, client, ids, login, _ = env
+    url = f"/api/libraries/{ids['L1']}/map"
+    assert client.get(url).status_code == 401
+    assert (
+        client.get(
+            f"/api/libraries/{ids['L1']}/assets", params={"place": "0,0,1,1"}
+        ).status_code
+        == 401
+    )
+    login("bob", "L2")
+    assert client.get(url).status_code == 404
+    assert client.get(url, params={"bbox": "1,47,4,50"}).status_code == 404
+    assert (
+        client.get(
+            f"/api/libraries/{ids['L1']}/assets", params={"place": "0,0,1,1"}
+        ).status_code
+        == 404
+    )
+    own = client.get(f"/api/libraries/{ids['L2']}/map", params={"zoom": 2}).json()
+    assert own["total"] == 1 and own["clusters"][0]["cover_id"].startswith("B0000000")
+
+
+# ---- basemap setting and PMTiles ---------------------------------------
+
+
+def _pmtiles(tmp_path):
+    path = tmp_path / "tiny.pmtiles"
+    path.write_bytes(b"PMTiles" + bytes(range(256)))
+    return path
+
+
+def _set(conn, mode, path=None):
+    app_db.set_setting(conn, "map_tiles_mode", mode)
+    app_db.set_setting(
+        conn, "map_tiles_pmtiles_path", "" if path is None else str(path)
+    )
+    conn.commit()
+
+
+def test_config_requires_login_and_defaults_to_online(env):
+    conn, client, ids, login, _ = env
+    assert client.get("/api/map/config").status_code == 401
+    assert client.get("/api/map/tiles.pmtiles").status_code == 401
+    login("alice", "L1")
+    assert client.get("/api/map/config").json() == {
+        "mode": "online",
+        "pmtiles_url": None,
+    }
+
+
+def test_local_file_serves_a_range_response(env):
+    conn, client, ids, login, tmp_path = env
+    login("alice", "L1")
+    _set(conn, "local_file", _pmtiles(tmp_path))
+    assert client.get("/api/map/config").json() == {
+        "mode": "local_file",
+        "pmtiles_url": "/api/map/tiles.pmtiles",
+    }
+    r = client.get("/api/map/tiles.pmtiles", headers={"Range": "bytes=7-16"})
+    assert r.status_code == 206
+    assert r.content == bytes(range(10))
+    assert r.headers["content-range"] == "bytes 7-16/263"
+    assert r.headers["accept-ranges"] == "bytes"
+    assert client.get("/api/map/tiles.pmtiles").status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["missing", "not_pmtiles", "directory"])
+def test_bad_local_file_is_off_not_osm(env, kind):
+    conn, client, ids, login, tmp_path = env
+    login("alice", "L1")
+    path = tmp_path / "x.pmtiles"
+    if kind == "not_pmtiles":
+        path.write_bytes(b"hello")
+    elif kind == "directory":
+        path.mkdir()
+    _set(conn, "local_file", path)
+    assert client.get("/api/map/config").json() == {"mode": "off", "pmtiles_url": None}
+    assert client.get("/api/map/tiles.pmtiles").status_code == 404
+
+
+def test_archive_is_not_served_unless_local_mode(env):
+    conn, client, ids, login, tmp_path = env
+    login("alice", "L1")
+    _set(conn, "online", _pmtiles(tmp_path))
+    assert client.get("/api/map/tiles.pmtiles").status_code == 404
+    _set(conn, "off", _pmtiles(tmp_path))
+    assert client.get("/api/map/config").json() == {"mode": "off", "pmtiles_url": None}
