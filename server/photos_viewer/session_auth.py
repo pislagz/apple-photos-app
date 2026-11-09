@@ -110,7 +110,10 @@ IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 # `client_ip` bucket (every header value, plus the peer-IP fallback used when
 # a trusted, non-loopback proxy sends no header) that shares one direct peer
 # address, loopback included -- see `is_ip_locked_out`.
+# Default; `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` overrides it (#57), read
+# through `max_failed_logins_per_peer()`.
 MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER = MAX_FAILED_LOGIN_ATTEMPTS_PER_IP * 10
+_PER_PEER_CEILING_ENV = "PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER"
 
 _TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
@@ -272,6 +275,17 @@ def _env_seconds(name: str, default_seconds: int) -> int:
     if value < 0:
         logger.warning("%s=%d is negative; using default %d seconds", name, value, default_seconds)
         return default_seconds
+    return value
+
+
+def max_failed_logins_per_peer() -> int:
+    """The per-peer ceiling: `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` when
+    set to a positive integer, else `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`. Read
+    on each call, like the session-lifetime variables."""
+    value = _env_seconds(_PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
+    if value == 0:
+        logger.warning("%s=0 would lock every peer out; using default %d", _PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
+        return MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
     return value
 
 
@@ -489,7 +503,7 @@ def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> 
         "WHERE peer_ip = ? AND occurred_at >= datetime('now', ?)",
         (peer_ip, f"-{IP_LOCKOUT_WINDOW_SECONDS} seconds"),
     ).fetchone()[0]
-    return peer_count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+    return peer_count >= max_failed_logins_per_peer()
 
 
 def clear_ip_login_failures(conn: sqlite3.Connection) -> None:
