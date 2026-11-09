@@ -1,14 +1,18 @@
 # Run from the repo root or from deploy/:
 #   PHOTOS_LIBRARY_DIR=/mnt/photos docker compose -f deploy/docker-compose.yml up -d --build
 #
-# Egress: the `viewer` network is `internal: true`, so Docker gives it no
-# gateway to the internet and masquerades nothing. The container cannot reach
-# a tile host, a package index, or an update server, and cannot resolve public
-# DNS. Docker does not publish ports on internal networks, so the host reaches
-# the app at the pinned container address (172.28.0.2:8000); Tailscale Serve on
-# the host proxies there:  tailscale serve --bg http://172.28.0.2:8000
-# Replies to those inbound connections flow normally. The README's "No outbound
-# egress" section adds the host firewall rule as a second layer.
+# Egress: `viewer` sits ONLY on the `viewer` network, which is `internal: true`.
+# Docker gives it no gateway to the internet and masquerades nothing, so the app
+# cannot reach a tile host, a package index, or an update server, and cannot
+# resolve public DNS. Docker does not publish ports from an internal-only
+# container, and Tailscale Serve only proxies to localhost, so the `forward`
+# sidecar (plain socat TCP passthrough, nothing else) joins the internal network
+# and an ordinary one and publishes 127.0.0.1:8000 -> viewer:8000. On the host:
+#   tailscale serve --bg 8000
+# Tailscale Serve's X-Forwarded-* headers pass through unchanged. The app sees
+# the forwarder (172.28.0.3) as its peer, hence the two trusted-proxy variables.
+# The README's "No outbound egress" section adds the host firewall rule as a
+# second layer.
 #
 # Read-only fixture check (what CI's pytest does without Docker): mount a
 # synthetic library `:ro` and run the probe inside the same image:
@@ -50,9 +54,28 @@ services:
       OSXPHOTOS_NO_VERSION_CHECK: "1"
       # Browsers reach the app at this https:// name (Tailscale Serve).
       PHOTOS_VIEWER_PUBLIC_ORIGINS: ${PHOTOS_VIEWER_PUBLIC_ORIGINS:-https://myhost.tailxyz.ts.net}
-      # tailscale serve connects from the network gateway, not loopback.
-      UVICORN_FORWARDED_ALLOW_IPS: 172.28.0.1
-      PHOTOS_VIEWER_TRUSTED_PROXIES: 172.28.0.1
+      # Requests arrive from the forwarder's pinned address, not loopback.
+      UVICORN_FORWARDED_ALLOW_IPS: 172.28.0.3
+      PHOTOS_VIEWER_TRUSTED_PROXIES: 172.28.0.3
+
+  forward:
+    # Inbound only: host 127.0.0.1:8000 -> viewer:8000. Pinned tag; the image's
+    # entrypoint is socat. It holds no data and no secrets.
+    image: alpine/socat:1.8.0.3
+    restart: unless-stopped
+    user: "10002:10002"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["TCP-LISTEN:8000,fork,reuseaddr", "TCP:172.28.0.2:8000"]
+    depends_on: [viewer]
+    ports:
+      # Loopback only. Never a bare 8000:8000, which would publish on the LAN.
+      - "127.0.0.1:8000:8000"
+    networks:
+      viewer:
+        ipv4_address: 172.28.0.3
+      edge: {}
 
 volumes:
   viewer-data:
@@ -64,3 +87,5 @@ networks:
       config:
         - subnet: 172.28.0.0/24
           gateway: 172.28.0.1
+  # Ordinary bridge, used only to publish the forwarder on host loopback.
+  edge: {}

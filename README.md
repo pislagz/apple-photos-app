@@ -45,15 +45,14 @@ export PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-[`deploy/Dockerfile`](deploy/Dockerfile) builds the web app, installs the server, ffmpeg and libheif, and runs as uid 10001. The image contains code only; `.dockerignore` keeps libraries, `app.db`, `.env` and `*.sqlite` out of the build. [`deploy/docker-compose.yml`](deploy/docker-compose.yml) has a read-only root filesystem, a `/tmp` tmpfs (sqlite copies and transcode scratch), the libraries at `/libraries` (`:ro`), an optional `/tiles` (`:ro`), and the named volume `viewer-data` at `/data` (`app.db`, thumbnails). Register libraries by their in-container path, e.g. `/libraries/Family.photoslibrary`. Without Docker, `pip install -e ./server`, build `web/`, and run `uvicorn photos_viewer.main:app --host 127.0.0.1` under systemd.
+[`deploy/Dockerfile`](deploy/Dockerfile) builds the web app, installs the server, ffmpeg and libheif, and runs as uid 10001. The image contains code only; `.dockerignore` keeps libraries, `app.db`, `.env` and `*.sqlite` out of the build. [`deploy/docker-compose.yml`](deploy/docker-compose.yml) has a read-only root filesystem, a `/tmp` tmpfs (sqlite copies and transcode scratch), the libraries at `/libraries` (`:ro`), an optional `/tiles` (`:ro`), and the named volume `viewer-data` at `/data` (`app.db`, thumbnails). A small `forward` sidecar (socat, TCP passthrough only) publishes the app on `127.0.0.1:8000`, because the app container itself has no route off its internal network. Register libraries by their in-container path, e.g. `/libraries/Family.photoslibrary`. Without Docker, `pip install -e ./server`, build `web/`, and run `uvicorn photos_viewer.main:app --host 127.0.0.1` under systemd.
 
 ## Tailscale Serve
 
 HTTPS comes from Tailscale; the app is never exposed beyond the tailnet. Session cookies are `Secure`, so plain HTTP will not sign in (except `PHOTOS_VIEWER_COOKIE_SECURE=false` for local dev).
 
 ```bash
-tailscale serve --bg 8000                       # macOS/native: proxies to 127.0.0.1:8000
-tailscale serve --bg http://172.28.0.2:8000     # Docker compose above (pinned container address)
+tailscale serve --bg 8000                       # proxies to 127.0.0.1:8000 (native, or the compose forwarder)
 tailscale serve status                          # shows https://myhost.tailxyz.ts.net
 ```
 
@@ -90,7 +89,7 @@ The server makes no outbound connections: no update check, no geocoding, no CDN,
 
 Two layers; use both.
 
-1. **Compose network.** The `viewer` network is `internal: true`: no gateway to the internet, no public DNS. Docker does not publish ports on internal networks, so no `ports:` entry exists; the host (and so Tailscale Serve) reaches the container at `172.28.0.2:8000`. If that subnet collides with an existing network (`docker network ls`), change the `172.28.0.0/24` pool, the gateway, `ipv4_address` and the two forwarding variables together.
+1. **Compose network.** The app container (`viewer`, `172.28.0.2`) is only on the `viewer` network, which is `internal: true`: no gateway to the internet, no public DNS. Docker does not publish ports from an internal-only container and Tailscale Serve only proxies to localhost, so the `forward` sidecar joins that network (`172.28.0.3`) and an ordinary bridge, and publishes `127.0.0.1:8000` -> `viewer:8000` (plain TCP; it forwards inbound connections only). The app trusts forwarding headers only from `172.28.0.3`. If the subnet collides with an existing network (`docker network ls`), change the `172.28.0.0/24` pool, the gateway, both `ipv4_address` values, the socat target and the two forwarding variables together.
 2. **Host firewall.** Drop connections the container initiates, keep replies and inbound. `DOCKER-USER` is evaluated before Docker's own rules:
 
 ```bash
@@ -98,14 +97,14 @@ sudo iptables -I DOCKER-USER -s 172.28.0.0/24 ! -d 172.28.0.0/24 -m conntrack --
 sudo ip6tables -I DOCKER-USER -m conntrack --ctstate NEW -s fd00:28::/64 -j DROP   # only if you enable IPv6 on the network
 ```
 
-Inbound from the tailnet still works: Tailscale Serve (on the host) opens the connection to the container, so the first packet is host → container and the replies are `ESTABLISHED`. Persist the rule with your distro's tool (`iptables-persistent`, or an nftables file). Check, with the stack up:
+The rule matches the internal subnet, so it catches the app container; the forwarder reaches the host through the `edge` bridge, and its only outbound connection is to `172.28.0.2`, which the rule allows. Inbound from the tailnet still works: Tailscale Serve (on the host) connects to `127.0.0.1:8000`, the forwarder connects to the app inside the subnet, and every reply is `ESTABLISHED`. Persist the rule with your distro's tool (`iptables-persistent`, or an nftables file). Check, with the stack up:
 
 ```bash
 docker compose -f deploy/docker-compose.yml exec viewer python -c "import socket; socket.create_connection(('1.1.1.1', 443), 3)"   # must fail
 curl -sf https://myhost.tailxyz.ts.net/api/health                                                                              # from another tailnet device: must succeed
 ```
 
-If you instead publish a port (drop `internal`, e.g. `127.0.0.1:8000:8000`, never a bare `8000:8000`), the firewall rule is the only egress block, so keep it.
+If you instead drop the forwarder and publish the app's port directly (remove `internal`, e.g. `127.0.0.1:8000:8000`, never a bare `8000:8000`), the firewall rule is the only egress block, so keep it.
 
 ## Linux mount caveats
 

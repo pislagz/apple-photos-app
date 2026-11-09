@@ -50,7 +50,25 @@ def test_compose_hardening_and_egress():
     # No route to the internet, and nothing published on a LAN interface.
     assert compose["networks"]["viewer"]["internal"] is True
     assert "ports" not in svc
+    assert list(svc["networks"]) == ["viewer"]
     assert svc["environment"]["OSXPHOTOS_NO_VERSION_CHECK"] == "1"
+
+
+def test_forwarder_publishes_on_loopback_only_and_is_the_trusted_peer():
+    compose = _compose()
+    fwd = compose["services"]["forward"]
+    viewer = compose["services"]["viewer"]
+    assert all(str(p).startswith("127.0.0.1:") for p in fwd["ports"])
+    assert fwd["read_only"] is True
+    assert fwd["cap_drop"] == ["ALL"]
+    assert fwd["user"].split(":")[0] != "0"
+    fwd_ip = fwd["networks"]["viewer"]["ipv4_address"]
+    viewer_ip = viewer["networks"]["viewer"]["ipv4_address"]
+    assert f"TCP:{viewer_ip}:8000" in fwd["command"]
+    env = viewer["environment"]
+    assert env["UVICORN_FORWARDED_ALLOW_IPS"] == fwd_ip
+    assert env["PHOTOS_VIEWER_TRUSTED_PROXIES"] == fwd_ip
+    assert "internal" not in (compose["networks"]["edge"] or {})
 
 
 def test_compose_mounts_libraries_read_only_and_data_read_write():

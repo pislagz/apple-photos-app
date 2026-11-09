@@ -30,6 +30,7 @@ dev = [
     "pytest",
     "pytest-socket",
     "httpx",
+    "pyyaml",
     "ruff",
 ]
 # RAW decoding (P1.7) is optional: a library with no RAW originals never
