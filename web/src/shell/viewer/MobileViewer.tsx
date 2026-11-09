@@ -1,5 +1,6 @@
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
+import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
 import { downloadVersion, shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
@@ -7,6 +8,8 @@ import MiniMap from "../map/MiniMap";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
+import { useDismiss } from "./useDismiss";
+import { viewerKeyAction } from "./viewerKeys";
 import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
 
 export interface ViewerProps {
@@ -37,7 +40,8 @@ function distance(a: TouchPoint, b: TouchPoint): number {
 // `items` is that view's own array, so a hidden asset from Library (P1.13)
 // can never appear here), swipe down to dismiss, pinch/double-tap zoom,
 // bottom filmstrip, and an info sheet instead of a permanent panel.
-export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
+export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow }: ViewerProps) {
+  const { closing, dismiss: onClose } = useDismiss(onCloseNow);
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited);
@@ -68,6 +72,15 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     setInfoOpen(false);
     clearLongPress();
   }, [item?.id]);
+
+  // External keyboards (iPad): Esc closes, like the desktop viewer.
+  useEffect(() => {
+    function onWindowKeyDown(event: KeyboardEvent) {
+      if (viewerKeyAction(event, document.fullscreenElement) === "close") onClose();
+    }
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [onClose]);
 
   useEffect(() => {
     if (scale > 1.01) media.requestOriginal();
@@ -158,7 +171,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const subtitleLine = placeLine ? dateLine : "";
 
   return (
-    <div className="mobile-viewer" data-testid="mobile-viewer" style={{ opacity: 1 - Math.min(dragY / 400, 0.6) }}>
+    <div className={`mobile-viewer${closing ? " is-closing" : ""}`} data-testid="mobile-viewer" style={{ opacity: 1 - Math.min(dragY / 400, 0.6) }}>
       <div className="mobile-viewer__topbar">
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={20} className="mobile-viewer__back-chevron" />
@@ -195,7 +208,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               onClick={() => media.startVideo()}
               aria-label="Play video"
             >
-              <img className="mobile-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} draggable={false} />
+              <img className="mobile-viewer__media" src={media.previewSrc} alt={assetAlt({ ...item, title: detail?.title })} draggable={false} />
               <Icon name="play" size={48} className="mobile-viewer__play-icon" />
             </button>
           )
@@ -220,7 +233,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               <img
                 className="mobile-viewer__media"
                 src={stillSrc}
-                alt={item.filename ?? ""}
+                alt={assetAlt({ ...item, title: detail?.title })}
                 style={{ transform: `scale(${scale})` }}
                 onLoad={media.onPreviewLoaded}
                 onError={stillOnError}
@@ -233,7 +246,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           <img
             className="mobile-viewer__media"
             src={stillSrc}
-            alt={item.filename ?? ""}
+            alt={assetAlt({ ...item, title: detail?.title })}
             style={{ transform: `scale(${scale})` }}
             onLoad={media.onPreviewLoaded}
             onError={stillOnError}

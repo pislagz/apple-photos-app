@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlbumsResponse, MeResponse } from "../../api";
-import { jsonResponse, mockFetch } from "../../testHelpers";
+import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
@@ -97,7 +97,7 @@ describe("desktop Albums sidebar group", () => {
 
     expect(await screen.findByRole("heading", { name: "Paris" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("album=A1"))).toBe(true));
-    expect(await screen.findByAltText("p1.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Paris" })).toHaveAttribute("aria-current", "page");
     // No Years/Months switch inside an album.
     expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
@@ -140,7 +140,7 @@ describe("mobile Albums tab", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Paris/ }));
     expect(window.location.pathname).toBe("/albums/A1");
     expect(await screen.findByRole("heading", { name: "Paris" })).toBeInTheDocument();
-    expect(await screen.findByAltText("p1.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("album=A1"))).toBe(true));
     // An album is a single grid: the zoom tabs (the Library tab's own, hidden) are not duplicated inside it.
     expect(screen.getAllByRole("tab", { name: "Years", hidden: true })).toHaveLength(1);

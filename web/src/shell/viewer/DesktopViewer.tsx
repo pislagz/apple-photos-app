@@ -1,5 +1,6 @@
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
+import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadVersion } from "./download";
 import { Filmstrip } from "./Filmstrip";
@@ -7,6 +8,7 @@ import MiniMap from "../map/MiniMap";
 import { InfoRows } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
+import { useDismiss } from "./useDismiss";
 import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
 import { viewerKeyAction } from "./viewerKeys";
 
@@ -25,7 +27,8 @@ const ZOOM_SCALE = 2.5;
 // of the fields the mobile sheet shows). `items` is the Library view's own
 // array -- Esc/arrows only ever move within it, so a hidden asset (P1.13)
 // stays unreachable here exactly like it is from the grid.
-export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose }: ViewerProps) {
+export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow }: ViewerProps) {
+  const { closing, dismiss: onClose } = useDismiss(onCloseNow);
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited);
@@ -116,7 +119,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
 
   return (
     <div
-      className="desktop-viewer"
+      className={`desktop-viewer${closing ? " is-closing" : ""}`}
       data-testid="desktop-viewer"
       ref={rootRef}
       tabIndex={-1}
@@ -174,7 +177,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               <video className="desktop-viewer__media" src={media.originalSrc} controls autoPlay data-testid="viewer-video" />
             ) : (
               <button type="button" className="desktop-viewer__play-button" onClick={() => media.startVideo()} aria-label="Play video">
-                <img className="desktop-viewer__media" src={media.previewSrc} alt={item.filename ?? ""} />
+                <img className="desktop-viewer__media" src={media.previewSrc} alt={assetAlt({ ...item, title: detail?.title })} />
                 <Icon name="play" size={56} className="mobile-viewer__play-icon" />
               </button>
             )
@@ -198,7 +201,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                 <img
                   className="desktop-viewer__media"
                   src={stillSrc}
-                  alt={item.filename ?? ""}
+                  alt={assetAlt({ ...item, title: detail?.title })}
                   style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
@@ -212,7 +215,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             <img
               className="desktop-viewer__media"
               src={stillSrc}
-              alt={item.filename ?? ""}
+              alt={assetAlt({ ...item, title: detail?.title })}
               style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}

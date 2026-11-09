@@ -15,6 +15,15 @@ import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
 
+const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Library
 // and Days (#127) have real screens; the rest is disabled chrome so the frame
 // matches the reference.
@@ -121,10 +130,34 @@ export default function DesktopShell({
     view === "album" && !showingPerson && !showingPlace && !showingSearch ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  function toggleSidebar() {
+    setSidebarCollapsed((current) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, current ? "0" : "1");
+      } catch {
+        /* storage unavailable: the choice just doesn't persist */
+      }
+      return !current;
+    });
+  }
+
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
   return (
-    <div className="shell shell--desktop">
-      <aside className="sidebar">
+    <div className={`shell shell--desktop${sidebarCollapsed ? " shell--sidebar-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={toggleSidebar}
+        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="app-sidebar"
+      >
+        <Icon name="sidebar" size={16} />
+      </button>
+      {/* inert while collapsed: the width animates to 0 but the links must
+          leave the Tab order and the accessibility tree. */}
+      <aside className="sidebar" id="app-sidebar" aria-label="Sidebar" inert={sidebarCollapsed}>
         <SearchField ref={searchRef} variant="desktop" value={searchText} onChange={setSearchText} />
         <nav aria-label="Sections">
           <ul>
@@ -296,6 +329,7 @@ export default function DesktopShell({
               </header>
             )}
           <main className="shell__content">
+            {(view === "library" || view === "days") && <h1 className="sr-only">{view === "days" ? "Days" : "Library"}</h1>}
             {activeLibrary?.updating ? (
               <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
             ) : activeLibraryId !== undefined && view === "map" ? (

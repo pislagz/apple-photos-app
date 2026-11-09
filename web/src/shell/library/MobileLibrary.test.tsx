@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
-import { mockFetch } from "../../testHelpers";
+import { getThumb, mockFetch, queryThumb } from "../../testHelpers";
 import MobileLibrary from "./MobileLibrary";
 import { useFakeLayout } from "../../testLayout";
 
@@ -252,7 +252,7 @@ describe("MobileLibrary", () => {
     // opens the Viewer on tap; Years and Months drill in instead (#126).
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     const images = await screen.findAllByRole("img");
-    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg");
+    const a2Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a2?"));
     fireEvent.click(a2Image as HTMLImageElement);
 
     const viewer = await screen.findByTestId("mobile-viewer");
@@ -309,8 +309,8 @@ describe("MobileLibrary", () => {
     // land Days at the top of January 2022 -- its newest day
     // (2022-01-20, "jan22-0"), not scrolled to a specific older day.
     await waitFor(() => expect(screen.getByText("January 20, 2022")).toBeInTheDocument());
-    expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument();
-    expect(screen.queryByAltText("recent.jpg")).toBeNull();
+    expect(getThumb("jan22-0")).toBeInTheDocument();
+    expect(queryThumb("recent")).toBeNull();
   });
 
   it("re-selecting All Photos after jumping to an older month clears the anchor and loads the newest photos (#146)", async () => {
@@ -324,12 +324,12 @@ describe("MobileLibrary", () => {
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("January 2022"));
-    await waitFor(() => expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument());
-    expect(screen.queryByAltText("recent.jpg")).toBeNull();
+    await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
+    expect(queryThumb("recent")).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
 
-    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
     const lastAssetsUrl = String(
       fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/assets?")).at(-1),
     );
@@ -349,11 +349,11 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("January 2022"));
     await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(screen.queryByAltText("recent.jpg")).toBeNull());
+    await waitFor(() => expect(queryThumb("recent")).toBeNull());
 
     rerender(<MobileLibrary libraryId={1} resetSignal={1} />);
 
-    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
   });
 
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
@@ -428,8 +428,8 @@ describe("MobileLibrary", () => {
     const images = await screen.findAllByRole("img");
     fireEvent.click(screen.getByText("Select"));
 
-    const a1Image = images.find((img) => img.getAttribute("alt") === "a1.jpg") as HTMLImageElement;
-    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg") as HTMLImageElement;
+    const a1Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLImageElement;
+    const a2Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a2?")) as HTMLImageElement;
     // Tapping cells in select mode toggles their selection instead of
     // opening the Viewer.
     fireEvent.click(a1Image);
@@ -471,8 +471,8 @@ describe("MobileLibrary", () => {
     const images = await screen.findAllByRole("img");
     fireEvent.click(screen.getByText("Select"));
 
-    const a1Image = images.find((img) => img.getAttribute("alt") === "a1.jpg") as HTMLImageElement;
-    const a2Image = images.find((img) => img.getAttribute("alt") === "a2.jpg") as HTMLImageElement;
+    const a1Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLImageElement;
+    const a2Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a2?")) as HTMLImageElement;
     fireEvent.click(a1Image);
     fireEvent.click(a2Image);
 

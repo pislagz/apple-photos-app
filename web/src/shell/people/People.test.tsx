@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse, Person } from "../../api";
-import { jsonResponse, mockFetch } from "../../testHelpers";
+import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
@@ -94,7 +94,7 @@ describe("desktop People & Pets", () => {
     expect(await screen.findByRole("heading", { name: "Ann" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("person=P1"))).toBe(true));
     expect(requested.some((url) => url.includes("album="))).toBe(false);
-    expect(await screen.findByAltText("p1.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
 
     // The toolbar's Back button (after the sidebar row in the DOM).
     fireEvent.click(screen.getAllByRole("button", { name: /People & Pets/ }).at(-1) as HTMLElement);

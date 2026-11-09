@@ -498,6 +498,8 @@ Done: `server/photos_viewer/library_prewarm.py` and migration 23 (`prewarm_jobs`
 - Accessibility pass and a layout check at a phone width and a desktop width.
 - Acceptance: the access-control test still passes. No Apple icons, fonts, or trademarks added.
 
+Done: all CSS in `web/src/shell/shell.css` (last section). Motion: tab-bar colour and icon settle, viewer open/dismiss (`useDismiss` adds `.is-closing`, then closes after 180 ms), and a new desktop sidebar collapse toggle (first Tab stop; the collapsed sidebar is `inert`; choice kept in localStorage). One `@media (prefers-reduced-motion: reduce)` block zeroes every animation and transition, and `useDismiss` closes at once. Keyboard: global 2 px `:focus-visible` ring (white on the dark viewers), Esc closes the mobile viewer too, filmstrip buttons have names. Alt text: `assetAlt()` gives title, else "Photo from <date>", never the filename. Desktop Library and Days gained an `sr-only` h1. Tests: `assetAlt.test.ts`, `polish.test.tsx`, `useDismiss.test.tsx`, `web/e2e/polish.e2e.ts` (no horizontal overflow at 1440 and 390, keyboard path, reduced motion). Existing tests that found thumbnails by filename alt now use `findThumb(id)` from `testHelpers.ts`.
+
 ## Done means
 
 - Phase 0 probe recorded for the fixture in CI and for each real library on the manual checklist.

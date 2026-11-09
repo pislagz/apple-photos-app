@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
+import { findThumb, jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import AppShell from "./AppShell";
 
 function setViewport(width: number, finePointer: boolean) {
@@ -171,7 +171,7 @@ describe("AppShell", () => {
     fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
-    expect(await screen.findByAltText("IMG_0002.HEIC")).toBeInTheDocument();
+    expect(await findThumb("h1")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hidden" })).toBeInTheDocument();
   });
 
