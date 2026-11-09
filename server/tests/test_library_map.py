@@ -189,7 +189,7 @@ def _set(conn, mode, path=None):
 
 
 def test_config_requires_login_and_defaults_to_online(env):
-    conn, client, ids, login, _ = env
+    _conn, client, _ids, login, _ = env
     assert client.get("/api/map/config").status_code == 401
     assert client.get("/api/map/tiles.pmtiles").status_code == 401
     login("alice", "L1")
@@ -200,7 +200,7 @@ def test_config_requires_login_and_defaults_to_online(env):
 
 
 def test_local_file_serves_a_range_response(env):
-    conn, client, ids, login, tmp_path = env
+    conn, client, _ids, login, tmp_path = env
     login("alice", "L1")
     _set(conn, "local_file", _pmtiles(tmp_path))
     assert client.get("/api/map/config").json() == {
@@ -217,7 +217,7 @@ def test_local_file_serves_a_range_response(env):
 
 @pytest.mark.parametrize("kind", ["missing", "not_pmtiles", "directory"])
 def test_bad_local_file_is_off_not_osm(env, kind):
-    conn, client, ids, login, tmp_path = env
+    conn, client, _ids, login, tmp_path = env
     login("alice", "L1")
     path = tmp_path / "x.pmtiles"
     if kind == "not_pmtiles":
@@ -230,7 +230,7 @@ def test_bad_local_file_is_off_not_osm(env, kind):
 
 
 def test_archive_is_not_served_unless_local_mode(env):
-    conn, client, ids, login, tmp_path = env
+    conn, client, _ids, login, tmp_path = env
     login("alice", "L1")
     _set(conn, "online", _pmtiles(tmp_path))
     assert client.get("/api/map/tiles.pmtiles").status_code == 404

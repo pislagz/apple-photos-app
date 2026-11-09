@@ -22,7 +22,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import app_db, library_albums, library_map, library_people, library_watch, media, session_auth
+from . import (
+    app_db,
+    library_albums,
+    library_map,
+    library_people,
+    library_watch,
+    media,
+    session_auth,
+)
 
 router = APIRouter()
 
