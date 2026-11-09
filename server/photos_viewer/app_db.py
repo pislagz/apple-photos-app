@@ -390,6 +390,29 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE albums ADD COLUMN list_order INTEGER NOT NULL DEFAULT 0",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 19 (P2.2): face rectangles, so People can show a circular crop of a
+    # person's best visible face. Coordinates are normalized to the
+    # displayed (EXIF-oriented) image, top-left origin: x/y the face centre,
+    # w/h its size as a fraction of the image width/height. Not derivable
+    # from rows indexed before, so every indexed library is flagged for the
+    # one-time in-place re-index.
+    [
+        """
+        CREATE TABLE faces (
+            id INTEGER PRIMARY KEY,
+            person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+            asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+            x REAL NOT NULL,
+            y REAL NOT NULL,
+            w REAL NOT NULL,
+            h REAL NOT NULL,
+            quality REAL NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX idx_faces_person_id ON faces(person_id)",
+        "CREATE INDEX idx_faces_asset_id ON faces(asset_id)",
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

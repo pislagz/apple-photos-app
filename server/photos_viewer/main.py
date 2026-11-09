@@ -24,6 +24,7 @@ from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
 from .library_albums import router as library_albums_router
 from .library_assets import router as library_assets_router
+from .library_people import router as library_people_router
 from .library_watch import LibraryChecker
 from .session_auth import (
     get_data_dir,
@@ -150,6 +151,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(library_admin_router)
     app.include_router(library_albums_router)
+    app.include_router(library_people_router)
     app.include_router(library_assets_router)
     app.include_router(admin_panel_router)
 

@@ -18,6 +18,8 @@ import os
 import pathlib
 import sqlite3
 
+from osxphotos._constants import _UNKNOWN_PERSON
+
 from . import libraries, media
 
 # `assets` columns written by `_write_index`, excluding `id` (assigned by
@@ -253,6 +255,33 @@ _UPSERT_ASSET_SQL = (
 INDEX_BATCH_SIZE = 5000
 
 
+_FACE_ERRORS = (KeyError, IndexError, TypeError, ValueError, AttributeError, ZeroDivisionError)
+
+
+def _write_faces(db: sqlite3.Connection, asset_id: int, photo, person_ids: dict[str, int]) -> None:
+    """Face rectangles for the People cover crop. Photos stores a face in a
+    bottom-left-origin frame of the unrotated image; `mwg_rs_area` is
+    osxphotos' conversion to the displayed frame (centre x/y, size w/h)."""
+    db.execute("DELETE FROM faces WHERE asset_id = ?", (asset_id,))
+    try:
+        faces = photo.face_info
+    except _FACE_ERRORS:  # a malformed face row must not abort the whole index
+        return
+    for face in faces:
+        face._photo = photo  # skips a per-face get_photo lookup
+        try:
+            person_id = person_ids.get(face.person_info.uuid)
+            area = face.mwg_rs_area
+        except _FACE_ERRORS:  # face without a person, or unreadable geometry
+            continue
+        if person_id is None or face.intrash or not (area.w > 0 and area.h > 0):
+            continue
+        db.execute(
+            "INSERT INTO faces (person_id, asset_id, x, y, w, h, quality) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (person_id, asset_id, area.x, area.y, area.w, area.h, face.quality or 0),
+        )
+
+
 def _write_index(
     db: sqlite3.Connection, library_id: int, photosdb, *, batch_size: int | None = None
 ) -> tuple[dict[str, int], list[str]]:
@@ -274,7 +303,14 @@ def _write_index(
     for person in photosdb.person_info:
         cursor = db.execute(
             "INSERT INTO people (library_id, uuid, name, display_name, face_count) VALUES (?, ?, ?, ?, ?)",
-            (library_id, person.uuid, person.name, person.display_name, person.facecount),
+            (
+                library_id,
+                person.uuid,
+                # osxphotos spells "no name" as "_UNKNOWN_"; People omits those.
+                None if person.name == _UNKNOWN_PERSON else person.name,
+                person.display_name,
+                person.facecount,
+            ),
         )
         person_ids[person.uuid] = cursor.lastrowid
 
@@ -408,6 +444,7 @@ def _write_index(
                         "INSERT OR IGNORE INTO asset_people (asset_id, person_id) VALUES (?, ?)",
                         (asset_id, person_id),
                     )
+            _write_faces(db, asset_id, photo, person_ids)
 
             for album in photo.album_info:
                 album_id = album_ids.get(album.uuid)

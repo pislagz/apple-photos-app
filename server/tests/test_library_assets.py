@@ -220,7 +220,7 @@ def test_list_assets_excludes_hidden(tmp_path):
         conn.close()
 
 
-def test_list_assets_person_filter_stays_empty_with_a_hidden_asset(tmp_path):
+def test_list_assets_unknown_person_is_404_with_a_hidden_asset(tmp_path):
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
@@ -231,8 +231,7 @@ def test_list_assets_person_filter_stays_empty_with_a_hidden_asset(tmp_path):
 
         response = client.get(f"/api/libraries/{library_id}/assets", params={"person": "anything"})
 
-        assert response.status_code == 200
-        assert response.json() == {"items": [], "next_cursor": None}
+        assert response.status_code == 404
     finally:
         conn.close()
 
