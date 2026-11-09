@@ -1,6 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
+import { PERSON_PREFIX } from "../../api";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
@@ -659,13 +660,13 @@ export default function DesktopLibrary({
         )}
         {items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
-            <p>{album ? "Couldn't load this album." : "Couldn't load your library."}</p>
+            <p>{album ? (album.startsWith(PERSON_PREFIX) ? "Couldn't load this person's photos." : "Couldn't load this album.") : "Couldn't load your library."}</p>
             <button type="button" className="desktop-library__retry" onClick={retry}>
               Retry
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <p className="desktop-library__empty">{album ? "No photos in this album." : "No photos yet."}</p>
+          <p className="desktop-library__empty">{album ? (album.startsWith(PERSON_PREFIX) ? "No photos of this person." : "No photos in this album.") : "No photos yet."}</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
