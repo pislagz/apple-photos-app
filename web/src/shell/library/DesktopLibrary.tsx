@@ -17,7 +17,7 @@ import { buildRows, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { InfoRows } from "../viewer/InfoRows";
-import { useAssetDetail } from "../viewer/useAssetDetail";
+import { useAssetDetailState } from "../viewer/useAssetDetail";
 import { buildInfoRows } from "../viewer/viewerInfo";
 
 const HEADER_ROW_HEIGHT = 28;
@@ -139,7 +139,7 @@ export default function DesktopLibrary({
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
-  const infoDetail = useAssetDetail(libraryId, infoOpen ? focusedId : null);
+  const { detail: infoDetail, failed: infoFailed } = useAssetDetailState(libraryId, infoOpen ? focusedId : null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -750,7 +750,7 @@ export default function DesktopLibrary({
           {infoDetail ? (
             <InfoRows rows={buildInfoRows(infoDetail, { includeFile: true })} className="desktop-library__info-rows" />
           ) : (
-            <p className="desktop-library__info-empty">{focusedId ? "Loading…" : "No Selection"}</p>
+            <p className="desktop-library__info-empty">{!focusedId ? "No Selection" : infoFailed ? "Couldn't load info." : "Loading…"}</p>
           )}
         </aside>
       )}

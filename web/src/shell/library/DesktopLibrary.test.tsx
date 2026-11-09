@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
-import { mockFetch } from "../../testHelpers";
+import { jsonResponse, mockFetch } from "../../testHelpers";
 import DesktopLibrary from "./DesktopLibrary";
 import { useFakeLayout } from "../../testLayout";
 
@@ -803,5 +803,21 @@ describe("DesktopLibrary Info panel (#98)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
     expect(screen.queryByTestId("library-info-panel")).toBeNull();
+  });
+});
+
+describe("DesktopLibrary Info panel errors (#98)", () => {
+  it("says the info could not be loaded instead of Loading forever", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      if (url === "/api/libraries/1/assets/a1") return jsonResponse({ detail: "boom" }, 500);
+      throw new Error("unexpected request: " + url);
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    const cell = (await screen.findAllByTestId("library-cell"))[0];
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    fireEvent.click(cell);
+    await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
   });
 });
