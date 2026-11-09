@@ -418,6 +418,21 @@ _MIGRATIONS: list[list[str]] = [
     [
         "CREATE INDEX IF NOT EXISTS idx_assets_location ON assets(library_id, hidden, latitude, longitude)",
     ],
+    # 21 (P2.4): Apple's on-device scene/object labels (and a few other
+    # search_info fields) for Search. Rebuilt per asset on every re-index. Not
+    # derivable from rows indexed before, so flag every indexed library for
+    # the one-time in-place re-index.
+    [
+        """
+        CREATE TABLE asset_labels (
+            asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+            label TEXT NOT NULL,
+            label_normalized TEXT NOT NULL,
+            PRIMARY KEY (asset_id, label_normalized)
+        )
+        """,
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

@@ -282,6 +282,43 @@ def _write_faces(db: sqlite3.Connection, asset_id: int, photo, person_ids: dict[
         )
 
 
+# `search_info` fields indexed besides the scene/object labels (Photos 8+
+# fields are `[]` on older libraries). Detected text is deliberately not here:
+# see docs/MANUAL_MAC_TESTS.md. `PhotoInfo.detected_text()` is never called.
+_EXTRA_SEARCH_FIELDS = (
+    "activities",
+    "venues",
+    "venue_types",
+    "holidays",
+    "season",
+    "bodies_of_water",
+    "pets",
+    "landmarks",
+)
+
+
+def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> None:
+    """Replace this asset's rows in `asset_labels`, so a label Photos no longer
+    lists disappears on the next index."""
+    db.execute("DELETE FROM asset_labels WHERE asset_id = ?", (asset_id,))
+    found: dict[str, str] = {}
+    try:
+        for label, normalized in zip(photo.labels, photo.labels_normalized, strict=False):
+            found.setdefault(normalized, label)
+        info = photo.search_info
+        for field in _EXTRA_SEARCH_FIELDS:
+            values = getattr(info, field, None) or []
+            for value in [values] if isinstance(values, str) else values:
+                if value:
+                    found.setdefault(value.lower(), value)
+    except (NotImplementedError, KeyError, AttributeError, TypeError):
+        pass  # no search index (Photos 4, or none found): no labels
+    db.executemany(
+        "INSERT OR IGNORE INTO asset_labels (asset_id, label, label_normalized) VALUES (?, ?, ?)",
+        [(asset_id, label, normalized) for normalized, label in found.items()],
+    )
+
+
 def _write_index(
     db: sqlite3.Connection, library_id: int, photosdb, *, batch_size: int | None = None
 ) -> tuple[dict[str, int], list[str]]:
@@ -445,6 +482,7 @@ def _write_index(
                         (asset_id, person_id),
                     )
             _write_faces(db, asset_id, photo, person_ids)
+            _write_labels(db, asset_id, photo)
 
             for album in photo.album_info:
                 album_id = album_ids.get(album.uuid)

@@ -43,6 +43,7 @@ import pathlib
 import plistlib
 import shutil
 import sqlite3
+import uuid as uuid_module
 from collections.abc import Sequence
 
 import pillow_heif
@@ -198,11 +199,40 @@ def _build_asset_image_bytes() -> bytes:
     return buffer.getvalue()
 
 
-def _build_search_index(search_dir: pathlib.Path) -> None:
+# osxphotos' search_category_factory(5.0).LABEL: Apple's scene/object labels.
+_PSI_LABEL_CATEGORY = 2024
+
+
+def _build_search_index(
+    search_dir: pathlib.Path, assets: Sequence[FixtureAsset] = ()
+) -> None:
+    """`psi.sqlite`, with one `LABEL` group per distinct label and a `ga` row
+    per (asset, label). An asset's uuid is stored as two little-endian signed
+    64-bit ints, the inverse of osxphotos' `ints_to_uuid`."""
     search_dir.mkdir(parents=True)
     conn = sqlite3.connect(str(search_dir / "psi.sqlite"))
     try:
         conn.executescript(_SEARCH_INDEX_SCHEMA)
+        group_ids: dict[str, int] = {}
+        for asset in assets:
+            raw = uuid_module.UUID(asset.uuid).bytes
+            uuid_0 = int.from_bytes(raw[:8], "little", signed=True)
+            uuid_1 = int.from_bytes(raw[8:], "little", signed=True)
+            asset_row = conn.execute(
+                "INSERT INTO assets (uuid_0, uuid_1) VALUES (?, ?)", (uuid_0, uuid_1)
+            ).lastrowid
+            for label in asset.labels:
+                if label not in group_ids:
+                    # Real rows carry a trailing NUL; osxphotos strips it.
+                    group_ids[label] = conn.execute(
+                        "INSERT INTO groups (category, owning_groupid, content_string, normalized_string, "
+                        "lookup_identifier) VALUES (?, 0, ?, ?, '')",
+                        (_PSI_LABEL_CATEGORY, label + "\x00", label.lower() + "\x00"),
+                    ).lastrowid
+                conn.execute(
+                    "INSERT INTO ga (groupid, assetid) VALUES (?, ?)",
+                    (group_ids[label], asset_row),
+                )
         conn.commit()
     finally:
         conn.close()
@@ -226,6 +256,8 @@ class FixtureAsset:
     hidden: bool = False
     latitude: float | None = None
     longitude: float | None = None
+    # Apple's scene/object labels, written to `search/psi.sqlite`.
+    labels: Sequence[str] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -360,14 +392,22 @@ def build_library(
         # into `people`/`albums`/`asset_people`/`asset_albums`.
         # Folders take the pks after the albums; a parent is looked up by uuid
         # (1 is the root folder row, the parent of every top-level entry).
-        folder_pks = {folder.uuid: 2 + len(albums) + n for n, folder in enumerate(folders)}
+        folder_pks = {
+            folder.uuid: 2 + len(albums) + n for n, folder in enumerate(folders)
+        }
         for folder in folders:
             conn.execute(
                 """
                 INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
                 VALUES (?, ?, ?, ?, ?, 0)
                 """,
-                (folder_pks[folder.uuid], folder.uuid, folder.title, _FOLDER_KIND, folder_pks.get(folder.parent_uuid, 1)),
+                (
+                    folder_pks[folder.uuid],
+                    folder.uuid,
+                    folder.title,
+                    _FOLDER_KIND,
+                    folder_pks.get(folder.parent_uuid, 1),
+                ),
             )
         for offset, album in enumerate(albums):
             album_pk = 2 + offset
@@ -376,7 +416,13 @@ def build_library(
                 INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
                 VALUES (?, ?, ?, ?, ?, 0)
                 """,
-                (album_pk, album.uuid, album.title, _ALBUM_KIND, folder_pks.get(album.parent_uuid, 1)),
+                (
+                    album_pk,
+                    album.uuid,
+                    album.title,
+                    _ALBUM_KIND,
+                    folder_pks.get(album.parent_uuid, 1),
+                ),
             )
             for order, index in enumerate(album.asset_indexes, start=1):
                 conn.execute(
@@ -432,7 +478,7 @@ def build_library(
     if wal_favorite_pk is not None:
         _write_uncheckpointed_wal_change(sqlite_path, wal_favorite_pk)
 
-    _build_search_index(database_dir / "search")
+    _build_search_index(database_dir / "search", assets)
 
     return package_path
 
