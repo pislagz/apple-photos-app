@@ -67,11 +67,12 @@ CONTENT_SECURITY_POLICY = (
     "connect-src 'self' https://tile.openstreetmap.org; "
     "object-src 'none'; "
     "base-uri 'self'; "
+    "form-action 'self'; "
     "frame-ancestors 'none'"
 )
 
 
-class _NoStoreMiddleware(BaseHTTPMiddleware):
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
@@ -166,7 +167,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     validate_public_origins_env()
     validate_trusted_proxies_env()
     app = FastAPI(lifespan=_lifespan)
-    app.add_middleware(_NoStoreMiddleware)
+    app.add_middleware(_SecurityHeadersMiddleware)
     app.include_router(auth_router)
     app.include_router(passkeys_router)
     app.include_router(library_admin_router)

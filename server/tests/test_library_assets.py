@@ -1409,8 +1409,13 @@ def test_hidden_asset_media_requires_the_hidden_unlock(tmp_path):
             f"{base}/thumb/hid",
             f"{base}/original/hid",
             f"{base}/original/hid?format=jpeg",
+            f"{base}/assets/hid",
         ]
-        visible_urls = [f"{base}/thumb/vis", f"{base}/original/vis"]
+        visible_urls = [
+            f"{base}/thumb/vis",
+            f"{base}/original/vis",
+            f"{base}/assets/vis",
+        ]
 
         for url in hidden_urls:
             locked = client.get(url)

@@ -18,9 +18,11 @@ import os
 import pathlib
 import sqlite3
 
-from osxphotos._constants import _UNKNOWN_PERSON
-
 from . import libraries, media
+
+# osxphotos' placeholder name for an unnamed face cluster. Kept local rather
+# than importing the private osxphotos._constants; a test pins the value.
+_UNKNOWN_PERSON = "_UNKNOWN_"
 
 # `assets` columns written by `_write_index`, excluding `id` (assigned by
 # sqlite) and `library_id`/`uuid` (the upsert's conflict key, set once).

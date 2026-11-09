@@ -331,3 +331,60 @@ def test_unmounted_drive_mid_job_keeps_cursor_and_failed_count(tmp_path, generat
         assert len(_cache_files(tmp_path, lib)) == 4 * 2
     finally:
         conn.close()
+
+
+def test_an_unmounted_library_does_not_block_another_librarys_job(
+    tmp_path, generations
+):
+    import shutil
+
+    conn, client, lib1, package1 = _setup(tmp_path, count=2, library_name="L1")
+    try:
+        lib2 = _setup_second(conn, tmp_path, "L2")
+        _start(client, lib1)
+        _start(client, lib2)
+        shutil.move(str(package1), str(tmp_path / "ejected"))
+        worker = library_prewarm.PrewarmWorker(lambda: tmp_path)
+        assert worker._run_one(tmp_path) is True
+        status2 = library_prewarm.job_status(conn, lib2)
+        assert status2.state == "done"
+        assert library_prewarm.job_status(conn, lib1).state == "running"
+        assert worker._run_one(tmp_path) is False
+    finally:
+        conn.close()
+
+
+def _setup_second(conn, tmp_path, name):
+    package = tmp_path / f"{name}.photoslibrary"
+    originals = package / "originals"
+    originals.mkdir(parents=True)
+    library_id = conn.execute(
+        "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
+        (name, str(package)),
+    ).lastrowid
+    path = originals / "b0.jpg"
+    Image.new("RGB", (900, 600), (5, 80, 120)).save(path, "JPEG")
+    _insert_asset(
+        conn, library_id, "b0", path_original=str(path), original_filename="b0.jpg"
+    )
+    return library_id
+
+
+def test_a_reindex_starting_mid_job_pauses_the_running_pass(tmp_path, generations):
+    conn, client, lib, _ = _setup(tmp_path, count=4)
+    try:
+        _start(client, lib)
+        library_prewarm.run_library(tmp_path, lib, max_assets=1, pause_s=0)
+        conn.execute(
+            "UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (lib,)
+        )
+        conn.commit()
+        generations.clear()
+        assert library_prewarm.run_library(tmp_path, lib, pause_s=0) == "running"
+        assert generations == []
+        assert library_prewarm.job_status(conn, lib).done == 1
+        conn.execute("UPDATE libraries SET index_state = 'ready' WHERE id = ?", (lib,))
+        conn.commit()
+        assert library_prewarm.run_library(tmp_path, lib, pause_s=0) == "done"
+    finally:
+        conn.close()

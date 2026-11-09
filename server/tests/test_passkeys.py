@@ -447,6 +447,17 @@ def test_ip_lockout_applies_to_unknown_credentials(client, db):
     assert passkey_login(anonymous, SoftwareAuthenticator())[1].status_code == 429
 
 
+def test_unknown_challenge_ids_count_toward_the_ip_lockout(client, db):
+    add_user(db, "alice")
+    anonymous = TestClient(client.app, base_url=ORIGIN)
+    body = {"challenge_id": "nope", "credential": {}}
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        response = anonymous.post("/api/auth/passkeys/login/verify", json=body)
+        assert response.status_code == 400
+    locked = anonymous.post("/api/auth/passkeys/login/verify", json=body)
+    assert locked.status_code == 429
+
+
 def test_list_and_remove_only_your_own_passkeys(client, db):
     add_user(db, "alice")
     add_user(db, "bob")

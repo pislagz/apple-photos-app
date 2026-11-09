@@ -271,33 +271,36 @@ def _hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def _env_seconds(name: str, default_seconds: int) -> int:
+def _env_int(name: str, default: int, unit: str = "") -> int:
+    """A non-negative integer from the environment, else `default`; `unit`
+    (e.g. " seconds") only decorates the warning text."""
     raw = os.environ.get(name)
     if raw is None:
-        return default_seconds
+        return default
     try:
         value = int(raw)
     except ValueError:
         logger.warning(
-            "%s=%r is not an integer; using default %d seconds",
-            name,
-            raw,
-            default_seconds,
+            "%s=%r is not an integer; using default %d%s", name, raw, default, unit
         )
-        return default_seconds
+        return default
     if value < 0:
         logger.warning(
-            "%s=%d is negative; using default %d seconds", name, value, default_seconds
+            "%s=%d is negative; using default %d%s", name, value, default, unit
         )
-        return default_seconds
+        return default
     return value
+
+
+def _env_seconds(name: str, default_seconds: int) -> int:
+    return _env_int(name, default_seconds, " seconds")
 
 
 def max_failed_logins_per_peer() -> int:
     """The per-peer ceiling: `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` when
     set to a positive integer, else `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`. Read
     on each call, like the session-lifetime variables."""
-    value = _env_seconds(_PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
+    value = _env_int(_PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
     if value == 0:
         logger.warning(
             "%s=0 would lock every peer out; using default %d",
@@ -814,7 +817,10 @@ def reject_cross_site_requests(request: Request) -> None:
     content_type = request.headers.get("content-type", "")
     # A bare DELETE has no body, so no client sends a Content-Type for it. A
     # cross-site form can't issue DELETE at all, so the Origin check below
-    # is the whole guard for that case.
+    # is the whole guard for that case. "Body-less" is judged by a missing or
+    # zero Content-Length (no Transfer-Encoding); that is only safe because a
+    # cross-site DELETE needs a CORS preflight we never grant and the Origin
+    # check below still runs for every such request.
     bodyless_delete = (
         request.method == "DELETE"
         and request.headers.get("content-length", "0") == "0"

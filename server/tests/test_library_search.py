@@ -318,3 +318,41 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         assert flags == {"A": 1, "B": 0}
     finally:
         db.close()
+
+
+def test_search_scan_tokenises_each_distinct_field_value_once():
+    """A scan calls the UDFs several times per row; repeated field values must
+    hit the word cache instead of re-folding. Counting cache misses is
+    deterministic where a wall-clock bound would flake."""
+    import sqlite3
+
+    db = sqlite3.connect(":memory:")
+    db.executescript(
+        """
+        CREATE TABLE assets (id INTEGER PRIMARY KEY, date_created TEXT,
+            date_created_local_day TEXT, place TEXT, place_address TEXT,
+            camera_make TEXT, camera_model TEXT);
+        CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, display_name TEXT);
+        CREATE TABLE asset_people (asset_id INTEGER, person_id INTEGER);
+        CREATE TABLE albums (id INTEGER PRIMARY KEY, title TEXT);
+        CREATE TABLE asset_albums (asset_id INTEGER, album_id INTEGER);
+        CREATE TABLE asset_labels (asset_id INTEGER, label_normalized TEXT);
+        """
+    )
+    places = ["Zürich", "Paris", "Lisbon", "Oslo"]
+    rows = 4000
+    db.executemany(
+        "INSERT INTO assets VALUES (?, '2024-01-01T00:00:00', '2024-01-01', ?, ?, 'Apple', 'iPhone 15')",
+        [(i, places[i % 4], f"{places[i % 4]} Road") for i in range(rows)],
+    )
+    library_search._register(db)
+    library_search._words.cache_clear()
+
+    where, params = library_search.search_clause(library_search.parse_terms("zurich"))
+    found = db.execute(f"SELECT COUNT(*) FROM assets WHERE {where}", params).fetchone()[
+        0
+    ]
+
+    assert found == rows // 4
+    distinct_values = len(places) * 2 + 2 + 1  # place, address, make, model, +slack
+    assert library_search._words.cache_info().misses <= distinct_values

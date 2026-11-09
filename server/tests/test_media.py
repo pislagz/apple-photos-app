@@ -537,3 +537,48 @@ def test_cache_limit_zero_neither_reads_nor_writes_the_cache(tmp_path, monkeypat
     assert not cache_dir.exists() or not [
         p for p in cache_dir.rglob("*") if p.is_file()
     ]
+
+
+def test_asset_cache_dir_refuses_an_empty_uuid(tmp_path):
+    for bad in ("", ":live"):
+        with pytest.raises(ValueError):
+            media.asset_cache_dir(tmp_path, 1, bad)
+    (tmp_path / "1").mkdir()
+    with pytest.raises(ValueError):
+        media.purge_asset_cache(tmp_path, 1, "")
+    assert (tmp_path / "1").is_dir()
+
+
+def test_purge_and_eviction_prune_empty_cache_dirs(tmp_path):
+    cache_dir = tmp_path / "cache"
+    purged = _write_entry(cache_dir, "purgeme", 10)
+    media.purge_asset_cache(cache_dir, 1, "purgeme")
+    assert not purged.parent.exists() and not purged.parent.parent.exists()
+
+    old = _write_entry(cache_dir, "oldest", 100)
+    keep = _write_entry(cache_dir, "newest", 100)
+    os.utime(old, ns=(1_000_000_000,) * 2)
+    os.utime(keep, ns=(2_000_000_000,) * 2)
+    media._evict_if_needed(cache_dir, size_limit_bytes=150)
+    assert not old.parent.exists()
+    assert keep.exists()
+    assert (cache_dir / "1").is_dir()
+
+
+def test_cache_total_is_rescanned_after_the_interval(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    media._cache_totals.pop(cache_dir, None)
+    media._cache_scanned_at.pop(cache_dir, None)
+    now = [1000.0]
+    monkeypatch.setattr(media.time, "monotonic", lambda: now[0])
+    first = _write_entry(cache_dir, "a", 100)
+    media._note_cache_write(cache_dir, 10_000, first)
+    # Another worker process writes behind this one's back.
+    _write_entry(cache_dir, "other", 500)
+    second = _write_entry(cache_dir, "b", 100)
+    media._note_cache_write(cache_dir, 10_000, second)
+    assert media.cache_total_bytes(cache_dir) == 200
+    now[0] += media._CACHE_RESCAN_SECONDS
+    third = _write_entry(cache_dir, "c", 100)
+    media._note_cache_write(cache_dir, 10_000, third)
+    assert media.cache_total_bytes(cache_dir) == 800

@@ -496,6 +496,7 @@ def _media_cache_headers(asset: sqlite3.Row) -> dict[str, str]:
 )
 def asset_detail(
     asset_id: str,
+    response: Response,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
@@ -503,6 +504,7 @@ def asset_detail(
     # A hidden asset's metadata (place, people, albums) is gated like its
     # media (#151).
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+    response.headers.update(_media_cache_headers(asset))
     people = [
         row["display_name"] or row["name"]
         for row in db.execute(

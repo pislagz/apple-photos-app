@@ -34,6 +34,7 @@ def test_html_and_api_carry_policy(tmp_path):
     assert d["img-src"] == ["'self'", "blob:", "data:"]
     assert d["object-src"] == ["'none'"]
     assert d["base-uri"] == ["'self'"]
+    assert d["form-action"] == ["'self'"]
     assert d["frame-ancestors"] == ["'none'"]
     assert d["connect-src"] == ["'self'", "https://tile.openstreetmap.org"]
     assert "worker-src" not in d

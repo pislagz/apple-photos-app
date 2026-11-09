@@ -129,6 +129,20 @@ class ReplaceSuggestion(BaseModel):
     message: str
 
 
+def _registered_paths(
+    db: sqlite3.Connection, exclude_id: int | None = None
+) -> set[pathlib.Path]:
+    """Registered library paths, resolved. Rows registered before paths were
+    resolved can differ from a new path only by `../`, a trailing slash or a
+    symlink, which an exact string match would miss."""
+    return {
+        pathlib.Path(r["path"]).resolve()
+        for r in db.execute(
+            "SELECT path FROM libraries WHERE id IS NOT ?", (exclude_id,)
+        )
+    }
+
+
 def _suggest_replacement(
     db: sqlite3.Connection, path: pathlib.Path
 ) -> ReplaceSuggestion | None:
@@ -142,11 +156,9 @@ def _suggest_replacement(
         )
     except OSError:
         return None
-    registered = {
-        pathlib.Path(r["path"]) for r in db.execute("SELECT path FROM libraries")
-    }
+    registered = _registered_paths(db)
     for candidate in candidates:
-        if candidate not in registered:
+        if candidate.resolve() not in registered:
             return ReplaceSuggestion(
                 path=str(candidate),
                 name=candidate.name,
@@ -456,6 +468,8 @@ def add_library(
     path = pathlib.Path(payload.path).resolve()
     _validate_library_path(path)
     display_name = payload.display_name or _default_display_name(path)
+    if path in _registered_paths(db):
+        raise HTTPException(status_code=409, detail="this path is already registered")
     try:
         cursor = db.execute(
             "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
@@ -640,15 +654,17 @@ LOW_OVERLAP = 0.5
 
 
 def _preview_replace(
-    db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib.Path
-) -> ReplacePreview:
-    """Reads the new package on `open_library_readonly`'s temp copy only."""
+    db: sqlite3.Connection,
+    row: sqlite3.Row,
+    new_path: pathlib.Path,
+    *,
+    keep_open: bool = False,
+) -> tuple[ReplacePreview, libraries.OpenLibrary | None]:
+    """Reads the new package on `open_library_readonly`'s temp copy only.
+    With `keep_open` the handle is returned (caller closes or hands it to the
+    indexer) so a confirm does not copy a big package a second time."""
     _validate_library_path(new_path)
-    other = db.execute(
-        "SELECT id FROM libraries WHERE path = ? AND id != ?",
-        (str(new_path), row["id"]),
-    ).fetchone()
-    if other is not None:
+    if new_path in _registered_paths(db, exclude_id=row["id"]):
         raise HTTPException(
             status_code=409, detail="this path is already registered as another library"
         )
@@ -665,7 +681,10 @@ def _preview_replace(
         new_store_uuid = (
             indexer.read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
         )
-    finally:
+    except BaseException:
+        opened.close()
+        raise
+    if not keep_open:
         opened.close()
     old_uuids = {
         r["uuid"]
@@ -703,7 +722,7 @@ def _preview_replace(
                 code="originals_missing", message=optimize_storage_message(missing, pct)
             )
         )
-    return ReplacePreview(
+    preview = ReplacePreview(
         path=str(new_path),
         confirmed=False,
         new_asset_count=len(new_uuids),
@@ -715,6 +734,7 @@ def _preview_replace(
         originals_missing_pct=pct,
         warnings=warnings,
     )
+    return preview, opened if keep_open else None
 
 
 @router.post(
@@ -735,9 +755,10 @@ def replace_library(
     `(library_id, uuid)` and Photos keeps asset UUIDs across copies."""
     row = _get_library_or_404(db, library_id)
     new_path = pathlib.Path(payload.path).resolve()
-    preview = _preview_replace(db, row, new_path)
+    preview, opened = _preview_replace(db, row, new_path, keep_open=payload.confirm)
     detail = f"old={row['path']} new={new_path} overlap={preview.overlap:.3f} store_uuid_match={preview.store_uuid_match}"
     if not payload.confirm:
+        assert opened is None
         app_db.write_audit_log(
             db,
             "library.replace.previewed",
@@ -748,14 +769,21 @@ def replace_library(
         return preview
     blockers = [w for w in preview.warnings if w.code != "originals_missing"]
     if blockers and not payload.replace_anyway:
+        if opened is not None:
+            opened.close()
         raise HTTPException(
             status_code=409, detail="; ".join(w.message for w in blockers)
         )
     lock = _lock_for(library_id)
     lock.acquire()
     try:
-        opened, reason = library_watch.check_ready(new_path)
-        if opened is None:
+        # The preview's handle is reused; only the readiness checks rerun.
+        assert opened is not None
+        reason = library_watch.precheck(new_path) or library_watch.check_opened_ready(
+            opened
+        )
+        if reason is not None:
+            opened.close()
             raise HTTPException(
                 status_code=400, detail=f"{new_path} is not ready: {reason}"
             )

@@ -376,7 +376,13 @@ def login_verify(
         raise HTTPException(
             status_code=429, detail="too many failed attempts, try again later"
         )
-    challenge = _consume_challenge(db, payload.challenge_id, "login", None)
+    try:
+        challenge = _consume_challenge(db, payload.challenge_id, "login", None)
+    except HTTPException:
+        # An unknown/expired/replayed id counts like any other failed attempt.
+        if ip_key is not None:
+            session_auth.record_ip_login_failure(db, ip_key, peer_ip)
+        raise
 
     def fail(username: str | None) -> HTTPException:
         # Same bookkeeping as a wrong password: the per-IP counter always,

@@ -142,38 +142,50 @@ def fingerprint(package_path: str | pathlib.Path) -> str | None:
     return f"{indexer.sqlite_signature(package_path)}#{count}:{total}#{package_mtime}"
 
 
+def precheck(package_path: pathlib.Path) -> str | None:
+    sqlite_path = package_path / "database" / "Photos.sqlite"
+    try:
+        if not sqlite_path.is_file() or sqlite_path.stat().st_size == 0:
+            return "Photos.sqlite is missing or empty"
+    except OSError as exc:
+        return f"Photos.sqlite is not readable yet: {exc}"
+    if (
+        not (package_path / "originals").is_dir()
+        and not (package_path / "resources" / "derivatives").is_dir()
+    ):
+        return "the originals folder has not been copied yet"
+    return None
+
+
 def check_ready(
     package_path: pathlib.Path,
 ) -> tuple[libraries.OpenLibrary | None, str | None]:
     """Readiness checks, all read-only and on the temp copy. Returns the
     opened library (caller owns and closes it) or a human-readable reason it
     is not ready yet."""
-    sqlite_path = package_path / "database" / "Photos.sqlite"
-    try:
-        if not sqlite_path.is_file() or sqlite_path.stat().st_size == 0:
-            return None, "Photos.sqlite is missing or empty"
-    except OSError as exc:
-        return None, f"Photos.sqlite is not readable yet: {exc}"
-    if (
-        not (package_path / "originals").is_dir()
-        and not (package_path / "resources" / "derivatives").is_dir()
-    ):
-        return None, "the originals folder has not been copied yet"
+    reason = precheck(package_path)
+    if reason is not None:
+        return None, reason
     try:
         opened = libraries.open_library_readonly(package_path)
     except libraries.UnsupportedPhotosVersionError as exc:
         return None, str(exc)
     except Exception as exc:  # noqa: BLE001 -- a half-copied database fails in many ways
         return None, f"Photos.sqlite is not readable yet: {exc}"
-    try:
-        reason = _check_opened(opened)
-    except Exception as exc:  # noqa: BLE001
-        opened.close()
-        return None, f"copy looks incomplete: {exc}"
+    reason = check_opened_ready(opened)
     if reason is not None:
         opened.close()
         return None, reason
     return opened, None
+
+
+def check_opened_ready(opened: libraries.OpenLibrary) -> str | None:
+    """The post-open half of `check_ready` for a caller that already holds an
+    open handle (it must still close it when this returns a reason)."""
+    try:
+        return _check_opened(opened)
+    except Exception as exc:  # noqa: BLE001
+        return f"copy looks incomplete: {exc}"
 
 
 def _check_opened(opened: libraries.OpenLibrary) -> str | None:

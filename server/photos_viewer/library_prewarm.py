@@ -177,6 +177,10 @@ def run_library(
             ).fetchone()
             if library is None or job is None:
                 return "idle"
+            if library["index_state"] == "indexing":
+                # A re-index started mid-job: leave the job running at its
+                # cursor; the worker picks it up again once indexing is done.
+                return "running"
             asset = db.execute(
                 f"SELECT uuid, is_video, path_original, path_edited, path_derivative FROM assets "
                 f"WHERE {_eligible_clause()} AND uuid > ? ORDER BY uuid LIMIT 1",
@@ -256,21 +260,23 @@ class PrewarmWorker(threading.Thread):
     def _run_one(self, data_dir: pathlib.Path) -> bool:
         db = app_db.connect(data_dir)
         try:
-            row = db.execute(
-                "SELECT j.library_id FROM prewarm_jobs j JOIN libraries l ON l.id = j.library_id "
-                "WHERE j.state = 'running' AND l.index_state IS NOT 'indexing' ORDER BY j.library_id LIMIT 1"
-            ).fetchone()
-            if row is None:
-                return False
-            library = db.execute(
-                "SELECT path FROM libraries WHERE id = ?", (row["library_id"],)
-            ).fetchone()
+            candidates = db.execute(
+                "SELECT j.library_id, l.path FROM prewarm_jobs j JOIN libraries l ON l.id = j.library_id "
+                "WHERE j.state = 'running' AND l.index_state IS NOT 'indexing' ORDER BY j.library_id"
+            ).fetchall()
         finally:
             db.close()
-        if not pathlib.Path(library["path"]).exists():
-            return False  # drive not mounted: leave it running, try again later
-        run_library(data_dir, row["library_id"], should_stop=self._stop_event.is_set)
-        return True
+        # Lowest id first, but a library whose drive is not mounted is left
+        # running (it resumes when mounted) without blocking the others.
+        for candidate in candidates:
+            if pathlib.Path(candidate["path"]).exists():
+                run_library(
+                    data_dir,
+                    candidate["library_id"],
+                    should_stop=self._stop_event.is_set,
+                )
+                return True
+        return False
 
 
 # -- admin API --------------------------------------------------------------

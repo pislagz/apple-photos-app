@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Sequence
 
 import pillow_heif
@@ -245,15 +246,19 @@ def asset_cache_dir(
     without knowing its cache keys. Earlier flat `<key[:2]>/<key>.<ext>`
     entries are simply never read again and age out through the LRU."""
     asset_uuid = asset_uuid.split(":", 1)[0]
+    if not asset_uuid:
+        # An empty uuid would resolve to the whole library's cache dir, and
+        # purge_asset_cache would rmtree it.
+        raise ValueError("asset uuid must not be empty")
     return cache_dir / str(library_id) / asset_uuid[:2] / asset_uuid
 
 
 def purge_asset_cache(
     cache_dir: pathlib.Path, library_id: int, asset_uuid: str
 ) -> None:
-    shutil.rmtree(
-        asset_cache_dir(cache_dir, library_id, asset_uuid), ignore_errors=True
-    )
+    asset_dir = asset_cache_dir(cache_dir, library_id, asset_uuid)
+    shutil.rmtree(asset_dir, ignore_errors=True)
+    _prune_empty_parents(asset_dir.parent, cache_dir)
 
 
 def purge_library_cache(cache_dir: pathlib.Path, library_id: int) -> int:
@@ -325,7 +330,32 @@ _EVICT_LOW_WATER = 0.9
 # corrects drift from purges or another process). Guarded by `_cache_lock`,
 # which also serialises scan-and-delete so two evictions can't double-count.
 _cache_totals: dict[pathlib.Path, int] = {}
+# When each total was last learned from a real scan. With several worker
+# processes each total only counts its own writes, so a total older than
+# this is rescanned rather than incremented: overshoot is bounded by what the
+# other workers write in one interval, not unbounded until the limit is hit.
+_cache_scanned_at: dict[pathlib.Path, float] = {}
+_CACHE_RESCAN_SECONDS = 30.0
 _cache_lock = threading.Lock()
+
+
+def _prune_empty_parents(directory: pathlib.Path, cache_dir: pathlib.Path) -> None:
+    """Remove `directory` and its empty parents up to, not including, the
+    library dir directly under `cache_dir`. `rmdir` refuses a non-empty dir,
+    which is also what makes this safe against a concurrent write."""
+    try:
+        relative = directory.relative_to(cache_dir)
+    except ValueError:
+        return
+    if len(relative.parts) < 2:
+        return
+    library_dir = cache_dir / relative.parts[0]
+    while directory != library_dir:
+        try:
+            directory.rmdir()
+        except OSError:
+            return
+        directory = directory.parent
 
 
 def _touch_cache_file(path: pathlib.Path) -> None:
@@ -362,8 +392,13 @@ def _note_cache_write(
     first write per process scans once to learn the total (that scan already
     includes `written`); later writes are O(1) until the limit is crossed."""
     with _cache_lock:
-        if cache_dir not in _cache_totals:
+        now = time.monotonic()
+        if (
+            cache_dir not in _cache_totals
+            or now - _cache_scanned_at.get(cache_dir, 0.0) >= _CACHE_RESCAN_SECONDS
+        ):
             _cache_totals[cache_dir] = _scan_cache(cache_dir)[1]
+            _cache_scanned_at[cache_dir] = now
         else:
             try:
                 _cache_totals[cache_dir] += written.stat().st_size
@@ -393,6 +428,7 @@ def _evict_locked(
 ) -> None:
     entries, total = _scan_cache(cache_dir)
     _cache_totals[cache_dir] = total
+    _cache_scanned_at[cache_dir] = time.monotonic()
     if total <= size_limit_bytes:
         return
     target = int(size_limit_bytes * low_water)
@@ -407,6 +443,7 @@ def _evict_locked(
         except OSError:
             continue
         total -= entry_size
+        _prune_empty_parents(path.parent, cache_dir)
     _cache_totals[cache_dir] = total
 
 

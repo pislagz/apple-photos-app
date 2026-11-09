@@ -575,3 +575,73 @@ def test_library_settings_are_bounded(tmp_path):
             )
     finally:
         conn.close()
+
+
+def test_confirming_a_replace_opens_the_new_package_once(tmp_path, monkeypatch):
+    from photos_viewer import libraries, library_admin
+
+    a = [_asset(n) for n in range(1, 4)]
+    conn, client, _package, lib = _setup(tmp_path, a)
+    try:
+        renamed = build_library(
+            tmp_path / "lib", a, package_name="Alice 2026.photoslibrary"
+        )
+        opens = []
+        real = libraries.open_library_readonly
+        # library_watch.check_ready opens via the libraries module; the admin
+        # module's own opens (path validation, preview) go through its name.
+        monkeypatch.setattr(
+            libraries,
+            "open_library_readonly",
+            lambda path: opens.append(path) or real(path),
+        )
+        at_index = []
+        real_index = library_admin.indexer.index_library
+        monkeypatch.setattr(
+            library_admin.indexer,
+            "index_library",
+            lambda *a, **k: at_index.append(len(opens)) or real_index(*a, **k),
+        )
+        response = client.post(
+            f"/api/admin/libraries/{lib}/replace",
+            json={"path": str(renamed), "confirm": True},
+        )
+        assert response.status_code == 200 and response.json()["confirmed"] is True
+        # The preview's handle is reused: check_ready never reopens it.
+        assert at_index == [0] and opens == []
+    finally:
+        conn.close()
+
+
+def test_duplicate_check_compares_resolved_paths_of_older_rows(tmp_path):
+    conn, client, package, lib = _setup(tmp_path, [_asset(1)])
+    try:
+        # A row stored before paths were resolved: same package via `../`.
+        conn.execute(
+            "UPDATE libraries SET path = ? WHERE id = ?",
+            (str(package.parent / "x" / ".." / package.name), lib),
+        )
+        conn.commit()
+        response = client.post("/api/admin/libraries", json={"path": str(package)})
+        assert response.status_code == 409
+    finally:
+        conn.close()
+
+
+def test_suggestion_skips_a_candidate_registered_under_an_unresolved_path(tmp_path):
+    conn, client, package, lib = _setup(tmp_path, [_asset(1)])
+    try:
+        other = build_library(
+            tmp_path / "lib", [_asset(2)], package_name="Bob.photoslibrary"
+        )
+        client.post("/api/admin/libraries", json={"path": str(other)})
+        conn.execute(
+            "UPDATE libraries SET path = ? WHERE path = ?",
+            (str(other.parent / "." / other.name), str(other)),
+        )
+        conn.commit()
+        shutil.rmtree(package)
+        status = client.get(f"/api/admin/libraries/{lib}/status").json()
+        assert status["suggestion"] is None
+    finally:
+        conn.close()

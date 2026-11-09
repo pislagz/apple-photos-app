@@ -1351,6 +1351,17 @@ def test_env_seconds_falls_back_to_the_default_on_a_negative_value(monkeypatch):
     )
 
 
+def test_per_peer_ceiling_warning_does_not_say_seconds(monkeypatch, caplog):
+    monkeypatch.setenv("PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER", "lots")
+
+    with caplog.at_level("WARNING"):
+        value = session_auth.max_failed_logins_per_peer()
+
+    assert value == session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+    assert "not an integer" in caplog.text
+    assert "seconds" not in caplog.text
+
+
 def test_cookie_secure_defaults_to_true(monkeypatch):
     monkeypatch.delenv("PHOTOS_VIEWER_COOKIE_SECURE", raising=False)
 
@@ -2400,3 +2411,11 @@ def test_change_password_requires_a_session_and_shares_the_login_lockout(client)
         json={"current_password": VALID_PASSWORD, "new_password": NEW_PASSWORD},
     )
     assert locked.status_code == 429
+
+
+def test_unknown_person_constant_matches_osxphotos():
+    from osxphotos._constants import _UNKNOWN_PERSON
+
+    from photos_viewer import indexer
+
+    assert indexer._UNKNOWN_PERSON == _UNKNOWN_PERSON

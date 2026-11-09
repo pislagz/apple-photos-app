@@ -77,7 +77,7 @@ def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> No
     given as `dbfile` (`pathlib.Path(self._dbfile).parent / "search"`), so in
     copy mode that's the temp dir, not the package -- without this, search
     silently finds nothing and osxphotos logs "could not find search db".
-    Newer libraries (macOS 27+) keep the index in `leo.sqlite` instead.
+    Some library versions keep the index in `leo.sqlite` instead; copied if present.
     """
     search_dir = sqlite_path.parent / "search"
     for name in ("psi.sqlite", "leo.sqlite"):
