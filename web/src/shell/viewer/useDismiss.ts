@@ -32,7 +32,13 @@ export function useDismiss(onClose: () => void): { closing: boolean; dismiss: ()
     }
     closingRef.current = true;
     setClosing(true);
-    timer.current = window.setTimeout(() => onCloseRef.current(), DISMISS_MS);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      onCloseRef.current();
+      // A viewer that stays mounted after onClose can be dismissed again.
+      closingRef.current = false;
+      setClosing(false);
+    }, DISMISS_MS);
   }, []);
 
   return { closing, dismiss };

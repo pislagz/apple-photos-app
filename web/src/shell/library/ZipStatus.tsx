@@ -22,7 +22,7 @@ export default function ZipStatus({
         HEIC as JPEG
       </label>
       {state.phase === "downloading" &&
-        (state.progress.total ? (
+        (state.progress.total && !state.progress.approximate ? (
           <progress
             aria-label="Zip download progress"
             value={Math.min(state.progress.received, state.progress.total)}
@@ -34,7 +34,7 @@ export default function ZipStatus({
       {state.phase === "downloading" && (
         <span role="status">
           {formatBytes(state.progress.received)}
-          {state.progress.total ? ` of ${formatBytes(state.progress.total)}` : ""}
+          {state.progress.total && !state.progress.approximate ? ` of about ${formatBytes(state.progress.total)}` : ""}
         </span>
       )}
       {state.phase === "error" && (

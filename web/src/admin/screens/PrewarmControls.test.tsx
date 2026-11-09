@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "../testHelpers";
 import PrewarmControls from "./PrewarmControls";
@@ -68,5 +68,31 @@ describe("PrewarmControls", () => {
     render(<PrewarmControls libraryId={1} initial={null} />);
     fireEvent.click(screen.getByRole("button", { name: "Start pre-warm" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("says progress is not refreshing when polling fails, and recovers (#199)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let fail = true;
+      mockFetch((url) => {
+        if (url === "/api/admin/libraries/1/status") {
+          return fail ? jsonResponse({ detail: "down" }, 500) : { prewarm: { ...base, state: "running", done: 6 } };
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+      render(<PrewarmControls libraryId={1} initial={{ ...base, state: "running" }} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.getByText(/Couldn't refresh progress/)).toBeInTheDocument();
+      fail = false;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+      expect(screen.queryByText(/Couldn't refresh progress/)).not.toBeInTheDocument();
+      expect(screen.getByText(/pre-generating 6 of 10/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

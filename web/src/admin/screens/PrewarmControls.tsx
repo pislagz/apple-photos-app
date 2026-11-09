@@ -22,13 +22,18 @@ export default function PrewarmControls({ libraryId, initial }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pollFailed, setPollFailed] = useState(false);
 
   useEffect(() => {
     if (status.state !== "running") return;
     const timer = window.setInterval(() => {
       libraryStatus(libraryId)
-        .then((next) => next.prewarm && setStatus(next.prewarm))
-        .catch(() => undefined);
+        .then((next) => {
+          setPollFailed(false);
+          if (next.prewarm) setStatus(next.prewarm);
+        })
+        // The interval keeps retrying; just say the bar is not live right now.
+        .catch(() => setPollFailed(true));
     }, POLL_MS);
     return () => window.clearInterval(timer);
   }, [libraryId, status.state]);
@@ -83,6 +88,9 @@ export default function PrewarmControls({ libraryId, initial }: Props) {
       >
         Clear thumbnail cache
       </button>
+      {pollFailed && status.state === "running" && (
+        <span role="status"> Couldn't refresh progress, retrying…</span>
+      )}
       {message && <span role="status"> {message}</span>}
       {error && <span role="alert"> {error}</span>}
     </li>

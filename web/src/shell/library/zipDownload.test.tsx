@@ -80,12 +80,45 @@ describe("useZipDownload", () => {
   });
 });
 
+describe("zip honesty and limits (#198)", () => {
+  it("maps a 422 for more than 5000 ids to a clear message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: [{ type: "too_long" }] }), { status: 422, statusText: "Unprocessable Entity" })),
+    );
+    const ids = Array.from({ length: 5001 }, (_, i) => `a${i}`);
+    await expect(fetchZip(1, ids, "native", () => {})).rejects.toMatchObject({
+      status: 422,
+      message: "Select at most 5000 items",
+    });
+  });
+
+  it("marks JPEG progress approximate and shows an indeterminate bar", () => {
+    const { container } = render(
+      <ZipStatus
+        state={{ phase: "downloading", progress: { received: 512, total: 2048, approximate: true } }}
+        jpeg
+        onJpegChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toBe("512 B");
+    expect(container.querySelector("progress")?.hasAttribute("value")).toBe(false);
+  });
+
+  it("says the total is about the size for native zips", () => {
+    render(
+      <ZipStatus state={{ phase: "downloading", progress: { received: 512, total: 2048 } }} jpeg={false} onJpegChange={() => {}} />,
+    );
+    expect(screen.getByRole("status").textContent).toBe("512 B of about 2.0 KB");
+  });
+});
+
 describe("ZipStatus", () => {
   it("shows progress, and an alert for errors", () => {
     const { rerender } = render(
       <ZipStatus state={{ phase: "downloading", progress: { received: 512, total: 2048 } }} jpeg={false} onJpegChange={() => {}} />,
     );
-    expect(screen.getByRole("status").textContent).toBe("512 B of 2.0 KB");
+    expect(screen.getByRole("status").textContent).toBe("512 B of about 2.0 KB");
     rerender(<ZipStatus state={{ phase: "error", message: "Too large" }} jpeg onJpegChange={() => {}} />);
     expect(screen.getByRole("alert").textContent).toBe("Too large");
     expect((screen.getByLabelText("HEIC as JPEG") as HTMLInputElement).checked).toBe(true);

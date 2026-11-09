@@ -18,6 +18,9 @@ export default function SettingsScreen() {
   const [allowlist, setAllowlist] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Text of number fields while typing. An empty field is a draft, never a 0:
+  // it blocks the save instead of silently turning e.g. the library checker off.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     readSettings().then(setSettings).catch((err: unknown) => setError(describeError(err)));
@@ -30,14 +33,36 @@ export default function SettingsScreen() {
     setSettings((prev) => (prev === null ? prev : { ...prev, [key]: value }));
   }
 
+  type NumberKey = {
+    [K in keyof SettingsResponse]: SettingsResponse[K] extends number ? K : never;
+  }[keyof SettingsResponse];
+
+  function numberProps(key: NumberKey) {
+    return {
+      type: "number" as const,
+      value: drafts[key] ?? String(settings?.[key] ?? ""),
+      onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+        const text = event.target.value;
+        setDrafts((prev) => ({ ...prev, [key]: text }));
+        if (text.trim() !== "" && Number.isFinite(Number(text))) updateField(key, Number(text) as SettingsResponse[typeof key]);
+      },
+    };
+  }
+
   async function handleSaveSettings(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setNotice(null);
     if (settings === null) return;
+    const blank = Object.keys(drafts).find((key) => drafts[key].trim() === "" || !Number.isFinite(Number(drafts[key])));
+    if (blank !== undefined) {
+      setError("Enter a number in every numeric field before saving.");
+      return;
+    }
     try {
       const saved = await writeSettings(settings);
       setSettings(saved);
+      setDrafts({});
       setNotice("Settings saved.");
     } catch (err) {
       setError(describeError(err));
@@ -79,67 +104,35 @@ export default function SettingsScreen() {
       <form onSubmit={handleSaveSettings}>
         <label>
           Desktop session lifetime (seconds)
-          <input
-            type="number"
-            value={settings.session_lifetime_desktop_seconds}
-            onChange={(event) => updateField("session_lifetime_desktop_seconds", Number(event.target.value))}
-          />
+          <input {...numberProps("session_lifetime_desktop_seconds")} />
         </label>
         <label>
           PWA session lifetime (seconds)
-          <input
-            type="number"
-            value={settings.session_lifetime_pwa_seconds}
-            onChange={(event) => updateField("session_lifetime_pwa_seconds", Number(event.target.value))}
-          />
+          <input {...numberProps("session_lifetime_pwa_seconds")} />
         </label>
         <label>
           "Remember me" session lifetime (seconds)
-          <input
-            type="number"
-            value={settings.session_lifetime_remember_me_seconds}
-            onChange={(event) => updateField("session_lifetime_remember_me_seconds", Number(event.target.value))}
-          />
+          <input {...numberProps("session_lifetime_remember_me_seconds")} />
         </label>
         <label>
           Thumbnail size, grid
-          <input
-            type="number"
-            value={settings.thumb_size_grid}
-            onChange={(event) => updateField("thumb_size_grid", Number(event.target.value))}
-          />
+          <input {...numberProps("thumb_size_grid")} />
         </label>
         <label>
           Thumbnail size, grid 2x
-          <input
-            type="number"
-            value={settings.thumb_size_grid2x}
-            onChange={(event) => updateField("thumb_size_grid2x", Number(event.target.value))}
-          />
+          <input {...numberProps("thumb_size_grid2x")} />
         </label>
         <label>
           Thumbnail size, preview
-          <input
-            type="number"
-            value={settings.thumb_size_preview}
-            onChange={(event) => updateField("thumb_size_preview", Number(event.target.value))}
-          />
+          <input {...numberProps("thumb_size_preview")} />
         </label>
         <label>
           Thumbnail quality
-          <input
-            type="number"
-            value={settings.thumb_quality}
-            onChange={(event) => updateField("thumb_quality", Number(event.target.value))}
-          />
+          <input {...numberProps("thumb_quality")} />
         </label>
         <label>
           Zip size limit (bytes)
-          <input
-            type="number"
-            value={settings.zip_size_limit_bytes}
-            onChange={(event) => updateField("zip_size_limit_bytes", Number(event.target.value))}
-          />
+          <input {...numberProps("zip_size_limit_bytes")} />
         </label>
         <label>
           Map tiles
@@ -162,21 +155,17 @@ export default function SettingsScreen() {
         <label>
           Library check interval (minutes, 0 = off)
           <input
-            type="number"
             min={0}
             max={1440}
-            value={settings.library_check_interval_minutes}
-            onChange={(event) => updateField("library_check_interval_minutes", Number(event.target.value))}
+            {...numberProps("library_check_interval_minutes")}
           />
         </label>
         <label>
           Library must be unchanged for (minutes) before it is re-indexed
           <input
-            type="number"
             min={0}
             max={1440}
-            value={settings.library_stable_minutes}
-            onChange={(event) => updateField("library_stable_minutes", Number(event.target.value))}
+            {...numberProps("library_stable_minutes")}
           />
         </label>
         <label>

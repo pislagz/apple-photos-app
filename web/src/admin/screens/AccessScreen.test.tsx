@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockFetch, noContentResponse } from "../testHelpers";
+import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import AccessScreen from "./AccessScreen";
 
 const USER_A = { id: 1, username: "alice", role: "admin", disabled: false, created_at: "2026-01-01" };
@@ -38,5 +38,23 @@ describe("AccessScreen", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/admin/users/2/libraries/10", expect.objectContaining({ method: "PUT" }));
     });
+  });
+
+  it("clears a stale error once a later toggle succeeds", async () => {
+    let putCalls = 0;
+    mockFetch((url, init) => {
+      if (url === "/api/admin/access-matrix") return MATRIX;
+      if (url === "/api/admin/users/2/libraries/10" && init?.method === "PUT") {
+        putCalls += 1;
+        return putCalls === 1 ? jsonResponse({ detail: "nope" }, 400) : noContentResponse();
+      }
+      throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
+    });
+
+    render(<AccessScreen />);
+    fireEvent.click(await screen.findByLabelText("bob × Family"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nope");
+    fireEvent.click(screen.getByLabelText("bob × Family"));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 });

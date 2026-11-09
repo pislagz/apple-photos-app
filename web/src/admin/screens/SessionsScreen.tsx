@@ -31,30 +31,30 @@ export default function SessionsScreen() {
       {error && <p role="alert">{error}</p>}
 
       <div className="admin-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>User</th>
-            <th>Device</th>
-            <th>Last seen</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map((session) => (
-            <tr key={session.id}>
-              <td>{session.username}</td>
-              <td>{session.device ?? "unknown"}</td>
-              <td>{session.last_seen_at}</td>
-              <td>
-                <button type="button" onClick={() => handleRevoke(session)}>
-                  Revoke
-                </button>
-              </td>
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Device</th>
+              <th>Last seen</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sessions.map((session) => (
+              <tr key={session.id}>
+                <td>{session.username}</td>
+                <td>{session.device ?? "unknown"}</td>
+                <td>{session.last_seen_at}</td>
+                <td>
+                  <button type="button" onClick={() => handleRevoke(session)}>
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

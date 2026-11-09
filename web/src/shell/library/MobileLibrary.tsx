@@ -247,8 +247,9 @@ export default function MobileLibrary({
     <div className="mobile-library">
       {(view === "all" || !isTileView) && (
         // One flex row so the title can never sit under Select: the title
-        // shrinks and ellipsizes, Select keeps its natural width.
-        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim={view === "all"}>
+        // shrinks and ellipsizes, Select keeps its natural width. The scrim is
+        // always on: Days has the white Select over a bright hero photo too (#176).
+        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
           {view === "all" && (
             <div className="mobile-library__pinned-header" data-testid="pinned-header">
               {pinnedLabel}

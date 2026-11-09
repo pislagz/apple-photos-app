@@ -13,6 +13,13 @@
   --sequoia-toolbar-bg: rgba(246, 246, 246, 0.92);
   --sequoia-border: rgba(0, 0, 0, 0.1);
   --sequoia-text-secondary: #6e6e73;
+  --sidebar-toggle-hover: rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sidebar-toggle-hover: rgba(255, 255, 255, 0.14);
+  }
 }
 
 * {
@@ -1313,16 +1320,22 @@ body {
   margin-top: 0;
 }
 
-.hidden-view__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 2px;
+/* The root scrolls; the grid is a tall box of absolutely placed, virtualized rows. */
+.hidden-view--mobile,
+.hidden-view--desktop {
+  height: 100%;
+  overflow-y: auto;
 }
 
-.hidden-view--desktop .hidden-view__grid {
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 4px;
-  padding: 8px;
+.hidden-view__grid {
+  position: relative;
+  width: 100%;
+}
+
+.hidden-view__row {
+  position: absolute;
+  top: 0;
+  display: grid;
 }
 
 .hidden-view__cell {
@@ -1682,11 +1695,23 @@ body {
 }
 
 /* #131: read-only status (the library is view-only), not a tappable control:
-   no pointer cursor, no button chrome, dimmed like a badge. */
+   no pointer cursor, no button chrome. #190: a solid secondary-label tint
+   (not an opacity fade) so the heart keeps its contrast on light chrome. */
 .mobile-viewer__status {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: default;
-  opacity: 0.55;
+  color: #6c6c70;
   pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .mobile-viewer__status {
+    color: #aeaeb2;
+  }
 }
 
 .mobile-viewer__back-chevron {
@@ -2614,7 +2639,7 @@ body {
 }
 
 .sidebar-toggle:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--sidebar-toggle-hover);
 }
 
 .shell--desktop {

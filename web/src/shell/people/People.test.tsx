@@ -5,6 +5,7 @@ import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
+import { FaceCircle } from "./PeopleGrid";
 
 useFakeLayout();
 
@@ -158,5 +159,15 @@ describe("mobile People & Pets", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("button", { name: /Ann/ })).toBeInTheDocument();
+  });
+});
+
+describe("FaceCircle size (#193)", () => {
+  it("uses the larger preview thumb when the face is small, grid2x otherwise", () => {
+    const cover = { asset_id: "c1", x: 0.3, y: 0.4, w: 0.1, h: 0.1 };
+    const { container, rerender } = render(<FaceCircle libraryId={1} cover={cover} />);
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/libraries/1/thumb/c1?size=preview");
+    rerender(<FaceCircle libraryId={1} cover={{ ...cover, w: 0.3 }} />);
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/libraries/1/thumb/c1?size=grid2x");
   });
 });

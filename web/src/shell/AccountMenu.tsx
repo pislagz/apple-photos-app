@@ -11,11 +11,13 @@ function AccountMenuItems({
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
+  onPasswordDialogClosed,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
+  onPasswordDialogClosed?: () => void;
 }) {
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
@@ -33,7 +35,14 @@ function AccountMenuItems({
       <button type="button" onClick={onLogout}>
         Log out
       </button>
-      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+      {changingPassword && (
+        <ChangePasswordDialog
+          onClose={() => {
+            setChangingPassword(false);
+            onPasswordDialogClosed?.();
+          }}
+        />
+      )}
       {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
     </>
   );
@@ -98,6 +107,7 @@ export default function AccountMenu({
               layoutOverride={layoutOverride}
               onLayoutOverrideChange={onLayoutOverrideChange}
               onLogout={onLogout}
+              onPasswordDialogClosed={() => setOpen(false)}
             />
           </div>
         )}
@@ -123,6 +133,7 @@ export default function AccountMenu({
             layoutOverride={layoutOverride}
             onLayoutOverrideChange={onLayoutOverrideChange}
             onLogout={onLogout}
+            onPasswordDialogClosed={() => setOpen(false)}
           />
         </div>
       )}
