@@ -419,6 +419,7 @@ Ordered after P1.17b (#121, edited versions), before family launch. Issue: #122.
   - *No writes:* the existing package-unchanged check (file list + mtimes) passes for every new path, including `quick_check` and the `Z_METADATA` read.
 - Acceptance: the tests above in CI; the admin can see the last update summary and the "Being updated" state; README documents the copy-then-rename workflow, Optimize Storage, and the settings.
 - Out of scope: merging two people's libraries, keeping removed photos ("archive"), watching with inotify/FSEvents (unreliable on SMB/NAS mounts; polling stat is enough).
+- Done (P1.22b): cache layout `media_cache/<library_id>/<uuid[:2]>/<uuid>/<key>.<ext>` with purge of removed and changed assets after the index commit (old flat entries are never read and age out via the LRU); `X-Photos-Original-Missing: 1` on `original` when a derivative is served (no web note: downloads are plain `<a download>` links); admin Settings fields (0-1440 minutes), run history, Replace dialog, and the "new library next to this one" suggestion (`suggestion` in status, prefilled Replace). The user-facing "Library updated" note is still not built (placement awaits sign-off).
 - Split if it runs long: P1.22a (detection, stability, Being updated state, run summary) and P1.22b (Replace action, Optimize Storage warning, cache purge).
 
 ## Phase 2 — Albums, People, Map, search

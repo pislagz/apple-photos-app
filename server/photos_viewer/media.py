@@ -155,11 +155,11 @@ def get_or_generate(
         raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
     key = cache_key(library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality)
     cache_dir = pathlib.Path(cache_dir)
-    cached = _read_cache(cache_dir, key)
+    cached = _read_cache(cache_dir, library_id, asset_uuid, key)
     if cached is not None:
         return cached
     result = _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
-    _write_cache(cache_dir, key, result.extension, result.data)
+    _write_cache(cache_dir, library_id, asset_uuid, key, result.extension, result.data)
     if cache_size_limit_bytes is not None:
         _evict_if_needed(cache_dir, cache_size_limit_bytes)
     return result
@@ -185,32 +185,47 @@ def get_or_generate_jpeg(
         raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
     key = cache_key(library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92)
     cache_dir = pathlib.Path(cache_dir)
-    cached_path = _cache_file(cache_dir, key, "jpg")
+    cached_path = _cache_file(cache_dir, library_id, asset_uuid, key, "jpg")
     if cached_path.exists():
         return cached_path.read_bytes()
     data = to_jpeg(source_path, is_video=is_video)
-    _write_cache(cache_dir, key, "jpg", data)
+    _write_cache(cache_dir, library_id, asset_uuid, key, "jpg", data)
     if cache_size_limit_bytes is not None:
         _evict_if_needed(cache_dir, cache_size_limit_bytes)
     return data
 
 
-def _cache_file(cache_dir: pathlib.Path, key: str, extension: str) -> pathlib.Path:
-    return cache_dir / key[:2] / f"{key}.{extension}"
+def asset_cache_dir(cache_dir: pathlib.Path, library_id: int, asset_uuid: str) -> pathlib.Path:
+    """`<library_id>/<uuid[:2]>/<uuid>/`: every cache file of one asset lives
+    in one directory, so the indexer can purge a removed or changed asset
+    without knowing its cache keys. Earlier flat `<key[:2]>/<key>.<ext>`
+    entries are simply never read again and age out through the LRU."""
+    asset_uuid = asset_uuid.split(":", 1)[0]
+    return cache_dir / str(library_id) / asset_uuid[:2] / asset_uuid
 
 
-def _read_cache(cache_dir: pathlib.Path, key: str) -> GeneratedImage | None:
+def purge_asset_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str) -> None:
+    shutil.rmtree(asset_cache_dir(cache_dir, library_id, asset_uuid), ignore_errors=True)
+
+
+def _cache_file(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str) -> pathlib.Path:
+    return asset_cache_dir(cache_dir, library_id, asset_uuid) / f"{key}.{extension}"
+
+
+def _read_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str) -> GeneratedImage | None:
     for content_type, extension in (("image/webp", "webp"), ("image/jpeg", "jpg")):
-        path = _cache_file(cache_dir, key, extension)
+        path = _cache_file(cache_dir, library_id, asset_uuid, key, extension)
         if path.exists():
             return GeneratedImage(data=path.read_bytes(), content_type=content_type)
     return None
 
 
-def _write_cache(cache_dir: pathlib.Path, key: str, extension: str, data: bytes) -> None:
+def _write_cache(
+    cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str, data: bytes
+) -> None:
     """Write via a temp file in the same directory plus `os.replace()`, so
     a concurrent reader of this cache path never observes a partial file."""
-    path = _cache_file(cache_dir, key, extension)
+    path = _cache_file(cache_dir, library_id, asset_uuid, key, extension)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=path.suffix)
     try:

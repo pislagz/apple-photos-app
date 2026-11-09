@@ -159,6 +159,34 @@ export default function SettingsScreen() {
             onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
           />
         </label>
+        <label>
+          Library check interval (minutes, 0 = off)
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            value={settings.library_check_interval_minutes}
+            onChange={(event) => updateField("library_check_interval_minutes", Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Library must be unchanged for (minutes) before it is re-indexed
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            value={settings.library_stable_minutes}
+            onChange={(event) => updateField("library_stable_minutes", Number(event.target.value))}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.show_library_updated_note}
+            onChange={(event) => updateField("show_library_updated_note", event.target.checked)}
+          />
+          Tell users when their library was updated
+        </label>
         <button type="submit">Save settings</button>
       </form>
 

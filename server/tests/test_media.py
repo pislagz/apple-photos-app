@@ -268,11 +268,11 @@ def test_missing_original_falls_back_to_the_largest_insufficient_derivative(tmp_
 def test_write_cache_is_atomic_and_leaves_no_temp_files(tmp_path):
     cache_dir = tmp_path / "cache"
 
-    media._write_cache(cache_dir, "deadbeef", "jpg", b"some bytes")
+    media._write_cache(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg", b"some bytes")
 
     files = list(cache_dir.rglob("*"))
-    assert [path for path in files if path.is_file()] == [media._cache_file(cache_dir, "deadbeef", "jpg")]
-    assert media._cache_file(cache_dir, "deadbeef", "jpg").read_bytes() == b"some bytes"
+    assert [path for path in files if path.is_file()] == [media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg")]
+    assert media._cache_file(cache_dir, 1, "abcd-uuid", "deadbeef", "jpg").read_bytes() == b"some bytes"
 
 
 def test_evict_if_needed_removes_oldest_files_first(tmp_path):
