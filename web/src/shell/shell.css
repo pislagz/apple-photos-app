@@ -1926,3 +1926,77 @@ body {
   margin: 4px 0 0;
   font-size: 13px;
 }
+
+/* #71: self-service password change, a centered modal over the shell. */
+.change-password {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.change-password__card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 48px));
+  box-sizing: border-box;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--ios-card-bg);
+  color: var(--ios-label-secondary);
+}
+
+.change-password h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1d1d1f;
+}
+
+.change-password p {
+  margin: 0;
+}
+
+.change-password input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 10px;
+  background: var(--ios-card-bg);
+}
+
+.change-password__error {
+  color: #ff3b30;
+  font-size: 13px;
+}
+
+.change-password__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.change-password__actions button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.change-password__submit {
+  font-weight: 600;
+}
+
+.change-password__actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

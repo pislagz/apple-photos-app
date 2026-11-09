@@ -112,6 +112,16 @@ export function reconfirmPassword(password: string): Promise<void> {
   return mutate<void>("POST", "/api/auth/reconfirm-password", { password });
 }
 
+// #71: change the signed-in user's own password. 401 wrong current password,
+// 429 locked out, 422 new password too short. Other sessions are revoked; this
+// one stays signed in.
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return mutate<void>("POST", "/api/auth/change-password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+}
+
 // Re-lock Hidden server-side when the user leaves it.
 export function lockHidden(): Promise<void> {
   return mutate<void>("POST", "/api/auth/lock-hidden");

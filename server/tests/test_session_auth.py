@@ -1880,3 +1880,70 @@ def test_per_peer_ceiling_env_is_enforced(tmp_path, monkeypatch):
         assert session_auth.is_ip_locked_out(conn, "other", "127.0.0.1")
     finally:
         conn.close()
+
+
+NEW_PASSWORD = "a-brand-new-passphrase"
+
+
+def _second_session_cookie(client, tmp_path):
+    """A second login for the same user from another 'device'."""
+    other = TestClient(client.app, base_url="https://testserver")
+    assert other.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 200
+    return other
+
+
+def test_change_password_revokes_other_sessions_and_keeps_the_current_one(client, tmp_path):
+    _setup_and_login(client)
+    other = _second_session_cookie(client, tmp_path)
+    cookie_before = client.cookies.get(session_auth.COOKIE_NAME)
+
+    response = client.post(
+        "/api/auth/change-password", json={"current_password": VALID_PASSWORD, "new_password": NEW_PASSWORD}
+    )
+
+    assert response.status_code == 204
+    assert client.cookies.get(session_auth.COOKIE_NAME) == cookie_before
+    assert client.get("/api/auth/me").status_code == 200
+    assert other.get("/api/auth/me").status_code == 401
+    fresh = TestClient(client.app, base_url="https://testserver")
+    assert fresh.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 401
+    assert fresh.post("/api/auth/login", json={"username": "admin", "password": NEW_PASSWORD}).status_code == 200
+
+
+def test_change_password_with_the_wrong_current_password_is_401_and_changes_nothing(client):
+    _setup_and_login(client)
+    other = _second_session_cookie(client, None)
+
+    response = client.post(
+        "/api/auth/change-password", json={"current_password": "wrong-password-1", "new_password": NEW_PASSWORD}
+    )
+
+    assert response.status_code == 401
+    assert other.get("/api/auth/me").status_code == 200
+    fresh = TestClient(client.app, base_url="https://testserver")
+    assert fresh.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 200
+
+
+def test_change_password_enforces_the_minimum_length(client):
+    _setup_and_login(client)
+
+    response = client.post(
+        "/api/auth/change-password", json={"current_password": VALID_PASSWORD, "new_password": "short"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_change_password_requires_a_session_and_shares_the_login_lockout(client):
+    unauthenticated = client.post(
+        "/api/auth/change-password", json={"current_password": VALID_PASSWORD, "new_password": NEW_PASSWORD}
+    )
+    assert unauthenticated.status_code == 401
+
+    _setup_and_login(client)
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+        client.post("/api/auth/change-password", json={"current_password": "wrong-password-1", "new_password": NEW_PASSWORD})
+    locked = client.post(
+        "/api/auth/change-password", json={"current_password": VALID_PASSWORD, "new_password": NEW_PASSWORD}
+    )
+    assert locked.status_code == 429
