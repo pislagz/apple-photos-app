@@ -83,8 +83,8 @@ def test_copy_replays_a_real_uncheckpointed_wal_change(tmp_path):
     with open_library_readonly(package_path) as opened:
         assert opened.open_mode == "copy"
         photos = opened.db.photos()
-        assert len(photos) == 1
-        assert photos[0].favorite is True
+        assert len(photos) == 2
+        assert {p.original_filename: p.favorite for p in photos}["IMG_0001.HEIC"] is True
         after = _snapshot(package_path)
 
     assert before == after

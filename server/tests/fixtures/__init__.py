@@ -164,6 +164,10 @@ CREATE TABLE ZCLOUDSHAREDCOMMENT (
 
 _ASSET_UUID = "A1B2C3D4-0000-0000-0000-000000000001"
 _ASSET_FILENAME = "IMG_0001.HEIC"
+# The permanent hidden asset (#85): every list/count over the shared fixture
+# must exclude it, so new list routes get hidden-asset coverage for free.
+HIDDEN_ASSET_UUID = "A1B2C3D4-0000-0000-0000-000000000002"
+HIDDEN_ASSET_FILENAME = "IMG_0002.HEIC"
 
 # osxphotos._constants._PHOTOS_5_ALBUM_KIND -- a normal (non-folder,
 # non-root) album, as opposed to ZGENERICALBUM's _ROOT_FOLDER_KIND row above.
@@ -236,10 +240,15 @@ class FixturePerson:
 
 
 def _default_assets() -> list[FixtureAsset]:
+    data = _build_asset_image_bytes()
     return [
+        FixtureAsset(uuid=_ASSET_UUID, filename=_ASSET_FILENAME, data=data),
         FixtureAsset(
-            uuid=_ASSET_UUID, filename=_ASSET_FILENAME, data=_build_asset_image_bytes()
-        )
+            uuid=HIDDEN_ASSET_UUID,
+            filename=HIDDEN_ASSET_FILENAME,
+            data=data,
+            hidden=True,
+        ),
     ]
 
 

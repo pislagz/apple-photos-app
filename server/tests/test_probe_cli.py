@@ -18,7 +18,7 @@ def test_probe_reports_library_facts(tmp_path, capsys, caplog):
     assert f"library_path: {package_path}" in out
     assert "db_version: 5001" in out
     assert "photos_version: 5" in out
-    assert "asset_count: 1" in out
+    assert "asset_count: 2" in out
     assert "open_mode: copy" in out
     assert "could not find search db" not in caplog.text
 
