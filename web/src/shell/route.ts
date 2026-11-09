@@ -37,7 +37,7 @@ export type MobileTab = "library" | "albums" | "more" | "search";
 export type MobileRoute =
   | { tab: "library" }
   | { tab: "albums"; folderId?: string; albumId?: string }
-  | { tab: "search" }
+  | { tab: "search"; query?: string }
   | { tab: "more"; screen?: undefined }
   | { tab: "more"; screen: "people"; personId?: string }
   | { tab: "more"; screen: "places"; bbox?: string }
@@ -74,6 +74,10 @@ export function parseMobileRoute(pathname: string): MobileRoute {
       const placeMatch = pathname.match(/^\/places\/([^/]+)\/?$/);
       const placeMatchValue = placeMatch ? decode(placeMatch[1]) : null;
       if (placeMatchValue !== null) return { tab: "more", screen: "places", bbox: placeMatchValue };
+      // P2.4: /search/<query> is a results page.
+      const searchMatch = pathname.match(/^\/search\/([^/]+)\/?$/);
+      const searchMatchValue = searchMatch ? decode(searchMatch[1]) : null;
+      if (searchMatchValue !== null) return { tab: "search", query: searchMatchValue };
       const mediaMatch = pathname.match(/^\/media\/([^/]+)\/?$/);
       const mediaMatchValue = mediaMatch ? decode(mediaMatch[1]) : null;
       if (mediaMatchValue !== null) return { tab: "more", screen: "media", mediaType: mediaMatchValue };
@@ -88,6 +92,7 @@ export function mobileRoutePath(route: MobileRoute): string {
     if (route.folderId) return `/albums/folder/${encodeURIComponent(route.folderId)}`;
     if (route.albumId) return `/albums/${encodeURIComponent(route.albumId)}`;
   }
+  if (route.tab === "search" && route.query) return `/search/${encodeURIComponent(route.query)}`;
   if (route.tab !== "more") return `/${route.tab}`;
   if (!route.screen) return "/more";
   if (route.screen === "media") return `/media/${encodeURIComponent(route.mediaType)}`;

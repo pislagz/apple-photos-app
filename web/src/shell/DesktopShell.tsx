@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../api";
 import MapView, { boundsParam } from "./map/MapView";
 import PeopleGrid from "./people/PeopleGrid";
 import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
@@ -11,6 +11,8 @@ import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
 import LibrarySwitcher from "./LibrarySwitcher";
+import SearchField from "./search/SearchField";
+import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
 
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Library
@@ -70,23 +72,60 @@ export default function DesktopShell({
   // P2.2: a person is an `album` whose id is `person:<uuid>`; Back returns to the grid.
   const showingPerson = view === "album" && album?.id.startsWith(PERSON_PREFIX);
   const showingPlace = view === "album" && album?.id.startsWith(PLACE_PREFIX);
+  const showingSearch = view === "album" && album?.id.startsWith(SEARCH_PREFIX);
+  // P2.4: the sidebar search field. A settled, non-empty query shows its
+  // results as a `search:` album; emptying the field goes back to Library.
+  const [searchText, setSearchText] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const showingSearchRef = useRef(false);
+  showingSearchRef.current = !!showingSearch;
+  const settledQuery = useDebounced(searchText.trim());
+  useEffect(() => {
+    if (settledQuery) {
+      setDayStart(null);
+      setAlbum((current) =>
+        current?.id === `${SEARCH_PREFIX}${settledQuery}`
+          ? current
+          : { id: `${SEARCH_PREFIX}${settledQuery}`, title: `Results for \u201c${settledQuery}\u201d` },
+      );
+      setView("album");
+    } else if (showingSearchRef.current) {
+      setAlbum(null);
+      setView("library");
+    }
+  }, [settledQuery]);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   function selectView(next: "library" | "days" | "hidden" | "people" | "map") {
     setDayStart(null);
     setAlbum(null);
+    setSearchText("");
     setView(next);
   }
   function openAlbum(id: string, title: string) {
     setDayStart(null);
     setAlbum({ id, title });
+    setSearchText("");
     setView("album");
   }
-  const currentAlbumId = view === "album" && !showingPerson && !showingPlace ? (album?.id ?? null) : null;
+  const currentAlbumId =
+    view === "album" && !showingPerson && !showingPlace && !showingSearch ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
   return (
     <div className="shell shell--desktop">
       <aside className="sidebar">
+        <SearchField ref={searchRef} variant="desktop" value={searchText} onChange={setSearchText} />
         <nav aria-label="Sections">
           <ul>
             <li>

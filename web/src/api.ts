@@ -177,6 +177,8 @@ export const PERSON_PREFIX = "person:";
 // P2.3: `place:<west,south,east,north>` selects the photos inside a map
 // bounding box (`?place=`), so a cluster opens in the ordinary grid.
 export const PLACE_PREFIX = "place:";
+// P2.4: `search:<query>` lists search results (`GET /search?q=`).
+export const SEARCH_PREFIX = "search:";
 
 export function getAssets(
   libraryId: number,
@@ -187,6 +189,11 @@ export function getAssets(
   album: string | null = null,
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (album?.startsWith(SEARCH_PREFIX)) {
+    params.set("q", album.slice(SEARCH_PREFIX.length));
+    if (cursor) params.set("cursor", cursor);
+    return request<AssetListResponse>(`/api/libraries/${libraryId}/search?${params.toString()}`);
+  }
   // P2.2: `person:<uuid>` selects a person's photos (`?person=`); anything
   // else is an album id, as in P2.1.
   if (album?.startsWith(PERSON_PREFIX)) params.set("person", album.slice(PERSON_PREFIX.length));
