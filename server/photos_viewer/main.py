@@ -37,9 +37,27 @@ _DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / 
 _NO_STORE_PREFIXES = ("/api/me", "/api/auth/", "/api/setup/", "/api/admin/")
 
 
+# P1.20. The one external host is the OSM raster tile server, on connect-src
+# because MapLibre fetches tile bytes (it then draws them from blob: URLs,
+# covered by img-src). No worker-src: the web app has no MapLibre worker yet;
+# add `worker-src 'self' blob:` with the Phase 2 map only if it needs one.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "font-src 'self'; "
+    "img-src 'self' blob: data:; "
+    "connect-src 'self' https://tile.openstreetmap.org; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
 class _NoStoreMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         if request.url.path.startswith(_NO_STORE_PREFIXES):
             response.headers["Cache-Control"] = "no-store"
         return response
