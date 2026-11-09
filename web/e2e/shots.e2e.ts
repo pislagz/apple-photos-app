@@ -136,6 +136,24 @@ test("sidebar (desktop)", async ({ page }, info) => {
   await shot(page, "07-sidebar", info.project.name);
 });
 
+test("albums: folder tree and an album's photos", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  if (info.project.name === "desktop") {
+    await page.locator("aside.sidebar").getByRole("button", { name: "Favorites Trip" }).click();
+    await expect(page.getByRole("heading", { name: "Favorites Trip" })).toBeVisible();
+  } else {
+    await page.getByRole("button", { name: "Albums" }).click();
+    await page.getByRole("button", { name: /Trips/ }).click();
+    await page.getByRole("button", { name: /Europe/ }).click();
+    await shot(page, "10-albums-folder", info.project.name);
+    await page.getByRole("button", { name: /Favorites Trip/ }).click();
+    await expect(page.getByRole("heading", { name: "Favorites Trip" })).toBeVisible();
+  }
+  await expect(cells(page).first()).toBeVisible();
+  await shot(page, "11-album", info.project.name);
+});
+
 test("hidden asks for the password again", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page);

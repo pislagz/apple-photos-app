@@ -62,3 +62,16 @@ describe("mobileRoutePath", () => {
     }
   });
 });
+
+describe("Albums routes (P2.1)", () => {
+  it("round-trips a folder, an album and a smart album", () => {
+    for (const route of [
+      { tab: "albums", folderId: "F-1" },
+      { tab: "albums", albumId: "A-1" },
+      { tab: "albums", albumId: "smart:live-photos" },
+    ] as MobileRoute[]) {
+      expect(parseMobileRoute(mobileRoutePath(route))).toEqual(route);
+    }
+    expect(mobileRoutePath({ tab: "albums", folderId: "F-1" })).toBe("/albums/folder/F-1");
+  });
+});

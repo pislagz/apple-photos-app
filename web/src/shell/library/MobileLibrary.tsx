@@ -31,15 +31,19 @@ export default function MobileLibrary({
   initialAssetId,
   onInitialAssetOpened,
   resetSignal = 0,
+  album,
 }: {
   libraryId: number;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Bumped by the shell when the already-active Library tab is tapped again.
   resetSignal?: number;
+  // P2.1: an album's id (or `smart:<slug>`). Lists only that album, as one
+  // All Photos grid -- no Years/Months/Days switch, no summary.
+  album?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [view, setView] = useState<ViewKey>("years");
+  const [view, setView] = useState<ViewKey>(album ? "all" : "years");
   // Set right before drilling Months -> Days (#126): anchors the Days/All
   // Photos feed's first page at that month instead of the top of the whole
   // library. `/assets`'s `to` bound is a string compare on the local-day
@@ -49,8 +53,10 @@ export default function MobileLibrary({
   const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
     daysAnchor,
+    "all",
+    album ?? null,
   );
-  const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId);
+  const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
   const pinchAnchor = useRef<PinchAnchor | null>(null);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
@@ -253,7 +259,7 @@ export default function MobileLibrary({
           )}
         </div>
       )}
-      {!selectMode && (
+      {!selectMode && !album && (
         <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
           {VIEWS.map((item) => (
             <button
@@ -285,7 +291,7 @@ export default function MobileLibrary({
       >
         {showSummaryError || showAssetsError ? (
           <div className="mobile-library__empty" role="alert">
-            <p>Couldn't load your library.</p>
+            <p>{album ? "Couldn't load this album." : "Couldn't load your library."}</p>
             <button
               type="button"
               className="mobile-library__retry"
@@ -295,7 +301,7 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <p className="mobile-library__empty">No photos yet.</p>
+          <p className="mobile-library__empty">{album ? "No photos in this album." : "No photos yet."}</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

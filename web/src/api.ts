@@ -179,14 +179,45 @@ export function getAssets(
   limit = 200,
   to: string | null = null,
   filter: AssetFilter = "all",
+  album: string | null = null,
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (album) params.set("album", album);
   if (cursor) params.set("cursor", cursor);
   if (to) params.set("to", to);
   if (filter === "favorites") params.set("favorite", "true");
   else if (filter === "photos") params.set("type", "photo");
   else if (filter === "videos") params.set("type", "video");
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
+}
+
+// P2.1: `tree` is the folder tree (folders nest, albums are leaves);
+// `smart` is the built-in albums with at least one visible asset. An album's
+// photos are listed with `getAssets(..., album)`: an album's `id`, or
+// `smart:<slug>` for a smart album (the server's `id` already has that form).
+export interface AlbumNode {
+  id: string;
+  kind: "album" | "folder";
+  title: string;
+  count: number | null;
+  cover_id: string | null;
+  children: AlbumNode[];
+}
+
+export interface SmartAlbum {
+  id: string;
+  title: string;
+  count: number;
+  cover_id: string | null;
+}
+
+export interface AlbumsResponse {
+  tree: AlbumNode[];
+  smart: SmartAlbum[];
+}
+
+export function getAlbums(libraryId: number): Promise<AlbumsResponse> {
+  return request<AlbumsResponse>(`/api/libraries/${libraryId}/albums`);
 }
 
 export interface SummaryBucket {

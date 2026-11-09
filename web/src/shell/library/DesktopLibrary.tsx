@@ -100,6 +100,7 @@ export default function DesktopLibrary({
   onOpenDay,
   initialView,
   initialScrollAssetId,
+  album,
 }: {
   libraryId: number;
   initialAssetId?: string;
@@ -113,6 +114,8 @@ export default function DesktopLibrary({
   // One-shot start state, read on mount only (#152).
   initialView?: ViewKey;
   initialScrollAssetId?: string;
+  // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
+  album?: string;
 }) {
   const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
   const view = fixedView ?? switchedView;
@@ -136,7 +139,7 @@ export default function DesktopLibrary({
   // `loadMore` delivers the page that contains it.
   const desiredIndexRef = useRef<number | null>(null);
 
-  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter);
+  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const { detail: infoDetail, failed: infoFailed } = useAssetDetailState(libraryId, infoOpen ? focusedId : null);
@@ -656,13 +659,13 @@ export default function DesktopLibrary({
         )}
         {items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
-            <p>Couldn't load your library.</p>
+            <p>{album ? "Couldn't load this album." : "Couldn't load your library."}</p>
             <button type="button" className="desktop-library__retry" onClick={retry}>
               Retry
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <p className="desktop-library__empty">No photos yet.</p>
+          <p className="desktop-library__empty">{album ? "No photos in this album." : "No photos yet."}</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MeResponse } from "../api";
+import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
 import AccountMenu from "./AccountMenu";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
@@ -13,20 +14,22 @@ import type { LayoutOverride } from "./useLayout";
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Library
 // and Days (#127) have real screens; the rest is disabled chrome so the frame
 // matches the reference.
-const SECTIONS: { label: string; icon: IconName }[] = [
-  { label: "Favorites", icon: "favorite" },
-  { label: "Recently Added", icon: "added" },
+// P2.1: items with a `smart` slug open the server's `smart:<slug>` album;
+// the rest stay disabled until their phase.
+const SECTIONS: { label: string; icon: IconName; smart?: string }[] = [
+  { label: "Favorites", icon: "favorite", smart: "favorites" },
+  { label: "Recently Added", icon: "added", smart: "recently-added" },
   { label: "Map", icon: "map" },
   { label: "People & Pets", icon: "people" },
 ];
-const MEDIA_TYPES: { label: string; icon: IconName }[] = [
-  { label: "Videos", icon: "video" },
-  { label: "Selfies", icon: "camera" },
-  { label: "Live Photos", icon: "livephoto" },
-  { label: "Portrait", icon: "portrait" },
-  { label: "Panoramas", icon: "panorama" },
-  { label: "Screenshots", icon: "screenshot" },
-  { label: "RAW", icon: "document" },
+const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
+  { label: "Videos", icon: "video", smart: "videos" },
+  { label: "Selfies", icon: "camera", smart: "selfies" },
+  { label: "Live Photos", icon: "livephoto", smart: "live-photos" },
+  { label: "Portrait", icon: "portrait", smart: "portrait" },
+  { label: "Panoramas", icon: "panorama", smart: "panoramas" },
+  { label: "Screenshots", icon: "screenshot", smart: "screenshots" },
+  { label: "RAW", icon: "document", smart: "raw" },
 ];
 // Sequoia Photos' "Utilities" group. Only "Hidden" (P1.13) has a real screen
 // behind it; "Imports" stays disabled chrome. No Recently Deleted: deleted
@@ -52,15 +55,24 @@ export default function DesktopShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
 }) {
-  const [view, setView] = useState<"library" | "days" | "hidden">("library");
+  const [view, setView] = useState<"library" | "days" | "hidden" | "album">("library");
+  // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
+  const [album, setAlbum] = useState<{ id: string; title: string } | null>(null);
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
   // #152: one-shot start state for the Library opened from a Days double-click.
   // Cleared on the next sidebar choice; tied to a library so a switch drops it.
   const [dayStart, setDayStart] = useState<{ libraryId: number; assetId: string } | null>(null);
   function selectView(next: "library" | "days" | "hidden") {
     setDayStart(null);
+    setAlbum(null);
     setView(next);
   }
+  function openAlbum(id: string, title: string) {
+    setDayStart(null);
+    setAlbum({ id, title });
+    setView("album");
+  }
+  const currentAlbumId = view === "album" ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
@@ -93,7 +105,13 @@ export default function DesktopShell({
             </li>
             {SECTIONS.map((section) => (
               <li key={section.label}>
-                <button type="button" disabled className="sidebar__item">
+                <button
+                  type="button"
+                  disabled={!section.smart}
+                  aria-current={section.smart && currentAlbumId === `smart:${section.smart}` ? "page" : undefined}
+                  className="sidebar__item"
+                  onClick={section.smart ? () => openAlbum(`smart:${section.smart}`, section.label) : undefined}
+                >
                   <Icon name={section.icon} className="sidebar__icon" />
                   {section.label}
                 </button>
@@ -106,7 +124,12 @@ export default function DesktopShell({
           <ul>
             {MEDIA_TYPES.map((type) => (
               <li key={type.label}>
-                <button type="button" disabled className="sidebar__item sidebar__item--sub">
+                <button
+                  type="button"
+                  aria-current={currentAlbumId === `smart:${type.smart}` ? "page" : undefined}
+                  className="sidebar__item sidebar__item--sub"
+                  onClick={() => openAlbum(`smart:${type.smart}`, type.label)}
+                >
                   <Icon name={type.icon} className="sidebar__icon" />
                   {type.label}
                 </button>
@@ -116,14 +139,16 @@ export default function DesktopShell({
         </details>
         <details className="sidebar__group" open>
           <summary>Albums</summary>
-          <ul>
-            <li>
-              <button type="button" disabled className="sidebar__item sidebar__item--sub">
-                <Icon name="folder" className="sidebar__icon" />
-                My Albums
-              </button>
-            </li>
-          </ul>
+          {activeLibraryId !== undefined && !activeLibrary?.updating ? (
+            <AlbumsSidebarGroup
+              key={activeLibraryId}
+              libraryId={activeLibraryId}
+              currentId={currentAlbumId}
+              onOpen={openAlbum}
+            />
+          ) : (
+            <p className="sidebar__note">No albums</p>
+          )}
         </details>
         <details className="sidebar__group" open>
           <summary>Utilities</summary>
@@ -175,13 +200,20 @@ export default function DesktopShell({
             </main>
           </HiddenSession>
         ) : (
+          <>
+            {view === "album" && album && (
+              <header className="toolbar">
+                <h1>{album.title}</h1>
+              </header>
+            )}
           <main className="shell__content">
             {activeLibrary?.updating ? (
               <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
             ) : activeLibraryId !== undefined ? (
               <DesktopLibrary
-                key={`${activeLibraryId}-${view}`}
-                fixedView={view === "days" ? "days" : undefined}
+                key={`${activeLibraryId}-${view}-${album?.id ?? ""}`}
+                album={view === "album" ? album?.id : undefined}
+                fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={
                   view === "days"
                     ? (id) => {
@@ -200,6 +232,7 @@ export default function DesktopShell({
               <LibraryPlaceholder />
             )}
           </main>
+          </>
         )}
       </div>
       {unlockPrompt && (

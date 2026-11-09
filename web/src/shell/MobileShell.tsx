@@ -7,6 +7,7 @@ import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
+import AlbumsTab, { AlbumPhotos } from "./albums/AlbumsTab";
 import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
 import MoreScreen from "./more/MoreScreen";
@@ -69,7 +70,20 @@ export default function MobileShell({
 
   function renderContent() {
     if (route.tab === "library") return null;
-    if (route.tab === "albums") return <TabPlaceholderScreen title="Albums" />;
+    if (route.tab === "albums") {
+      if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
+        return <TabPlaceholderScreen title="Albums" />;
+      }
+      return (
+        <AlbumsTab
+          key={activeLibraryId}
+          libraryId={activeLibraryId}
+          folderId={route.folderId}
+          albumId={route.albumId}
+          onNavigate={navigate}
+        />
+      );
+    }
     if (route.tab === "search") return <TabPlaceholderScreen title="Search" />;
 
     // route.tab === "more"
@@ -91,6 +105,18 @@ export default function MobileShell({
     }
     if (route.screen === "media") {
       const title = MEDIA_TYPES.find((type) => type.slug === route.mediaType)?.label ?? route.mediaType;
+      // Each media type is a smart album with the same slug.
+      if (activeLibraryId !== undefined && MEDIA_TYPES.some((t) => t.slug === route.mediaType)) {
+        return (
+          <AlbumPhotos
+            libraryId={activeLibraryId}
+            albumId={`smart:${route.mediaType}`}
+            title={title}
+            backLabel="More"
+            onBack={() => navigate("/more")}
+          />
+        );
+      }
       return <MorePlaceholderScreen title={title} onBack={() => navigate("/more")} />;
     }
     // route.screen === "hidden"

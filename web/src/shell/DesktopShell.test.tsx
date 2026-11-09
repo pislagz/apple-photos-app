@@ -170,6 +170,7 @@ describe("DesktopShell Hidden password prompt (#130)", () => {
   function setup(reconfirmStatus: number) {
     const fetchMock = mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      if (url === "/api/libraries/1/albums") return { tree: [], smart: [] };
       if (url === "/api/auth/reconfirm-password") {
         return reconfirmStatus === 204 ? noContentResponse() : jsonResponse({ detail: "x" }, reconfirmStatus);
       }

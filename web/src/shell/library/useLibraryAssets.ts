@@ -19,7 +19,7 @@ export interface UseLibraryAssetsResult {
 // Days drill-down) starts the first page at that local day instead of the
 // top of the library, so landing on a month deep in the library's history
 // doesn't page through everything newer first.
-export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all"): UseLibraryAssetsResult {
+export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all", album: string | null = null): UseLibraryAssetsResult {
   const [items, setItems] = useState<AssetListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -31,7 +31,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(false);
-    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter)
+    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
@@ -51,7 +51,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       .finally(() => {
         if (requestIdRef.current === requestId) setLoading(false);
       });
-  }, [anchorTo, filter]);
+  }, [anchorTo, filter, album]);
 
   useEffect(() => {
     cursorRef.current = null;
