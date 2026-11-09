@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job for the native macOS server. launchd does not expand ~ or $HOME,
+  so every path below is absolute and uses the placeholder /Users/CHANGEME.
+  Replace it before loading; see "launchd" in server/README.md:
+
+    sed "s#/Users/CHANGEME#$HOME#g" deploy/com.photosviewer.plist \
+      > ~/Library/LaunchAgents/com.photosviewer.plist
+    mkdir -p ~/photos-viewer-data
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.photosviewer.plist
+
+  The data directory must be outside every .photoslibrary. Logs live in it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.photosviewer</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/CHANGEME/apple-photos-app/.venv/bin/uvicorn</string>
+    <string>photos_viewer.main:app</string>
+    <!-- Loopback: Tailscale Serve on this Mac proxies to it. -->
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8000</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/CHANGEME/apple-photos-app</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PHOTOS_VIEWER_DATA_DIR</key>
+    <string>/Users/CHANGEME/photos-viewer-data</string>
+    <key>OSXPHOTOS_NO_VERSION_CHECK</key>
+    <string>1</string>
+    <!-- Must match the https:// name Tailscale Serve publishes. -->
+    <key>PHOTOS_VIEWER_PUBLIC_ORIGINS</key>
+    <string>https://myhost.tailxyz.ts.net</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/CHANGEME/photos-viewer-data/server.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/CHANGEME/photos-viewer-data/server.err.log</string>
+</dict>
+</plist>

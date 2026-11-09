@@ -1,0 +1,19 @@
+# Keep real libraries, data and secrets out of the build context and image.
+**/*.photoslibrary
+**/*.sqlite
+**/*.sqlite-wal
+**/*.sqlite-shm
+**/app.db
+data/
+demo-data/
+.env
+.git
+.venv
+**/.venv
+**/node_modules
+web/dist
+web/e2e/screenshots
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+docs/design-refs

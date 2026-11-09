@@ -1,0 +1,66 @@
+# Run from the repo root or from deploy/:
+#   PHOTOS_LIBRARY_DIR=/mnt/photos docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Egress: the `viewer` network is `internal: true`, so Docker gives it no
+# gateway to the internet and masquerades nothing. The container cannot reach
+# a tile host, a package index, or an update server, and cannot resolve public
+# DNS. Docker does not publish ports on internal networks, so the host reaches
+# the app at the pinned container address (172.28.0.2:8000); Tailscale Serve on
+# the host proxies there:  tailscale serve --bg http://172.28.0.2:8000
+# Replies to those inbound connections flow normally. The README's "No outbound
+# egress" section adds the host firewall rule as a second layer.
+#
+# Read-only fixture check (what CI's pytest does without Docker): mount a
+# synthetic library `:ro` and run the probe inside the same image:
+#   docker compose -f deploy/docker-compose.yml run --rm \
+#     -v "$PWD/fixture.photoslibrary:/libraries/fixture.photoslibrary:ro" \
+#     viewer python -m photos_viewer.probe /libraries/fixture.photoslibrary
+# The probe copies Photos.sqlite into /tmp (tmpfs) and never writes the package.
+
+name: photos-viewer
+
+services:
+  viewer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: photos-viewer:local
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      # Temp copies of Photos.sqlite and transcode scratch. uid/gid match `user`.
+      - /tmp:size=2g,mode=1777,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      viewer:
+        ipv4_address: 172.28.0.2
+    volumes:
+      # One line per library, always `:ro`. Register the in-container path
+      # (e.g. /libraries/family.photoslibrary) in the admin panel.
+      - ${PHOTOS_LIBRARY_DIR:-./libraries}:/libraries:ro
+      # Optional PMTiles archive for Map tiles = Local file. Put map.pmtiles
+      # in this directory; register /tiles/map.pmtiles in the admin settings.
+      - ${PHOTOS_TILES_DIR:-./tiles}:/tiles:ro
+      # app.db, thumbnails, logs: the only writable mount.
+      - viewer-data:/data
+    environment:
+      PHOTOS_VIEWER_DATA_DIR: /data
+      OSXPHOTOS_NO_VERSION_CHECK: "1"
+      # Browsers reach the app at this https:// name (Tailscale Serve).
+      PHOTOS_VIEWER_PUBLIC_ORIGINS: ${PHOTOS_VIEWER_PUBLIC_ORIGINS:-https://myhost.tailxyz.ts.net}
+      # tailscale serve connects from the network gateway, not loopback.
+      UVICORN_FORWARDED_ALLOW_IPS: 172.28.0.1
+      PHOTOS_VIEWER_TRUSTED_PROXIES: 172.28.0.1
+
+volumes:
+  viewer-data:
+
+networks:
+  viewer:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1
