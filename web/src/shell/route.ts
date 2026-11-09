@@ -28,7 +28,8 @@ export type MobileRoute =
   | { tab: "search" }
   | { tab: "more"; screen?: undefined }
   | { tab: "more"; screen: "people"; personId?: string }
-  | { tab: "more"; screen: "places" | "hidden" }
+  | { tab: "more"; screen: "places"; bbox?: string }
+  | { tab: "more"; screen: "hidden" }
   | { tab: "more"; screen: "media"; mediaType: string };
 
 export function parseMobileRoute(pathname: string): MobileRoute {
@@ -56,6 +57,11 @@ export function parseMobileRoute(pathname: string): MobileRoute {
       if (personMatch) {
         return { tab: "more", screen: "people", personId: decodeURIComponent(personMatch[1]) };
       }
+      // P2.3: /places is the map; /places/<w,s,e,n> is the photos under a pin.
+      const placeMatch = pathname.match(/^\/places\/([^/]+)\/?$/);
+      if (placeMatch) {
+        return { tab: "more", screen: "places", bbox: decodeURIComponent(placeMatch[1]) };
+      }
       const mediaMatch = pathname.match(/^\/media\/([^/]+)\/?$/);
       if (mediaMatch) {
         return { tab: "more", screen: "media", mediaType: decodeURIComponent(mediaMatch[1]) };
@@ -75,5 +81,6 @@ export function mobileRoutePath(route: MobileRoute): string {
   if (!route.screen) return "/more";
   if (route.screen === "media") return `/media/${encodeURIComponent(route.mediaType)}`;
   if (route.screen === "people" && route.personId) return `/people/${encodeURIComponent(route.personId)}`;
+  if (route.screen === "places" && route.bbox) return `/places/${encodeURIComponent(route.bbox)}`;
   return `/${route.screen}`;
 }

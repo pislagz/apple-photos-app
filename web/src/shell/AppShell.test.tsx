@@ -130,7 +130,7 @@ describe("AppShell", () => {
     }
   });
 
-  it("renders the desktop sidebar with Map still disabled", async () => {
+  it("renders the desktop sidebar with its sections enabled", async () => {
     setViewport(1400, true);
     mockFetch((url) => {
       if (url === "/api/setup/status") return { needs_setup: false };
@@ -145,10 +145,10 @@ describe("AppShell", () => {
     expect(sections.getByRole("button", { name: "Library" })).toBeEnabled();
     // P2.1 enabled Favorites and Recently Added (smart albums).
     // P2.2 enabled People & Pets.
-    for (const label of ["Favorites", "Recently Added", "People & Pets"]) {
+    // P2.3 enabled Map.
+    for (const label of ["Favorites", "Recently Added", "People & Pets", "Map"]) {
       expect(sections.getByRole("button", { name: label })).toBeEnabled();
     }
-    expect(sections.getByRole("button", { name: "Map" })).toBeDisabled();
   });
 
   it("shows a Hidden entry in the desktop sidebar's Utilities group that lists hidden assets", async () => {

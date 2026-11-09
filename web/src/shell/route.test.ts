@@ -32,6 +32,8 @@ describe("parseMobileRoute", () => {
   it("parses the More screens by their own stable route, independent of the More tab", () => {
     expect(parseMobileRoute("/people")).toEqual({ tab: "more", screen: "people" });
     expect(parseMobileRoute("/places")).toEqual({ tab: "more", screen: "places" });
+    expect(parseMobileRoute("/places/1%2C2%2C3%2C4")).toEqual({ tab: "more", screen: "places", bbox: "1,2,3,4" });
+    expect(mobileRoutePath({ tab: "more", screen: "places", bbox: "1,2,3,4" })).toBe("/places/1%2C2%2C3%2C4");
     expect(parseMobileRoute("/hidden")).toEqual({ tab: "more", screen: "hidden" });
     expect(parseMobileRoute("/media/videos")).toEqual({ tab: "more", screen: "media", mediaType: "videos" });
   });

@@ -236,3 +236,56 @@ def test_archive_is_not_served_unless_local_mode(env):
     assert client.get("/api/map/tiles.pmtiles").status_code == 404
     _set(conn, "off", _pmtiles(tmp_path))
     assert client.get("/api/map/config").json() == {"mode": "off", "pmtiles_url": None}
+
+
+def test_indexed_fixture_locations_reach_the_map(tmp_path):
+    """End to end through osxphotos: a located fixture asset clusters, an
+    unlocated one is absent."""
+    from photos_viewer import indexer
+    from tests.fixtures import FixtureAsset, _build_asset_image_bytes, build_library
+
+    data = _build_asset_image_bytes()
+    assets = [
+        FixtureAsset(
+            uuid=_uuid(n),
+            filename=f"IMG_{n}.HEIC",
+            data=data,
+            created=700000000.0 + n,
+            latitude=lat,
+            longitude=lon,
+        )
+        for n, lat, lon in ((1, 48.85, 2.35), (2, 48.86, 2.36), (3, None, None))
+    ]
+    package = build_library(tmp_path, assets)
+    app = create_app()
+    conn = app_db.connect(tmp_path / "data")
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    try:
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('L1', ?)",
+            (str(package),),
+        )
+        conn.commit()
+        library_id = conn.execute("SELECT id FROM libraries").fetchone()["id"]
+        indexer.index_library(conn, library_id, package, force=True)
+        rows = conn.execute(
+            "SELECT uuid, latitude FROM assets ORDER BY uuid"
+        ).fetchall()
+        assert [r["latitude"] is not None for r in rows] == [True, True, False]
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES ('a', ?, 'user')",
+            (session_auth.hash_password(VALID_PASSWORD),),
+        )
+        conn.execute(
+            "INSERT INTO library_assignments (user_id, library_id) VALUES (1, ?)",
+            (library_id,),
+        )
+        conn.commit()
+        client = TestClient(app, base_url="https://testserver")
+        client.post(
+            "/api/auth/login", json={"username": "a", "password": VALID_PASSWORD}
+        )
+        data = client.get(f"/api/libraries/{library_id}/map", params={"zoom": 1}).json()
+        assert data["total"] == 2
+    finally:
+        conn.close()

@@ -44,6 +44,11 @@ describe("check_external_urls", () => {
     expect(result.stderr).toContain("example");
   });
 
+  it("allows the exact MapLibre/pmtiles library strings and no other path on those hosts", () => {
+    expect(findDisallowedUrls('a="https://maplibre.org/";b="http://www.w3.org/1999/xhtml"')).toEqual([]);
+    expect(findDisallowedUrls('a="https://maplibre.org/collect"')).toEqual(["https://maplibre.org/collect"]);
+  });
+
   it("does not allow other paths on the OSM hosts or w3.org", () => {
     for (const url of [
       "https://tile.openstreetmap.org/other.png",

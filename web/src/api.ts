@@ -174,6 +174,9 @@ export function getHidden(libraryId: number, cursor: string | null = null, limit
 export type AssetFilter = "all" | "favorites" | "photos" | "videos";
 
 export const PERSON_PREFIX = "person:";
+// P2.3: `place:<west,south,east,north>` selects the photos inside a map
+// bounding box (`?place=`), so a cluster opens in the ordinary grid.
+export const PLACE_PREFIX = "place:";
 
 export function getAssets(
   libraryId: number,
@@ -187,6 +190,7 @@ export function getAssets(
   // P2.2: `person:<uuid>` selects a person's photos (`?person=`); anything
   // else is an album id, as in P2.1.
   if (album?.startsWith(PERSON_PREFIX)) params.set("person", album.slice(PERSON_PREFIX.length));
+  else if (album?.startsWith(PLACE_PREFIX)) params.set("place", album.slice(PLACE_PREFIX.length));
   else if (album) params.set("album", album);
   if (cursor) params.set("cursor", cursor);
   if (to) params.set("to", to);
@@ -311,4 +315,41 @@ export interface AssetDetailResponse {
 // 404s here exactly like it does for `thumb`/`original`.
 export function getAssetDetail(libraryId: number, assetId: string): Promise<AssetDetailResponse> {
   return request<AssetDetailResponse>(`/api/libraries/${libraryId}/assets/${assetId}`);
+}
+
+// P2.3: map clusters. `bbox` is west,south,east,north in degrees.
+export interface MapBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export interface MapCluster {
+  lat: number;
+  lon: number;
+  count: number;
+  cover_id: string;
+  bounds: MapBounds;
+}
+
+export function getMapClusters(
+  libraryId: number,
+  bbox: MapBounds | null,
+  zoom: number,
+): Promise<{ clusters: MapCluster[]; total: number }> {
+  const params = new URLSearchParams({ zoom: String(Math.max(0, Math.min(22, Math.floor(zoom)))) });
+  if (bbox) params.set("bbox", `${bbox.west},${bbox.south},${bbox.east},${bbox.north}`);
+  return request(`/api/libraries/${libraryId}/map?${params.toString()}`);
+}
+
+// The admin's `Map tiles` setting, readable by any signed-in user. A Local
+// file whose archive is missing is already reported here as "off".
+export interface MapConfig {
+  mode: "online" | "local_file" | "off";
+  pmtiles_url: string | null;
+}
+
+export function getMapConfig(): Promise<MapConfig> {
+  return request<MapConfig>("/api/map/config");
 }

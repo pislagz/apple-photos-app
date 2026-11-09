@@ -178,11 +178,30 @@ def _moments(rng: random.Random) -> list[dt.datetime]:
     return moments
 
 
+# P2.3: a few places so the map has clusters. Indexes not listed have no
+# location, like photos taken with Location Services off.
+_PLACES = (
+    (48.8566, 2.3522),  # Paris
+    (40.7128, -74.0060),  # New York
+    (35.6762, 139.6503),  # Tokyo
+    (-33.8688, 151.2093),  # Sydney
+)
+
+
+def _place_for(index: int) -> tuple[float | None, float | None]:
+    if index % 4 == 0:
+        return None, None
+    lat, lon = _PLACES[(index // 4) % len(_PLACES)]
+    # A little spread so a cluster has several distinct points.
+    return lat + (index % 7) * 0.004, lon + (index % 5) * 0.004
+
+
 def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
     fixtures = _load_fixtures()
     rng = random.Random(SEED)
     assets = []
     for index, moment in enumerate(_moments(rng), start=1):
+        latitude, longitude = _place_for(index)
         uuid = f"{index:08X}-DEAD-4BEE-8000-{index:012X}"
         is_video = index % 53 == 0
         data = _make_video(index, rng) if is_video else None
@@ -214,6 +233,8 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
                 height=size[1],
                 favorite=index % 17 == 0,
                 hidden=index % 41 == 0,
+                latitude=latitude,
+                longitude=longitude,
             )
         )
     count = len(assets)

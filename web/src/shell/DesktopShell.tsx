@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { type MeResponse, PERSON_PREFIX } from "../api";
+import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX } from "../api";
+import MapView, { boundsParam } from "./map/MapView";
 import PeopleGrid from "./people/PeopleGrid";
 import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
 import AccountMenu from "./AccountMenu";
@@ -18,10 +19,12 @@ import type { LayoutOverride } from "./useLayout";
 // P2.1: items with a `smart` slug open the server's `smart:<slug>` album;
 // the rest stay disabled until their phase.
 // P2.2: "People & Pets" opens the People grid (`view` "people").
-const SECTIONS: { label: string; icon: IconName; smart?: string; people?: boolean }[] = [
+// P2.3: "Map" opens the map (`view` "map"); a pin opens its photos as a
+// `place:` album with a Back button, like a person.
+const SECTIONS: { label: string; icon: IconName; smart?: string; people?: boolean; map?: boolean }[] = [
   { label: "Favorites", icon: "favorite", smart: "favorites" },
   { label: "Recently Added", icon: "added", smart: "recently-added" },
-  { label: "Map", icon: "map" },
+  { label: "Map", icon: "map", map: true },
   { label: "People & Pets", icon: "people", people: true },
 ];
 const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
@@ -57,7 +60,7 @@ export default function DesktopShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
 }) {
-  const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people">("library");
+  const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
   const [album, setAlbum] = useState<{ id: string; title: string } | null>(null);
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
@@ -66,7 +69,8 @@ export default function DesktopShell({
   const [dayStart, setDayStart] = useState<{ libraryId: number; assetId: string } | null>(null);
   // P2.2: a person is an `album` whose id is `person:<uuid>`; Back returns to the grid.
   const showingPerson = view === "album" && album?.id.startsWith(PERSON_PREFIX);
-  function selectView(next: "library" | "days" | "hidden" | "people") {
+  const showingPlace = view === "album" && album?.id.startsWith(PLACE_PREFIX);
+  function selectView(next: "library" | "days" | "hidden" | "people" | "map") {
     setDayStart(null);
     setAlbum(null);
     setView(next);
@@ -76,7 +80,7 @@ export default function DesktopShell({
     setAlbum({ id, title });
     setView("album");
   }
-  const currentAlbumId = view === "album" && !showingPerson ? (album?.id ?? null) : null;
+  const currentAlbumId = view === "album" && !showingPerson && !showingPlace ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
@@ -111,9 +115,13 @@ export default function DesktopShell({
               <li key={section.label}>
                 <button
                   type="button"
-                  disabled={!section.smart && !section.people}
+                  disabled={!section.smart && !section.people && !section.map}
                   aria-current={
-                    section.people
+                    section.map
+                      ? view === "map" || showingPlace
+                        ? "page"
+                        : undefined
+                      : section.people
                       ? view === "people" || showingPerson
                         ? "page"
                         : undefined
@@ -123,7 +131,9 @@ export default function DesktopShell({
                   }
                   className="sidebar__item"
                   onClick={
-                    section.people
+                    section.map
+                      ? () => selectView("map")
+                      : section.people
                       ? () => selectView("people")
                       : section.smart
                         ? () => openAlbum(`smart:${section.smart}`, section.label)
@@ -221,6 +231,12 @@ export default function DesktopShell({
           <>
             {view === "album" && album && (
               <header className="toolbar">
+                {showingPlace && (
+                  <button type="button" className="toolbar-button" onClick={() => selectView("map")}>
+                    <Icon name="chevron" className="toolbar-button__back-icon" />
+                    Map
+                  </button>
+                )}
                 {showingPerson && (
                   <button type="button" className="toolbar-button" onClick={() => selectView("people")}>
                     <Icon name="chevron" className="toolbar-button__back-icon" />
@@ -235,9 +251,20 @@ export default function DesktopShell({
                 <h1>People & Pets</h1>
               </header>
             )}
+            {view === "map" && (
+              <header className="toolbar">
+                <h1>Map</h1>
+              </header>
+            )}
           <main className="shell__content">
             {activeLibrary?.updating ? (
               <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
+            ) : activeLibraryId !== undefined && view === "map" ? (
+              <MapView
+                key={activeLibraryId}
+                libraryId={activeLibraryId}
+                onOpenPlace={(b) => openAlbum(`${PLACE_PREFIX}${boundsParam(b)}`, "Photos here")}
+              />
             ) : activeLibraryId !== undefined && view === "people" ? (
               <div className="people-desktop">
                 <PeopleGrid

@@ -9,6 +9,13 @@
 //  - React's production build embeds "https://react.dev/errors/" as the prefix
 //    of the decoder link it prints with a minified error code (".../418").
 //    It is only text in a console message; the app never fetches it.
+//  - P2.3: strings inside the bundled MapLibre and pmtiles libraries. None is
+//    ever requested: license/issue links in comments, the `href` of MapLibre's
+//    logo/attribution controls (we use neither; our own attribution is the OSM
+//    link), a ".invalid" placeholder host (reserved, never resolves), the
+//    XHTML namespace URI, and the "This map requires WebGL" help link shown as
+//    text when WebGL is missing. The Playwright map test asserts the browser
+//    requests nothing but our own origin and tile.openstreetmap.org.
 // TASKS.md says "only" the two OSM URLs; these are unavoidable library
 // strings and are flagged in the PR for a decision.
 
@@ -26,6 +33,13 @@ const EXACT_ALLOWED = new Set([
   "http://www.w3.org/1998/Math/MathML",
   "http://www.w3.org/XML/1998/namespace",
   "http://www.w3.org/2000/xmlns/",
+  "http://www.w3.org/1999/xhtml",
+  "https://maplibre.org/",
+  "https://maplibre.invalid/",
+  "https://github.com/mapbox/mapbox-gl-js/issues/2907",
+  "https://github.com/maplibre/maplibre-gl-js/blob/v6.17.0/LICENSE.txt",
+  "https://github.com/protomaps/PMTiles/tree/main/js",
+  "https://wiki.openstreetmap.org/wiki/This_map_requires_WebGL",
 ]);
 
 const LOCALHOST = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/;
