@@ -198,6 +198,7 @@ def test_migration_19_flags_indexed_libraries_for_reindex(tmp_path):
         conn.execute("DROP TABLE asset_labels")
         conn.execute("DROP TABLE passkey_challenges")  # migration 22
         conn.execute("DROP TABLE passkeys")
+        conn.execute("DROP TABLE prewarm_jobs")  # migration 23
         conn.execute(
             "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 'sig')"
         )
