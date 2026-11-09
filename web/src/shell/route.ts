@@ -9,10 +9,22 @@ export interface PhotoPath {
   assetId: string;
 }
 
+// A malformed percent escape (`/places/%E0`) must not crash the shell: it is
+// just a path that matches nothing.
+function decode(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 export function parsePhotoPath(pathname: string): PhotoPath | null {
   const match = pathname.match(/^\/library\/(\d+)\/photo\/([^/]+)\/?$/);
   if (!match) return null;
-  return { libraryId: Number(match[1]), assetId: decodeURIComponent(match[2]) };
+  const assetId = decode(match[2]);
+  if (assetId === null) return null;
+  return { libraryId: Number(match[1]), assetId };
 }
 
 // #125: the phone tab bar is Library / Albums / More / Search. Screens that
@@ -49,23 +61,22 @@ export function parseMobileRoute(pathname: string): MobileRoute {
     default: {
       // P2.1: /albums/folder/<uuid> and /albums/<uuid> (or smart:<slug>).
       const folderMatch = pathname.match(/^\/albums\/folder\/([^/]+)\/?$/);
-      if (folderMatch) return { tab: "albums", folderId: decodeURIComponent(folderMatch[1]) };
+      const folderMatchValue = folderMatch ? decode(folderMatch[1]) : null;
+      if (folderMatchValue !== null) return { tab: "albums", folderId: folderMatchValue };
       const albumMatch = pathname.match(/^\/albums\/([^/]+)\/?$/);
-      if (albumMatch) return { tab: "albums", albumId: decodeURIComponent(albumMatch[1]) };
+      const albumMatchValue = albumMatch ? decode(albumMatch[1]) : null;
+      if (albumMatchValue !== null) return { tab: "albums", albumId: albumMatchValue };
       // P2.2: /people/<uuid>.
       const personMatch = pathname.match(/^\/people\/([^/]+)\/?$/);
-      if (personMatch) {
-        return { tab: "more", screen: "people", personId: decodeURIComponent(personMatch[1]) };
-      }
+      const personMatchValue = personMatch ? decode(personMatch[1]) : null;
+      if (personMatchValue !== null) return { tab: "more", screen: "people", personId: personMatchValue };
       // P2.3: /places is the map; /places/<w,s,e,n> is the photos under a pin.
       const placeMatch = pathname.match(/^\/places\/([^/]+)\/?$/);
-      if (placeMatch) {
-        return { tab: "more", screen: "places", bbox: decodeURIComponent(placeMatch[1]) };
-      }
+      const placeMatchValue = placeMatch ? decode(placeMatch[1]) : null;
+      if (placeMatchValue !== null) return { tab: "more", screen: "places", bbox: placeMatchValue };
       const mediaMatch = pathname.match(/^\/media\/([^/]+)\/?$/);
-      if (mediaMatch) {
-        return { tab: "more", screen: "media", mediaType: decodeURIComponent(mediaMatch[1]) };
-      }
+      const mediaMatchValue = mediaMatch ? decode(mediaMatch[1]) : null;
+      if (mediaMatchValue !== null) return { tab: "more", screen: "media", mediaType: mediaMatchValue };
       return { tab: "library" };
     }
   }

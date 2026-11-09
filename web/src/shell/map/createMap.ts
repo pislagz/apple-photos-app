@@ -3,6 +3,10 @@ import type { Map as MapLibreMap, MapOptions } from "maplibre-gl";
 import type { MapConfig } from "../../api";
 import { blankStyle, osmStyle, protomapsStyle, rasterPmtilesStyle } from "./basemap";
 
+// One pmtiles protocol handler for the page: MapLibre keeps a single handler
+// per scheme, so re-registering it on every map would only replace it.
+let pmtilesProtocol: InstanceType<typeof import("pmtiles").Protocol> | null = null;
+
 // MapLibre (and pmtiles) load on first use, so the Library, Albums and People
 // screens never even download the map code, let alone request tiles.
 export async function createMap(
@@ -25,9 +29,11 @@ export async function createMap(
     try {
       const archive = new PMTiles(absolute);
       const header = await archive.getHeader();
-      const protocol = new Protocol();
-      protocol.add(archive);
-      maplibregl.addProtocol("pmtiles", protocol.tile);
+      if (!pmtilesProtocol) {
+        pmtilesProtocol = new Protocol();
+        maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
+      }
+      pmtilesProtocol.add(archive);
       const url = `pmtiles://${absolute}`;
       style = header.tileType === TileType.Mvt ? protomapsStyle(url) : rasterPmtilesStyle(url);
     } catch {

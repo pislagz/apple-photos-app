@@ -337,7 +337,7 @@ export function getMapClusters(
   libraryId: number,
   bbox: MapBounds | null,
   zoom: number,
-): Promise<{ clusters: MapCluster[]; total: number }> {
+): Promise<{ clusters: MapCluster[]; total: number; truncated?: boolean }> {
   const params = new URLSearchParams({ zoom: String(Math.max(0, Math.min(22, Math.floor(zoom)))) });
   if (bbox) params.set("bbox", `${bbox.west},${bbox.south},${bbox.east},${bbox.north}`);
   return request(`/api/libraries/${libraryId}/map?${params.toString()}`);

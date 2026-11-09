@@ -7,6 +7,19 @@ import { useMapConfig } from "./useMapConfig";
 // A cluster this small (or a map this close) opens its photos instead of zooming.
 const OPEN_AT_ZOOM = 16;
 
+// The viewport can overshoot the world by a hair (and a tilted or zoomed-out
+// map by a lot); the API rejects out-of-range boxes with a 422.
+export function clampBox(west: number, south: number, east: number, north: number): MapBounds | null {
+  if (east - west >= 360) return null;
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  return {
+    west: clamp(west, -180, 180),
+    south: clamp(south, -90, 90),
+    east: clamp(east, -180, 180),
+    north: clamp(north, -90, 90),
+  };
+}
+
 export function boundsParam(b: MapBounds): string {
   return `${b.west},${b.south},${b.east},${b.north}`;
 }
@@ -71,7 +84,11 @@ function LoadedMap({
   const container = useRef<HTMLDivElement>(null);
   const openRef = useRef(onOpenPlace);
   openRef.current = onOpenPlace;
+  // `failed`: the map itself could not be built (full state). `refreshFailed`:
+  // the map is fine and only a cluster request failed (small banner).
   const [failed, setFailed] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const reload = useRef<() => void>(() => {});
   const [empty, setEmpty] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
@@ -80,6 +97,7 @@ function LoadedMap({
     const element = container.current;
     if (!element) return;
     setFailed(false);
+    setRefreshFailed(false);
     setEmpty(false);
     let disposed = false;
     let cleanup = () => {};
@@ -118,20 +136,14 @@ function LoadedMap({
           const mine = ++sequence;
           const b = map.getBounds();
           // Wider than the screen is the whole world: ask without a box.
-          const wide = b.getEast() - b.getWest() >= 360;
+          const box = clampBox(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
           try {
-            const result = await getMapClusters(
-              libraryId,
-              wide
-                ? null
-                : { west: b.getWest(), south: Math.max(-90, b.getSouth()), east: b.getEast(), north: Math.min(90, b.getNorth()) },
-              Math.round(map.getZoom()) + 1,
-            );
+            const result = await getMapClusters(libraryId, box, Math.floor(map.getZoom()) + 1);
             if (disposed || mine !== sequence) return;
-            setFailed(false);
+            setRefreshFailed(false);
             draw(result.clusters);
           } catch {
-            if (!disposed && mine === sequence) setFailed(true);
+            if (!disposed && mine === sequence) setRefreshFailed(true);
           }
         }
 
@@ -153,13 +165,17 @@ function LoadedMap({
               { padding: 80, maxZoom: 12, animate: false },
             );
           } catch {
-            if (!disposed) setFailed(true);
+            if (!disposed) {
+              setRefreshFailed(true);
+              reload.current = () => void start();
+            }
             return;
           }
           map.on("moveend", () => {
             clearTimeout(timer);
             timer = setTimeout(() => void refresh(), 150);
           });
+          reload.current = () => void refresh();
           void refresh();
         }
         void start();
@@ -189,6 +205,14 @@ function LoadedMap({
         <div className="map-view__state map-view__state--overlay" role="alert">
           <p>Couldn't load the map.</p>
           <button type="button" className="toolbar-button" onClick={retry}>
+            Retry
+          </button>
+        </div>
+      )}
+      {refreshFailed && !failed && (
+        <div className="map-view__banner" role="alert">
+          <span>Couldn't load photos for this area.</span>
+          <button type="button" className="toolbar-button" onClick={() => reload.current()}>
             Retry
           </button>
         </div>

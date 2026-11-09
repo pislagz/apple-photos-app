@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, session_auth
+from photos_viewer import app_db, library_map, session_auth
 from photos_viewer.main import create_app
 
 VALID_PASSWORD = "correct-horse-battery"
@@ -130,7 +130,7 @@ def test_bbox_limits_and_stays_inside_the_library(env):
     # L2's Paris photo is never included for a caller of L1.
     assert all(c["cover_id"].startswith("A0000000") for c in paris_box["clusters"])
     nowhere = client.get(url, params={"bbox": "-60,-10,-50,0", "zoom": 2}).json()
-    assert nowhere == {"clusters": [], "total": 0}
+    assert nowhere == {"clusters": [], "total": 0, "truncated": False}
     # West > east crosses the antimeridian: Sydney only if the box wraps it.
     wrap = client.get(url, params={"bbox": "150,-40,-170,-30", "zoom": 2}).json()
     assert wrap["total"] == 2
@@ -289,3 +289,35 @@ def test_indexed_fixture_locations_reach_the_map(tmp_path):
         assert data["total"] == 2
     finally:
         conn.close()
+
+
+def test_pin_opens_exactly_its_own_photos_even_when_cut_by_the_viewport(env):
+    _, client, ids, login, _ = env
+    login("alice", "L1")
+    url = f"/api/libraries/{ids['L1']}"
+    # Neighbouring points within one zoom-9 cell would overlap rectangles; a
+    # viewport whose edge cuts through Paris must still count all of it.
+    for viewport in ("2.3,48,2.5,49", "-180,-85,180,85", "2.352,48.8,2.353,48.9"):
+        data = client.get(f"{url}/map", params={"bbox": viewport, "zoom": 9}).json()
+        assert data["clusters"]
+        for c in data["clusters"]:
+            b = c["bounds"]
+            place = f"{b['west']},{b['south']},{b['east']},{b['north']}"
+            listed = client.get(f"{url}/assets", params={"place": place}).json()
+            assert len(listed["items"]) == c["count"]
+
+
+def test_cluster_count_is_capped_keeping_the_largest(env, monkeypatch):
+    _, client, ids, login, _ = env
+    login("alice", "L1")
+    monkeypatch.setattr(library_map, "MAX_CLUSTERS", 1)
+    data = client.get(f"/api/libraries/{ids['L1']}/map", params={"zoom": 22}).json()
+    assert len(data["clusters"]) == 1 and data["truncated"] is True
+    low = client.get(f"/api/libraries/{ids['L1']}/map", params={"zoom": 2}).json()
+    assert [c["count"] for c in low["clusters"]] == [3] and low["truncated"] is True
+
+
+def test_location_index_exists(env):
+    conn = env[0]
+    cols = [r["name"] for r in conn.execute("PRAGMA index_info(idx_assets_location)")]
+    assert cols == ["library_id", "hidden", "latitude", "longitude"]

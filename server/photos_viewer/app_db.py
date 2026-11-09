@@ -413,6 +413,11 @@ _MIGRATIONS: list[list[str]] = [
         "CREATE INDEX idx_faces_asset_id ON faces(asset_id)",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 20 (P2.3): the map's cluster query scans one library's visible, located
+    # assets; this lets it do that from the index instead of the whole table.
+    [
+        "CREATE INDEX IF NOT EXISTS idx_assets_location ON assets(library_id, hidden, latitude, longitude)",
+    ],
 ]
 
 

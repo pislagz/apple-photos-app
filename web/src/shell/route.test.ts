@@ -85,3 +85,13 @@ describe("Albums routes (P2.1)", () => {
     expect(mobileRoutePath({ tab: "albums", folderId: "F-1" })).toBe("/albums/folder/F-1");
   });
 });
+
+describe("malformed percent escapes", () => {
+  it("do not throw; the path just matches nothing", () => {
+    for (const path of ["/places/%E0", "/people/%E0", "/media/%E0", "/albums/%E0", "/albums/folder/%E0"]) {
+      expect(() => parseMobileRoute(path)).not.toThrow();
+      expect(parseMobileRoute(path)).toEqual({ tab: "library" });
+    }
+    expect(parsePhotoPath("/library/1/photo/%E0")).toBeNull();
+  });
+});

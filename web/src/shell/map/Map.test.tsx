@@ -5,6 +5,7 @@ import { jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
+import { clampBox } from "./MapView";
 import MiniMap from "./MiniMap";
 
 // jsdom has no WebGL, so MapLibre itself is replaced by a recorder. What is
@@ -213,10 +214,21 @@ describe("desktop Map", () => {
     });
     renderDesktop();
     fireEvent.click(screen.getByRole("button", { name: "Map" }));
-    expect(await screen.findByText(/Couldn't load the map\./)).toBeInTheDocument();
+    // A small banner, not the full overlay, and the map is not rebuilt.
+    expect(await screen.findByText(/Couldn't load photos for this area/)).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load the map\./)).not.toBeInTheDocument();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(markers.length).toBeGreaterThan(0));
+    expect(created).toHaveLength(1);
+    expect(created[0].removed).toBe(false);
+    expect(screen.queryByText(/Couldn't load photos for this area/)).not.toBeInTheDocument();
+  });
+
+  it("clampBox keeps the viewport inside the API's valid ranges", () => {
+    expect(clampBox(-180.0001, -90.5, 179.9, 91)).toEqual({ west: -180, south: -90, east: 179.9, north: 90 });
+    expect(clampBox(-200, 0, 200, 10)).toBeNull();
+    expect(clampBox(2, 3, 4, 5)).toEqual({ west: 2, south: 3, east: 4, north: 5 });
   });
 });
 

@@ -17,6 +17,8 @@ dependencies = [
     # this server actually accepts.
     "osxphotos==0.77.2",
     "fastapi",
+    # FileResponse answers Range requests (the PMTiles route) from 0.39.
+    "starlette>=0.39",
     "uvicorn",
     "argon2-cffi",
     # Media backend (P1.7): the cross-platform fallback decoder, used on
