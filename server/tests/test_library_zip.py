@@ -65,7 +65,7 @@ def test_zip_streams_valid_archive_with_unique_names_and_identical_bytes(tmp_pat
         archive = zipfile.ZipFile(io.BytesIO(response.content))
         assert archive.testzip() is None
         names = archive.namelist()
-        assert len(names) == 3 and len(set(n.lower() for n in names)) == 3
+        assert len(names) == 3 and len({n.lower() for n in names}) == 3
         assert names[:2] == ["IMG_0001.JPG", "IMG_0001 (2).JPG"]
         assert [archive.read(n) for n in names] == [files["a"], files["b"], files["c"]]
         assert all(i.compress_type == zipfile.ZIP_STORED for i in archive.infolist())

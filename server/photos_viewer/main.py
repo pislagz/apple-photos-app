@@ -24,11 +24,11 @@ from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
 from .library_albums import router as library_albums_router
 from .library_assets import router as library_assets_router
-from .library_zip import router as library_zip_router
 from .library_map import router as library_map_router
 from .library_people import router as library_people_router
 from .library_search import router as library_search_router
 from .library_watch import LibraryChecker
+from .library_zip import router as library_zip_router
 from .session_auth import (
     get_data_dir,
     validate_public_origins_env,

@@ -2509,3 +2509,21 @@ body {
     background: rgba(118, 118, 128, 0.24);
   }
 }
+
+.zip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.zip-status__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.zip-status progress {
+  width: 120px;
+}
+.zip-status__error {
+  color: #d70015;
+}
