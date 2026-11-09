@@ -317,6 +317,72 @@ def test_get_or_generate_evicts_the_older_entry_when_over_the_cache_size_limit(t
     assert not first_cached.exists()
 
 
+def _write_entry(cache_dir, uuid, size):
+    media._write_cache(cache_dir, 1, uuid, "key", "jpg", b"x" * size)
+    return media._cache_file(cache_dir, 1, uuid, "key", "jpg")
+
+
+def test_cache_writes_under_the_limit_scan_the_directory_once(tmp_path, monkeypatch):
+    """#67: the running total is kept in memory, so only the first write per
+    process (and a limit crossing) pays for an O(n) scan."""
+    cache_dir = tmp_path / "cache"
+    scans = []
+    real_scan = media._scan_cache
+    monkeypatch.setattr(media, "_scan_cache", lambda d: scans.append(d) or real_scan(d))
+
+    for i in range(5):
+        media._note_cache_write(cache_dir, 10_000, _write_entry(cache_dir, f"asset{i}", 100))
+
+    assert len(scans) == 1
+
+
+def test_cache_eviction_runs_in_batches_down_to_the_low_water_mark(tmp_path):
+    cache_dir = tmp_path / "cache"
+    paths = []
+    for i in range(10):
+        path = _write_entry(cache_dir, f"asset{i:02d}", 100)
+        os.utime(path, ns=(1_000_000_000 * (i + 1),) * 2)
+        paths.append(path)
+        media._note_cache_write(cache_dir, 1000, path)
+    assert all(path.exists() for path in paths)
+
+    newest = _write_entry(cache_dir, "asset10", 100)
+    media._note_cache_write(cache_dir, 1000, newest)
+
+    remaining = [path for path in paths + [newest] if path.exists()]
+    assert sum(path.stat().st_size for path in remaining) <= 900
+    assert newest.exists()
+    assert not paths[0].exists()
+
+
+def test_cache_read_refreshes_mtime_so_a_viewed_entry_outlives_an_unviewed_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    cache_dir = tmp_path / "cache"
+    sources = {}
+    for name in ("viewed", "unviewed", "new"):
+        sources[name] = tmp_path / f"{name}.jpg"
+        Image.new("RGB", (800, 600), color=(len(name), 1, 1)).save(sources[name], format="JPEG")
+    for name in ("viewed", "unviewed"):
+        media.get_or_generate(cache_dir, library_id=1, asset_uuid=name, size="grid", source_path=sources[name])
+    cached = {name: next(media.asset_cache_dir(cache_dir, 1, name).iterdir()) for name in ("viewed", "unviewed")}
+    os.utime(cached["viewed"], ns=(1_000_000_000, 1_000_000_000))
+    os.utime(cached["unviewed"], ns=(2_000_000_000, 2_000_000_000))
+
+    media.get_or_generate(cache_dir, library_id=1, asset_uuid="viewed", size="grid", source_path=sources["viewed"])
+    entry = cached["viewed"].stat().st_size
+    media.get_or_generate(
+        cache_dir,
+        library_id=1,
+        asset_uuid="new",
+        size="grid",
+        source_path=sources["new"],
+        cache_size_limit_bytes=entry * 2 + entry // 2,
+    )
+
+    assert cached["viewed"].exists()
+    assert not cached["unviewed"].exists()
+
+
 def test_generating_images_never_writes_inside_the_photoslibrary(tmp_path, monkeypatch):
     monkeypatch.setattr(media.shutil, "which", lambda _name: None)
     package_path = build_closed_fixture_library(tmp_path)
