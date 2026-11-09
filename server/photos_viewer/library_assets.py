@@ -126,7 +126,7 @@ class LayoutOverrideRequest(BaseModel):
     layout_override: Literal["desktop", "mobile"] | None
 
 
-@router.put("/api/me/layout-override", status_code=204, dependencies=[Depends(session_auth._reject_cross_site_requests)])
+@router.put("/api/me/layout-override", status_code=204, dependencies=[Depends(session_auth.reject_cross_site_requests)])
 def write_layout_override(
     payload: LayoutOverrideRequest,
     session: sqlite3.Row = Depends(session_auth.require_session),

@@ -375,7 +375,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
     "/api/admin/libraries",
     response_model=LibraryResponse,
     status_code=201,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def add_library(
     payload: LibraryAddRequest,
@@ -423,7 +423,7 @@ def list_libraries(
 @router.patch(
     "/api/admin/libraries/{library_id}",
     response_model=LibraryResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def rename_library(
     library_id: int,
@@ -440,7 +440,7 @@ def rename_library(
 @router.delete(
     "/api/admin/libraries/{library_id}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def remove_library(
     library_id: int,
@@ -473,7 +473,7 @@ def library_status(
 @router.post(
     "/api/admin/libraries/{library_id}/reindex",
     response_model=LibraryStatusResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def reindex_library(
     library_id: int,
@@ -590,7 +590,7 @@ def _preview_replace(db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib
 @router.post(
     "/api/admin/libraries/{library_id}/replace",
     response_model=ReplacePreview,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def replace_library(
     library_id: int,

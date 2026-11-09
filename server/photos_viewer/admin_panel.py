@@ -97,7 +97,7 @@ def _would_leave_no_enabled_admin(
     "/api/admin/users",
     response_model=UserResponse,
     status_code=201,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def create_user(
     payload: UserCreateRequest,
@@ -128,7 +128,7 @@ def list_users(
 @router.patch(
     "/api/admin/users/{username}",
     response_model=UserResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def update_user(
     username: str,
@@ -169,7 +169,7 @@ def update_user(
 @router.delete(
     "/api/admin/users/{username}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def delete_user(
     username: str,
@@ -241,7 +241,7 @@ def _get_open_invite_or_404(db: sqlite3.Connection, code: str) -> sqlite3.Row:
     "/api/admin/invites",
     response_model=InviteCreateResponse,
     status_code=201,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def create_invite(
     payload: InviteCreateRequest,
@@ -291,7 +291,7 @@ def read_invite(code: str, db: sqlite3.Connection = Depends(session_auth.get_db)
 @router.post(
     "/api/invites/{code}/accept",
     response_model=InviteAcceptResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests), Depends(session_auth._enforce_tailnet_allowlist)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests), Depends(session_auth._enforce_tailnet_allowlist)],
 )
 def accept_invite(
     code: str,
@@ -374,7 +374,7 @@ def read_access_matrix(
 @router.put(
     "/api/admin/users/{user_id}/libraries/{library_id}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def assign_library(
     user_id: int,
@@ -392,7 +392,7 @@ def assign_library(
 @router.delete(
     "/api/admin/users/{user_id}/libraries/{library_id}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def unassign_library(
     user_id: int,
@@ -448,7 +448,7 @@ def list_sessions(
 @router.delete(
     "/api/admin/sessions/{session_id}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def revoke_session(
     session_id: str,
@@ -696,7 +696,7 @@ def read_settings(
 @router.put(
     "/api/admin/settings",
     response_model=SettingsResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def write_settings(
     payload: SettingsUpdateRequest,

@@ -100,7 +100,7 @@ Not blocking; pick up when convenient.
 - P1.5 (PR #29 review): resolve library paths (`Path.resolve()`) before the duplicate check in `library_admin.py`, so `.../x/../Lib.photoslibrary` can't register the same library twice.
 - P1.5: `_total_size_bytes` walks the whole package on every `GET .../status`; cache it or take it from the P1.6 index.
 - P1.5: a folder named `X.photoslibrary` that isn't a real library gets the probe's raw "could not open ... as a Photos library: <exception>" message; give it a friendlier one.
-- P1.5: `library_admin.py` imports the private `session_auth._reject_cross_site_requests`; make it public.
+- P1.5: `library_admin.py` imports the private `session_auth.reject_cross_site_requests`; make it public.
 - P1.5: fixture `.photoslibrary` temp dirs are left behind in `/tmp` after tests or live runs; clean them up.
 - P1.5 (PR #31 review): `library_is_locked` uses `immutable=1`, which skips SQLite locking, so it can't detect most real locks Photos.app holds; the "Photos.app has it open" warning is best-effort only. Revisit if it matters.
 - P1.5: `DELETE /api/admin/libraries/{id}` returns 415 unless the request sends a JSON content-type, even with no body; the CSRF guard should allow body-less requests.

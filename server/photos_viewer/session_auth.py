@@ -653,7 +653,7 @@ def _public_origins_from_env() -> set[_Origin] | None:
     `tailscale serve` exposes), comma-separated. Unset by default, since a
     bare-metal or Docker install with no reverse proxy needs nothing extra.
 
-    Parsed once and cached: this is called from `_reject_cross_site_requests`
+    Parsed once and cached: this is called from `reject_cross_site_requests`
     on every state-changing request, and re-parsing (and re-warning about
     the same invalid entry) on each one would be both wasted work and log
     spam. `validate_public_origins_env`, called once at app startup,
@@ -696,7 +696,7 @@ def validate_public_origins_env() -> None:
     _public_origins_from_env()  # parse (and warn about any invalid entries) now, at startup
 
 
-def _reject_cross_site_requests(request: Request) -> None:
+def reject_cross_site_requests(request: Request) -> None:
     """CSRF defense for every state-changing (POST) route, including logout.
 
     A browser form (the classic CSRF vector) cannot set an arbitrary
@@ -1007,7 +1007,7 @@ def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusRespons
     "/api/setup/admin",
     status_code=201,
     response_model=AuthUserResponse,
-    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
+    dependencies=[Depends(reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
 )
 def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     """Create the single admin account. Disables itself the moment any user
@@ -1039,7 +1039,7 @@ def setup_admin(payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get
 @router.post(
     "/api/auth/login",
     response_model=AuthUserResponse,
-    dependencies=[Depends(_reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
+    dependencies=[Depends(reject_cross_site_requests), Depends(_enforce_tailnet_allowlist)],
 )
 def login(payload: LoginRequest, request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> AuthUserResponse:
     _prune_old_login_failures(db)
@@ -1100,7 +1100,7 @@ class ReconfirmPasswordRequest(BaseModel):
 @router.post(
     "/api/auth/reconfirm-password",
     status_code=204,
-    dependencies=[Depends(_reject_cross_site_requests)],
+    dependencies=[Depends(reject_cross_site_requests)],
 )
 def reconfirm_password(
     payload: ReconfirmPasswordRequest,
@@ -1131,7 +1131,7 @@ def reconfirm_password(
     return Response(status_code=204)
 
 
-@router.post("/api/auth/lock-hidden", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
+@router.post("/api/auth/lock-hidden", status_code=204, dependencies=[Depends(reject_cross_site_requests)])
 def lock_hidden(
     session: sqlite3.Row = Depends(require_session), db: sqlite3.Connection = Depends(get_db)
 ) -> Response:
@@ -1166,7 +1166,7 @@ def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> Non
         db.commit()
 
 
-@router.post("/api/auth/logout", status_code=204, dependencies=[Depends(_reject_cross_site_requests)])
+@router.post("/api/auth/logout", status_code=204, dependencies=[Depends(reject_cross_site_requests)])
 def logout(request: Request, response: Response, db: sqlite3.Connection = Depends(get_db)) -> Response:
     raw_token = request.cookies.get(COOKIE_NAME)
     if raw_token:
@@ -1197,7 +1197,7 @@ class UnlockResponse(BaseModel):
 @router.post(
     "/api/admin/users/{username}/unlock",
     response_model=UnlockResponse,
-    dependencies=[Depends(_reject_cross_site_requests)],
+    dependencies=[Depends(reject_cross_site_requests)],
 )
 def unlock_user(
     username: str,
@@ -1243,7 +1243,7 @@ def read_tailnet_allowlist(
 @router.put(
     "/api/admin/settings/tailnet-allowlist",
     response_model=TailnetAllowlistResponse,
-    dependencies=[Depends(_reject_cross_site_requests)],
+    dependencies=[Depends(reject_cross_site_requests)],
 )
 def write_tailnet_allowlist(
     payload: TailnetAllowlistRequest,
