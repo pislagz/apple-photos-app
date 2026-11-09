@@ -42,8 +42,8 @@ const cells = (page: Page) => page.locator('[data-testid="library-cell"], .mobil
 async function openZoom(page: Page, label: string) {
   // Desktop has no Days segment: Days is its own sidebar section (#127).
   if (label === "Days" && (await page.locator("aside.sidebar").count()) > 0) {
-    await page.locator("aside.sidebar").getByRole("button", { name: "Days" }).click();
-    await expect(page.locator("aside.sidebar").getByRole("button", { name: "Days" })).toHaveAttribute(
+    await page.locator("aside.sidebar").getByRole("button", { name: "Days", exact: true }).click();
+    await expect(page.locator("aside.sidebar").getByRole("button", { name: "Days", exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );
