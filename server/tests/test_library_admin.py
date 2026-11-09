@@ -8,7 +8,14 @@ import sqlite3
 from fastapi import BackgroundTasks
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, indexer, libraries, library_admin, session_auth
+from photos_viewer import (
+    app_db,
+    indexer,
+    libraries,
+    library_admin,
+    library_watch,
+    session_auth,
+)
 from photos_viewer.main import create_app
 from tests.fixtures import build_closed_fixture_library, build_fixture_library
 
@@ -39,6 +46,17 @@ def _full_snapshot(package_path: pathlib.Path) -> dict:
         else:
             snapshot[rel] = ("file", stat.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest())
     return snapshot
+
+
+def _add_asset_file_and_drive_checker(conn, package_path, library_id, filename):
+    """Give a WAL-inserted asset a file (the readiness sample needs one), then
+    run the background checker by hand with a zero stability window until the
+    changed package is applied."""
+    (package_path / "originals" / "0").mkdir(exist_ok=True)
+    shutil.copy(next(package_path.joinpath("originals").rglob("IMG_0001.HEIC")), package_path / "originals" / "0" / filename)
+    app_db.set_setting(conn, "library_stable_minutes", "0")
+    outcomes = [library_watch.check_library(conn, library_id) for _ in range(3)]
+    assert "applied" in outcomes
 
 
 def _client(tmp_path):
@@ -557,7 +575,17 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
         finally:
             wal_conn.close()
 
+        # P1.22: the status poll only notices the change (pending); the
+        # checker applies it after the fingerprint holds still.
         assert response.status_code == 200
+        assert response.json()["updating"] is True
+        # The new row's file has to exist or the readiness sample rejects it.
+        originals = next(package_path.joinpath("originals").rglob("*.HEIC"))
+        (package_path / "originals" / "0").mkdir(exist_ok=True)
+        shutil.copy(originals, package_path / "originals" / "0" / "IMG_0002.HEIC")
+        app_db.set_setting(conn, "library_stable_minutes", "0")
+        outcomes = [library_watch.check_library(conn, added["id"]) for _ in range(3)]
+        assert outcomes[-1] == "ok" and "applied" in outcomes
         asset_count_after = conn.execute(
             "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
         ).fetchone()[0]
@@ -617,7 +645,8 @@ def test_hidden_flag_is_indexed_but_excluded_from_the_status_asset_count(tmp_pat
             wal_conn.close()
 
         assert response.status_code == 200
-        assert response.json()["asset_count"] == 1
+        _add_asset_file_and_drive_checker(conn, package_path, added["id"], "IMG_0002.HEIC")
+        assert client.get(f"/api/admin/libraries/{added['id']}/status").json()["asset_count"] == 1
 
         rows = conn.execute(
             "SELECT uuid, hidden FROM assets WHERE library_id = ? ORDER BY uuid", (added["id"],)

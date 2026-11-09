@@ -31,6 +31,9 @@ export interface LibraryStatusResponse {
   last_indexed_at: string | null;
   prewarm_progress: number | null;
   warnings: LibraryWarning[];
+  updating?: boolean;
+  updating_reason?: string | null;
+  last_update?: { summary: string } | null;
 }
 
 export function listLibraries(): Promise<LibraryResponse[]> {

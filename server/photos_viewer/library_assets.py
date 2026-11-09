@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import app_db, media, session_auth
+from . import app_db, library_watch, media, session_auth
 
 router = APIRouter()
 
@@ -62,6 +62,12 @@ def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
 class LibrarySummary(BaseModel):
     id: int
     display_name: str
+    # P1.22: "Being updated" -- the library's package is missing, still
+    # copying, or not valid yet; its photo routes answer 503 meanwhile.
+    updating: bool = False
+    updating_reason: str | None = None
+    # "Library updated" note: set for a few days after an applied update.
+    updated_note: str | None = None
 
 
 class MeResponse(BaseModel):
@@ -71,13 +77,39 @@ class MeResponse(BaseModel):
     layout_override: Literal["desktop", "mobile"] | None
 
 
+UPDATED_NOTE_DAYS = 3
+
+
+def _library_summary(db: sqlite3.Connection, row: sqlite3.Row) -> LibrarySummary:
+    updating, reason = library_watch.availability(row)
+    note = None
+    if not updating and library_watch.show_updated_note(db):
+        # The library's first run (its registration) is not an "update".
+        run = db.execute(
+            "SELECT added, finished_at FROM library_index_runs WHERE library_id = ? AND outcome = 'applied' "
+            "AND id > (SELECT MIN(id) FROM library_index_runs WHERE library_id = ?) ORDER BY id DESC LIMIT 1",
+            (row["id"], row["id"]),
+        ).fetchone()
+        # Only an update that brought in new photos is worth a note, and only
+        # for a few days.
+        if run and run["added"] and library_watch.within_days(run["finished_at"], UPDATED_NOTE_DAYS):
+            note = f"{row['display_name']}'s library was updated: {run['added']:,} new photos"
+    return LibrarySummary(
+        id=row["id"],
+        display_name=row["display_name"],
+        updating=updating,
+        updating_reason=reason,
+        updated_note=note,
+    )
+
+
 @router.get("/api/me", response_model=MeResponse)
 def read_me(
     session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> MeResponse:
     rows = db.execute(
-        "SELECT libraries.id, libraries.display_name FROM libraries "
+        "SELECT libraries.* FROM libraries "
         "JOIN library_assignments ON library_assignments.library_id = libraries.id "
         "WHERE library_assignments.user_id = ? ORDER BY libraries.display_name",
         (session["user_id"],),
@@ -85,7 +117,7 @@ def read_me(
     return MeResponse(
         username=session["username"],
         role=session["role"],
-        libraries=[LibrarySummary(id=row["id"], display_name=row["display_name"]) for row in rows],
+        libraries=[_library_summary(db, row) for row in rows],
         layout_override=session["layout_override"],
     )
 

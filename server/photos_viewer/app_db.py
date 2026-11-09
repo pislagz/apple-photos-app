@@ -322,6 +322,38 @@ _MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE sessions ADD COLUMN hidden_unlocked_until TEXT",
     ],
+    # 16 (P1.22): library replacement. `pending_*` is a changed copy waiting
+    # out the stability window or failing readiness; `missing_since` is a
+    # package that disappeared. Neither ever deletes index rows -- users just
+    # see "Being updated" until a valid copy is applied. `store_uuid` is the
+    # Core Data store UUID (`Z_METADATA.Z_UUID`) at the last index.
+    [
+        "ALTER TABLE libraries ADD COLUMN pending_signature TEXT",
+        "ALTER TABLE libraries ADD COLUMN pending_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN pending_reason TEXT",
+        "ALTER TABLE libraries ADD COLUMN missing_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN store_uuid TEXT",
+        """
+        CREATE TABLE library_index_runs (
+            id INTEGER PRIMARY KEY,
+            library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+            trigger TEXT NOT NULL CHECK (trigger IN ('auto', 'admin', 'replace')),
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'failed', 'not_ready', 'unchanged')),
+            signature TEXT,
+            store_uuid TEXT,
+            asset_count INTEGER,
+            added INTEGER,
+            removed INTEGER,
+            changed INTEGER,
+            hidden_changed INTEGER,
+            originals_missing INTEGER,
+            error TEXT
+        )
+        """,
+        "CREATE INDEX idx_library_index_runs_library ON library_index_runs(library_id, id)",
+    ],
 ]
 
 

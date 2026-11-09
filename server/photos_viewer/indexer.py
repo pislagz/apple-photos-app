@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import pathlib
 import sqlite3
 
@@ -106,12 +107,34 @@ def sqlite_signature(package_path: str | pathlib.Path) -> str:
     )
 
 
+def read_store_uuid(sqlite_path: pathlib.Path) -> str | None:
+    """`Z_METADATA.Z_UUID`, the Core Data store UUID. A plain read on the
+    temp copy (never the package); `None` when the column is absent."""
+    try:
+        conn = sqlite3.connect(f"{sqlite_path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute("SELECT Z_UUID FROM Z_METADATA LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+    return row[0] if row and row[0] else None
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def index_library(
     db: sqlite3.Connection,
     library_id: int,
     package_path: str | pathlib.Path,
     *,
     force: bool = False,
+    trigger: str = "admin",
+    opened: libraries.OpenLibrary | None = None,
 ) -> bool:
     """Replace `library_id`'s rows in `app.db` with a fresh osxphotos walk
     of `package_path`.
@@ -119,23 +142,34 @@ def index_library(
     Returns `False` without opening the library at all when its sqlite
     signature matches the last successful index and `force` is not set --
     the idempotency P1.6 requires. Returns `True` after a completed
-    (re-)index, whether or not it changed any row.
+    (re-)index, whether or not it changed any row. A caller that already
+    opened the library for readiness checks passes it as `opened`; this
+    function closes it either way.
     """
     row = db.execute("SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)).fetchone()
     signature = sqlite_signature(package_path)
     if not force and row is not None and row["last_indexed_signature"] == signature:
+        if opened is not None:
+            opened.close()
         return False
 
-    opened = libraries.open_library_readonly(package_path)
+    started_at = _now_iso()
+    if opened is None:
+        opened = libraries.open_library_readonly(package_path)
     try:
-        _write_index_and_update_signature(db, library_id, opened.db, signature)
+        _write_index_and_update_signature(db, library_id, opened, signature, trigger, started_at)
     finally:
         opened.close()
     return True
 
 
 def _write_index_and_update_signature(
-    db: sqlite3.Connection, library_id: int, photosdb, signature: str
+    db: sqlite3.Connection,
+    library_id: int,
+    opened: libraries.OpenLibrary,
+    signature: str,
+    trigger: str,
+    started_at: str,
 ) -> None:
     # `add_library` may already have an implicit transaction open (its own
     # `INSERT INTO libraries`, not yet committed) by the time it calls here,
@@ -146,10 +180,35 @@ def _write_index_and_update_signature(
     if own_transaction:
         db.execute("BEGIN IMMEDIATE")
     try:
-        _write_index(db, library_id, photosdb)
+        counts = _write_index(db, library_id, opened.db)
+        store_uuid = read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
+        asset_count = db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0]
+        # Applying a valid copy also ends any "Being updated" state, in the
+        # same commit as the new index.
         db.execute(
-            "UPDATE libraries SET last_indexed_signature = ?, last_indexed_at = datetime('now') WHERE id = ?",
-            (signature, library_id),
+            "UPDATE libraries SET last_indexed_signature = ?, last_indexed_at = datetime('now'), "
+            "store_uuid = ?, pending_signature = NULL, pending_since = NULL, pending_reason = NULL, "
+            "missing_since = NULL WHERE id = ?",
+            (signature, store_uuid, library_id),
+        )
+        db.execute(
+            "INSERT INTO library_index_runs (library_id, trigger, started_at, finished_at, outcome, signature, "
+            "store_uuid, asset_count, added, removed, changed, hidden_changed, originals_missing) "
+            "VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                library_id,
+                trigger,
+                started_at,
+                _now_iso(),
+                signature,
+                store_uuid,
+                asset_count,
+                counts["added"],
+                counts["removed"],
+                counts["changed"],
+                counts["hidden_changed"],
+                counts["originals_missing"],
+            ),
         )
     except BaseException:
         db.rollback()
@@ -166,7 +225,7 @@ _UPSERT_ASSET_SQL = (
 )
 
 
-def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
+def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str, int]:
     # People/albums have no stability requirement of their own (nothing
     # outside this module keeps a foreign key to them across index runs),
     # so a clean replace -- cascading to `asset_people`/`asset_albums` via
@@ -198,6 +257,14 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
     # of the uuids seen this walk lets the final cleanup delete only the
     # assets actually gone from the library, in one statement, without
     # building a giant `NOT IN (...)` parameter list.
+    old_rows = {
+        row["uuid"]: (row["path_edited"], row["date_modified"], row["original_filesize"], row["hidden"])
+        for row in db.execute(
+            "SELECT uuid, path_edited, date_modified, original_filesize, hidden FROM assets WHERE library_id = ?",
+            (library_id,),
+        )
+    }
+    counts = {"added": 0, "removed": 0, "changed": 0, "hidden_changed": 0, "originals_missing": 0}
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
         for photo in photosdb.photos():
@@ -207,6 +274,19 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
             latitude, longitude = photo.location
             derivatives = photo.path_derivatives
             exif_info = photo.exif_info
+            date_modified = _to_utc_isoformat(photo.date_modified)
+            old = old_rows.get(photo.uuid)
+            if old is None:
+                counts["added"] += 1
+            else:
+                if old[:3] != (photo.path_edited, date_modified, photo.original_filesize):
+                    counts["changed"] += 1
+                if old[3] != int(photo.hidden):
+                    counts["hidden_changed"] += 1
+            # Optimize Mac Storage: no full-size original on disk, but a
+            # derivative to fall back to.
+            if derivatives and not (photo.path and os.path.exists(photo.path)):
+                counts["originals_missing"] += 1
             db.execute(
                 _UPSERT_ASSET_SQL,
                 (
@@ -219,7 +299,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
                     _to_utc_isoformat(photo.date),
                     _local_day(photo.date),
                     _to_utc_isoformat(photo.date_added),
-                    _to_utc_isoformat(photo.date_modified),
+                    date_modified,
                     int(photo.favorite),
                     int(photo.hidden),
                     int(photo.ismovie),
@@ -273,9 +353,11 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> None:
                         (asset_id, album_id),
                     )
 
-        db.execute(
+        removed = db.execute(
             "DELETE FROM assets WHERE library_id = ? AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
             (library_id,),
         )
+        counts["removed"] = removed.rowcount
     finally:
         db.execute("DROP TABLE _seen_asset_uuids")
+    return counts

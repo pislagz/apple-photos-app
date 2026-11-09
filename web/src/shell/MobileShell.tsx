@@ -6,6 +6,7 @@ import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
+import LibraryUpdating from "./LibraryUpdating";
 import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
 import MoreScreen from "./more/MoreScreen";
@@ -124,6 +125,7 @@ export default function MobileShell({
     );
   }
 
+  const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
   return (
     <div className="shell shell--mobile">
       <header className="shell__header">
@@ -140,7 +142,9 @@ export default function MobileShell({
         {/* Stays mounted across tab switches so the grid's segment and scroll
             position survive Library -> More -> Library, like iOS Photos. */}
         <div style={{ height: "100%", display: route.tab === "library" ? "block" : "none" }}>
-          {activeLibraryId !== undefined ? (
+          {activeLibrary?.updating ? (
+            <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
+          ) : activeLibraryId !== undefined ? (
             <MobileLibrary
               key={activeLibraryId}
               libraryId={activeLibraryId}

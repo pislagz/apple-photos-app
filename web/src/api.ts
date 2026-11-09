@@ -52,6 +52,10 @@ export type Role = "admin" | "user";
 export interface LibrarySummary {
   id: number;
   display_name: string;
+  // P1.22: the package is missing, still copying, or not valid yet.
+  updating?: boolean;
+  updating_reason?: string | null;
+  updated_note?: string | null;
 }
 
 export interface MeResponse {

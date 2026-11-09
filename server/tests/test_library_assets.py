@@ -89,7 +89,9 @@ def test_me_lists_only_assigned_libraries(tmp_path):
         body = response.json()
         assert body["username"] == "alice"
         assert body["role"] == "user"
-        assert body["libraries"] == [{"id": assigned, "display_name": "L1"}]
+        assert body["libraries"] == [
+            {"id": assigned, "display_name": "L1", "updating": False, "updating_reason": None, "updated_note": None}
+        ]
     finally:
         conn.close()
 

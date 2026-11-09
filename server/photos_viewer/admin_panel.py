@@ -17,7 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
-from . import app_db, library_admin, media, session_auth
+from . import app_db, library_admin, library_watch, media, session_auth
 
 router = APIRouter()
 
@@ -628,6 +628,9 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "zip_size_limit_bytes": 2 * 1024**3,
     "map_tiles_mode": "online",
     "map_tiles_pmtiles_path": None,
+    "library_check_interval_minutes": library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
+    "library_stable_minutes": library_watch.DEFAULT_STABLE_MINUTES,
+    "show_library_updated_note": library_watch.DEFAULT_SHOW_UPDATED_NOTE,
 }
 
 
@@ -643,6 +646,9 @@ class SettingsResponse(BaseModel):
     zip_size_limit_bytes: int
     map_tiles_mode: Literal["online", "local_file", "off"]
     map_tiles_pmtiles_path: str | None
+    library_check_interval_minutes: int
+    library_stable_minutes: int
+    show_library_updated_note: bool
 
 
 class SettingsUpdateRequest(BaseModel):
@@ -657,6 +663,10 @@ class SettingsUpdateRequest(BaseModel):
     zip_size_limit_bytes: int = Field(ge=1)
     map_tiles_mode: Literal["online", "local_file", "off"] = "online"
     map_tiles_pmtiles_path: str | None = None
+    # 0 turns the background checker off.
+    library_check_interval_minutes: int = Field(default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES, ge=0)
+    library_stable_minutes: int = Field(default=library_watch.DEFAULT_STABLE_MINUTES, ge=0)
+    show_library_updated_note: bool = True
 
 
 def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
@@ -669,6 +679,8 @@ def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
             values[key] = stored
         elif key == "map_tiles_pmtiles_path":
             values[key] = stored or None
+        elif key == "show_library_updated_note":
+            values[key] = stored in ("1", "True", "true")
         else:
             values[key] = int(stored)
     return SettingsResponse(**values)
@@ -692,6 +704,8 @@ def write_settings(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SettingsResponse:
     for key, value in payload.model_dump().items():
+        if isinstance(value, bool):
+            value = int(value)
         app_db.set_setting(db, key, "" if value is None else str(value))
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
     return _read_settings(db)

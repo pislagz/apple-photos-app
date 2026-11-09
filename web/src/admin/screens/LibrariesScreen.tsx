@@ -116,6 +116,8 @@ export default function LibrariesScreen() {
                       <li>{status.asset_count ?? "?"} assets</li>
                       <li>{status.video_count ?? "?"} videos</li>
                       <li>{status.last_indexed_at ?? "never indexed"}</li>
+                      {status.last_update && <li>{status.last_update.summary}</li>}
+                      {status.updating && <li>Being updated: {status.updating_reason}</li>}
                       {status.warnings.map((warning) => (
                         <li key={warning.code} role="alert">
                           {warning.message}
