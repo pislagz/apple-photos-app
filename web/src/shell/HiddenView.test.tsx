@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findThumb, getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
@@ -6,6 +6,10 @@ import { HiddenSession } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 
 afterEach(() => vi.unstubAllGlobals());
+
+// HiddenSession defers its lock with setTimeout(0). Timers with equal delay
+// fire in order, so a later setTimeout(0) runs after it: no wall-clock sleep.
+const afterDeferredLock = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const LOCKED = { detail: { code: "hidden_locked", message: "password required to open Hidden" } };
 
@@ -119,7 +123,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
     expect(await findThumb("a1")).toBeInTheDocument();
   });
 
-  it("locked again between unlock and the reload shows the prompt again, not an error", async () => {
+  it("unlocking a locked Hidden reloads the list once more and shows no error", async () => {
     const server = sessionServer();
     server.lockFromOtherTab();
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
@@ -128,6 +132,28 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
     expect(await findThumb("a1")).toBeInTheDocument();
     expect(server.listCalls()).toBe(2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("locked again between unlock and the reload shows the prompt again, not an error", async () => {
+    let listCalls = 0;
+    mockFetch((url) => {
+      if (url === "/api/auth/reconfirm-password") return noContentResponse();
+      listCalls += 1;
+      // The unlock succeeds, but the other tab locks again before the reload.
+      if (listCalls <= 2) return jsonResponse(LOCKED, 403);
+      return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    await unlock();
+    // The first prompt unmounts when the reload starts; wait for the second
+    // list request so the next findByText can only match the new prompt.
+    await waitFor(() => expect(listCalls).toBe(2));
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await unlock();
+    expect(await findThumb("a1")).toBeInTheDocument();
+    expect(listCalls).toBe(3);
   });
 
   it("a list that was open and unlocked, remounted after the other tab locked, prompts", async () => {
@@ -150,7 +176,7 @@ describe("HiddenSession lock-on-leave", () => {
   // test installs its own fetch mock.
   afterEach(async () => {
     cleanup();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await afterDeferredLock();
   });
 
   function hiddenServer(startLocked: boolean) {
@@ -188,7 +214,7 @@ describe("HiddenSession lock-on-leave", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
     expect(await findThumb("a1")).toBeInTheDocument();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await afterDeferredLock();
     expect(calls).not.toContain("/api/auth/lock-hidden");
   });
 
@@ -201,7 +227,7 @@ describe("HiddenSession lock-on-leave", () => {
         </HiddenSession>
       </StrictMode>,
     );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await afterDeferredLock();
     expect(calls).not.toContain("/api/auth/lock-hidden");
     unmount();
     await waitFor(() => expect(calls).toContain("/api/auth/lock-hidden"));
@@ -227,7 +253,13 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
       },
     );
   }
-  function scrollToEnd() {
+  // Scrolling is ignored while a page request is still marked in flight, and
+  // that flag clears one microtask after the thumbnails render. Flush first, or
+  // a slow run scrolls too early and nothing ever loads (the #170 flake).
+  async function scrollToEnd() {
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
     observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
   }
 
@@ -256,7 +288,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     await findThumb("a1");
-    scrollToEnd();
+    await scrollToEnd();
     expect(await findThumb("a3")).toBeInTheDocument();
     expect(getThumb("a1")).toBeInTheDocument();
     expect(urls.some((url) => url.includes("cursor=c1"))).toBe(true);
@@ -279,7 +311,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     await findThumb("a1");
-    scrollToEnd();
+    await scrollToEnd();
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     expect(queryThumb("a1")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
@@ -304,7 +336,12 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     const fetchMock = mockFetch((url) => (url.startsWith("/api/libraries/1/hidden") ? page2 : jsonResponse({}, 404)));
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     fireEvent.error(await findThumb("a3"));
+    // The probe is the second request. Await its response, then flush React,
+    // so "no prompt" is checked after the probe finished, not before.
     await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    await act(async () => {
+      await fetchMock.mock.results[1].value;
+    });
     expect(screen.queryByText("Hidden is locked")).not.toBeInTheDocument();
   });
 

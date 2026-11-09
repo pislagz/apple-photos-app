@@ -619,12 +619,16 @@ def test_prune_expired_sessions_is_throttled_to_about_once_a_minute(tmp_path, mo
         )
         conn.commit()
 
-        monkeypatch.setattr(session_auth, "_last_session_prune_at", time.monotonic())
+        # A fake clock: real time.monotonic() can be under 60 s on a freshly
+        # booted host, which made the "window elapsed" half flaky.
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(session_auth.time, "monotonic", lambda: clock["now"])
+        monkeypatch.setattr(session_auth, "_last_session_prune_at", clock["now"])
         session_auth._prune_expired_sessions(conn)
         (still_there,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
         assert still_there == 1
 
-        monkeypatch.setattr(session_auth, "_last_session_prune_at", 0.0)
+        clock["now"] += session_auth._SESSION_PRUNE_INTERVAL_SECONDS
         session_auth._prune_expired_sessions(conn)
         (pruned,) = conn.execute("SELECT COUNT(*) FROM sessions WHERE id = 'stale'").fetchone()
         assert pruned == 0

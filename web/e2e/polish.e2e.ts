@@ -1,7 +1,8 @@
 import { type Page, expect, test } from "@playwright/test";
 
 // P3.4 acceptance against the demo server (scripts/dev_demo.py): layout at
-// each project width, the desktop keyboard path, reduced motion, alt text.
+// each project width (desktop, iphone 390, small 320: every test runs in all
+// three except the desktop-only keyboard path), reduced motion, alt text.
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 const SHOTS = "e2e/screenshots";
 
@@ -138,4 +139,31 @@ test.describe("reduced motion", () => {
       expect(parseFloat(tab)).toBeLessThan(0.001);
     }
   });
+});
+
+// #178: the compact view switch is keyed to the Library container, not the
+// viewport. Narrow only the container (the window stays at its project width).
+test("compact view switch follows the container width, not the viewport", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "the segmented view switch is the phone layout");
+  await signIn(page);
+  const items = page.locator(".mobile-library__view-switch-item");
+  await expect(items).toHaveCount(4);
+  const fontSize = () => items.first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  const onOneLine = () =>
+    items.evaluateAll((els) => new Set(els.map((el) => Math.round(el.getBoundingClientRect().top))).size === 1);
+
+  // Force a wide container first so the baseline does not depend on the project.
+  const library = page.locator(".mobile-library");
+  await library.evaluate((el) => {
+    (el as HTMLElement).style.width = "390px";
+  });
+  const wide = await fontSize();
+  expect(wide).toBeGreaterThan(12);
+
+  await library.evaluate((el) => {
+    (el as HTMLElement).style.width = "300px";
+  });
+  await expect.poll(fontSize).toBe(12);
+  expect(await onOneLine()).toBe(true);
+  expect(await page.evaluate(() => window.innerWidth)).toBe(info.project.name === "small" ? 320 : 390);
 });

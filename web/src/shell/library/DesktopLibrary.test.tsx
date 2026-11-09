@@ -821,3 +821,24 @@ describe("DesktopLibrary Info panel errors (#98)", () => {
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
   });
 });
+
+describe("DesktopLibrary person grid text (#193)", () => {
+  it("says 'person', not 'album', when a person has no photos", async () => {
+    mockFetch((url) => {
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<DesktopLibrary libraryId={1} album="person:p1" fixedView="all" />);
+    expect(await screen.findByText("No photos of this person.")).toBeInTheDocument();
+    expect(screen.queryByText("No photos in this album.")).toBeNull();
+  });
+
+  it("says 'person', not 'album', when a person's photos fail to load", async () => {
+    mockFetch((url) => {
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return new Response("boom", { status: 500 });
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<DesktopLibrary libraryId={1} album="person:p1" fixedView="all" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this person's photos.");
+  });
+});

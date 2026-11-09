@@ -942,7 +942,7 @@ def _dependency_closure(dependant: object) -> set[object]:
     return seen
 
 
-def _leaf_routes(routes: object) -> list[object]:
+def leaf_routes(routes: object) -> list[object]:
     """Resolve FastAPI's lazy router-inclusion wrappers into the routes they
     stand for. Since FastAPI's `app.include_router(...)` stopped eagerly
     flattening included routes into `app.routes`, a route added through
@@ -954,7 +954,7 @@ def _leaf_routes(routes: object) -> list[object]:
     for route in routes:
         effective_candidates = getattr(route, "effective_candidates", None)
         if callable(effective_candidates):
-            leaves.extend(_leaf_routes(effective_candidates()))
+            leaves.extend(leaf_routes(effective_candidates()))
         else:
             leaves.append(route)
     return leaves
@@ -983,7 +983,7 @@ def unguarded_library_routes(app: FastAPI) -> list[str]:
     miss it entirely -- its first segment is `{library_id}x`, not
     `{library_id}`."""
     violations = []
-    for route in _leaf_routes(app.routes):
+    for route in leaf_routes(app.routes):
         path = getattr(route, "path", "")
         if not path.startswith(LIBRARY_ROUTE_PATH_PREFIX):
             continue
