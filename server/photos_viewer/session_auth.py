@@ -407,11 +407,13 @@ def revoke_session_by_public_id(conn: sqlite3.Connection, public_id: str) -> Non
     conn.commit()
 
 
-def revoke_sessions_for_user(conn: sqlite3.Connection, user_id: int) -> None:
+def revoke_sessions_for_user(conn: sqlite3.Connection, user_id: int, *, keep_session_id: str | None = None) -> None:
     """Revoke every session belonging to a user. Called whenever that
     user's password changes (an admin's reset, or their own change) -- a
-    stolen or shared cookie from before the change must not keep working."""
-    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    stolen or shared cookie from before the change must not keep working.
+    `keep_session_id` (a stored, hashed `sessions.id`) spares the session
+    that is making the change, so it is not signed out mid-action (#72)."""
+    conn.execute("DELETE FROM sessions WHERE user_id = ? AND id IS NOT ?", (user_id, keep_session_id))
     conn.commit()
 
 
