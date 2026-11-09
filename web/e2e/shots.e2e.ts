@@ -33,7 +33,7 @@ async function signIn(page: Page, who = USER) {
   await page.goto("/");
   await page.getByLabel("Username").fill(who.username);
   await page.getByLabel("Password").fill(who.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Username")).toHaveCount(0);
 }
 
