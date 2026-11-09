@@ -337,6 +337,10 @@ _cache_totals: dict[pathlib.Path, int] = {}
 # bounded by what the other workers write in one interval.
 _cache_scanned_at: dict[pathlib.Path, float] = {}
 _CACHE_RESCAN_SECONDS = 600.0
+# Near the limit (this process's own running total), rescan sooner so other
+# worker processes' writes cannot push the cache far past the limit.
+_CACHE_NEAR_LIMIT = 0.8
+_CACHE_NEAR_LIMIT_RESCAN_SECONDS = 30.0
 _cache_lock = threading.Lock()
 
 
@@ -394,9 +398,14 @@ def _note_cache_write(
     includes `written`); later writes are O(1) until the limit is crossed."""
     with _cache_lock:
         now = time.monotonic()
+        age = now - _cache_scanned_at.get(cache_dir, 0.0)
+        near_limit = (
+            _cache_totals.get(cache_dir, 0) >= size_limit_bytes * _CACHE_NEAR_LIMIT
+        )
         if (
             cache_dir not in _cache_totals
-            or now - _cache_scanned_at.get(cache_dir, 0.0) >= _CACHE_RESCAN_SECONDS
+            or age >= _CACHE_RESCAN_SECONDS
+            or (near_limit and age >= _CACHE_NEAR_LIMIT_RESCAN_SECONDS)
         ):
             _cache_totals[cache_dir] = _scan_cache(cache_dir)[1]
             _cache_scanned_at[cache_dir] = now

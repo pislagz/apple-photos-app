@@ -176,7 +176,7 @@ export default function DesktopLibrary({
       rows[index].type === "header"
         ? HEADER_ROW_HEIGHT
         : rows[index].type === "feature"
-          ? featureRowHeight(containerWidth)
+          ? featureRowHeight(containerWidth, cellSize)
           : gridRowHeight(cellSize),
     overscan: 6,
   });
@@ -677,7 +677,7 @@ export default function DesktopLibrary({
                     gap: GRID_GAP,
                     alignContent: "start",
                     gridTemplateColumns:
-                      row.type === "feature" ? `${featureWidth(containerWidth)}px` : `repeat(${columns}, 1fr)`,
+                      row.type === "feature" ? `${featureWidth(containerWidth, cellSize)}px` : `repeat(${columns}, 1fr)`,
                     justifyContent: row.type === "feature" ? "center" : undefined,
                   }}
                   className="desktop-library__row-grid"
@@ -692,7 +692,7 @@ export default function DesktopLibrary({
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
-                        style={{ height: row.type === "feature" ? featureHeight(containerWidth) : cellSize }}
+                        style={{ height: row.type === "feature" ? featureHeight(containerWidth, cellSize) : cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
                         onDoubleClick={() => handleOpen(item.id)}
                         onContextMenu={(event) => handleCellContextMenu(event, item.id)}

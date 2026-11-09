@@ -155,11 +155,10 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
     expect(screen.getByRole("tab", { name: "Years" })).toBeInTheDocument();
   });
 
-  it("has no Recently Deleted, no duplicate Favorites/Videos, and labels People & Pets", () => {
+  it("has no Recently Deleted, no duplicate Favorites, and labels People & Pets", () => {
     setup();
     expect(screen.queryByText("Recently Deleted")).not.toBeInTheDocument();
     expect(screen.getAllByText("Favorites")).toHaveLength(1);
-    expect(screen.getAllByText("Videos")).toHaveLength(1);
     expect(screen.queryByText("Smart Albums")).not.toBeInTheDocument();
     expect(screen.getByText("People & Pets")).toBeInTheDocument();
     expect(screen.queryByText("People")).not.toBeInTheDocument();

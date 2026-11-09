@@ -282,7 +282,7 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "D0000000-DEAD-4BEE-8000-000000000002",
             list(range(2, count, 13)),
         ),
-        # Unnamed face cluster: People omits it (docs/TASKS.md P2.2).
+        # Unnamed face cluster: People lists it after the named people (docs/TASKS.md P2.2).
         fixtures.FixturePerson(
             "C0000000-DEAD-4BEE-8000-000000000003",
             "Unnamed",

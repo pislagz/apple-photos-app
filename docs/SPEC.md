@@ -95,7 +95,7 @@ Every endpoint requires a session, and every request is checked against the libr
 - `GET /api/libraries/:lib/albums/:id/assets`
 - `GET /api/libraries/:lib/people` and `.../people/:id/assets`
 - `GET /api/libraries/:lib/map?bbox=&zoom=`: clustered GPS points. This response is not the basemap. In OpenStreetMap mode the browser loads raster tiles itself. In Local file mode the basemap is a same-origin range read of the PMTiles file.
-- `GET /api/libraries/:lib/search?q=`: by date, place, person, album name, or camera.
+- `GET /api/libraries/:lib/search?q=`: by date, place, person, album name, camera, file name, title, or description.
 - `POST /api/libraries/:lib/zip`: builds a zip of selected originals for desktop batch download and streams it.
 - `GET /api/health`
 - Admin API under `/api/admin/*`: users, libraries, assignments, sessions, jobs, audit log, and settings.
@@ -169,7 +169,7 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
 - **Window structure:** a collapsible left sidebar, a main content area, and a toolbar at the top styled like a macOS window toolbar with translucent materials.
 - **Sidebar:**
   - Library switcher at the top for users with several libraries.
-  - Sections: Library, Favorites, Recently Saved/Added, Map, People, Media Types (Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, RAW), Albums with the folder tree, and smart albums.
+  - Sections: Library, Favorites, Recently Saved/Added, Map, People (named people first, then unnamed face groups by photo count; all-hidden people left out), Media Types (Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, RAW; a type with no items is not listed), Albums with the folder tree, and smart albums.
   - Collapsible groups, like Sequoia's sidebar.
   - Account menu at the bottom with the user name, an Admin entry for admins, and Log out.
 - **Toolbar:**
@@ -190,7 +190,7 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
   - `+` and `-` to zoom.
 - **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums. Videos and Live Photos play inline.
 - **Map:** full content area with the same basemap setting and clustered thumbnails. Clicking a cluster filters the grid. Off, or a missing local file, leaves a blank background under the clusters.
-- **People:** grid of circular faces with names, opening a person's photos.
+- **People:** grid of circular faces with names, opening a person's photos. Unnamed face groups follow the named people with a muted "Add Name" placeholder (display only).
 - **Right-click menu:** Download original, Download edited, Copy link (within the app only, never public), and Show in album.
 
 Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots show both. Build the sidebar described in this spec. Use the screenshots for spacing, type, and icon weight. Memories, Featured Photos, Trips, Recently Deleted, Projects, and Shared Albums appear in the screenshots and are out of scope here.

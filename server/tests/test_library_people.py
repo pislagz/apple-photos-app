@@ -14,8 +14,8 @@ from tests.fixtures import (
 )
 
 VALID_PASSWORD = "correct-horse-battery"
-ANN, BEN, NOBODY, ONLY_HIDDEN = (
-    f"C0000000-0000-0000-0000-00000000000{n}" for n in (1, 2, 3, 4)
+ANN, BEN, NOBODY, ONLY_HIDDEN, NOBODY_BIG, NOBODY_HIDDEN = (
+    f"C0000000-0000-0000-0000-00000000000{n}" for n in (1, 2, 3, 4, 5, 6)
 )
 
 
@@ -53,6 +53,22 @@ def _setup(tmp_path):
             NOBODY, "x", "D0000000-0000-0000-0000-000000000003", [2, 5], named=False
         ),
         FixturePerson(ONLY_HIDDEN, "Hal", "D0000000-0000-0000-0000-000000000004", [3]),
+        # More photos than anyone named: must still sort after the named people.
+        FixturePerson(
+            NOBODY_BIG,
+            "x",
+            "D0000000-0000-0000-0000-000000000005",
+            [0, 1, 2, 4, 5],
+            named=False,
+        ),
+        # Unnamed, and every photo hidden: stays out.
+        FixturePerson(
+            NOBODY_HIDDEN,
+            "x",
+            "D0000000-0000-0000-0000-000000000006",
+            [3],
+            named=False,
+        ),
     ]
     package = build_library(tmp_path, _assets(), people=people)
     conn.execute(
@@ -91,12 +107,13 @@ def test_people_round_trip_with_counts_equal_to_sql_and_hidden_excluded(tmp_path
         body = client.get(f"/api/libraries/{library_id}/people").json()
 
         by_id = {p["id"]: p for p in body["people"]}
-        # Unnamed (NOBODY) and all-hidden (ONLY_HIDDEN) people are omitted.
-        assert set(by_id) == {ANN, BEN}
-        assert [p["name"] for p in body["people"]] == [
-            "Ann",
-            "Ben",
-        ]  # most photos first
+        # Unnamed groups are listed; people whose photos are all hidden (named
+        # ONLY_HIDDEN or unnamed NOBODY_HIDDEN) are omitted.
+        assert set(by_id) == {ANN, BEN, NOBODY, NOBODY_BIG}
+        # Named first (most photos first), then unnamed by photo count.
+        assert [p["id"] for p in body["people"]] == [ANN, BEN, NOBODY_BIG, NOBODY]
+        assert [p["name"] for p in body["people"]] == ["Ann", "Ben", None, None]
+        assert by_id[NOBODY_BIG]["count"] == 5 and by_id[NOBODY]["count"] == 2
         for uuid, person in by_id.items():
             expected = conn.execute(
                 "SELECT COUNT(*) FROM asset_people ap JOIN people p ON p.id = ap.person_id "
@@ -122,6 +139,7 @@ def test_assets_person_filter_lists_only_that_persons_visible_assets(tmp_path):
         for person, expected in (
             (ANN, {_uuid(1), _uuid(2)}),
             (BEN, {_uuid(2), _uuid(5)}),
+            (NOBODY, {_uuid(3), _uuid(6)}),  # an unnamed group works too
         ):
             response = client.get(
                 f"/api/libraries/{library_id}/assets", params={"person": person}
@@ -141,8 +159,8 @@ def test_assets_person_filter_lists_only_that_persons_visible_assets(tmp_path):
             rest["next_cursor"] is None
             and rest["items"][0]["id"] != page["items"][0]["id"]
         )
-        # unnamed and unknown ids are 404, not an empty page
-        for bad in (NOBODY, "nope"):
+        # unknown ids are 404, not an empty page
+        for bad in ("nope", "C0000000-0000-0000-0000-0000000000ff"):
             assert (
                 client.get(
                     f"/api/libraries/{library_id}/assets", params={"person": bad}
