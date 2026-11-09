@@ -172,6 +172,9 @@ def requests_for(path, method, library):
             ]
         elif path.endswith("/search"):
             variants = [{"params": {"q": "test"}}]
+        elif path.endswith("/zip"):
+            ids = [a["uuid"] for a in library["assets"].values()]
+            variants = [{"json": {"asset_ids": ids, "format": fmt}} for fmt in ("native", "jpeg")]
         else:
             variants = [{}]
         out.extend((url, {"method": method, **variant}) for variant in variants)
@@ -242,6 +245,7 @@ def test_route_enumeration_covers_the_known_routes(world):
         "/thumb/{asset_id}",
         "/original/{asset_id}",
         "/livephoto/{asset_id}/video",
+        "/zip",
     ):
         assert LIBRARY_PREFIX + suffix in templates
 
@@ -278,6 +282,18 @@ def test_a_user_cannot_read_a_foreign_asset_through_their_own_library_id(world):
                 response = client.request(url=url, **kwargs)
                 assert_nothing_returned(response, victim, f"{method} {url}")
                 assert response.status_code == 404
+
+
+def test_zip_of_foreign_asset_ids_through_own_library_404s(world):
+    world.user("alice", library="L1")
+    client = world.login("alice")
+    own, victim = world.libraries["L1"], world.libraries["L2"]
+    foreign = [a["uuid"] for a in victim["assets"].values()]
+    mixed = [next(iter(own["assets"].values()))["uuid"], *foreign]
+    for ids in (foreign, mixed):
+        response = client.post(f"/api/libraries/{own['id']}/zip", json={"asset_ids": ids})
+        assert_nothing_returned(response, victim, "zip foreign ids")
+        assert response.status_code == 404
 
 
 @pytest.mark.parametrize("victim", ["L1", "L2"])

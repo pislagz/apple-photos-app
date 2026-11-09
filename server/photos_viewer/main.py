@@ -24,6 +24,7 @@ from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
 from .library_albums import router as library_albums_router
 from .library_assets import router as library_assets_router
+from .library_zip import router as library_zip_router
 from .library_map import router as library_map_router
 from .library_people import router as library_people_router
 from .library_search import router as library_search_router
@@ -159,6 +160,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.include_router(library_map_router)
     app.include_router(library_search_router)
     app.include_router(library_assets_router)
+    app.include_router(library_zip_router)
     app.include_router(admin_panel_router)
 
     @app.get("/api/health")
