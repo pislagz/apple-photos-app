@@ -68,7 +68,7 @@ Admin panel → Libraries → Add. Enter the path to the `.photoslibrary` (on th
 
 ## Assign access
 
-Admin panel → Users to create accounts, then the access matrix to tick which user sees which library. Unassigned libraries return 404 to that user. An admin sees a library's photos only after assigning it to themselves.
+Admin panel → Users to create accounts, then Access to tick which user sees which library. Unassigned libraries return 404 to that user. An admin sees a library's photos only after assigning it to themselves.
 
 ## Replacing a library (quarterly drops)
 

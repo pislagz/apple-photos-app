@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   ApiError,
   type AccessMatrixResponse,
-  assignLibrary,
   createInvite,
   createUser,
   deleteUser,
@@ -10,7 +9,6 @@ import {
   listInvites,
   readAccessMatrix,
   type Role,
-  unassignLibrary,
   unlockUser,
   updateUser,
   type UserResponse,
@@ -109,19 +107,6 @@ export default function UsersScreen() {
     }
   }
 
-  async function handleToggleAssignment(userId: number, libraryId: number, assigned: boolean) {
-    try {
-      if (assigned) {
-        await unassignLibrary(userId, libraryId);
-      } else {
-        await assignLibrary(userId, libraryId);
-      }
-      refresh();
-    } catch (err) {
-      setError(describeError(err));
-    }
-  }
-
   return (
     <section>
       <h1>Users</h1>
@@ -181,38 +166,6 @@ export default function UsersScreen() {
                   Delete
                 </button>
               </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-
-      <h2>Access matrix</h2>
-      <div className="admin-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>User</th>
-            {matrix?.libraries.map((library) => <th key={library.id}>{library.display_name}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {matrix?.users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.username}</td>
-              {matrix.libraries.map((library) => {
-                const assigned = (matrix.assignments[String(user.id)] ?? []).includes(library.id);
-                return (
-                  <td key={library.id}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${user.username} × ${library.display_name}`}
-                      checked={assigned}
-                      onChange={() => handleToggleAssignment(user.id, library.id, assigned)}
-                    />
-                  </td>
-                );
-              })}
             </tr>
           ))}
         </tbody>

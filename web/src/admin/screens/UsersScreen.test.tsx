@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockFetch, noContentResponse } from "../testHelpers";
+import { mockFetch } from "../testHelpers";
 import UsersScreen from "./UsersScreen";
 
 const USER_A = { id: 1, username: "alice", role: "admin", disabled: false, created_at: "2026-01-01" };
@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("UsersScreen", () => {
-  it("renders users and the access matrix", async () => {
+  it("lists users without the access matrix", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/access-matrix") return MATRIX;
       if (url === "/api/admin/invites") return [];
@@ -22,29 +22,9 @@ describe("UsersScreen", () => {
 
     render(<UsersScreen />);
 
-    expect(await screen.findByLabelText("alice × Family")).toBeInTheDocument();
-    expect(screen.getAllByText("alice")).toHaveLength(2);
-    expect(screen.getAllByText("bob")).toHaveLength(2);
-    expect(screen.getByLabelText("alice × Family")).toBeChecked();
-    expect(screen.getByLabelText("bob × Family")).not.toBeChecked();
-  });
-
-  it("assigns a library when its checkbox is toggled", async () => {
-    const fetchMock = mockFetch((url, init) => {
-      if (url === "/api/admin/access-matrix") return MATRIX;
-      if (url === "/api/admin/invites") return [];
-      if (url === "/api/admin/users/2/libraries/10" && init?.method === "PUT") return noContentResponse();
-      throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
-    });
-
-    render(<UsersScreen />);
-    await screen.findByLabelText("bob × Family");
-
-    fireEvent.click(screen.getByLabelText("bob × Family"));
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/admin/users/2/libraries/10", expect.objectContaining({ method: "PUT" }));
-    });
+    expect(await screen.findByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("bob")).toBeInTheDocument();
+    expect(screen.queryByLabelText("alice × Family")).not.toBeInTheDocument();
   });
 
   it("calls the unlock endpoint", async () => {
@@ -56,7 +36,7 @@ describe("UsersScreen", () => {
     });
 
     render(<UsersScreen />);
-    await screen.findByLabelText("bob × Family");
+    await screen.findByText("bob");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Unlock" })[1]);
 
