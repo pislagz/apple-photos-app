@@ -864,19 +864,24 @@ def test_forwarded_proto_from_an_untrusted_peer_is_ignored_by_the_real_proxy_hea
     assert response.status_code == 403
 
 
-def test_ip_lockout_key_is_the_forwarded_address_through_the_real_proxy_headers_middleware(proxied_client):
+def test_ip_lockout_key_is_the_forwarded_address_through_the_real_proxy_headers_middleware(proxied_client, monkeypatch):
     """Issue #16 A: once a trusted peer's `X-Forwarded-For` has rewritten
     `request.client`, that's the real per-device tailnet address
     `_ip_lockout_key` keys on -- two different forwarded addresses must not
     share a lockout counter."""
+    # #59: a small limit keeps this off the 15-minute window and the cost of
+    # dozens of Argon2 verifies, and asserting each priming attempt is a plain
+    # 401 means a miss here reports its cause instead of a later 200-vs-429.
+    monkeypatch.setattr(session_auth, "MAX_FAILED_LOGIN_ATTEMPTS_PER_IP", 3)
     proxied_client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
 
     for i in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
-        proxied_client.post(
+        priming = proxied_client.post(
             "/api/auth/login",
             json={"username": f"nobody-{i}", "password": "whatever-password"},
             headers={"x-forwarded-for": "100.64.1.1", "x-forwarded-proto": "https"},
         )
+        assert priming.status_code == 401, priming.text
 
     device_a_locked_out = proxied_client.post(
         "/api/auth/login",
