@@ -1633,6 +1633,14 @@ body {
   }
 }
 
+/* #131: read-only status (the library is view-only), not a tappable control:
+   no pointer cursor, no button chrome, dimmed like a badge. */
+.mobile-viewer__status {
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .mobile-viewer__back-chevron {
   transform: scaleX(-1);
 }
