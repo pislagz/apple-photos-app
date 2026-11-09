@@ -271,6 +271,8 @@ def test_migration_flags_indexed_libraries_for_reindex(tmp_path):
         conn.execute("PRAGMA user_version = 17")
         conn.execute("DROP TABLE faces")  # migration 19 re-creates it
         conn.execute("DROP TABLE asset_labels")
+        conn.execute("DROP TABLE passkey_challenges")  # migration 22
+        conn.execute("DROP TABLE passkeys")
         conn.execute("DROP TABLE folders")
         conn.execute("ALTER TABLE albums DROP COLUMN parent_uuid")
         conn.execute("ALTER TABLE albums DROP COLUMN list_order")

@@ -353,6 +353,28 @@ def create_session(
     return raw_token, lifetime_seconds
 
 
+def start_session(
+    conn: sqlite3.Connection,
+    response: Response,
+    user_id: int,
+    *,
+    client: Literal["desktop", "pwa"] = "desktop",
+    remember_me: bool = False,
+) -> None:
+    """Create a session and set its cookie. The one place the cookie flags
+    live, so password and passkey sign-in (P3.1) can never drift apart."""
+    raw_token, max_age = create_session(conn, user_id, client=client, remember_me=remember_me)
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=raw_token,
+        max_age=max_age,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="strict",
+        path="/",
+    )
+
+
 def _prune_expired_sessions(conn: sqlite3.Connection) -> None:
     global _last_session_prune_at
     now = time.monotonic()
@@ -1101,16 +1123,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: sqlit
         )
         db.commit()
 
-    raw_token, max_age = create_session(db, user["id"], client=payload.client, remember_me=payload.remember_me)
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=raw_token,
-        max_age=max_age,
-        httponly=True,
-        secure=_cookie_secure(),
-        samesite="strict",
-        path="/",
-    )
+    start_session(db, response, user["id"], client=payload.client, remember_me=payload.remember_me)
     return AuthUserResponse(username=user["username"], role=user["role"])
 
 

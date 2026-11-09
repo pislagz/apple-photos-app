@@ -21,6 +21,9 @@ dependencies = [
     "starlette>=0.39",
     "uvicorn",
     "argon2-cffi",
+    # P3.1 passkeys. Pure Python on top of cryptography and cbor2; attestation
+    # is "none", so it never fetches metadata and makes no network calls.
+    "webauthn>=3,<4",
     # Media backend (P1.7): the cross-platform fallback decoder, used on
     # Linux always and on macOS whenever sips/qlmanage are unavailable.
     "Pillow",

@@ -34,6 +34,7 @@ from .session_auth import (
     validate_trusted_proxies_env,
 )
 from .session_auth import router as auth_router
+from .session_passkeys import router as passkeys_router
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app = FastAPI(lifespan=_lifespan)
     app.add_middleware(_NoStoreMiddleware)
     app.include_router(auth_router)
+    app.include_router(passkeys_router)
     app.include_router(library_admin_router)
     app.include_router(library_albums_router)
     app.include_router(library_people_router)

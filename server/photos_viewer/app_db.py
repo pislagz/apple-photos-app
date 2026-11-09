@@ -433,6 +433,36 @@ _MIGRATIONS: list[list[str]] = [
         """,
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 22 (P3.1): WebAuthn passkeys beside the password, and the single-use
+    # server-side challenges their ceremonies need. `credential_id` is the
+    # authenticator's id (what `navigator.credentials.get` returns); `public_id`
+    # is the opaque id the API shows, so the credential id is never a URL.
+    [
+        """
+        CREATE TABLE passkeys (
+            id INTEGER PRIMARY KEY,
+            public_id TEXT NOT NULL UNIQUE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            credential_id BLOB NOT NULL UNIQUE,
+            public_key BLOB NOT NULL,
+            sign_count INTEGER NOT NULL DEFAULT 0,
+            transports TEXT,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_used_at TEXT
+        )
+        """,
+        "CREATE INDEX idx_passkeys_user_id ON passkeys(user_id)",
+        """
+        CREATE TABLE passkey_challenges (
+            id TEXT PRIMARY KEY,
+            purpose TEXT NOT NULL CHECK (purpose IN ('register', 'login')),
+            challenge BLOB NOT NULL,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            expires_at TEXT NOT NULL
+        )
+        """,
+    ],
 ]
 
 
