@@ -337,6 +337,17 @@ def availability(row: sqlite3.Row) -> tuple[bool, str | None]:
     return False, None
 
 
+def public_availability(row: sqlite3.Row) -> tuple[bool, str | None]:
+    """Like `availability`, but with a fixed, user-safe reason: the detailed
+    one (exception text, package paths) is for the admin status only."""
+    updating, _reason = availability(row)
+    if not updating:
+        return False, None
+    if row["missing_since"] is not None:
+        return True, "The library is temporarily unavailable."
+    return True, "A new copy of this library is being checked."
+
+
 def _display(iso: str) -> str:
     return _parse(iso).strftime("%Y-%m-%d %H:%M UTC")
 

@@ -7,6 +7,9 @@ export default function LibraryUpdating({ name, reason }: { name: string; reason
       <h2>{name} is being updated</h2>
       <p>This library will be back shortly. Nothing has been removed.</p>
       {reason && <p className="library-placeholder__reason">{reason}</p>}
+      <button type="button" onClick={() => window.location.reload()}>
+        Check again
+      </button>
     </div>
   );
 }

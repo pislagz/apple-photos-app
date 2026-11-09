@@ -870,7 +870,7 @@ def require_library_assignment(
         raise HTTPException(status_code=404, detail="not found")
     # P1.22: a missing, copying or not-yet-valid package is "Being updated".
     # Checked after the assignment join so a foreign library still 404s.
-    updating, reason = library_watch.availability(row)
+    updating, reason = library_watch.public_availability(row)
     if updating:
         raise HTTPException(status_code=503, detail={"code": "library_updating", "message": reason})
     return row

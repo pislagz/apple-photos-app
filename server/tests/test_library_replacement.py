@@ -324,3 +324,17 @@ def test_replace_is_admin_only(tmp_path):
         assert client.post("/api/admin/libraries/1/replace", json={"path": "/x"}).status_code == 403
     finally:
         conn.close()
+
+
+def test_user_facing_updating_reason_hides_internal_details() -> None:
+    """Users get a fixed reason; exception text and paths stay admin-only."""
+    from photos_viewer import library_watch
+
+    pending = {"missing_since": None, "pending_signature": "x", "pending_reason": "indexing failed: /secret/path boom"}
+    missing = {"missing_since": "2026-11-09T03:00:00Z", "pending_signature": None, "pending_reason": None}
+    clear = {"missing_since": None, "pending_signature": None, "pending_reason": None}
+    assert library_watch.availability(pending) == (True, "indexing failed: /secret/path boom")
+    updating, reason = library_watch.public_availability(pending)
+    assert updating is True and "/secret" not in reason
+    assert library_watch.public_availability(missing) == (True, "The library is temporarily unavailable.")
+    assert library_watch.public_availability(clear) == (False, None)

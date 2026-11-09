@@ -81,7 +81,7 @@ UPDATED_NOTE_DAYS = 3
 
 
 def _library_summary(db: sqlite3.Connection, row: sqlite3.Row) -> LibrarySummary:
-    updating, reason = library_watch.availability(row)
+    updating, reason = library_watch.public_availability(row)
     note = None
     if not updating and library_watch.show_updated_note(db):
         # The library's first run (its registration) is not an "update".
