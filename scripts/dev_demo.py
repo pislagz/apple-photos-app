@@ -196,6 +196,15 @@ def _place_for(index: int) -> tuple[float | None, float | None]:
     return lat + (index % 7) * 0.004, lon + (index % 5) * 0.004
 
 
+# Scene/object labels for Search ("dog", "beach", ...): a few per photo, so
+# several queries return some but not all of the library.
+_DEMO_LABELS = (("Dog", 9), ("Beach", 7), ("Snow", 11), ("Sports Field", 13))
+
+
+def _labels_for(index: int) -> tuple[str, ...]:
+    return tuple(label for label, step in _DEMO_LABELS if index % step == 0)
+
+
 def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
     fixtures = _load_fixtures()
     rng = random.Random(SEED)
@@ -235,6 +244,7 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
                 hidden=index % 41 == 0,
                 latitude=latitude,
                 longitude=longitude,
+                labels=_labels_for(index),
             )
         )
     count = len(assets)
