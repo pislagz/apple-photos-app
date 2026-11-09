@@ -53,9 +53,9 @@ def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
         key: int(app_db.get_setting(db, f"thumb_size_{key}") or default) for key, default in media.SIZES.items()
     }
     quality = int(app_db.get_setting(db, "thumb_quality") or media.DEFAULT_QUALITY)
-    cache_limit = int(
-        app_db.get_setting(db, "media_cache_size_limit_bytes") or media.DEFAULT_CACHE_SIZE_LIMIT_BYTES
-    )
+    # 0 is a real value ("no cache"), so test for None, not truthiness.
+    stored_limit = app_db.get_setting(db, "media_cache_size_limit_bytes")
+    cache_limit = media.DEFAULT_CACHE_SIZE_LIMIT_BYTES if stored_limit is None else int(stored_limit)
     return sizes, quality, cache_limit
 
 
@@ -589,7 +589,8 @@ def asset_original(
                 cache_size_limit_bytes=cache_limit,
             )
         except media.MediaBackendError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            # Same convention as the thumb route: the asset exists, no backend can decode it.
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
         filename = _escape_content_disposition_filename(file_path.with_suffix(".jpg").name)
         # `?download=1` is the explicit marker a Download/share action sends;
         # a bare viewer zoom or HEIC->JPEG fallback hits this same route

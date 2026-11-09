@@ -13,7 +13,7 @@ import io
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from photos_viewer import app_db, indexer, media, session_auth
+from photos_viewer import app_db, indexer, library_assets, media, session_auth
 from photos_viewer.main import create_app
 from tests.fixtures import HIDDEN_ASSET_UUID, build_fixture_library
 
@@ -765,6 +765,39 @@ def test_original_format_jpeg_transcodes_heic(tmp_path, monkeypatch):
         assert response.headers["content-type"] == "image/jpeg"
         decoded = Image.open(io.BytesIO(response.content))
         assert decoded.format == "JPEG"
+    finally:
+        conn.close()
+
+
+def test_original_format_jpeg_of_an_undecodable_file_is_415(tmp_path):
+    """#70: same convention as the thumb route -- the asset exists, but no
+    backend can decode it."""
+    conn, client = _client(tmp_path)
+    try:
+        library_path = tmp_path / "L1.photoslibrary"
+        (library_path / "originals").mkdir(parents=True)
+        bad = library_path / "originals" / "a.heic"
+        bad.write_bytes(b"not an image")
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(bad))
+        _login(client, "alice")
+
+        response = client.get(f"/api/libraries/{library_id}/original/a", params={"format": "jpeg"})
+
+        assert response.status_code == 415
+    finally:
+        conn.close()
+
+
+def test_media_cache_limit_zero_means_no_cache(tmp_path):
+    """#70: a stored limit of 0 is "no cache", not a fall back to 5 GB."""
+    conn, _client_unused = _client(tmp_path)
+    try:
+        assert library_assets._media_settings(conn)[2] == media.DEFAULT_CACHE_SIZE_LIMIT_BYTES
+        app_db.set_setting(conn, "media_cache_size_limit_bytes", "0")
+        assert library_assets._media_settings(conn)[2] == 0
     finally:
         conn.close()
 

@@ -577,3 +577,9 @@ def test_non_admin_is_403_on_every_admin_panel_route(tmp_path):
         assert client.put("/api/admin/settings", json={}).status_code == 403
     finally:
         conn.close()
+
+
+def test_settings_default_quality_matches_the_media_default():
+    from photos_viewer import admin_panel, media
+
+    assert admin_panel._SETTINGS_DEFAULTS["thumb_quality"] == media.DEFAULT_QUALITY

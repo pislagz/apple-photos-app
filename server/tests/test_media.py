@@ -329,3 +329,20 @@ def test_generating_images_never_writes_inside_the_photoslibrary(tmp_path, monke
 
     after = _snapshot(package_path)
     assert before == after
+
+
+def test_cache_limit_zero_neither_reads_nor_writes_the_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    cache_dir = tmp_path / "cache"
+    source = tmp_path / "a.jpg"
+    Image.new("RGB", (800, 600), color=(1, 1, 1)).save(source, format="JPEG")
+
+    result = media.get_or_generate(
+        cache_dir, library_id=1, asset_uuid="a", size="grid", source_path=source, cache_size_limit_bytes=0
+    )
+    data = media.get_or_generate_jpeg(
+        cache_dir, library_id=1, asset_uuid="a", source_path=source, cache_size_limit_bytes=0
+    )
+
+    assert result.data and data
+    assert not cache_dir.exists() or not [p for p in cache_dir.rglob("*") if p.is_file()]

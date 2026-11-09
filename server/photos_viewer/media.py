@@ -155,6 +155,9 @@ def get_or_generate(
         raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
     key = cache_key(library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality)
     cache_dir = pathlib.Path(cache_dir)
+    if cache_size_limit_bytes == 0:
+        # A limit of 0 means "no cache": neither read nor write.
+        return _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
     cached = _read_cache(cache_dir, library_id, asset_uuid, key)
     if cached is not None:
         return cached
@@ -184,6 +187,8 @@ def get_or_generate_jpeg(
     except OSError as exc:
         raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
     key = cache_key(library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92)
+    if cache_size_limit_bytes == 0:
+        return to_jpeg(source_path, is_video=is_video)
     cache_dir = pathlib.Path(cache_dir)
     cached_path = _cache_file(cache_dir, library_id, asset_uuid, key, "jpg")
     if cached_path.exists():

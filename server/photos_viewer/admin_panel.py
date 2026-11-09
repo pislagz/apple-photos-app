@@ -623,7 +623,7 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_size_grid": media.SIZES["grid"],
     "thumb_size_grid2x": media.SIZES["grid2x"],
     "thumb_size_preview": media.SIZES["preview"],
-    "thumb_quality": 85,
+    "thumb_quality": media.DEFAULT_QUALITY,
     "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
     "map_tiles_mode": "online",
