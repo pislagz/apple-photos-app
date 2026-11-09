@@ -885,6 +885,17 @@ body {
   cursor: pointer;
 }
 
+.login-card__passkey {
+  width: 100%;
+  margin-top: 12px;
+  background: transparent;
+  color: var(--accent);
+  border: none;
+  padding: 10px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Desktop shell (macOS Sequoia Photos)                                   */
 /* ---------------------------------------------------------------------- */
@@ -2018,6 +2029,56 @@ body {
 
 .change-password__actions button {
   flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.passkeys__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passkeys__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.passkeys__name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: #1d1d1f;
+}
+
+.passkeys__name small {
+  color: var(--ios-label-secondary);
+  font-size: 12px;
+}
+
+.passkeys__list button {
+  border: none;
+  background: transparent;
+  color: #ff3b30;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.passkeys__add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.passkeys__add button {
   border: none;
   background: transparent;
   color: var(--accent);

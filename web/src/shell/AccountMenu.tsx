@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MeResponse } from "../api";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import { Icon } from "./icons";
+import PasskeysDialog from "./PasskeysDialog";
 import LayoutOverrideControl from "./LayoutOverrideControl";
 import type { LayoutOverride } from "./useLayout";
 
@@ -17,6 +18,7 @@ function AccountMenuItems({
   onLogout: () => void;
 }) {
   const [changingPassword, setChangingPassword] = useState(false);
+  const [managingPasskeys, setManagingPasskeys] = useState(false);
   return (
     <>
       <p className="account-menu__username">{me.username}</p>
@@ -25,10 +27,14 @@ function AccountMenuItems({
       <button type="button" onClick={() => setChangingPassword(true)}>
         Change password
       </button>
+      <button type="button" onClick={() => setManagingPasskeys(true)}>
+        Passkeys
+      </button>
       <button type="button" onClick={onLogout}>
         Log out
       </button>
       {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+      {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
     </>
   );
 }

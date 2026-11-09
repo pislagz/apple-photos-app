@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { passkeysSupported } from "../passkeys";
 import type { Layout } from "./useLayout";
 
 export type LoginErrorKind = "lockout" | "invalid" | "generic";
@@ -19,10 +20,13 @@ export default function LoginScreen({
   layout,
   error,
   onSubmit,
+  onPasskey,
 }: {
   layout: Layout;
   error: LoginError | null;
   onSubmit: (username: string, password: string) => void;
+  // Shown only when the browser has WebAuthn; sign-in needs no username.
+  onPasskey?: () => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -57,6 +61,11 @@ export default function LoginScreen({
           </label>
           <button type="submit">Sign in</button>
         </form>
+        {onPasskey && passkeysSupported() && (
+          <button type="button" className="login-card__passkey" onClick={onPasskey}>
+            Sign in with a passkey
+          </button>
+        )}
       </div>
     </main>
   );

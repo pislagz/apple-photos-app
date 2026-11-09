@@ -12,6 +12,7 @@ import {
 import AccessRefused from "./AccessRefused";
 import { useActiveLibrary } from "./activeLibrary";
 import DesktopShell from "./DesktopShell";
+import { isCancelled, loginWithPasskey } from "../passkeys";
 import LoginScreen, { type LoginError } from "./LoginScreen";
 import MobileShell from "./MobileShell";
 import { parsePhotoPath } from "./route";
@@ -112,29 +113,43 @@ export default function AppShell() {
     });
   }
 
+  function reportLoginError(error: unknown) {
+    if (!(error instanceof ApiError)) {
+      setLoginError({ kind: "generic", message: "Sign in failed. Try again." });
+      return;
+    }
+    if (error.status === 403 && error.code === "tailnet_identity_not_allowed") {
+      setBlocked(true);
+      return;
+    }
+    if (error.status === 429) {
+      setLoginError({ kind: "lockout", message: error.message });
+      return;
+    }
+    if (error.status === 401) {
+      setLoginError({ kind: "invalid", message: error.message });
+      return;
+    }
+    setLoginError({ kind: "generic", message: error.message });
+  }
+
   async function handleLogin(username: string, password: string) {
     setLoginError(null);
     try {
       await apiLogin(username, password, false, isStandalone() ? "pwa" : "desktop");
       await refreshMe();
     } catch (error) {
-      if (!(error instanceof ApiError)) {
-        setLoginError({ kind: "generic", message: "Sign in failed. Try again." });
-        return;
-      }
-      if (error.status === 403 && error.code === "tailnet_identity_not_allowed") {
-        setBlocked(true);
-        return;
-      }
-      if (error.status === 429) {
-        setLoginError({ kind: "lockout", message: error.message });
-        return;
-      }
-      if (error.status === 401) {
-        setLoginError({ kind: "invalid", message: error.message });
-        return;
-      }
-      setLoginError({ kind: "generic", message: error.message });
+      reportLoginError(error);
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    setLoginError(null);
+    try {
+      await loginWithPasskey(false, isStandalone() ? "pwa" : "desktop");
+      await refreshMe();
+    } catch (error) {
+      if (!isCancelled(error)) reportLoginError(error);
     }
   }
 
@@ -160,7 +175,7 @@ export default function AppShell() {
   }
 
   if (status === "anonymous" || me === null) {
-    return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} />;
+    return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} onPasskey={handlePasskeyLogin} />;
   }
 
   const deepLinkAssetId = deepLink && activeLibraryId === deepLink.libraryId ? deepLink.assetId : undefined;
