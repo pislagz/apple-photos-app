@@ -172,6 +172,8 @@ HIDDEN_ASSET_FILENAME = "IMG_0002.HEIC"
 # osxphotos._constants._PHOTOS_5_ALBUM_KIND -- a normal (non-folder,
 # non-root) album, as opposed to ZGENERICALBUM's _ROOT_FOLDER_KIND row above.
 _ALBUM_KIND = 2
+# osxphotos._constants._PHOTOS_5_FOLDER_KIND
+_FOLDER_KIND = 4000
 _ALBUM_UUID = "B1B2C3D4-0000-0000-0000-000000000001"
 _PERSON_UUID = "C1B2C3D4-0000-0000-0000-000000000001"
 _PERSON_NAME = "Jane Doe"
@@ -229,6 +231,14 @@ class FixtureAlbum:
     uuid: str
     title: str
     asset_indexes: Sequence[int]  # 0-based positions in the assets list
+    parent_uuid: str | None = None  # a FixtureFolder's uuid; None = top level
+
+
+@dataclasses.dataclass(frozen=True)
+class FixtureFolder:
+    uuid: str
+    title: str
+    parent_uuid: str | None = None  # another FixtureFolder's uuid; None = top level
 
 
 @dataclasses.dataclass(frozen=True)
@@ -257,6 +267,7 @@ def build_library(
     assets: Sequence[FixtureAsset],
     *,
     albums: Sequence[FixtureAlbum] = (),
+    folders: Sequence[FixtureFolder] = (),
     people: Sequence[FixturePerson] = (),
     package_name: str = "Synthetic.photoslibrary",
     wal_favorite_pk: int | None = None,
@@ -341,14 +352,25 @@ def build_library(
         # ZDETECTEDFACE) so the indexer's people/albums walk -- not just the
         # asset walk -- has non-empty rows to carry through `_write_index`
         # into `people`/`albums`/`asset_people`/`asset_albums`.
+        # Folders take the pks after the albums; a parent is looked up by uuid
+        # (1 is the root folder row, the parent of every top-level entry).
+        folder_pks = {folder.uuid: 2 + len(albums) + n for n, folder in enumerate(folders)}
+        for folder in folders:
+            conn.execute(
+                """
+                INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
+                VALUES (?, ?, ?, ?, ?, 0)
+                """,
+                (folder_pks[folder.uuid], folder.uuid, folder.title, _FOLDER_KIND, folder_pks.get(folder.parent_uuid, 1)),
+            )
         for offset, album in enumerate(albums):
             album_pk = 2 + offset
             conn.execute(
                 """
                 INSERT INTO ZGENERICALBUM (Z_PK, ZUUID, ZTITLE, ZKIND, ZPARENTFOLDER, ZTRASHEDSTATE)
-                VALUES (?, ?, ?, ?, 1, 0)
+                VALUES (?, ?, ?, ?, ?, 0)
                 """,
-                (album_pk, album.uuid, album.title, _ALBUM_KIND),
+                (album_pk, album.uuid, album.title, _ALBUM_KIND, folder_pks.get(album.parent_uuid, 1)),
             )
             for order, index in enumerate(album.asset_indexes, start=1):
                 conn.execute(

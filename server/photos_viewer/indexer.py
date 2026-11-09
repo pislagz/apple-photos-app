@@ -268,6 +268,7 @@ def _write_index(
     # against the (possibly pre-existing) stable asset ids.
     db.execute("DELETE FROM people WHERE library_id = ?", (library_id,))
     db.execute("DELETE FROM albums WHERE library_id = ?", (library_id,))
+    db.execute("DELETE FROM folders WHERE library_id = ?", (library_id,))
 
     person_ids: dict[str, int] = {}
     for person in photosdb.person_info:
@@ -277,11 +278,34 @@ def _write_index(
         )
         person_ids[person.uuid] = cursor.lastrowid
 
+    # Folders nest; walk down from the top-level ones. `seen` guards against
+    # a corrupt library whose parent links loop.
+    seen_folders: set[str] = set()
+    pending = [(folder, None) for folder in photosdb.folder_info]
+    while pending:
+        folder, parent_uuid = pending.pop()
+        if folder.uuid in seen_folders:
+            continue
+        seen_folders.add(folder.uuid)
+        db.execute(
+            "INSERT INTO folders (library_id, uuid, title, parent_uuid, list_order) VALUES (?, ?, ?, ?, ?)",
+            (library_id, folder.uuid, folder.title, parent_uuid, folder.library_list_order[-1]),
+        )
+        pending.extend((child, folder.uuid) for child in folder.subfolders)
+
     album_ids: dict[str, int] = {}
     for album in photosdb.album_info:
         cursor = db.execute(
-            "INSERT INTO albums (library_id, uuid, title, folder_names) VALUES (?, ?, ?, ?)",
-            (library_id, album.uuid, album.title, json.dumps(album.folder_names)),
+            "INSERT INTO albums (library_id, uuid, title, folder_names, parent_uuid, list_order) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                library_id,
+                album.uuid,
+                album.title,
+                json.dumps(album.folder_names),
+                album.parent.uuid if album.parent else None,
+                album.library_list_order[-1],
+            ),
         )
         album_ids[album.uuid] = cursor.lastrowid
 

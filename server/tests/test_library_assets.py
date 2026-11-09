@@ -184,7 +184,8 @@ def test_list_assets_filters_by_type(tmp_path):
         conn.close()
 
 
-def test_list_assets_album_filter_returns_empty_until_phase_2(tmp_path):
+def test_list_assets_unknown_album_is_404(tmp_path):
+    """An album id that is not this library's 404s (it does not return an empty page)."""
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
@@ -193,10 +194,9 @@ def test_list_assets_album_filter_returns_empty_until_phase_2(tmp_path):
         _insert_asset(conn, library_id, "a-photo")
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"album": "anything"})
-
-        assert response.status_code == 200
-        assert response.json() == {"items": [], "next_cursor": None}
+        for album in ("anything", "smart:nope"):
+            response = client.get(f"/api/libraries/{library_id}/assets", params={"album": album})
+            assert response.status_code == 404
     finally:
         conn.close()
 
@@ -220,7 +220,7 @@ def test_list_assets_excludes_hidden(tmp_path):
         conn.close()
 
 
-def test_list_assets_album_and_person_filters_stay_empty_with_a_hidden_asset(tmp_path):
+def test_list_assets_person_filter_stays_empty_with_a_hidden_asset(tmp_path):
     conn, client = _client(tmp_path)
     try:
         user_id = _create_user(conn, "alice")
@@ -229,7 +229,7 @@ def test_list_assets_album_and_person_filters_stay_empty_with_a_hidden_asset(tmp
         _insert_asset(conn, library_id, "hidden-one", hidden=1)
         _login(client, "alice")
 
-        response = client.get(f"/api/libraries/{library_id}/assets", params={"album": "anything"})
+        response = client.get(f"/api/libraries/{library_id}/assets", params={"person": "anything"})
 
         assert response.status_code == 200
         assert response.json() == {"items": [], "next_cursor": None}
