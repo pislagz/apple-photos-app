@@ -788,10 +788,16 @@ def replace_library(
                 status_code=400, detail=f"{new_path} is not ready: {reason}"
             )
         old_path = row["path"]
-        db.execute(
-            "UPDATE libraries SET path = ? WHERE id = ?", (str(new_path), library_id)
-        )
-        db.commit()
+        try:
+            db.execute(
+                "UPDATE libraries SET path = ? WHERE id = ?",
+                (str(new_path), library_id),
+            )
+            db.commit()
+        except BaseException:
+            # Not handed to the indexer yet, so the temp copy is still ours.
+            opened.close()
+            raise
         try:
             _mark_indexing(db, library_id)
             indexer.index_library(
