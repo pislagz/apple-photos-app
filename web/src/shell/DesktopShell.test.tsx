@@ -269,3 +269,10 @@ describe("DesktopShell Days double-click (#152)", () => {
     expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
   });
 });
+
+describe("sidebar section labels (#105)", () => {
+  it("uses small grey title case, not uppercase", () => {
+    const rule = css.match(/\.sidebar__group summary \{[^}]*\}/)?.[0] ?? "";
+    expect(rule).not.toContain("uppercase");
+  });
+});
