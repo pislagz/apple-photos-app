@@ -14,10 +14,17 @@ import secrets
 import sqlite3
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from . import app_db, library_admin, library_watch, media, session_auth
+from . import (
+    app_db,
+    library_admin,
+    library_watch,
+    media,
+    place_names,
+    session_auth,
+)
 
 router = APIRouter()
 
@@ -736,7 +743,8 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_quality": media.DEFAULT_QUALITY,
     "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
-    "map_tiles_mode": "online",
+    "map_tiles_mode": app_db.DEFAULT_MAP_TILES_MODE,
+    "offline_place_names": False,
     "map_tiles_pmtiles_path": None,
     "library_check_interval_minutes": library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
     "library_stable_minutes": library_watch.DEFAULT_STABLE_MINUTES,
@@ -756,6 +764,7 @@ class SettingsResponse(BaseModel):
     zip_size_limit_bytes: int
     map_tiles_mode: Literal["online", "local_file", "off"]
     map_tiles_pmtiles_path: str | None
+    offline_place_names: bool
     library_check_interval_minutes: int
     library_stable_minutes: int
     show_library_updated_note: bool
@@ -771,8 +780,9 @@ class SettingsUpdateRequest(BaseModel):
     thumb_quality: int = Field(ge=1, le=100)
     media_cache_size_limit_bytes: int = Field(ge=0)
     zip_size_limit_bytes: int = Field(ge=1)
-    map_tiles_mode: Literal["online", "local_file", "off"] = "online"
+    map_tiles_mode: Literal["online", "local_file", "off"] = "off"
     map_tiles_pmtiles_path: str | None = None
+    offline_place_names: bool = False
     # 0 is "Manual only": the background checker is off, "Check now" still works.
     library_check_interval_minutes: int = Field(
         default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
@@ -797,7 +807,7 @@ def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
             values[key] = stored
         elif key == "map_tiles_pmtiles_path":
             values[key] = stored or None
-        elif key == "show_library_updated_note":
+        elif key in ("show_library_updated_note", "offline_place_names"):
             values[key] = stored in ("1", "True", "true")
         else:
             values[key] = int(stored)
@@ -819,12 +829,81 @@ def read_settings(
 )
 def write_settings(
     payload: SettingsUpdateRequest,
+    request: Request,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SettingsResponse:
+    was_offline = place_names.enabled(db)
     for key, value in payload.model_dump().items():
         if isinstance(value, bool):
             value = int(value)
         app_db.set_setting(db, key, "" if value is None else str(value))
+    app_db.set_setting(db, "privacy_opt_ins_reviewed", "1")
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
+    # The CSP names the OSM host only while the map is on (main.py caches it).
+    request.app.state.csp_cache = None
+    if payload.offline_place_names != was_offline:
+        data_dir = place_names.data_dir_of(db)
+        if data_dir is not None:
+            place_names.apply_setting(data_dir)
     return _read_settings(db)
+
+
+# D41: the two privacy opt-ins and the one-time gazetteer download.
+class PlaceNamesStatus(BaseModel):
+    dataset: str
+    downloaded: bool
+    size_bytes: int
+    source_url: str
+    attribution: str
+    license_url: str
+    # False until an admin has saved Settings (or chosen at first-run setup):
+    # drives the dashboard notice.
+    opt_ins_reviewed: bool
+
+
+def _place_names_status(db: sqlite3.Connection) -> PlaceNamesStatus:
+    data_dir = place_names.data_dir_of(db)
+    base = place_names.status(data_dir) if data_dir else place_names.status(".")
+    return PlaceNamesStatus(
+        **base,
+        opt_ins_reviewed=app_db.get_setting(db, "privacy_opt_ins_reviewed") == "1",
+    )
+
+
+@router.get("/api/admin/place-names", response_model=PlaceNamesStatus)
+def read_place_names(
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> PlaceNamesStatus:
+    return _place_names_status(db)
+
+
+@router.post(
+    "/api/admin/place-names/download",
+    response_model=PlaceNamesStatus,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def download_place_names(
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> PlaceNamesStatus:
+    """The one request in this server that reaches the internet: fetch the
+    GeoNames dump once, on an admin's click. Photo coordinates are not part
+    of it; the lookup afterwards is local."""
+    data_dir = place_names.data_dir_of(db)
+    if data_dir is None:
+        raise HTTPException(status_code=500, detail="no data directory")
+    try:
+        rows = place_names.download(data_dir)
+    except place_names.DownloadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    app_db.write_audit_log(
+        db,
+        "place_names_download",
+        actor=admin["username"],
+        detail=f"{place_names.DATASET} rows={rows}",
+    )
+    if place_names.enabled(db):
+        place_names.apply_setting(data_dir)
+    return _place_names_status(db)

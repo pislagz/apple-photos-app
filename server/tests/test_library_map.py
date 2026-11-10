@@ -188,11 +188,17 @@ def _set(conn, mode, path=None):
     conn.commit()
 
 
-def test_config_requires_login_and_defaults_to_online(env):
-    _conn, client, _ids, login, _ = env
+def test_config_requires_login_and_defaults_to_off(env):
+    conn, client, _ids, login, _ = env
     assert client.get("/api/map/config").status_code == 401
     assert client.get("/api/map/tiles.pmtiles").status_code == 401
     login("alice", "L1")
+    # D41: no OSM tiles until an admin opts in.
+    assert client.get("/api/map/config").json() == {
+        "mode": "off",
+        "pmtiles_url": None,
+    }
+    _set(conn, "online", None)
     assert client.get("/api/map/config").json() == {
         "mode": "online",
         "pmtiles_url": None,

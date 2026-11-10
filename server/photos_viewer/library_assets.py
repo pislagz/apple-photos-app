@@ -503,6 +503,9 @@ class AssetDetailResponse(BaseModel):
     place: str | None
     place_country_code: str | None
     place_address: str | None
+    # D41: nearest city from the offline gazetteer (opt-in); the three Photos
+    # fields above always win when present.
+    place_offline: str | None = None
     camera_make: str | None
     camera_model: str | None
     has_edited: bool
@@ -604,6 +607,7 @@ def asset_detail(
         place=asset["place"],
         place_country_code=asset["place_country_code"],
         place_address=asset["place_address"],
+        place_offline=asset["place_offline"],
         camera_make=asset["camera_make"],
         camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
@@ -662,7 +666,7 @@ def selection_summary(
         rows.extend(
             db.execute(
                 "SELECT hidden, is_video, date_created, original_filesize, "
-                "COALESCE(NULLIF(place_address, ''), NULLIF(place, '')) AS label "
+                "COALESCE(NULLIF(place_address, ''), NULLIF(place, ''), NULLIF(place_offline, '')) AS label "
                 f"FROM assets WHERE library_id = ? AND uuid IN ({marks})",
                 (library["id"], *chunk),
             ).fetchall()
