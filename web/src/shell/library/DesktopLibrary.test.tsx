@@ -210,8 +210,9 @@ describe("DesktopLibrary", () => {
     // Each ArrowDown moves focus a full row (6 columns at the default
     // zoom); 40 presses lands far outside the virtualizer's overscan
     // window, so this only passes if the focused row gets scrolled into
-    // view rather than just updated in state.
-    for (let i = 0; i < 40; i++) {
+    // view rather than just updated in state. The first press only selects
+    // the first photo (D13), so 41 presses land on row 40.
+    for (let i = 0; i < 41; i++) {
       fireEvent.keyDown(grid, { key: "ArrowDown" });
     }
 

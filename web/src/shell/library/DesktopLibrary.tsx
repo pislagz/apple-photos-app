@@ -17,7 +17,7 @@ import {
   GRID_GAP,
   gridRowHeight,
 } from "./gridMetrics";
-import { buildRows, verticalTarget } from "./rows";
+import { buildRows, columnOf, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { InfoRows } from "../viewer/InfoRows";
@@ -140,6 +140,15 @@ export default function DesktopLibrary({
   // items, so the reconciliation effect below can catch focus up once
   // `loadMore` delivers the page that contains it.
   const desiredIndexRef = useRef<number | null>(null);
+  // D12/D13: the column an Up/Down run started in. A full-width row (the Days
+  // lead photo) or a short last row would otherwise reset it. Only valid while
+  // the focused cell is still the one the run last landed on, so a click, a
+  // Left/Right move or a new selection starts a fresh run.
+  const goalColumnRef = useRef<{ id: string; column: number } | null>(null);
+  // Down past the last loaded row: where the run started, until the next page
+  // arrives and the move can be finished through the row model.
+  // `count` Down presses are owed (more arrive while the page loads).
+  const pendingDownRef = useRef<{ id: string; column: number; count: number } | null>(null);
 
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
   // #98: the Info toggle opens an inspector for the focused cell. It only
@@ -249,6 +258,30 @@ export default function DesktopLibrary({
       desiredIndexRef.current = null;
     }
   }, [items, done, loading, loadMore, selectSingle]);
+
+  // Finishes the Down presses that ran past the last loaded row (see
+  // `pendingDownRef`), one row at a time through the row model.
+  useEffect(() => {
+    const pending = pendingDownRef.current;
+    if (!pending || loading) return;
+    let id = pending.id;
+    while (pending.count > 0) {
+      const target = verticalTarget(rows, id, 1, pending.column);
+      if (target === "end" || target === "unknown" || target === null) break;
+      id = target;
+      pending.count -= 1;
+    }
+    if (id !== pending.id) {
+      selectSingle(id);
+      goalColumnRef.current = { id, column: pending.column };
+    }
+    if (pending.count > 0 && !done) {
+      pending.id = id;
+      loadMore();
+    } else {
+      pendingDownRef.current = null;
+    }
+  }, [rows, loading, done, loadMore, selectSingle]);
 
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
@@ -361,16 +394,39 @@ export default function DesktopLibrary({
       if (delta === undefined || items.length === 0) return;
       event.preventDefault();
       const currentIndex = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
-      if ((event.key === "ArrowUp" || event.key === "ArrowDown") && focusedId && desiredIndexRef.current === null) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if (pendingDownRef.current) {
+          if (event.key === "ArrowDown") pendingDownRef.current.count += 1;
+          return;
+        }
+        // Nothing focused yet: the first press selects the first photo. The
+        // old flat +columns move landed in the last column of the first row
+        // and every press after that was a column off (D13).
+        if (!focusedId) {
+          selectSingle(items[0].id);
+          return;
+        }
         // Rows restart after every date header (and Days has a hero row), so
         // move through the built row model to the visually adjacent cell
         // instead of +-columns in the flat list (#96).
-        const target = verticalTarget(rows, focusedId, event.key === "ArrowDown" ? 1 : -1);
+        const goal = goalColumnRef.current?.id === focusedId ? goalColumnRef.current.column : columnOf(rows, focusedId);
+        const column = goal ?? 0;
+        const target = verticalTarget(rows, focusedId, event.key === "ArrowDown" ? 1 : -1, column);
         if (target && target !== "end" && target !== "unknown") {
           selectSingle(target);
+          goalColumnRef.current = { id: target, column };
           return;
         }
         if (target === null) return;
+        if (target === "end") {
+          // Finish through the row model once the next page is in; the flat
+          // +columns fallback is wrong across date groups and the lead photo.
+          if (!done) {
+            pendingDownRef.current = { id: focusedId, column, count: 1 };
+            loadMore();
+          }
+          return;
+        }
       }
       const base = desiredIndexRef.current ?? (currentIndex === -1 ? 0 : currentIndex);
       const desired = Math.max(0, base + delta);
