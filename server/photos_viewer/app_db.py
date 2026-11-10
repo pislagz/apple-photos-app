@@ -480,6 +480,27 @@ _MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 24 (D4/D5): `added_visible`/`removed_visible` are a run's counts without
+    # Hidden photos (they feed the user-facing "Library updated" banner, which
+    # must never reveal Hidden); NULL on runs recorded before this. Dismissals
+    # are per user and library: everything up to `run_id` is dismissed.
+    # `assets.original_missing` is the Optimize Mac Storage flag the indexer
+    # already computed per run, now kept per asset; only a fresh walk can
+    # fill it, so indexed libraries are flagged for the one-time re-index.
+    [
+        "ALTER TABLE library_index_runs ADD COLUMN added_visible INTEGER",
+        "ALTER TABLE library_index_runs ADD COLUMN removed_visible INTEGER",
+        """
+        CREATE TABLE library_note_dismissals (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+            run_id INTEGER NOT NULL,
+            PRIMARY KEY (user_id, library_id)
+        )
+        """,
+        "ALTER TABLE assets ADD COLUMN original_missing INTEGER NOT NULL DEFAULT 0",
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

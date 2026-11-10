@@ -147,6 +147,21 @@ export default function LibrariesScreen() {
                             </button>
                           </li>
                         )}
+                        {status.suggestion && status.alternatives && status.alternatives.length > 0 && (
+                          <li>
+                            Other libraries next to it:
+                            <ul aria-label="Other candidates">
+                              {status.alternatives.map((candidate) => (
+                                <li key={candidate.path}>
+                                  {candidate.name}{" "}
+                                  <button type="button" onClick={() => setReplacing({ library, path: candidate.path })}>
+                                    Replace with {candidate.name}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </li>
+                        )}
                         {status.warnings.map((warning) => (
                           <li key={warning.code} role="alert">
                             {warning.message}

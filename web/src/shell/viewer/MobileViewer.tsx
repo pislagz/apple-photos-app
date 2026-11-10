@@ -5,7 +5,7 @@ import { Icon } from "../icons";
 import { downloadVersion, shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
-import { InfoRows } from "./InfoRows";
+import { InfoRows, OriginalMissingNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { useDismiss } from "./useDismiss";
@@ -299,6 +299,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           >
             <Icon name="close" size={16} />
           </button>
+          <OriginalMissingNote available={detail?.original_available} className="viewer-info-note mobile-viewer__info-note" />
           <InfoRows rows={infoRows} className="mobile-viewer__info-rows" />
           {detail?.latitude != null && detail.longitude != null && (
             <MiniMap latitude={detail.latitude} longitude={detail.longitude} />

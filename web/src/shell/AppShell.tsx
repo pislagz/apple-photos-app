@@ -191,6 +191,7 @@ export default function AppShell() {
         onLogout={handleLogout}
         deepLinkAssetId={deepLinkAssetId}
         onDeepLinkConsumed={consumeDeepLink}
+        onNoteDismissed={refreshMe}
       />
     );
   }
@@ -205,6 +206,7 @@ export default function AppShell() {
       onLogout={handleLogout}
       deepLinkAssetId={deepLinkAssetId}
       onDeepLinkConsumed={consumeDeepLink}
+      onNoteDismissed={refreshMe}
     />
   );
 }

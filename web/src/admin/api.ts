@@ -37,6 +37,8 @@ export interface LibraryStatusResponse {
   last_update?: RunSummary | null;
   runs?: RunSummary[];
   suggestion?: ReplaceSuggestion | null;
+  // The other unregistered packages next to a missing one, best match first.
+  alternatives?: ReplaceSuggestion[];
 }
 
 export interface PrewarmStatus {
@@ -302,6 +304,10 @@ export function readSettings(): Promise<SettingsResponse> {
 
 export function writeSettings(settings: SettingsResponse): Promise<SettingsResponse> {
   return mutate<SettingsResponse>("PUT", "/api/admin/settings", settings);
+}
+
+export function checkLibrariesNow(): Promise<{ started: boolean }> {
+  return mutate<{ started: boolean }>("POST", "/api/admin/libraries/check-now", {});
 }
 
 export interface TailnetAllowlistResponse {

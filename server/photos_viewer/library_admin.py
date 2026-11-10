@@ -20,9 +20,11 @@ half of P1.6. `indexer.index_library` makes that cheap: it's a handful of
 
 from __future__ import annotations
 
+import difflib
 import logging
 import os
 import pathlib
+import re
 import sqlite3
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -143,28 +145,93 @@ def _registered_paths(
     }
 
 
-def _suggest_replacement(
-    db: sqlite3.Connection, path: pathlib.Path
-) -> ReplaceSuggestion | None:
-    if path.exists():
-        return None
+# Name noise a copy picks up: " 2", " copy", " copy 2", "(1)", "-1", "_old"...
+_COPY_SUFFIX = re.compile(
+    r"(?:[\s._-]*(?:\(\d+\)|copy(?:[\s._-]*\d+)?|\d{1,2}|old|new|backup|incoming))+$",
+    re.IGNORECASE,
+)
+
+
+def _normalized_name(name: str) -> str:
+    stem = name.removesuffix(".photoslibrary")
+    stripped = _COPY_SUFFIX.sub("", stem).strip()
+    return (stripped or stem).casefold()
+
+
+def _signature_sqlite_size(signature: str | None) -> int | None:
+    """`Photos.sqlite` size at the last index: the first `mtime:size` part of
+    `indexer.sqlite_signature`, so the missing package's size costs no I/O."""
     try:
-        candidates = sorted(
+        return int((signature or "").split("|")[0].split(":")[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def rank_candidates(
+    missing_name: str,
+    candidates: list[tuple[str, float, int | None]],
+    old_size: int | None = None,
+) -> list[str]:
+    """Candidate names, best first: name similarity to the missing library
+    (copy suffixes ignored), then most recently modified, then closest
+    `Photos.sqlite` size to the old one. `candidates` are
+    `(name, mtime, sqlite_size)`; a final tie falls back to the name."""
+    wanted = _normalized_name(missing_name)
+
+    def key(item: tuple[str, float, int | None]):
+        name, mtime, size = item
+        ratio = difflib.SequenceMatcher(None, wanted, _normalized_name(name)).ratio()
+        # An unknown size ranks after any known one.
+        distance = (
+            abs(size - old_size)
+            if size is not None and old_size is not None
+            else float("inf")
+        )
+        return (-round(ratio, 3), -mtime, distance, name)
+
+    return [item[0] for item in sorted(candidates, key=key)]
+
+
+def _suggest_replacements(
+    db: sqlite3.Connection, path: pathlib.Path, last_signature: str | None = None
+) -> list[ReplaceSuggestion]:
+    """Unregistered packages next to a missing one, best match first. Only
+    stats at the top level: the package and its `Photos.sqlite`, no walk."""
+    if path.exists():
+        return []
+    try:
+        entries = [
             p
             for p in path.parent.iterdir()
             if p.suffix == ".photoslibrary" and p.is_dir()
-        )
+        ]
     except OSError:
-        return None
+        return []
     registered = _registered_paths(db)
-    for candidate in candidates:
-        if candidate.resolve() not in registered:
-            return ReplaceSuggestion(
-                path=str(candidate),
-                name=candidate.name,
-                message=f"A new library appeared next to this one: {candidate.name}. Replace?",
-            )
-    return None
+    found: dict[str, tuple[str, float, int | None]] = {}
+    for candidate in entries:
+        if candidate.resolve() in registered:
+            continue
+        try:
+            mtime = candidate.stat().st_mtime
+        except OSError:
+            continue
+        try:
+            size = (candidate / "database" / "Photos.sqlite").stat().st_size
+        except OSError:
+            size = None
+        found[candidate.name] = (candidate.name, mtime, size)
+    ranked = rank_candidates(
+        path.name, list(found.values()), _signature_sqlite_size(last_signature)
+    )
+    return [
+        ReplaceSuggestion(
+            path=str(path.parent / name),
+            name=name,
+            message=f"A new library appeared next to this one: {name}. Replace?",
+        )
+        for name in ranked
+    ]
 
 
 class LibraryStatusResponse(BaseModel):
@@ -188,6 +255,8 @@ class LibraryStatusResponse(BaseModel):
     # An unregistered package next to a missing one: the admin UI offers a
     # prefilled Replace. Never applied automatically.
     suggestion: ReplaceSuggestion | None = None
+    # The other unregistered packages next to it, best match first.
+    alternatives: list[ReplaceSuggestion] = []
 
 
 def _validate_library_path(path: pathlib.Path) -> None:
@@ -430,6 +499,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
                 ),
             )
         )
+    suggestions = _suggest_replacements(db, path, row["last_indexed_signature"])
     return LibraryStatusResponse(
         id=row["id"],
         display_name=row["display_name"],
@@ -445,7 +515,8 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
         updating_reason=updating_reason,
         last_update=last_applied,
         runs=runs,
-        suggestion=_suggest_replacement(db, path),
+        suggestion=suggestions[0] if suggestions else None,
+        alternatives=suggestions[1:],
         **_index_counts(db, row["id"], row["last_indexed_at"]),
     )
 
@@ -571,6 +642,30 @@ def library_status(
 ) -> LibraryStatusResponse:
     row = _get_library_or_404(db, library_id)
     return _build_status(db, row)
+
+
+class CheckNowResponse(BaseModel):
+    started: bool
+
+
+@router.post(
+    "/api/admin/libraries/check-now",
+    response_model=CheckNowResponse,
+    status_code=202,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def check_libraries_now(
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
+) -> CheckNowResponse:
+    """One check-and-reindex-if-changed pass over every library, the same as
+    a background tick, for "Manual only" setups. Runs in the background;
+    `started: false` means a pass was already running (nothing is queued)."""
+    started = library_watch.start_manual_check(lambda: data_dir)
+    if started:
+        app_db.write_audit_log(db, "library.check_now", actor=admin["username"])
+    return CheckNowResponse(started=started)
 
 
 @router.post(

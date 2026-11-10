@@ -178,6 +178,8 @@ def requests_for(path, method, library):
                 {"json": {"asset_ids": ids, "format": fmt}}
                 for fmt in ("native", "jpeg")
             ]
+        elif path.endswith("/updated-note/dismiss"):
+            variants = [{"json": {"run_id": 1}}]
         else:
             variants = [{}]
         out.extend((url, {"method": method, **variant}) for variant in variants)

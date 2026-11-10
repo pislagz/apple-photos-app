@@ -68,7 +68,7 @@ describe("SettingsScreen", () => {
     });
 
     render(<SettingsScreen />);
-    fireEvent.change(await screen.findByLabelText(/Library check interval/), { target: { value: "0" } });
+    fireEvent.click(await screen.findByLabelText(/Manual only/));
     fireEvent.change(screen.getByLabelText(/unchanged for/), { target: { value: "30" } });
     fireEvent.click(screen.getByLabelText(/Tell users when their library was updated/));
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
@@ -89,7 +89,7 @@ describe("SettingsScreen", () => {
       throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
     });
     render(<SettingsScreen />);
-    const field = await screen.findByLabelText(/Library check interval/);
+    const field = await screen.findByLabelText(/Check libraries for changes every/);
     fireEvent.change(field, { target: { value: "" } });
     expect(field).toHaveValue(null);
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
@@ -105,12 +105,60 @@ describe("SettingsScreen", () => {
       throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
     });
     render(<SettingsScreen />);
-    const field = await screen.findByLabelText(/Library check interval/);
+    const field = await screen.findByLabelText(/Check libraries for changes every/);
     fireEvent.change(field, { target: { value: "" } });
     fireEvent.change(field, { target: { value: "30" } });
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
     await screen.findByText("Settings saved.");
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")!;
     expect(JSON.parse(put[1].body as string).library_check_interval_minutes).toBe(30);
+  });
+
+  it("shows 0 as Manual only and hides the interval field", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return { ...SETTINGS, library_check_interval_minutes: 0 };
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    expect(await screen.findByLabelText(/Manual only/)).toBeChecked();
+    expect(screen.queryByLabelText(/Check libraries for changes every/)).not.toBeInTheDocument();
+    expect(screen.getByText(/only checked when you press "Check now"/)).toBeInTheDocument();
+  });
+
+  it("turning Manual only off goes back to a real interval, and both timing fields allow 7 days", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && init?.method === "PUT") return JSON.parse(String(init.body));
+      if (url === "/api/admin/settings") return { ...SETTINGS, library_check_interval_minutes: 0 };
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    fireEvent.click(await screen.findByLabelText(/Manual only/));
+    const interval = screen.getByLabelText(/Check libraries for changes every/);
+    expect(interval).toHaveValue(15);
+    expect(interval).toHaveAttribute("max", "10080");
+    expect(screen.getByLabelText(/unchanged for/)).toHaveAttribute("max", "10080");
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Settings saved.");
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(put[1].body as string).library_check_interval_minutes).toBe(15);
+  });
+
+  it("Check now posts once and says when a check is already running", async () => {
+    let started = true;
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/libraries/check-now" && init?.method === "POST") return jsonResponse({ started }, 202);
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
+    expect(await screen.findByText(/Checking all libraries for changes now/)).toBeInTheDocument();
+    started = false;
+    fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(await screen.findByText("A check is already running.")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/admin/libraries/check-now")).toHaveLength(2);
   });
 });

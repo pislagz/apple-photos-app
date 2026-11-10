@@ -86,10 +86,11 @@ describe("ceremonies", () => {
       throw new Error(`unexpected request: ${url}`);
     });
 
-    const passkey = await registerPasskey("Phone");
+    const passkey = await registerPasskey("Phone", "hunter2-hunter2");
 
     expect(passkey.id).toBe("p1");
     expect(create).toHaveBeenCalledOnce();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ password: "hunter2-hunter2" });
     const body = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(body.challenge_id).toBe("c1");
     expect(body.name).toBe("Phone");

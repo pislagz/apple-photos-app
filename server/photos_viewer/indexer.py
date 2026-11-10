@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import os
 import pathlib
 import sqlite3
 
 from . import libraries, media
+
+logger = logging.getLogger(__name__)
 
 # osxphotos' placeholder name for an unnamed face cluster. Kept local rather
 # than importing the private osxphotos._constants; a test pins the value.
@@ -66,6 +69,7 @@ _ASSET_COLUMNS = (
     "camera_make",
     "camera_model",
     "score",
+    "original_missing",
 )
 
 
@@ -171,13 +175,28 @@ def index_library(
     if opened is None:
         opened = libraries.open_library_readonly(package_path)
     try:
-        purge = _write_index_and_update_signature(
+        purge, changed = _write_index_and_update_signature(
             db, library_id, opened, signature, trigger, started_at
         )
     finally:
         opened.close()
     _purge_cache(db, library_id, purge, cache_dir)
+    if changed:
+        _restart_prewarm(db, library_id)
     return True
+
+
+def _restart_prewarm(db: sqlite3.Connection, library_id: int) -> None:
+    """D54: a pre-warm that had finished starts again for what the update
+    brought in. Best effort, like the cache purge: the index already applied."""
+    from . import library_prewarm  # library_prewarm imports the asset routes
+
+    try:
+        library_prewarm.restart_finished_job(db, library_id)
+    except Exception:
+        logger.warning(
+            "restarting pre-warm for library %s failed", library_id, exc_info=True
+        )
 
 
 def _purge_cache(
@@ -213,7 +232,8 @@ def _write_index_and_update_signature(
     signature: str,
     trigger: str,
     started_at: str,
-) -> list[str]:
+) -> tuple[list[str], bool]:
+    """Returns the cache files to purge and whether the run changed anything."""
     # `add_library` may already have an implicit transaction open (its own
     # `INSERT INTO libraries`, not yet committed) by the time it calls here,
     # and sqlite3 rejects a nested `BEGIN`. Only start one if we're not
@@ -243,8 +263,9 @@ def _write_index_and_update_signature(
         )
         db.execute(
             "INSERT INTO library_index_runs (library_id, trigger, started_at, finished_at, outcome, signature, "
-            "store_uuid, asset_count, added, removed, changed, hidden_changed, originals_missing) "
-            "VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, ?, ?, ?, ?, ?)",
+            "store_uuid, asset_count, added, removed, changed, hidden_changed, originals_missing, "
+            "added_visible, removed_visible) "
+            "VALUES (?, ?, ?, ?, 'applied', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 library_id,
                 trigger,
@@ -258,6 +279,8 @@ def _write_index_and_update_signature(
                 counts["changed"],
                 counts["hidden_changed"],
                 counts["originals_missing"],
+                counts["added_visible"],
+                counts["removed_visible"],
             ),
         )
     except BaseException:
@@ -265,7 +288,10 @@ def _write_index_and_update_signature(
         raise
     else:
         db.commit()
-    return purge
+    changed = any(
+        counts[key] for key in ("added", "removed", "changed", "hidden_changed")
+    )
+    return purge, changed
 
 
 _UPSERT_ASSET_SQL = (
@@ -450,6 +476,8 @@ def _write_index(
         "changed": 0,
         "hidden_changed": 0,
         "originals_missing": 0,
+        "added_visible": 0,
+        "removed_visible": 0,
     }
     purge: list[str] = []
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
@@ -468,6 +496,8 @@ def _write_index(
             old = old_rows.get(photo.uuid)
             if old is None:
                 counts["added"] += 1
+                if not photo.hidden:
+                    counts["added_visible"] += 1
             else:
                 if old[:3] != (
                     photo.path_edited,
@@ -480,8 +510,10 @@ def _write_index(
                     counts["hidden_changed"] += 1
             # Optimize Mac Storage: no full-size original on disk, but a
             # derivative to fall back to.
-            if derivatives and not (photo.path and os.path.exists(photo.path)):
-                counts["originals_missing"] += 1
+            original_missing = bool(
+                derivatives and not (photo.path and os.path.exists(photo.path))
+            )
+            counts["originals_missing"] += original_missing
             db.execute(
                 _UPSERT_ASSET_SQL,
                 (
@@ -526,6 +558,7 @@ def _write_index(
                     exif_info.camera_make if exif_info else None,
                     exif_info.camera_model if exif_info else None,
                     photo.score.overall if photo.score else None,
+                    int(original_missing),
                 ),
             )
             asset_id = db.execute(
@@ -558,6 +591,11 @@ def _write_index(
                 (library_id,),
             )
         )
+        counts["removed_visible"] = db.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND hidden = 0 "
+            "AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
+            (library_id,),
+        ).fetchone()[0]
         removed = db.execute(
             "DELETE FROM assets WHERE library_id = ? AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
             (library_id,),

@@ -73,7 +73,7 @@ A single server process that serves the API, the web app (mobile and desktop lay
   - Sizes: grid (about 300 px), large grid for desktop (about 600 px), and preview (about 1600 px), as WebP or JPEG, cached on disk outside the libraries.
   - Generate them through the platform interface described under [Platforms](#platforms). HEIC, RAW, and video all have to work on Linux without `sips` or `qlmanage`.
   - Use the library's own derivative files when they're usable.
-  - Generate lazily, with a resumable background pre-warm job per library that reports progress.
+  - Generate lazily, with a resumable background pre-warm job per library that reports progress. A job that had finished starts again by itself after an index run that changed something (added, removed, changed or Hidden-flag-changed assets), under the same rules as a manual start: cached and Hidden assets are skipped and it pauses at 90% of the cache limit. A job never run, paused (by an admin or by the 90% rule) or cleared is not started automatically.
 - Version check: log each library's Photos database version (`PhotosDB.db_version` and `PhotosDB.photos_version`), and refuse versions osxphotos doesn't support, with a clear error in the admin panel. Re-read the installed osxphotos README for the support table; do not hard-code a stale one.
 
 ### Edits
@@ -109,7 +109,7 @@ Every endpoint requires a session, and every request is checked against the libr
 
 ### Authentication
 
-- Username and password, hashed with Argon2id. Passkeys (WebAuthn, P3.1) sign in beside the password; the password keeps working. See `PHOTOS_VIEWER_WEBAUTHN_RP_ID` / `PHOTOS_VIEWER_WEBAUTHN_ORIGINS` in `.env.example`.
+- Username and password, hashed with Argon2id. Passkeys (WebAuthn, P3.1) sign in beside the password; the password keeps working. Registering a new passkey asks for the account password again, in the same request that starts the ceremony, and counts wrong passwords toward the login lockout. See `PHOTOS_VIEWER_WEBAUTHN_RP_ID` / `PHOTOS_VIEWER_WEBAUTHN_ORIGINS` in `.env.example`.
 - Secure, HttpOnly, SameSite=Strict session cookies. Long lifetime for the installed PWA, shorter for desktop by default (configurable). "Remember me" and logout.
 - Rate-limit logins and lock out temporarily after repeated failures. The lockout is keyed on the username, not on who is asking, plus a looser per-client limit keyed on the real client address -- the tailnet device's own address, once uvicorn's `--proxy-headers` (on by default behind `tailscale serve`, see below) has rewritten it from `X-Forwarded-For` -- falling back to the `Tailscale-User-Login` header only when the direct peer is loopback, or is listed in `PHOTOS_VIEWER_TRUSTED_PROXIES` (so everyone behind the proxy would otherwise share one counter); trade-off: knowing a real username is enough to lock that account out for the cool-off window. An unknown username locks out the same way, in a separate counter, so a 429 never reveals which usernames are real. An admin can clear a user's lockout from the admin panel (`POST /api/admin/users/{username}/unlock`) or, with no server running, via `python -m photos_viewer.admin unlock <username>` directly against `app.db` -- the fallback for an admin who is themselves locked out.
 - Never trust library ids from the client without checking the session's assignments.
@@ -128,6 +128,8 @@ Every endpoint requires a session, and every request is checked against the libr
   - Set display name; rename; remove (removing only drops it from the app and never touches files).
   - Status for each library: asset, video, and People counts, total size, last index time, thumbnail pre-warm progress, and warnings like "Photos.app has this library open", "unsupported version", or "drive not mounted".
   - Actions: re-index, start or pause pre-warm, clear thumbnail cache.
+  - **Change checks (Settings).** The server checks each library for a replaced or changed package every N minutes (1 to 10080, default 15); a changed copy must also stay unchanged for a wait time (0 to 10080 minutes, default 10) before it is re-indexed. **Manual only** turns the automatic check off (stored as an interval of 0, which older installs may already have); **Check now** runs one check-and-reindex-if-changed pass over all libraries in the background (admin only, CSRF-guarded, audited), and does nothing if a pass is already running. The wait time still applies.
+  - A registered library whose file is missing: the status suggests the best unregistered `.photoslibrary` next to it, ranked by name similarity (copy suffixes like " 2" or " copy" ignored), then most recently modified, then `Photos.sqlite` size closest to the old one (stat only). The best match is prefilled in Replace and the other candidates are listed.
   - Default edited-or-original setting.
 - **Users**
   - Create, edit, disable, and delete accounts; set or reset passwords; create one-time invite links; set the role.
@@ -153,9 +155,10 @@ Every endpoint requires a session, and every request is checked against the libr
 - Translucent bottom tab bar: Library, Albums, More, Search.
 - Library tab with a Years, Months, Days, All Photos segmented control and a date header that stays pinned while scrolling.
 - Square-cropped grid with pinch-to-zoom between column counts.
+- **"Library updated" note** (both layouts): after an index run that added or removed photos, a small dismissible banner at the top of the Library view, once per user: "Library updated · +N added, −M removed". The counts never include Hidden photos (a run that only changed Hidden ones shows nothing). Dismissal is stored per user on the server, so it follows them across devices; a newer run shows it again. Admin setting `show_library_updated_note` (default on) turns it off.
 - Full-screen viewer:
   - Swipe between photos, pinch and double-tap zoom, swipe down to dismiss.
-  - Info panel with date, camera details, location mini-map, and People in the photo.
+  - Info panel with date, camera details, location mini-map, and People in the photo. When only Apple's smaller derivative is on disk (Optimize Mac Storage), the sheet says so before download: "Only a smaller copy is on this Mac — downloads won't be the original." (`original_available: false` in the asset detail, set at index time.)
   - Video streaming, and Live Photo playback on press.
 - Albums tab with only user-created albums (and shared albums, if any) — no smart albums or Media Types here, those are in More.
 - More tab: People & Pets, Places (the map), Media Types (Videos, Selfies, Live Photos, Portrait, Panoramas, Screenshots, Slo-mo), and a Utilities group with Hidden (behind a confirm step, re-asked every time). No Recently Deleted or Duplicates — the app is view-only. The library switcher sits at the very bottom of this tab, since switching libraries is rare.
@@ -188,7 +191,7 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
   - ⌘A to select all, ⌘F to search.
   - Left and right arrows in the viewer.
   - `+` and `-` to zoom.
-- **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums. Videos and Live Photos play inline.
+- **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums, plus the same smaller-copy note when the original is not on disk. Videos and Live Photos play inline.
 - **Map:** full content area with the same basemap setting and clustered thumbnails. Clicking a cluster filters the grid. Off, or a missing local file, leaves a blank background under the clusters.
 - **People:** grid of circular faces with names, opening a person's photos. Unnamed face groups follow the named people with a muted "Add Name" placeholder (display only).
 - **Right-click menu:** Download original, Download edited, Copy link (within the app only, never public), and Show in album.

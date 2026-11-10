@@ -5,7 +5,7 @@ import { Icon } from "../icons";
 import { copyAssetLink, downloadVersion } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
-import { InfoRows } from "./InfoRows";
+import { InfoRows, OriginalMissingNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { useDismiss } from "./useDismiss";
@@ -235,6 +235,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       </div>
       {infoOpen && (
         <div className="desktop-viewer__info-panel" data-testid="viewer-info-panel">
+          <OriginalMissingNote available={detail?.original_available} className="viewer-info-note desktop-viewer__info-note" />
           <InfoRows rows={infoRows} className="desktop-viewer__info-rows" />
           {detail?.latitude != null && detail.longitude != null && (
             <MiniMap latitude={detail.latitude} longitude={detail.longitude} />

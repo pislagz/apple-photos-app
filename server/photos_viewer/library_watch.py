@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CHECK_INTERVAL_MINUTES = 15
 DEFAULT_STABLE_MINUTES = 10
 DEFAULT_SHOW_UPDATED_NOTE = 1
+MAX_MINUTES = 10080  # 7 days, for both timing settings
 
 SAMPLE_SIZE = 200
 # A sampled asset with no file at all (original, edited, raw or derivative)
@@ -468,14 +469,6 @@ def _display(iso: str) -> str:
     return _parse(iso).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def within_days(iso: str | None, days: int) -> bool:
-    if not iso:
-        return False
-    return (
-        datetime.datetime.now(datetime.UTC) - _parse(iso)
-    ).total_seconds() <= days * 86400
-
-
 def pending_too_long(row: sqlite3.Row, *, now: datetime.datetime | None = None) -> bool:
     since = row["pending_since"] or row["missing_since"]
     if since is None:
@@ -484,9 +477,50 @@ def pending_too_long(row: sqlite3.Row, *, now: datetime.datetime | None = None) 
     return (now - _parse(since)).total_seconds() > STALE_PENDING_HOURS * 3600
 
 
+# One whole-registry pass at a time: the background checker and an admin's
+# "Check now" share it, so a click during a pass (or two clicks) starts nothing
+# new. Per-library locks still guard each library's own indexing job.
+_pass_lock = threading.Lock()
+_manual_thread: threading.Thread | None = None
+
+
+def check_all_exclusive(db: sqlite3.Connection) -> dict[int, str] | None:
+    """`check_all`, or `None` without doing anything if a pass is running."""
+    if not _pass_lock.acquire(blocking=False):
+        return None
+    try:
+        return check_all(db)
+    finally:
+        _pass_lock.release()
+
+
+def start_manual_check(data_dir_getter: Callable[[], pathlib.Path]) -> bool:
+    """Admin "Check now": one `check_all` pass in a background thread (an
+    index can take minutes), with its own `app.db` connection. Returns `False`
+    when a pass is already running. The stability window still applies: a copy
+    that changed this minute is marked pending, not indexed half-copied."""
+    global _manual_thread
+    if _pass_lock.locked():
+        return False
+
+    def run() -> None:
+        try:
+            conn = app_db.connect(data_dir_getter())
+            try:
+                check_all_exclusive(conn)
+            finally:
+                conn.close()
+        except Exception:
+            logger.warning("manual library check failed", exc_info=True)
+
+    _manual_thread = threading.Thread(target=run, name="library-check-now", daemon=True)
+    _manual_thread.start()
+    return True
+
+
 class LibraryChecker(threading.Thread):
     """Background thread: wakes every `library_check_interval_minutes`
-    (`0` = off, re-read each wake) and runs `check_all`. Opens its own
+    (`0` = "Manual only", re-read each wake) and runs `check_all`. Opens its own
     `app.db` connection per pass."""
 
     def __init__(self, data_dir_getter: Callable[[], pathlib.Path]) -> None:
@@ -509,7 +543,7 @@ class LibraryChecker(threading.Thread):
                 try:
                     minutes = check_interval_minutes(conn)
                     if minutes > 0:
-                        check_all(conn)
+                        check_all_exclusive(conn)
                         delay = minutes * 60.0
                 finally:
                     conn.close()

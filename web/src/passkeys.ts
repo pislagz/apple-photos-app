@@ -106,8 +106,10 @@ export function removePasskey(id: string): Promise<void> {
 }
 
 // Signed-in: create a passkey for the current user.
-export async function registerPasskey(name: string): Promise<Passkey> {
-  const begun = await mutate<OptionsResponse>("POST", "/api/auth/passkeys/register/options", {});
+// The account password is re-checked by the server before it issues the
+// challenge, so a left-open session cannot plant a passkey (D43).
+export async function registerPasskey(name: string, password: string): Promise<Passkey> {
+  const begun = await mutate<OptionsResponse>("POST", "/api/auth/passkeys/register/options", { password });
   const credential = (await navigator.credentials.create({
     publicKey: creationOptionsFromJSON(begun.options),
   })) as PublicKeyCredential | null;

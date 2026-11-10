@@ -289,6 +289,33 @@ def _library_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.Row:
     return row
 
 
+def restart_finished_job(db: sqlite3.Connection, library_id: int) -> bool:
+    """D54: after an index run that changed something, start a pre-warm job
+    that had finished once more. Only a `done` job: no job row (never run, or
+    cache cleared) and `paused` (by the admin, or by the 90% rule) are left
+    alone. The worker's idle poll picks it up; cached assets and Hidden ones
+    are skipped and the 90% pause applies, because it is the same job."""
+    if _current_state(db, library_id) != "done":
+        return False
+    _, _, limit = _media_settings(db)
+    if limit == 0:
+        return False
+    db.execute(
+        "UPDATE prewarm_jobs SET state = 'running', note = NULL, cursor_uuid = NULL, failed = 0, total = ?, "
+        "updated_at = datetime('now') WHERE library_id = ? AND state = 'done'",
+        (count_eligible(db, library_id), library_id),
+    )
+    db.commit()
+    app_db.write_audit_log(
+        db,
+        "prewarm.auto_restart",
+        library_id=library_id,
+        actor="system",
+        detail="library updated",
+    )
+    return True
+
+
 def _wake(request: Request) -> None:
     worker = getattr(request.app.state, "prewarm_worker", None)
     if worker is not None:

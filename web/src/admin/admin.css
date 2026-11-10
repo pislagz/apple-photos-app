@@ -133,6 +133,17 @@ body:has(.admin-app, .admin-auth) {
   color: var(--accent);
 }
 
+/* Checkbox rows: text on the left, the box on the right (it precedes the text in the DOM). */
+.admin-main label:has(> input[type="checkbox"]) {
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+.admin-main label > input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px;
+}
+
 /* Grouped forms: one rounded card, label on the left, control on the right */
 .admin-main form,
 .admin-auth form {
@@ -331,6 +342,15 @@ body:has(.admin-app, .admin-auth) {
   .admin-auth label > input {
     flex: none;
     width: 100%;
+  }
+
+  .admin-main label:has(> input[type="checkbox"]) {
+    flex-direction: row-reverse;
+    align-items: center;
+  }
+
+  .admin-main label > input[type="checkbox"] {
+    width: 18px;
   }
 
   /* Users > Actions: a 2x2 block instead of a four-button vertical stack */

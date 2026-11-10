@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ApiError,
+  checkLibrariesNow,
   type MapTilesMode,
   readSettings,
   readTailnetAllowlist,
@@ -8,6 +9,10 @@ import {
   writeSettings,
   writeTailnetAllowlist,
 } from "../api";
+
+// Both library timing fields: 7 days. 0 on the check interval means "Manual only".
+const MAX_MINUTES = 10080;
+const DEFAULT_CHECK_MINUTES = 15;
 
 function describeError(err: unknown): string {
   return err instanceof ApiError ? err.message : "something went wrong";
@@ -18,6 +23,7 @@ export default function SettingsScreen() {
   const [allowlist, setAllowlist] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   // Text of number fields while typing. An empty field is a draft, never a 0:
   // it blocks the save instead of silently turning e.g. the library checker off.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -66,6 +72,24 @@ export default function SettingsScreen() {
       setNotice("Settings saved.");
     } catch (err) {
       setError(describeError(err));
+    }
+  }
+
+  async function handleCheckNow() {
+    setError(null);
+    setNotice(null);
+    setChecking(true);
+    try {
+      const { started } = await checkLibrariesNow();
+      setNotice(
+        started
+          ? "Checking all libraries for changes now. A changed library is re-indexed once it has been unchanged for the wait time above."
+          : "A check is already running.",
+      );
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -153,18 +177,29 @@ export default function SettingsScreen() {
           />
         </label>
         <label>
-          Library check interval (minutes, 0 = off)
           <input
-            min={0}
-            max={1440}
-            {...numberProps("library_check_interval_minutes")}
+            type="checkbox"
+            checked={settings.library_check_interval_minutes === 0}
+            onChange={(event) => {
+              setDrafts(({ library_check_interval_minutes: _dropped, ...rest }) => rest);
+              updateField("library_check_interval_minutes", event.target.checked ? 0 : DEFAULT_CHECK_MINUTES);
+            }}
           />
+          Manual only: don't check libraries for changes automatically
         </label>
+        {settings.library_check_interval_minutes === 0 ? (
+          <p>Libraries are only checked when you press "Check now".</p>
+        ) : (
+          <label>
+            Check libraries for changes every (minutes)
+            <input min={1} max={MAX_MINUTES} {...numberProps("library_check_interval_minutes")} />
+          </label>
+        )}
         <label>
           Library must be unchanged for (minutes) before it is re-indexed
           <input
             min={0}
-            max={1440}
+            max={MAX_MINUTES}
             {...numberProps("library_stable_minutes")}
           />
         </label>
@@ -177,6 +212,9 @@ export default function SettingsScreen() {
           Tell users when their library was updated
         </label>
         <button type="submit">Save settings</button>
+        <button type="button" onClick={handleCheckNow} disabled={checking}>
+          Check now
+        </button>
       </form>
 
       <h2>Tailnet allow-list</h2>
