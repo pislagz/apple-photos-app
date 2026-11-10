@@ -43,4 +43,35 @@ describe("useLibraryAssets (#147)", () => {
     expect(result.current.error).toBe(false);
     expect(result.current.done).toBe(true);
   });
+
+  it("retry re-requests the same cursor", async () => {
+    const urls: string[] = [];
+    let fail = true;
+    mockFetch((url) => {
+      urls.push(url);
+      if (!url.includes("cursor=")) return { items: [makeItem("a1")], next_cursor: "c1" };
+      return fail ? new Response("boom", { status: 500 }) : { items: [makeItem("a2")], next_cursor: null };
+    });
+    const { result } = renderHook(() => useLibraryAssets(1));
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.error).toBe(true));
+    fail = false;
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    const cursored = urls.filter((url) => url.includes("cursor="));
+    expect(cursored).toHaveLength(2);
+    expect(cursored[1]).toBe(cursored[0]);
+  });
+
+  it("clears the error when the library changes", async () => {
+    mockFetch((url) =>
+      url.includes("/libraries/1/") ? new Response("boom", { status: 500 }) : { items: [makeItem("b1")], next_cursor: null },
+    );
+    const { result, rerender } = renderHook(({ id }) => useLibraryAssets(id), { initialProps: { id: 1 } });
+    await waitFor(() => expect(result.current.error).toBe(true));
+    rerender({ id: 2 });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    expect(result.current.error).toBe(false);
+  });
 });

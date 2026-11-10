@@ -556,6 +556,44 @@ describe("MobileLibrary assets failure (#147)", () => {
   });
 });
 
+describe("MobileLibrary later-page failure and empty library (#89)", () => {
+  it("keeps loaded photos and shows Retry at the bottom when a later page fails", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    let fail = true;
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return computeSummary(items);
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) {
+        if (!url.includes("cursor=")) return { items, next_cursor: "c1" };
+        return fail ? new Response("boom", { status: 500 }) : { items: [makeItem("a2", "2024-05-09T10:00:00")], next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<MobileLibrary libraryId={1} />);
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more photos.");
+    expect(queryThumb("a1")).not.toBeNull();
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(queryThumb("a2")).not.toBeNull());
+  });
+
+  it("still says 'No photos yet.' for an empty library", async () => {
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return computeSummary([]);
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<MobileLibrary libraryId={1} />);
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    expect(await screen.findByText("No photos yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
 describe("MobileLibrary person grid text (#193)", () => {
   it("says 'person', not 'album', when a person has no photos", async () => {
     mockFetch((url) => {
