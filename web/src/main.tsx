@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import AdminApp from "./admin/AdminApp";
 import AppShell from "./shell/AppShell";
+import "./shell/tokens.css";
 import "./shell/shell.css";
 
 const root = document.getElementById("root");

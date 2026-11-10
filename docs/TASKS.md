@@ -541,7 +541,7 @@ In this order, one PR each unless two touch the same code:
 
 Foundations first, because the rest build on them:
 
-1. #218 Design tokens for type, spacing, radii and colour; finish dark mode. Folds in #106.
+1. #218 Design tokens for type, spacing, radii and colour; finish dark mode. Folds in #106. Done: `web/src/shell/tokens.css` holds every colour (light/dark pairs), type, spacing, radius and shadow token; `scripts/check_css_colours.mjs` (CI step "Check colours live in tokens.css only") fails on a hex/rgb literal or a `prefers-color-scheme` block in any other stylesheet. #106 was already fixed by 4322ede.
 2. #206 Motion tokens and basic transitions.
 
 Then the most visible changes:

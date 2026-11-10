@@ -149,6 +149,12 @@ jobs:
         working-directory: web
         run: npm test
 
+      - name: Check colours live in tokens.css only
+        working-directory: web
+        # #218: no hex/rgb() literal or prefers-color-scheme block in any other
+        # stylesheet; the rules are unit-tested by web/src/cssColours.test.ts.
+        run: npm run check-colours
+
       - name: Build the production bundle
         working-directory: web
         run: npm run build

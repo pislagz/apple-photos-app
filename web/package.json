@@ -9,6 +9,7 @@
     "test": "vitest run",
     "preview": "vite preview",
     "check-urls": "node ../scripts/check_external_urls.mjs dist",
+    "check-colours": "node ../scripts/check_css_colours.mjs src",
     "e2e:shots": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {

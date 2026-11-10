@@ -19,11 +19,12 @@ describe("admin styling (#158)", () => {
     expect(source).toMatch(/import "\.\/admin\.css";/);
   });
 
-  it("defines rules for the key admin classes, with a dark scheme and a phone breakpoint", () => {
+  it("defines rules for the key admin classes, with a phone breakpoint, dark values coming from tokens", () => {
     for (const cls of [".admin-app", ".admin-nav", ".admin-main", ".admin-table-wrap", ".admin-auth"]) {
       expect(css).toContain(cls);
     }
-    expect(css).toContain("prefers-color-scheme: dark");
+    // Dark values are token overrides in shell/tokens.css (#218), not a block here.
+    expect(css).not.toContain("prefers-color-scheme");
     expect(css).toMatch(/@media \(max-width: 700px\)/);
   });
 
