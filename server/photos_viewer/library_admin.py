@@ -183,6 +183,8 @@ def _validate_library_path(path: pathlib.Path) -> None:
         raise HTTPException(status_code=400, detail=f"{path} is not a .photoslibrary package")
     if not os.access(path, os.R_OK | os.X_OK):
         raise HTTPException(status_code=400, detail=f"{path} is not readable")
+    if not (path / "database" / "Photos.sqlite").is_file():
+        raise HTTPException(status_code=400, detail=f"{path} is not a Photos library (no database/Photos.sqlite inside)")
     try:
         opened = open_library_readonly(path)
     except UnsupportedPhotosVersionError as exc:
@@ -209,14 +211,15 @@ def _get_library_or_404(db: sqlite3.Connection, library_id: int) -> sqlite3.Row:
 
 
 def _total_size_bytes(db: sqlite3.Connection, library_id: int, path: pathlib.Path) -> int | None:
-    """The sum of `assets.original_filesize` from the index, not a fresh
+    """The sum of `assets.original_filesize` of non-hidden assets from the index
+    (hidden assets appear in no count or summary), not a fresh
     filesystem walk of a package that can be terabytes. Still `None` when
     the drive is unmounted -- a SQL sum alone would silently keep returning
     the last-good total for a library whose directory just vanished."""
     if not path.exists():
         return None
     total = db.execute(
-        "SELECT SUM(original_filesize) FROM assets WHERE library_id = ?", (library_id,)
+        "SELECT SUM(original_filesize) FROM assets WHERE library_id = ? AND hidden = 0", (library_id,)
     ).fetchone()[0]
     return total or 0
 
@@ -375,7 +378,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
     "/api/admin/libraries",
     response_model=LibraryResponse,
     status_code=201,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def add_library(
     payload: LibraryAddRequest,
@@ -384,7 +387,9 @@ def add_library(
     db: sqlite3.Connection = Depends(session_auth.get_db),
     data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
 ) -> LibraryResponse:
-    path = pathlib.Path(payload.path)
+    # Resolve first so `x/../Lib.photoslibrary` and symlinks can't register
+    # the same package twice.
+    path = pathlib.Path(payload.path).resolve()
     _validate_library_path(path)
     display_name = payload.display_name or _default_display_name(path)
     try:
@@ -423,7 +428,7 @@ def list_libraries(
 @router.patch(
     "/api/admin/libraries/{library_id}",
     response_model=LibraryResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def rename_library(
     library_id: int,
@@ -440,7 +445,7 @@ def rename_library(
 @router.delete(
     "/api/admin/libraries/{library_id}",
     status_code=204,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def remove_library(
     library_id: int,
@@ -473,7 +478,7 @@ def library_status(
 @router.post(
     "/api/admin/libraries/{library_id}/reindex",
     response_model=LibraryStatusResponse,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def reindex_library(
     library_id: int,
@@ -590,7 +595,7 @@ def _preview_replace(db: sqlite3.Connection, row: sqlite3.Row, new_path: pathlib
 @router.post(
     "/api/admin/libraries/{library_id}/replace",
     response_model=ReplacePreview,
-    dependencies=[Depends(session_auth._reject_cross_site_requests)],
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
 )
 def replace_library(
     library_id: int,
@@ -604,7 +609,7 @@ def replace_library(
     package indexed. Assets keep their ids: the upsert key is
     `(library_id, uuid)` and Photos keeps asset UUIDs across copies."""
     row = _get_library_or_404(db, library_id)
-    new_path = pathlib.Path(payload.path)
+    new_path = pathlib.Path(payload.path).resolve()
     preview = _preview_replace(db, row, new_path)
     detail = f"old={row['path']} new={new_path} overlap={preview.overlap:.3f} store_uuid_match={preview.store_uuid_match}"
     if not payload.confirm:

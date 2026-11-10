@@ -104,3 +104,13 @@ def test_root_404s_when_no_dist_dir_is_built(tmp_path):
     response = client.get("/")
 
     assert response.status_code == 404
+
+
+def test_dist_without_index_html_is_not_mounted(tmp_path, caplog):
+    (tmp_path / "assets").mkdir()
+    client = TestClient(create_app(web_dist_dir=tmp_path))
+
+    assert client.get("/").status_code == 404
+    assert client.get("/admin").status_code == 404
+    assert client.get("/api/health").status_code == 200
+    assert "no index.html" in caplog.text
