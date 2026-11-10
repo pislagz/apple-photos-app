@@ -416,3 +416,28 @@ body:has(.admin-app, .admin-auth) {
     font-size: 16px;
   }
 }
+
+/* D41 */
+.admin-hint {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.admin-privacy-options {
+  margin: 12px 0;
+}
+.admin-notice {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(10, 132, 255, 0.12);
+}
+.admin-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}

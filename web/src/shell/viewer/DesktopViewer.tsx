@@ -8,8 +8,9 @@ import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
+import { thumbnailFor, useFocusScope } from "./focusScope";
 import { useDismiss } from "./useDismiss";
-import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
+import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
 import { viewerKeyAction } from "./viewerKeys";
 
 export interface ViewerProps {
@@ -39,9 +40,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    rootRef.current?.focus();
-  }, []);
+  // D59: the grid behind is inert while the Viewer is open, and focus goes
+  // back to the thumbnail it was opened from.
+  const openedFromId = useRef(item?.id);
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
 
   useEffect(() => {
     setScale(1);
@@ -111,7 +113,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
-  const placeLine = detail ? formatLocationLine(detail) : "";
+  const placeLine = detail ? formatPlaceName(detail) : "";
   // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
   // no place falls back to the date as the sole title.
   const titleLine = placeLine || dateLine;

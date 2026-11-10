@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import sqlite3
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -33,6 +35,7 @@ from .library_watch import LibraryChecker
 from .library_zip import router as library_zip_router
 from .session_auth import (
     get_data_dir,
+    get_db,
     validate_public_origins_env,
     validate_trusted_proxies_env,
 )
@@ -54,22 +57,64 @@ _NO_STORE_PREFIXES = ("/api/me/", "/api/auth/", "/api/setup/", "/api/admin/")
 _NO_STORE_EXACT = ("/api/me",)
 
 
-# P1.20. The one external host is the OSM raster tile server, on connect-src
-# because MapLibre fetches tile bytes (it then draws them from blob: URLs,
-# covered by img-src). No worker-src: the web app has no MapLibre worker yet;
-# add `worker-src 'self' blob:` with the Phase 2 map only if it needs one.
-CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self'; "
-    "font-src 'self'; "
-    "img-src 'self' blob: data:; "
-    "connect-src 'self' https://tile.openstreetmap.org; "
-    "object-src 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self'; "
-    "frame-ancestors 'none'"
-)
+# P1.20, D41. The one external host is the OSM raster tile server, and it is on
+# connect-src only while an admin has turned "Show OpenStreetMap map" on
+# (setting `map_tiles_mode` = online; the default is off). MapLibre fetches
+# tile bytes with fetch(), then draws them from blob: URLs, covered by img-src.
+# No worker-src: the web app has no MapLibre worker yet; add
+# `worker-src 'self' blob:` with the Phase 2 map only if it needs one.
+_OSM_TILES_HOST = "https://tile.openstreetmap.org"
+
+
+def content_security_policy(osm_tiles: bool) -> str:
+    connect = "'self'" + (f" {_OSM_TILES_HOST}" if osm_tiles else "")
+    return (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "font-src 'self'; "
+        "img-src 'self' blob: data:; "
+        f"connect-src {connect}; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+
+_CSP_CACHE_SECONDS = 5.0
+_SETTINGS_WRITES = ("/api/admin/settings", "/api/setup/admin")
+
+
+def _map_is_online(conn: sqlite3.Connection) -> bool:
+    try:
+        return app_db.get_setting(conn, "map_tiles_mode") == "online"
+    except sqlite3.Error:
+        return False
+
+
+def _osm_tiles_enabled(app: FastAPI) -> bool:
+    """Whether the map setting is `online`. Cached for a few seconds and
+    dropped when Settings are saved (`app.state.csp_cache = None`); never
+    creates `app.db`."""
+    cached = getattr(app.state, "csp_cache", None)
+    now = time.monotonic()
+    if cached is not None and now - cached[0] < _CSP_CACHE_SECONDS:
+        return cached[1]
+    online = False
+    override = app.dependency_overrides.get(get_db)
+    if override is not None:  # tests hand the routes a ready connection
+        online = _map_is_online(override())
+    else:
+        data_dir = app.dependency_overrides.get(get_data_dir, get_data_dir)()
+        if app_db.db_path(data_dir).exists():
+            conn = app_db.connect(data_dir)
+            try:
+                online = _map_is_online(conn)
+            finally:
+                conn.close()
+    app.state.csp_cache = (now, online)
+    return online
 
 
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -77,7 +122,11 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         response = await call_next(request)
-        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+        if request.method in ("PUT", "POST") and request.url.path in _SETTINGS_WRITES:
+            request.app.state.csp_cache = None  # the map setting may have changed
+        response.headers["Content-Security-Policy"] = content_security_policy(
+            _osm_tiles_enabled(request.app)
+        )
         path = request.url.path
         if path in _NO_STORE_EXACT or path.startswith(_NO_STORE_PREFIXES):
             response.headers["Cache-Control"] = "no-store"

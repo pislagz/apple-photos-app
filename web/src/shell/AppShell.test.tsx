@@ -321,4 +321,34 @@ describe("AppShell", () => {
 
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Sections" })).toBeInTheDocument());
   });
+
+  it("first-run setup sends both optional features off unless they are ticked (D41)", async () => {
+    setViewport(1400, true);
+    const bodies: unknown[] = [];
+    let adminCreated = false;
+    mockFetch((url, init) => {
+      if (url === "/api/setup/status") return { needs_setup: !adminCreated };
+      if (url === "/api/setup/admin" && init?.method === "POST") {
+        bodies.push(JSON.parse(String(init.body)));
+        adminCreated = true;
+        return jsonResponse({ username: "alice", role: "admin" }, 201);
+      }
+      if (url === "/api/auth/login" && init?.method === "POST") return { username: "alice", role: "admin" };
+      if (url === "/api/me") {
+        return adminCreated ? { ...ME_RESPONSE, role: "admin" } : jsonResponse({ detail: "not authenticated" }, 401);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<AppShell />);
+    await screen.findByRole("heading", { name: "Create admin account" });
+    expect((screen.getByLabelText("Show OpenStreetMap map") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText("Offline place names") as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByLabelText("Offline place names"));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2hunter2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create admin account" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ show_osm_map: false, offline_place_names: true });
+  });
 });

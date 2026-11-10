@@ -200,6 +200,12 @@ function LoadedMap({
     <div className="map-view" data-testid="map-view">
       <div ref={container} className="map-view__canvas" />
       <Attribution config={config} />
+      {config.mode === "off" && (
+        <p className="map-view__off-note" role="note" data-testid="map-off-note">
+          The OpenStreetMap map is off, so photos are shown on a blank background. To turn it on, an admin opens Admin →
+          Settings and ticks “Show OpenStreetMap map”.
+        </p>
+      )}
       {empty && <p className="map-view__note">No photos with a location.</p>}
       {failed && (
         <div className="map-view__state map-view__state--overlay" role="alert">

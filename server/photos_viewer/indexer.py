@@ -19,7 +19,7 @@ import os
 import pathlib
 import sqlite3
 
-from . import libraries, media
+from . import libraries, media, place_names
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ _ASSET_COLUMNS = (
     "place",
     "place_country_code",
     "place_address",
+    "place_offline",
     "path_original",
     "path_edited",
     "path_derivative",
@@ -382,6 +383,12 @@ def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> None:
     )
 
 
+def _offline_place(gazetteer, place, latitude, longitude) -> str | None:
+    if gazetteer is None or (place and (place.name or place.address_str)):
+        return None
+    return gazetteer.lookup(latitude, longitude)
+
+
 def _write_index(
     db: sqlite3.Connection, library_id: int, photosdb, *, batch_size: int | None = None
 ) -> tuple[dict[str, int], list[str]]:
@@ -480,6 +487,7 @@ def _write_index(
         "removed_visible": 0,
     }
     purge: list[str] = []
+    gazetteer = place_names.indexing_lookup(db)
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
         for walked, photo in enumerate(photosdb.photos(), start=1):
@@ -548,6 +556,8 @@ def _write_index(
                     place.name if place else None,
                     place.country_code if place else None,
                     place.address_str if place else None,
+                    # D41: only for photos Photos left unnamed; Apple's names win.
+                    _offline_place(gazetteer, place, latitude, longitude),
                     photo.path,
                     photo.path_edited,
                     derivatives[0] if derivatives else None,

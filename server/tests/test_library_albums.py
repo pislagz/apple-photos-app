@@ -279,6 +279,7 @@ def test_migration_flags_indexed_libraries_for_reindex(tmp_path):
         conn.execute("ALTER TABLE library_index_runs DROP COLUMN added_visible")
         conn.execute("ALTER TABLE library_index_runs DROP COLUMN removed_visible")
         conn.execute("ALTER TABLE assets DROP COLUMN original_missing")
+        conn.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         conn.execute("DROP TABLE folders")
         conn.execute("ALTER TABLE albums DROP COLUMN parent_uuid")
         conn.execute("ALTER TABLE albums DROP COLUMN list_order")

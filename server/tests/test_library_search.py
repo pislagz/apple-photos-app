@@ -309,6 +309,7 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE library_index_runs DROP COLUMN added_visible")
         db.execute("ALTER TABLE library_index_runs DROP COLUMN removed_visible")
         db.execute("ALTER TABLE assets DROP COLUMN original_missing")
+        db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         db.execute(
             "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')"
         )

@@ -501,6 +501,10 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE assets ADD COLUMN original_missing INTEGER NOT NULL DEFAULT 0",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 24: D41 offline place names, kept apart from Apple's own `place*` columns.
+    [
+        "ALTER TABLE assets ADD COLUMN place_offline TEXT",
+    ],
 ]
 
 
@@ -573,6 +577,10 @@ def migrate(conn: sqlite3.Connection) -> None:
         raise
     else:
         conn.commit()
+
+
+# D41: nothing talks to OpenStreetMap until an admin turns it on.
+DEFAULT_MAP_TILES_MODE = "off"
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:

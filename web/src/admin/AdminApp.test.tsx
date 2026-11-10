@@ -67,4 +67,23 @@ describe("AdminApp", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Libraries" })).toBeInTheDocument());
   });
+
+  it("shows a notice about the two optional features until they have been reviewed (D41)", async () => {
+    let reviewed = false;
+    mockFetch((url) => {
+      if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
+      if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/place-names") {
+        return { dataset: "cities15000", downloaded: false, size_bytes: 0, source_url: "", attribution: "", license_url: "", opt_ins_reviewed: reviewed };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { unmount } = render(<AdminApp />);
+    expect(await screen.findByTestId("opt-in-notice")).toHaveTextContent("OpenStreetMap map and offline place names");
+    unmount();
+    reviewed = true;
+    render(<AdminApp />);
+    await screen.findByRole("heading", { name: "Libraries" });
+    await waitFor(() => expect(screen.queryByTestId("opt-in-notice")).toBeNull());
+  });
 });

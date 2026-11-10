@@ -258,6 +258,7 @@ export default function HiddenView({
                 key={item.id}
                 type="button"
                 className="hidden-view__cell"
+                data-asset-id={item.id}
                 aria-label={assetAlt(item)}
                 onClick={() => setOpenIndex(row.index * columns + offset)}
               >

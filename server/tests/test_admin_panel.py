@@ -588,7 +588,8 @@ def test_settings_default_then_round_trip(tmp_path):
     try:
         defaults = client.get("/api/admin/settings")
         assert defaults.status_code == 200
-        assert defaults.json()["map_tiles_mode"] == "online"
+        assert defaults.json()["map_tiles_mode"] == "off"  # D41: opt-in
+        assert defaults.json()["offline_place_names"] is False
         assert defaults.json()["map_tiles_pmtiles_path"] is None
 
         updated = client.put(

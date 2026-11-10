@@ -188,6 +188,16 @@ describe("desktop Map", () => {
     await waitFor(() => expect(created).toHaveLength(1));
     expect(created[0].config.mode).toBe("off");
     expect(screen.queryByRole("link", { name: /OpenStreetMap/ })).not.toBeInTheDocument();
+    // D41: the view says the map is off and how to enable it.
+    expect(screen.getByTestId("map-off-note")).toHaveTextContent(/Show OpenStreetMap map/);
+  });
+
+  it("Online mode shows no off-note (D41)", async () => {
+    mockFetch(handler([]));
+    renderDesktop();
+    fireEvent.click(screen.getByRole("button", { name: "Map" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(screen.queryByTestId("map-off-note")).toBeNull();
   });
 
   it("says the map settings failed to load and retries", async () => {

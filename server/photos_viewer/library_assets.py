@@ -20,7 +20,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import (
     app_db,
@@ -503,6 +503,9 @@ class AssetDetailResponse(BaseModel):
     place: str | None
     place_country_code: str | None
     place_address: str | None
+    # D41: nearest city from the offline gazetteer (opt-in); the three Photos
+    # fields above always win when present.
+    place_offline: str | None = None
     camera_make: str | None
     camera_model: str | None
     has_edited: bool
@@ -604,6 +607,7 @@ def asset_detail(
         place=asset["place"],
         place_country_code=asset["place_country_code"],
         place_address=asset["place_address"],
+        place_offline=asset["place_offline"],
         camera_make=asset["camera_make"],
         camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
@@ -613,6 +617,76 @@ def asset_detail(
         ),
         people=people,
         albums=albums,
+    )
+
+
+MAX_SELECTION_SUMMARY = 50000
+_SUMMARY_CHUNK = 500
+
+
+class SelectionSummaryRequest(BaseModel):
+    asset_ids: list[str] = Field(min_length=1, max_length=MAX_SELECTION_SUMMARY)
+
+
+class SelectionSummaryResponse(BaseModel):
+    count: int
+    photos: int
+    videos: int
+    # Same UTC `date_created` strings the list items carry; null when no
+    # selected asset has a date.
+    date_first: str | None
+    date_last: str | None
+    # Sum of the recorded original file sizes (assets without one add nothing).
+    total_bytes: int
+    # The one saved place name every selected asset shares (Photos' own
+    # record, as in the single-asset Info row), else null.
+    place: str | None
+
+
+@router.post(
+    "/api/libraries/{library_id}/selection-summary",
+    response_model=SelectionSummaryResponse,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def selection_summary(
+    payload: SelectionSummaryRequest,
+    response: Response,
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> SelectionSummaryResponse:
+    """Desktop Info panel with 2+ photos selected (D21). Reads only `app.db`.
+    Every id is resolved like the single-asset detail route: a foreign or
+    unknown id is a 404, a hidden one needs the Hidden unlock."""
+    ids = list(dict.fromkeys(payload.asset_ids))
+    rows: list[sqlite3.Row] = []
+    for start in range(0, len(ids), _SUMMARY_CHUNK):
+        chunk = ids[start : start + _SUMMARY_CHUNK]
+        marks = ",".join("?" * len(chunk))
+        rows.extend(
+            db.execute(
+                "SELECT hidden, is_video, date_created, original_filesize, "
+                "COALESCE(NULLIF(place_address, ''), NULLIF(place, ''), NULLIF(place_offline, '')) AS label "
+                f"FROM assets WHERE library_id = ? AND uuid IN ({marks})",
+                (library["id"], *chunk),
+            ).fetchall()
+        )
+    if len(rows) != len(ids):
+        raise HTTPException(status_code=404, detail="not found")
+    if any(row["hidden"] for row in rows):
+        session_auth.require_hidden_unlocked(session, db)
+        response.headers["Cache-Control"] = "private, no-store"
+    dates = [row["date_created"] for row in rows if row["date_created"]]
+    labels = {row["label"] for row in rows}
+    videos = sum(1 for row in rows if row["is_video"])
+    return SelectionSummaryResponse(
+        count=len(rows),
+        photos=len(rows) - videos,
+        videos=videos,
+        date_first=min(dates) if dates else None,
+        date_last=max(dates) if dates else None,
+        total_bytes=sum(row["original_filesize"] or 0 for row in rows),
+        place=next(iter(labels)) if len(labels) == 1 and None not in labels else None,
     )
 
 

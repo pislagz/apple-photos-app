@@ -47,3 +47,36 @@ def test_suite_still_allows_loopback_sockets():
         server.listen(1)
         with socket.create_connection(server.getsockname(), timeout=1):
             pass
+
+
+def test_only_the_admin_place_name_download_imports_an_http_client():
+    """P1.21, D41: the server's single outbound path is `place_names.download`
+    (an admin's one-time GeoNames fetch). No other module may import a client
+    library, so nothing else can dial out."""
+    import ast
+    import pathlib
+
+    import photos_viewer
+
+    clients = {
+        "urllib.request",
+        "http.client",
+        "httpx",
+        "requests",
+        "aiohttp",
+        "socket",
+    }
+    allowed = {"place_names.py": {"urllib.request"}}
+    offenders = {}
+    for path in pathlib.Path(photos_viewer.__file__).parent.glob("*.py"):
+        found = set()
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Import):
+                found |= {a.name for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                found.add(node.module)
+                found |= {f"{node.module}.{a.name}" for a in node.names}
+        extra = (found & clients) - allowed.get(path.name, set())
+        if extra:
+            offenders[path.name] = extra
+    assert offenders == {}

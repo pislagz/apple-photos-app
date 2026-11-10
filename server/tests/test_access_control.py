@@ -172,12 +172,17 @@ def requests_for(path, method, library):
             ]
         elif path.endswith("/search"):
             variants = [{"params": {"q": "test"}}]
-        elif path.endswith("/zip"):
+        elif path.endswith("/zip/report"):
+            variants = [{"params": {"job": "x"}}]
+        elif path.endswith(("/zip", "/zip/ticket")):
             ids = [a["uuid"] for a in library["assets"].values()]
             variants = [
                 {"json": {"asset_ids": ids, "format": fmt}}
                 for fmt in ("native", "jpeg")
             ]
+        elif path.endswith("/selection-summary"):
+            ids = [a["uuid"] for a in library["assets"].values()]
+            variants = [{"json": {"asset_ids": ids}}]
         elif path.endswith("/updated-note/dismiss"):
             variants = [{"json": {"run_id": 1}}]
         else:
@@ -221,6 +226,8 @@ def read_own(client, world, own_name):
     """Same requests as `attack`, against a library the caller may read."""
     own = world.libraries[own_name]
     for path, method in library_routes(world.app):
+        if path.endswith(("/zip/download", "/zip/report")):
+            continue  # needs a ticket minted first: test_a_zip_ticket_only_works_...
         for url, kwargs in requests_for(path, method, own):
             response = client.request(url=url, **kwargs)
             # A jpeg transcode is generated whole, so it ignores Range and answers 200.
@@ -251,6 +258,10 @@ def test_route_enumeration_covers_the_known_routes(world):
         "/original/{asset_id}",
         "/livephoto/{asset_id}/video",
         "/zip",
+        "/selection-summary",
+        "/zip/ticket",
+        "/zip/download",
+        "/zip/report",
     ):
         assert LIBRARY_PREFIX + suffix in templates
 
@@ -301,6 +312,40 @@ def test_zip_of_foreign_asset_ids_through_own_library_404s(world):
         )
         assert_nothing_returned(response, victim, "zip foreign ids")
         assert response.status_code == 404
+
+
+def test_a_zip_ticket_only_works_for_the_user_and_library_that_asked(world):
+    world.user("alice", library="L1")
+    world.user("bob", library="L2")
+    alice, bob = world.login("alice"), world.login("bob")
+    l1, l2 = world.libraries["L1"], world.libraries["L2"]
+    ids = [a["uuid"] for a in l1["assets"].values()]
+    ticket = alice.post(
+        f"/api/libraries/{l1['id']}/zip/ticket", json={"asset_ids": ids}
+    ).json()["ticket"]
+    # Another user, with either library id, and no session at all: nothing.
+    for client, lib in ((bob, l1), (bob, l2), (alice, l2)):
+        response = client.get(
+            f"/api/libraries/{lib['id']}/zip/download", params={"ticket": ticket}
+        )
+        assert response.status_code == 404
+    # A refused attempt by someone else burned the ticket (single use), so even the
+    # owner needs a new one; the owner's own redeem works once.
+    fresh = alice.post(
+        f"/api/libraries/{l1['id']}/zip/ticket", json={"asset_ids": ids}
+    ).json()["ticket"]
+    ok = alice.get(f"/api/libraries/{l1['id']}/zip/download", params={"ticket": fresh})
+    assert ok.status_code == 200
+    again = alice.get(
+        f"/api/libraries/{l1['id']}/zip/download", params={"ticket": fresh}
+    )
+    assert again.status_code == 404
+    # Foreign asset ids never get a ticket.
+    foreign = [a["uuid"] for a in l2["assets"].values()]
+    response = alice.post(
+        f"/api/libraries/{l1['id']}/zip/ticket", json={"asset_ids": foreign}
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.parametrize("victim", ["L1", "L2"])

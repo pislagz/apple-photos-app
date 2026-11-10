@@ -204,7 +204,8 @@ def _local_pmtiles(db: sqlite3.Connection) -> pathlib.Path | None:
 
 
 class MapConfig(BaseModel):
-    # online: browser fetches OSM tiles. local_file: `pmtiles_url` (same
+    # online: browser fetches OSM tiles (an admin opt-in; the default is off,
+    # D41). local_file: `pmtiles_url` (same
     # origin). off: no basemap. A local_file whose archive is missing or
     # unreadable is reported as "off" -- it never falls back to OSM.
     mode: Literal["online", "local_file", "off"]
@@ -216,7 +217,7 @@ def map_config(
     session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> MapConfig:
-    mode = app_db.get_setting(db, "map_tiles_mode") or "online"
+    mode = app_db.get_setting(db, "map_tiles_mode") or app_db.DEFAULT_MAP_TILES_MODE
     if mode == "local_file":
         return (
             MapConfig(mode="local_file", pmtiles_url=PMTILES_URL)
