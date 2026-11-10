@@ -63,6 +63,86 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
   });
 });
 
+// #150: leaving Hidden in another tab calls lock-hidden, which re-locks the
+// whole session. This tab's next request then 403s `hidden_locked`. HiddenView
+// only ever requests the list (no paging, no viewer, no media yet), so every
+// reachable 403 goes through the same prompt.
+describe.each(["mobile", "desktop"] as const)("HiddenView locked from another tab (%s)", (variant) => {
+  function sessionServer() {
+    let locked = false;
+    let listCalls = 0;
+    mockFetch((url) => {
+      if (url === "/api/auth/reconfirm-password") {
+        locked = false;
+        return noContentResponse();
+      }
+      if (url === "/api/libraries/1/hidden") {
+        listCalls += 1;
+        if (locked) return jsonResponse(LOCKED, 403);
+        return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    return {
+      lockFromOtherTab: () => {
+        locked = true;
+      },
+      listCalls: () => listCalls,
+    };
+  }
+
+  async function unlock() {
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+  }
+
+  it("Retry after a failed load, with Hidden locked meanwhile, shows the prompt then recovers", async () => {
+    let listCalls = 0;
+    let locked = false;
+    mockFetch((url) => {
+      if (url === "/api/auth/reconfirm-password") {
+        locked = false;
+        return noContentResponse();
+      }
+      listCalls += 1;
+      if (listCalls === 1) return jsonResponse({ detail: "boom" }, 500);
+      if (locked) return jsonResponse(LOCKED, 403);
+      return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
+    });
+    // The other tab locks Hidden after the first (failed) load.
+    locked = true;
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load hidden photos.")).not.toBeInTheDocument();
+    await unlock();
+    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+  });
+
+  it("locked again between unlock and the reload shows the prompt again, not an error", async () => {
+    const server = sessionServer();
+    server.lockFromOtherTab();
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    await unlock();
+    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(server.listCalls()).toBe(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("a list that was open and unlocked, remounted after the other tab locked, prompts", async () => {
+    const server = sessionServer();
+    const first = render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    first.unmount();
+    server.lockFromOtherTab();
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    await unlock();
+    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+  });
+});
+
 // #149: StrictMode's simulated mount/unmount/mount must not lock Hidden
 // between unlock and the first list load.
 describe("HiddenSession lock-on-leave", () => {
