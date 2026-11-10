@@ -12,6 +12,14 @@ afterEach(() => vi.unstubAllGlobals());
 // fire in order, so a later setTimeout(0) runs after it: no wall-clock sleep.
 const afterDeferredLock = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+// `findBy*` resolves the moment the node is in the DOM, but HiddenView attaches
+// its capture-phase image-error listener and its IntersectionObserver in
+// passive effects, which React may not have flushed yet. An event fired in that
+// gap is lost, so the tests that fire one wait for the effects first.
+async function flushEffects() {
+  await act(async () => {});
+}
+
 const LOCKED = { detail: { code: "hidden_locked", message: "password required to open Hidden" } };
 
 // #148: Hidden re-locks server-side after 5 idle minutes; the next request
@@ -345,6 +353,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     const thumb = await findThumb("a3");
+    await flushEffects();
     locked = true;
     fireEvent.error(thumb);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
@@ -353,7 +362,9 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
   it("a failed image while still unlocked leaves the grid alone", async () => {
     const fetchMock = mockFetch((url) => (url.startsWith("/api/libraries/1/hidden") ? page2 : jsonResponse({}, 404)));
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
-    fireEvent.error(await findThumb("a3"));
+    const thumb = await findThumb("a3");
+    await flushEffects();
+    fireEvent.error(thumb);
     // The probe is the second request. Await its response, then flush React,
     // so "no prompt" is checked after the probe finished, not before.
     await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
@@ -376,6 +387,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
       expect(el).not.toBeNull();
       return el!;
     });
+    await flushEffects();
     locked = true;
     fireEvent.error(preview);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
