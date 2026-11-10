@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
@@ -238,6 +240,9 @@ describe("MobileViewer", () => {
 
     const favorite = screen.getByLabelText("Favorite");
     expect(favorite.tagName).toBe("SPAN");
+    // #131: read-only status, not a button look-alike.
+    expect(favorite.getAttribute("role")).toBe("img");
+    expect(favorite.className).toContain("mobile-viewer__status");
     expect(screen.queryByLabelText(/delete/i)).toBeNull();
     expect(screen.queryByLabelText(/edit/i)).toBeNull();
   });
@@ -452,5 +457,14 @@ describe("MobileViewer", () => {
     const stage = screen.getByTestId("mobile-viewer-stage");
     const media = stage.querySelector("img") as HTMLImageElement;
     expect(media.draggable).toBe(false);
+  });
+});
+
+describe("favorite status styling (#131)", () => {
+  it("is non-interactive in CSS", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = css.match(/\.mobile-viewer__status \{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toContain("cursor: default");
+    expect(rule).toContain("pointer-events: none");
   });
 });

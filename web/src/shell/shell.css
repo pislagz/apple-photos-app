@@ -943,8 +943,6 @@ body {
 .sidebar__group summary {
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
   color: var(--sequoia-text-secondary);
   padding: 10px 8px 4px;
   cursor: default;
@@ -1631,6 +1629,14 @@ body {
   .mobile-viewer__icon-button {
     color: #fff;
   }
+}
+
+/* #131: read-only status (the library is view-only), not a tappable control:
+   no pointer cursor, no button chrome, dimmed like a badge. */
+.mobile-viewer__status {
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .mobile-viewer__back-chevron {
