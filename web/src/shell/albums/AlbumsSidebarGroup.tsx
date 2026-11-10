@@ -64,7 +64,7 @@ function AlbumList({
               style={{ paddingLeft: 22 + depth * 12 }}
               onClick={() => onOpen(node.id, node.title)}
             >
-              <Icon name="albums" className="sidebar__icon" />
+              <Icon name="albums" className="sidebar__icon" filled={currentId === node.id} />
               {node.title}
             </button>
           </li>

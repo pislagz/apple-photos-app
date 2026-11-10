@@ -83,7 +83,7 @@ function SidebarAlbumGroups({
                   className="sidebar__item sidebar__item--sub"
                   onClick={() => onOpen(`smart:${type.smart}`, type.label)}
                 >
-                  <Icon name={type.icon} className="sidebar__icon" />
+                  <Icon name={type.icon} className="sidebar__icon" filled={currentId === `smart:${type.smart}`} />
                   {type.label}
                 </button>
               </li>
@@ -221,7 +221,7 @@ export default function DesktopShell({
                 className="sidebar__item"
                 onClick={() => selectView("library")}
               >
-                <Icon name="library" className="sidebar__icon" />
+                <Icon name="library" className="sidebar__icon" filled={view === "library"} />
                 Library
               </button>
             </li>
@@ -232,7 +232,7 @@ export default function DesktopShell({
                 className="sidebar__item"
                 onClick={() => selectView("days")}
               >
-                <Icon name="days" className="sidebar__icon" />
+                <Icon name="days" className="sidebar__icon" filled={view === "days"} />
                 Days
               </button>
             </li>
@@ -265,7 +265,17 @@ export default function DesktopShell({
                         : undefined
                   }
                 >
-                  <Icon name={section.icon} className="sidebar__icon" />
+                  <Icon
+                    name={section.icon}
+                    className="sidebar__icon"
+                    filled={
+                      section.map
+                        ? view === "map" || showingPlace
+                        : section.people
+                          ? view === "people" || showingPerson
+                          : !!section.smart && currentAlbumId === `smart:${section.smart}`
+                    }
+                  />
                   {section.label}
                 </button>
               </li>
@@ -295,7 +305,7 @@ export default function DesktopShell({
                 className="sidebar__item"
                 onClick={() => view !== "hidden" && setUnlockPrompt(true)}
               >
-                <Icon name="hidden" className="sidebar__icon" />
+                <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
                 Hidden
               </button>
             </li>

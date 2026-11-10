@@ -2,6 +2,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Page, expect, test } from "@playwright/test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import IconGallery from "../src/shell/IconGallery";
+import { ICON_NAMES, Icon } from "../src/shell/icons";
 
 // Dev-only logins printed by scripts/dev_demo.py for the synthetic demo library.
 const ADMIN = { username: "demo-admin", password: "demo-admin-pass-1" };
@@ -801,4 +805,106 @@ test("Decisions 5: the map without consent and no file is off", async ({ page },
   await openMap(page, info.project.name);
   await expect(page.getByTestId("map-off-note")).toBeVisible();
   await shot(page, "27-map-without-consent-off", info.project.name);
+});
+
+// --- Icon set (#235): before/after proof shots ---
+
+test.describe("icon set shots (#235)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      test(`sidebar selected rows (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await signIn(page);
+        await expect(page.locator("aside.sidebar")).toBeVisible();
+        await page.locator("aside.sidebar").getByRole("button", { name: "Favorites", exact: true }).click();
+        await page.waitForLoadState("networkidle");
+        await page.locator("aside.sidebar").screenshot({ path: `${SHOTS}/icons-sidebar-${scheme}.png` });
+      });
+
+      test(`icon gallery (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const markup = renderToStaticMarkup(createElement(IconGallery));
+        const dark = scheme === "dark";
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 24px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .icon-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 32px; }
+            .icon-gallery__row { display: flex; align-items: center; gap: 14px; padding: 4px 0; border-bottom: 1px solid ${dark ? "#38383a" : "#e5e5ea"}; }
+            .icon-gallery__name { width: 84px; color: ${dark ? "#98989d" : "#6e6e73"}; }
+            svg { flex: none; color: #0a84ff; }
+          </style><h3 style="margin:0 0 12px">Icons: 20 px outline, 20 px filled, 40 px outline, 40 px filled</h3>${markup}`,
+        );
+        await page.setViewportSize({ width: 1440, height: 760 });
+        await page.screenshot({ path: `${SHOTS}/icons-gallery-${scheme}.png`, fullPage: true });
+      });
+
+      test(`size ladder 16/18/20 beside text (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const dark = scheme === "dark";
+        const names = ICON_NAMES.filter((name) => name !== "chevron");
+        const rows = [16, 18, 20]
+          .map((size) => {
+            const icons = names
+              .map((name) => renderToStaticMarkup(createElement(Icon, { name, size, filled: false })))
+              .join("");
+            const solid = names
+              .map((name) => renderToStaticMarkup(createElement(Icon, { name, size, filled: true })))
+              .join("");
+            return `<div class="r"><b>${size}px</b><span>${icons}</span></div><div class="r"><b>filled</b><span>${solid}</span></div>`;
+          })
+          .join("");
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 20px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .r { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+            .r b { width: 52px; font-weight: 500; }
+            .r span { display: flex; gap: 10px; align-items: center; }
+            svg { color: #0a84ff; }
+          </style>${rows}<p style="display:flex;align-items:center;gap:8px">${renderToStaticMarkup(createElement(Icon, { name: "library", size: 18, filled: true }))} Library &nbsp; ${renderToStaticMarkup(createElement(Icon, { name: "favorite", size: 18 }))} Favorites &nbsp; ${renderToStaticMarkup(createElement(Icon, { name: "map", size: 18 }))} Map</p>`,
+        );
+        await page.setViewportSize({ width: 1100, height: 400 });
+        await page.screenshot({ path: `${SHOTS}/icons-sizes-${scheme}.png`, fullPage: true });
+      });
+    });
+  }
+
+  test("iPhone tab bar", async ({ page }, info) => {
+    test.skip(info.project.name !== "iphone", "iPhone only");
+    await signIn(page);
+    await expect(page.locator("nav.tab-bar")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.locator("nav.tab-bar").screenshot({ path: `${SHOTS}/icons-tabbar-library.png` });
+    await page.getByRole("button", { name: "Albums" }).click();
+    await page.waitForLoadState("networkidle");
+    await page.locator("nav.tab-bar").screenshot({ path: `${SHOTS}/icons-tabbar-albums.png` });
+  });
+
+  test("viewer toolbar and Info panel (desktop)", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    await page.getByRole("button", { name: "Info" }).click();
+    await cells(page).first().click();
+    await expect(page.getByTestId("library-info-panel")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.screenshot({ path: `${SHOTS}/icons-info-panel.png` });
+    await page.getByTestId("desktop-library-toolbar").screenshot({ path: `${SHOTS}/icons-library-toolbar.png` });
+    await cells(page).first().dblclick();
+    await expect(page.getByRole("button", { name: /close/i }).first()).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${SHOTS}/icons-viewer-toolbar.png` });
+  });
+
+  test("viewer toolbar (iPhone)", async ({ page }, info) => {
+    test.skip(info.project.name !== "iphone", "iPhone only");
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await cells(page).first().tap();
+    await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${SHOTS}/icons-viewer-iphone.png` });
+  });
 });
