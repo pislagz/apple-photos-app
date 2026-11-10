@@ -19,7 +19,7 @@ import os
 import pathlib
 import sqlite3
 
-from . import libraries, media, place_names
+from . import libraries, media, place_names, search_index
 
 logger = logging.getLogger(__name__)
 
@@ -359,9 +359,9 @@ _EXTRA_SEARCH_FIELDS = (
 )
 
 
-def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> None:
+def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> list[str]:
     """Replace this asset's rows in `asset_labels`, so a label Photos no longer
-    lists disappears on the next index."""
+    lists disappears on the next index. Returns the normalized labels."""
     db.execute("DELETE FROM asset_labels WHERE asset_id = ?", (asset_id,))
     found: dict[str, str] = {}
     try:
@@ -381,6 +381,7 @@ def _write_labels(db: sqlite3.Connection, asset_id: int, photo) -> None:
         "INSERT OR IGNORE INTO asset_labels (asset_id, label, label_normalized) VALUES (?, ?, ?)",
         [(asset_id, label, normalized) for normalized, label in found.items()],
     )
+    return list(found)
 
 
 def _offline_place(gazetteer, place, latitude, longitude) -> str | None:
@@ -576,23 +577,46 @@ def _write_index(
                 (library_id, photo.uuid),
             ).fetchone()["id"]
 
+            search_text: list[str | None] = [
+                place.name if place else None,
+                place.address_str if place else None,
+                exif_info.camera_make if exif_info else None,
+                exif_info.camera_model if exif_info else None,
+                photo.title,
+                photo.description,
+            ]
             for person in photo.person_info:
                 person_id = person_ids.get(person.uuid)
                 if person_id is not None:
+                    if person.name != _UNKNOWN_PERSON:
+                        search_text.append(person.name)
+                    search_text.append(person.display_name)
                     db.execute(
                         "INSERT OR IGNORE INTO asset_people (asset_id, person_id) VALUES (?, ?)",
                         (asset_id, person_id),
                     )
             _write_faces(db, asset_id, photo, person_ids)
-            _write_labels(db, asset_id, photo)
+            search_text.extend(_write_labels(db, asset_id, photo))
 
             for album in photo.album_info:
                 album_id = album_ids.get(album.uuid)
                 if album_id is not None:
+                    search_text.append(album.title)
                     db.execute(
                         "INSERT OR IGNORE INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
                         (asset_id, album_id),
                     )
+            # D36: same transaction as the row itself.
+            search_index.put(
+                db,
+                asset_id,
+                search_index.document(
+                    _local_day(photo.date),
+                    search_text,
+                    (photo.filename, photo.original_filename),
+                ),
+                replace=old is not None,
+            )
 
         purge.extend(
             row["uuid"]

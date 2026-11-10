@@ -16,6 +16,8 @@ import os
 import pathlib
 import sqlite3
 
+from . import search_index
+
 _DATA_DIR_ENV = "PHOTOS_VIEWER_DATA_DIR"
 
 # Each migration is a list of complete, individually-executed statements,
@@ -504,6 +506,18 @@ _MIGRATIONS: list[list[str]] = [
     # 24: D41 offline place names, kept apart from Apple's own `place*` columns.
     [
         "ALTER TABLE assets ADD COLUMN place_offline TEXT",
+    ],
+    # 25: D36 full-text search index, filled by the indexer (see search_index).
+    # Existing indexes get it through the one-time in-place re-index (D11);
+    # until then Search scans, as before.
+    [
+        search_index.TABLE_SQL,
+        """
+        CREATE TRIGGER assets_fts_delete AFTER DELETE ON assets BEGIN
+            DELETE FROM assets_fts WHERE rowid = old.id;
+        END
+        """,
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
 ]
 
