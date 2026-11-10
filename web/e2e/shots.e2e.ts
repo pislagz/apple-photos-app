@@ -161,12 +161,68 @@ test("hidden asks for the password again", async ({ page }, info) => {
 });
 
 test("admin panel", async ({ page }, info) => {
-  test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page, ADMIN);
   await page.goto("/admin");
   await expect(page.getByRole("heading").first()).toBeVisible();
   await page.waitForTimeout(500);
   await shot(page, "10-admin", info.project.name);
+
+  // #158: styled, and no page-level horizontal overflow on any screen.
+  await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
+  const nav = page.getByRole("navigation", { name: "Admin sections" });
+  for (const [i, label] of ["Libraries", "Users", "Sessions", "Audit log", "Settings"].entries()) {
+    await nav.getByRole("button", { name: label }).click();
+    await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(scrollWidth, `${label} overflows horizontally`).toBeLessThanOrEqual(innerWidth);
+    await page.screenshot({ path: `${SHOTS}/${info.project.name}-10-admin-${i + 1}-${label.toLowerCase().replace(" ", "-")}.png` });
+  }
+});
+
+test("phone title never overlaps Select or the account button (#159)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone widths only");
+  await signIn(page);
+  const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  for (const label of ["All Photos", "Years", "Months", "Days"]) {
+    await openZoom(page, label);
+    await page.waitForTimeout(300);
+    const select = page.getByRole("button", { name: "Select", exact: true });
+    const title = page.getByTestId("pinned-header");
+    const account = page.locator(".account-menu__trigger");
+    const sb = (await select.count()) ? await select.boundingBox() : null;
+    const tb = (await title.count()) ? await title.boundingBox() : null;
+    const ab = await account.boundingBox();
+    if (sb && tb) expect(intersects(tb, sb), `${label}: title vs Select`).toBe(false);
+    if (tb && ab) expect(intersects(tb, ab), `${label}: title vs account`).toBe(false);
+    if (sb && ab) expect(intersects(sb, ab), `${label}: Select vs account`).toBe(false);
+    if (sb) expect(sb.x + sb.width, `${label}: Select inside viewport`).toBeLessThanOrEqual(info.project.use.viewport!.width);
+  }
+});
+
+test("desktop Days lead photo stays capped in wide windows (#153)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop only");
+  await signIn(page);
+  for (const [width, height] of [
+    [1440, 900],
+    [1920, 1080],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await openZoom(page, "Days");
+    await page.waitForTimeout(400);
+    const box = await cells(page).first().boundingBox();
+    expect(box, `${width}: lead photo`).not.toBeNull();
+    expect(box!.width, `${width}: lead width`).toBeLessThanOrEqual(960);
+    expect(box!.height, `${width}: lead height`).toBeLessThanOrEqual(480);
+    expect(box!.width / box!.height, `${width}: lead aspect`).toBeLessThanOrEqual(2.05);
+    // Resizing must re-measure rows: the next row starts below the lead photo.
+    const next = await cells(page).nth(1).boundingBox();
+    if (next) expect(next.y, `${width}: next row below lead`).toBeGreaterThanOrEqual(box!.y + box!.height);
+  }
 });
 
 test("phone title never overlaps Select or the account button (#159)", async ({ page }, info) => {

@@ -146,6 +146,7 @@ export default function UsersScreen() {
         <button type="submit">Create user</button>
       </form>
 
+      <div className="admin-table-wrap">
       <table>
         <thead>
           <tr>
@@ -184,8 +185,10 @@ export default function UsersScreen() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <h2>Access matrix</h2>
+      <div className="admin-table-wrap">
       <table>
         <thead>
           <tr>
@@ -214,6 +217,7 @@ export default function UsersScreen() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <h2>Invites</h2>
       <form onSubmit={handleCreateInvite}>
