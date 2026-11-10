@@ -511,6 +511,72 @@ Done: `server/photos_viewer/library_prewarm.py` and migration 23 (`prewarm_jobs`
 
 Done: all CSS in `web/src/shell/shell.css` (last section). Motion: tab-bar colour and icon settle, viewer open/dismiss (`useDismiss` adds `.is-closing`, then closes after 180 ms), and a new desktop sidebar collapse toggle (first Tab stop; the collapsed sidebar is `inert`; choice kept in localStorage). One `@media (prefers-reduced-motion: reduce)` block zeroes every animation and transition, and `useDismiss` closes at once. Keyboard: global 2 px `:focus-visible` ring (white on the dark viewers), Esc closes the mobile viewer too, filmstrip buttons have names. Alt text: `assetAlt()` gives title, else "Photo from <date>", never the filename. Desktop Library and Days gained an `sr-only` h1. Tests: `assetAlt.test.ts`, `polish.test.tsx`, `useDismiss.test.tsx`, `web/e2e/polish.e2e.ts` (no horizontal overflow at 1440 and 390, keyboard path, reduced motion). Existing tests that found thumbnails by filename alt now use `findThumb(id)` from `testHelpers.ts`.
 
+## Phase 4 — Backlog bugs, then the Apple-Photos look
+
+Approved by pp on 2026-11-10. Phases 0–3 are done. Work one PR at a time through the queue below: issue → Claude Code → draft PR → review (pytest, ruff, web tests, build, Playwright screenshots) → ready → squash merge once CI is green and no must/should items are open (pp's standing OK; anything that changes the look is shown to pp first). Every Phase 4 PR that changes how the app looks comes with screenshots at a phone width and a desktop width.
+
+### P4.0 Check main after the Phase 0–3 merges
+
+- Full suite on main (pytest, ruff, `npm test`, build), the macOS CI run, and Playwright screenshots of the merged app.
+- Docker smoke test for #181 (pp, by hand).
+- Close any backlog issue below that the merged PRs already fixed (each close is shown to pp first).
+
+### P4.1 Backlog bugs (small, low risk)
+
+In this order, one PR each unless two touch the same code:
+
+1. #89 Mobile Library: a load error shows "No photos yet" with no retry.
+2. #78 Media: originals stored outside the library package (Referenced) return 404.
+3. #75 Server: `web/dist` without `index.html` makes every non-API path 500.
+4. #83 HiddenView: paginate, show load errors, follow the selected library.
+5. #82 Admin status `total_size_bytes` still counts hidden assets.
+6. #100 Index: video duration is NULL until a re-index after migration 12.
+7. #96 Desktop Library: Up/Down arrows ignore date-header row breaks.
+
+### P4.1b Icon set
+
+- #235 New icon set in the app's own style (PR #237; style approved by pp).
+
+### P4.2 Apple-Photos look (ux-research issues #206–#225, plus #232–#234 and #236)
+
+Foundations first, because the rest build on them:
+
+1. #218 Design tokens for type, spacing, radii and colour; finish dark mode. Folds in #106.
+2. #206 Motion tokens and basic transitions.
+
+Then the most visible changes:
+
+3. #209 One consistent library date title.
+4. #207 Desktop grid: finer zoom steps, edge-to-edge square tiles, hairline gaps.
+5. #214 Viewer gestures: finger-tracked paging, swipe-down dismiss, zoom and pan.
+
+Then, in this order:
+
+6. #211 Viewer chrome (folds in #111 and #131).
+7. #220 Viewer open/close zoom from the tapped tile.
+8. #221 Viewer filmstrip as a centred scrubber.
+9. #208 Tile overlays and selection style.
+10. #215 Loading polish.
+11. #212 iPhone Library header.
+12. #216 iPhone bottom chrome.
+13. #213 iPhone zoom levels with an anchored pinch.
+14. #222 iPhone selection mode.
+15. #219 iPhone Days, Months and Years as cards.
+16. #210 Desktop Years and Months as period cards.
+17. #217 Desktop sidebar and toolbar polish, keyboard shortcuts.
+18. #223 Albums, People & Pets and Places layouts.
+19. #225 Search screen layout.
+20. #232 Design tokens measured from Apple (merge into the #218 tokens).
+21. #233 Apple-matched controls and buttons.
+22. #234 Apple-style menus, context menus, sheets and alerts.
+23. #236 Remove web giveaways; side-by-side check against Apple.
+24. #224 Library order (oldest on top, open at the end): last, because it changes scrolling everywhere; pp confirms before it starts.
+
+### P4.3 Small polish
+
+- #170 nits: fold each nit into the P4.2 PR that touches the same code; whatever is left becomes one "Nits" PR at the end.
+- Acceptance for all of Phase 4: the access-control test, the outbound-connection tests and the CSP still pass. No Apple icons, fonts or trademarks added.
+
 ## Done means
 
 - Phase 0 probe recorded for the fixture in CI and for each real library on the manual checklist.
