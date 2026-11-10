@@ -13,7 +13,7 @@ import {
   GRID_GAP,
   gridRowHeight,
 } from "./gridMetrics";
-import { buildRows } from "./rows";
+import { buildRows, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 
@@ -348,6 +348,17 @@ export default function DesktopLibrary({
       if (delta === undefined || items.length === 0) return;
       event.preventDefault();
       const currentIndex = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
+      if ((event.key === "ArrowUp" || event.key === "ArrowDown") && focusedId && desiredIndexRef.current === null) {
+        // Rows restart after every date header (and Days has a hero row), so
+        // move through the built row model to the visually adjacent cell
+        // instead of +-columns in the flat list (#96).
+        const target = verticalTarget(rows, focusedId, event.key === "ArrowDown" ? 1 : -1);
+        if (target && target !== "end") {
+          selectSingle(target);
+          return;
+        }
+        if (target === null) return;
+      }
       const base = desiredIndexRef.current ?? (currentIndex === -1 ? 0 : currentIndex);
       const desired = Math.max(0, base + delta);
       const nextIndex = Math.min(items.length - 1, desired);
@@ -359,7 +370,7 @@ export default function DesktopLibrary({
       }
       selectSingle(items[nextIndex].id);
     },
-    [items, columns, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
+    [items, rows, columns, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
   );
 
   const setCellRef = useCallback((id: string, element: HTMLElement | null) => {

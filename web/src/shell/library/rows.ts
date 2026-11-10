@@ -92,3 +92,20 @@ export function buildTileRows(buckets: SummaryPeriodBucket[], view: "years" | "m
     keyAssetIds: bucket.key_asset_ids,
   }));
 }
+
+// Id of the cell visually above (`-1`) / below (`1`) `fromId`, keeping the
+// column (clamped on a shorter row). `null`: already at the top edge. `"end"`:
+// at the bottom edge, where the caller decides whether to load more (#96).
+export function verticalTarget(rows: LibraryRow[], fromId: string, direction: 1 | -1): string | null | "end" {
+  const rowIndex = rows.findIndex((row) => row.type !== "header" && row.type !== "tile" && row.items.some((i) => i.id === fromId));
+  if (rowIndex === -1) return "end";
+  const row = rows[rowIndex];
+  if (row.type === "header" || row.type === "tile") return "end";
+  const column = row.type === "feature" ? 0 : row.items.findIndex((i) => i.id === fromId);
+  for (let i = rowIndex + direction; i >= 0 && i < rows.length; i += direction) {
+    const next = rows[i];
+    if (next.type === "header" || next.type === "tile") continue;
+    return next.items[Math.min(column, next.items.length - 1)].id;
+  }
+  return direction === 1 ? "end" : null;
+}

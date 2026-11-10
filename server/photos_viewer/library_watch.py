@@ -315,7 +315,30 @@ def check_library(db: sqlite3.Connection, library_id: int, *, now: datetime.date
     state = observe(db, library_id, now=now)
     if state == "stable":
         return try_apply(db, library_id, trigger="auto")
+    if state == "ok":
+        return reindex_if_needed(db, library_id)
     return state
+
+
+def reindex_if_needed(db: sqlite3.Connection, library_id: int) -> str:
+    """#100: one in-place re-index of an unchanged library after a migration
+    added asset columns. Unlike `try_apply` it never sets a pending / "Being
+    updated" state: the existing index keeps serving, and a failure just
+    leaves the flag set for the next check."""
+    row = _get_row(db, library_id)
+    if row is None or not row["reindex_needed"]:
+        return "ok"
+    lock = _lock_for(library_id)
+    if not lock.acquire(blocking=False):
+        return "ok"
+    try:
+        indexer.index_library(db, library_id, pathlib.Path(row["path"]), force=True, trigger="auto")
+        return "reindexed"
+    except Exception:
+        logger.warning("re-indexing library %s after a migration failed", library_id, exc_info=True)
+        return "ok"
+    finally:
+        lock.release()
 
 
 def check_all(db: sqlite3.Connection, *, now: datetime.datetime | None = None) -> dict[int, str]:

@@ -13,8 +13,9 @@ import io
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from photos_viewer import app_db, media, session_auth
+from photos_viewer import app_db, indexer, media, session_auth
 from photos_viewer.main import create_app
+from tests.fixtures import HIDDEN_ASSET_UUID, build_fixture_library
 
 VALID_PASSWORD = "correct-horse-battery"
 
@@ -1168,5 +1169,31 @@ def test_hidden_live_photo_video_requires_the_hidden_unlock(tmp_path):
         unlocked = client.get(url)
         assert unlocked.status_code == 200
         assert unlocked.headers["cache-control"] == "private, no-store"
+    finally:
+        conn.close()
+
+
+def test_shared_fixture_hidden_asset_stays_out_of_assets_and_summary(tmp_path):
+    """#85: the shared fixture's permanent hidden asset, indexed for real,
+    appears only in `/hidden` -- never in `/assets` or the summary."""
+    conn, client = _client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        library_id = _create_library(conn, "L1", path=package_path)
+        indexer.index_library(conn, library_id, package_path, force=True)
+        user_id = _create_user(conn, "alice")
+        _assign(conn, user_id, library_id)
+        _login(client, "alice")
+
+        listed = client.get(f"/api/libraries/{library_id}/assets").json()["items"]
+        assert HIDDEN_ASSET_UUID not in [item["id"] for item in listed]
+        assert len(listed) == 1
+        summary = client.get(f"/api/libraries/{library_id}/summary").json()
+        assert sum(bucket["count"] for bucket in summary["years"]) == 1
+        assert sum(bucket["count"] for bucket in summary["days"]) == 1
+
+        _unlock_hidden(client)
+        hidden = client.get(f"/api/libraries/{library_id}/hidden").json()["items"]
+        assert [item["id"] for item in hidden] == [HIDDEN_ASSET_UUID]
     finally:
         conn.close()

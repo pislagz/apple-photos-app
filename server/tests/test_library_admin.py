@@ -17,7 +17,11 @@ from photos_viewer import (
     session_auth,
 )
 from photos_viewer.main import create_app
-from tests.fixtures import build_closed_fixture_library, build_fixture_library
+from tests.fixtures import (
+    HIDDEN_ASSET_UUID,
+    build_closed_fixture_library,
+    build_fixture_library,
+)
 
 VALID_PASSWORD = "correct-horse-battery"
 
@@ -482,12 +486,12 @@ def test_indexing_the_fixture_is_idempotent(tmp_path):
         first = indexer.index_library(conn, added["id"], package_path)
         assert first is False, "unchanged sqlite file should skip the walk entirely"
         asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
-        assert asset_rows == 1
+        assert asset_rows == 2
 
         second = indexer.index_library(conn, added["id"], package_path, force=True)
         assert second is True
         asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
-        assert asset_rows == 1
+        assert asset_rows == 2
     finally:
         conn.close()
 
@@ -535,7 +539,7 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
         asset_count_before = conn.execute(
             "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
         ).fetchone()[0]
-        assert asset_count_before == 1
+        assert asset_count_before == 2
 
         sqlite_path = package_path / "database" / "Photos.sqlite"
         wal_conn = sqlite3.connect(str(sqlite_path))
@@ -552,8 +556,8 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
                     ZSAVEDASSETTYPE, ZADDEDDATE
                 )
                 VALUES (
-                    2, 'second-asset-uuid', 700000000.0, 700000000.0, 0,
-                    0, '0', 'IMG_0002.HEIC', NULL, NULL,
+                    3, 'second-asset-uuid', 700000000.0, 700000000.0, 0,
+                    0, '0', 'IMG_0003.HEIC', NULL, NULL,
                     0, 0, 'public.heic', 0,
                     0, 100, 100, 1, 0,
                     0, 3, 700000000.0
@@ -572,7 +576,7 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
                     ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
                     ZORIGINALORIENTATION, ZORIGINALFILESIZE
                 )
-                VALUES (2, 2, 'IMG_0002.HEIC', 0, 0, 'UTC', 0, 0, 100, 100, 1, 123)
+                VALUES (3, 3, 'IMG_0003.HEIC', 0, 0, 'UTC', 0, 0, 100, 100, 1, 123)
                 """
             )
             wal_conn.commit()
@@ -588,14 +592,14 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
         # The new row's file has to exist or the readiness sample rejects it.
         originals = next(package_path.joinpath("originals").rglob("*.HEIC"))
         (package_path / "originals" / "0").mkdir(exist_ok=True)
-        shutil.copy(originals, package_path / "originals" / "0" / "IMG_0002.HEIC")
+        shutil.copy(originals, package_path / "originals" / "0" / "IMG_0003.HEIC")
         app_db.set_setting(conn, "library_stable_minutes", "0")
         outcomes = [library_watch.check_library(conn, added["id"]) for _ in range(3)]
         assert outcomes[-1] == "ok" and "applied" in outcomes
         asset_count_after = conn.execute(
             "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
         ).fetchone()[0]
-        assert asset_count_after == 2
+        assert asset_count_after == 3
     finally:
         conn.close()
 
@@ -603,62 +607,18 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
 def test_hidden_flag_is_indexed_but_excluded_from_the_status_asset_count(tmp_path):
     """P1.13: the indexer writes `hidden` from osxphotos's `photo.hidden` for
     every row, but the admin status count -- "visible photos" -- must not
-    include it."""
+    include it. The shared fixture's permanent hidden asset (#85) covers it."""
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
         added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
         assert client.get(f"/api/admin/libraries/{added['id']}/status").json()["asset_count"] == 1
 
-        sqlite_path = package_path / "database" / "Photos.sqlite"
-        wal_conn = sqlite3.connect(str(sqlite_path))
-        try:
-            wal_conn.execute("PRAGMA journal_mode=WAL")
-            wal_conn.execute(
-                """
-                INSERT INTO ZGENERICASSET (
-                    Z_PK, ZUUID, ZMODIFICATIONDATE, ZDATECREATED, ZHIDDEN,
-                    ZFAVORITE, ZDIRECTORY, ZFILENAME, ZLATITUDE, ZLONGITUDE,
-                    ZHASADJUSTMENTS, ZKIND, ZUNIFORMTYPEIDENTIFIER,
-                    ZKINDSUBTYPE, ZTRASHEDSTATE, ZHEIGHT, ZWIDTH,
-                    ZORIENTATION, ZDEPTHSTATES, ZVISIBILITYSTATE,
-                    ZSAVEDASSETTYPE, ZADDEDDATE
-                )
-                VALUES (
-                    2, 'hidden-asset-uuid', 700000000.0, 700000000.0, 1,
-                    0, '0', 'IMG_0002.HEIC', NULL, NULL,
-                    0, 0, 'public.heic', 0,
-                    0, 100, 100, 1, 0,
-                    0, 3, 700000000.0
-                )
-                """
-            )
-            wal_conn.execute(
-                """
-                INSERT INTO ZADDITIONALASSETATTRIBUTES (
-                    Z_PK, ZASSET, ZORIGINALFILENAME, ZTIMEZONEOFFSET,
-                    ZINFERREDTIMEZONEOFFSET, ZTIMEZONENAME, ZCAMERACAPTUREDEVICE,
-                    ZORIGINALRESOURCECHOICE, ZORIGINALHEIGHT, ZORIGINALWIDTH,
-                    ZORIGINALORIENTATION, ZORIGINALFILESIZE
-                )
-                VALUES (2, 2, 'IMG_0002.HEIC', 0, 0, 'UTC', 0, 0, 100, 100, 1, 123)
-                """
-            )
-            wal_conn.commit()
-
-            response = client.get(f"/api/admin/libraries/{added['id']}/status")
-        finally:
-            wal_conn.close()
-
-        assert response.status_code == 200
-        _add_asset_file_and_drive_checker(conn, package_path, added["id"], "IMG_0002.HEIC")
-        assert client.get(f"/api/admin/libraries/{added['id']}/status").json()["asset_count"] == 1
-
         rows = conn.execute(
             "SELECT uuid, hidden FROM assets WHERE library_id = ? ORDER BY uuid", (added["id"],)
         ).fetchall()
         assert len(rows) == 2
-        assert {row["uuid"]: row["hidden"] for row in rows}["hidden-asset-uuid"] == 1
+        assert {row["uuid"]: row["hidden"] for row in rows}[HIDDEN_ASSET_UUID] == 1
     finally:
         conn.close()
 
@@ -863,5 +823,30 @@ def test_status_total_size_excludes_hidden_assets(tmp_path):
         body = client.get(f"/api/admin/libraries/{added['id']}/status").json()
 
         assert body["total_size_bytes"] == visible
+    finally:
+        conn.close()
+
+
+def test_flagged_library_is_reindexed_in_place_without_going_pending(tmp_path):
+    """#100: after a migration flags a library, the background check refills
+    the new asset columns once; the library never shows "Being updated"."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        library_id = added["id"]
+        conn.execute("UPDATE assets SET duration = NULL, camera_make = 'stale' WHERE library_id = ?", (library_id,))
+        conn.execute("UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (library_id,))
+        conn.commit()
+
+        assert library_watch.check_library(conn, library_id) == "reindexed"
+
+        row = conn.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        assert row["reindex_needed"] == 0 and row["pending_signature"] is None
+        stale = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND camera_make = 'stale'", (library_id,)
+        ).fetchone()[0]
+        assert stale == 0
+        assert library_watch.check_library(conn, library_id) == "ok"
     finally:
         conn.close()

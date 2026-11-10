@@ -208,7 +208,7 @@ def _write_index_and_update_signature(
         db.execute(
             "UPDATE libraries SET last_indexed_signature = ?, last_indexed_at = datetime('now'), "
             "store_uuid = ?, pending_signature = NULL, pending_since = NULL, pending_reason = NULL, "
-            "missing_since = NULL WHERE id = ?",
+            "missing_since = NULL, reindex_needed = 0 WHERE id = ?",
             (signature, store_uuid, library_id),
         )
         db.execute(
