@@ -326,7 +326,6 @@ test("admin Users actions are compact on a phone (#179)", async ({ page }, info)
 // The demo library has no update history and keeps every original, so these
 // three shots stub just the one response that carries the state (D4, D5).
 test("library updated banner (D4)", async ({ page }, info) => {
-  test.skip(info.project.name === "small", "desktop and iPhone only");
   await page.route("**/api/me", async (route) => {
     const response = await route.fetch();
     if (!response.ok()) return route.fulfill({ response }); // the signed-out probe
@@ -344,6 +343,22 @@ test("library updated banner (D4)", async ({ page }, info) => {
   await openZoom(page, "All Photos");
   await expect(cells(page).first()).toBeVisible();
   await shot(page, "13-library-updated-note", info.project.name);
+  if (info.project.name !== "desktop") {
+    // #159 rule: the banner never sits under the floating account button, and
+    // the title/Select bar sits below it.
+    const hit = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+      a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    const close = await banner.getByRole("button", { name: "Dismiss library update note" }).boundingBox();
+    const account = await page.locator(".account-menu__trigger").boundingBox();
+    const bannerBox = await banner.boundingBox();
+    const title = await page.getByTestId("pinned-header").boundingBox();
+    const select = await page.getByRole("button", { name: "Select", exact: true }).boundingBox();
+    expect(close && account && bannerBox).toBeTruthy();
+    expect(hit(bannerBox!, account!), "banner vs account button").toBe(false);
+    expect(hit(close!, account!), "close vs account button").toBe(false);
+    if (title) expect(hit(bannerBox!, title), "banner vs title").toBe(false);
+    if (select) expect(hit(bannerBox!, select), "banner vs Select").toBe(false);
+  }
   await banner.getByRole("button", { name: "Dismiss library update note" }).click();
   await expect(banner).toHaveCount(0);
   await page.waitForLoadState("networkidle");

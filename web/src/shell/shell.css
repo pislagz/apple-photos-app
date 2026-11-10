@@ -2766,9 +2766,12 @@ body {
   border-bottom: 1px solid var(--sequoia-border);
 }
 
-/* The account button floats over the top-right of the mobile screen. */
+/* The account button floats over the top-right of the mobile screen (12px
+   inset + 32px). The banner starts below that row so nothing overlaps; the
+   title/Select bar is part of the grid below the banner. */
 .library-note--mobile {
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 60px 6px 16px;
+  margin-top: calc(env(safe-area-inset-top, 0px) + 52px);
+  padding: 6px 8px 6px 16px;
 }
 
 .library-note__close {
@@ -2776,8 +2779,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 32px;
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -2792,5 +2795,17 @@ body {
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.35;
+  color: #3d2a00;
   background: rgba(255, 159, 10, 0.16);
+}
+
+/* The dark sheet and dark desktop panel: light text on the amber tint. */
+.mobile-viewer__info-sheet .viewer-info-note {
+  color: #ffe2b0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .viewer-info-note {
+    color: #ffe2b0;
+  }
 }
