@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
-import { ApiError, getMe, login, type MeResponse } from "./api";
+import { ApiError, getMe, login, type MeResponse, type PlaceNamesStatus, readPlaceNames } from "./api";
 import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
@@ -26,6 +26,8 @@ export default function AdminApp() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
+  // D41: shown until an admin has saved Settings (or chosen at first run).
+  const [optInsReviewed, setOptInsReviewed] = useState(true);
 
   useEffect(() => {
     getMe()
@@ -33,6 +35,14 @@ export default function AdminApp() {
       .catch(() => setMe(null))
       .finally(() => setCheckedSession(true));
   }, []);
+
+  const isAdmin = me?.role === "admin";
+  useEffect(() => {
+    if (!isAdmin) return;
+    readPlaceNames()
+      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.opt_ins_reviewed))
+      .catch(() => setOptInsReviewed(true));
+  }, [isAdmin, screen]);
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -95,6 +105,14 @@ export default function AdminApp() {
         </ul>
       </nav>
       <main className="admin-main">
+        {!optInsReviewed && (
+          <p className="admin-notice" role="note" data-testid="opt-in-notice">
+            Two optional features are off: the OpenStreetMap map and offline place names.{" "}
+            <button type="button" className="admin-link" onClick={() => setScreen("settings")}>
+              Review them in Settings
+            </button>
+          </p>
+        )}
         {screen === "libraries" && <LibrariesScreen />}
         {screen === "users" && <UsersScreen />}
         {screen === "access" && <AccessScreen />}

@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import {
   ApiError,
   checkLibrariesNow,
-  type MapTilesMode,
+  downloadPlaceNames,
+  type PlaceNamesStatus,
+  readPlaceNames,
   readSettings,
   readTailnetAllowlist,
   type SettingsResponse,
@@ -24,12 +26,15 @@ export default function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [placeNames, setPlaceNames] = useState<PlaceNamesStatus | null>(null);
+  const [downloadingPlaces, setDownloadingPlaces] = useState(false);
   // Text of number fields while typing. An empty field is a draft, never a 0:
   // it blocks the save instead of silently turning e.g. the library checker off.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     readSettings().then(setSettings).catch((err: unknown) => setError(describeError(err)));
+    readPlaceNames().then(setPlaceNames).catch(() => setPlaceNames(null));
     readTailnetAllowlist()
       .then((response) => setAllowlist(response.identities.join("\n")))
       .catch((err: unknown) => setError(describeError(err)));
@@ -70,8 +75,23 @@ export default function SettingsScreen() {
       setSettings(saved);
       setDrafts({});
       setNotice("Settings saved.");
+      readPlaceNames().then(setPlaceNames).catch(() => undefined);
     } catch (err) {
       setError(describeError(err));
+    }
+  }
+
+  async function handleDownloadPlaceNames() {
+    setError(null);
+    setNotice(null);
+    setDownloadingPlaces(true);
+    try {
+      setPlaceNames(await downloadPlaceNames());
+      setNotice("Place-name data downloaded.");
+    } catch (err) {
+      setError(describeError(err));
+    } finally {
+      setDownloadingPlaces(false);
     }
   }
 
@@ -158,24 +178,68 @@ export default function SettingsScreen() {
           Zip size limit (bytes)
           <input {...numberProps("zip_size_limit_bytes")} />
         </label>
-        <label>
-          Map tiles
-          <select
-            value={settings.map_tiles_mode}
-            onChange={(event) => updateField("map_tiles_mode", event.target.value as MapTilesMode)}
-          >
-            <option value="online">OpenStreetMap (online)</option>
-            <option value="local_file">Local file</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
-        <label>
-          PMTiles path (optional)
-          <input
-            value={settings.map_tiles_pmtiles_path ?? ""}
-            onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
-          />
-        </label>
+        <fieldset className="admin-privacy-options">
+          <legend>Optional features that reach outside this server (both off by default)</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.map_tiles_mode === "online"}
+              onChange={(event) =>
+                updateField(
+                  "map_tiles_mode",
+                  event.target.checked ? "online" : settings.map_tiles_pmtiles_path ? "local_file" : "off",
+                )
+              }
+            />
+            Show OpenStreetMap map
+          </label>
+          <p className="admin-hint">
+            The Map view draws OpenStreetMap tiles. Each person's browser fetches them from tile.openstreetmap.org while a map is
+            open; this server never does. Off: the Map view says the map is off.
+          </p>
+          <label>
+            Local map file (PMTiles), used when the OpenStreetMap map is off
+            <input
+              value={settings.map_tiles_pmtiles_path ?? ""}
+              onChange={(event) => {
+                const path = event.target.value === "" ? null : event.target.value;
+                updateField("map_tiles_pmtiles_path", path);
+                if (settings.map_tiles_mode !== "online") updateField("map_tiles_mode", path ? "local_file" : "off");
+              }}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.offline_place_names}
+              onChange={(event) => updateField("offline_place_names", event.target.checked)}
+            />
+            Offline place names
+          </label>
+          <p className="admin-hint">
+            Names a photo's GPS position after the nearest large city, on this server, from a city list you download once. Photo
+            coordinates never leave the server, and names saved by Photos always win.
+          </p>
+          <div className="admin-place-names" data-testid="place-names-status">
+            <p>
+              {placeNames === null
+                ? "Place-name data: checking…"
+                : placeNames.downloaded
+                  ? `Place-name data: downloaded (${Math.max(1, Math.round(placeNames.size_bytes / 1024))} KB).`
+                  : "Place-name data: not downloaded."}
+            </p>
+            <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces}>
+              {placeNames?.downloaded ? "Download again" : "Download place-name data"}
+            </button>
+            <p className="admin-hint">
+              This is the one time the server contacts the internet: it fetches the public GeoNames list of cities (cities15000,
+              about 2 MB) from download.geonames.org. No photo data is sent.
+            </p>
+            <p className="admin-hint" data-testid="geonames-attribution">
+              {placeNames?.attribution ?? "Place names from GeoNames (https://www.geonames.org), CC BY 4.0."}
+            </p>
+          </div>
+        </fieldset>
         <label>
           <input
             type="checkbox"

@@ -293,6 +293,7 @@ export interface SettingsResponse {
   zip_size_limit_bytes: number;
   map_tiles_mode: MapTilesMode;
   map_tiles_pmtiles_path: string | null;
+  offline_place_names: boolean;
   library_check_interval_minutes: number;
   library_stable_minutes: number;
   show_library_updated_note: boolean;
@@ -304,6 +305,25 @@ export function readSettings(): Promise<SettingsResponse> {
 
 export function writeSettings(settings: SettingsResponse): Promise<SettingsResponse> {
   return mutate<SettingsResponse>("PUT", "/api/admin/settings", settings);
+}
+
+// D41: offline place names (GeoNames) and the opt-in notice.
+export interface PlaceNamesStatus {
+  dataset: string;
+  downloaded: boolean;
+  size_bytes: number;
+  source_url: string;
+  attribution: string;
+  license_url: string;
+  opt_ins_reviewed: boolean;
+}
+
+export function readPlaceNames(): Promise<PlaceNamesStatus> {
+  return request<PlaceNamesStatus>("/api/admin/place-names");
+}
+
+export function downloadPlaceNames(): Promise<PlaceNamesStatus> {
+  return mutate<PlaceNamesStatus>("POST", "/api/admin/place-names/download", {});
 }
 
 export function checkLibrariesNow(): Promise<{ started: boolean }> {

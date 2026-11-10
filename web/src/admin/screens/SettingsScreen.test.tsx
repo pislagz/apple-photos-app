@@ -12,11 +12,22 @@ const SETTINGS = {
   thumb_size_preview: 1024,
   thumb_quality: 85,
   zip_size_limit_bytes: 2147483648,
-  map_tiles_mode: "online" as const,
-  map_tiles_pmtiles_path: null,
+  map_tiles_mode: "off" as "online" | "local_file" | "off",
+  map_tiles_pmtiles_path: null as string | null,
+  offline_place_names: false,
   library_check_interval_minutes: 15,
   library_stable_minutes: 10,
   show_library_updated_note: true,
+};
+
+const PLACE_NAMES = {
+  dataset: "cities15000",
+  downloaded: false,
+  size_bytes: 0,
+  source_url: "https://download.geonames.org/export/dump/cities15000.zip",
+  attribution: "Place names from GeoNames (https://www.geonames.org), CC BY 4.0.",
+  license_url: "https://creativecommons.org/licenses/by/4.0/",
+  opt_ins_reviewed: false,
 };
 
 afterEach(() => {
@@ -27,6 +38,7 @@ describe("SettingsScreen", () => {
   it("loads settings and the tailnet allow-list", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
       if (url === "/api/admin/settings/tailnet-allowlist") return { identities: ["alice@example.ts.net"] };
       throw new Error(`unexpected request: ${url}`);
     });
@@ -40,6 +52,7 @@ describe("SettingsScreen", () => {
   it("shows the server's rejection message for a self-lockout allow-list", async () => {
     mockFetch((url, init) => {
       if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
       if (url === "/api/admin/settings/tailnet-allowlist" && (init?.method ?? "GET") === "GET") {
         return { identities: [] };
       }
@@ -63,6 +76,7 @@ describe("SettingsScreen", () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/settings" && init?.method === "PUT") return JSON.parse(String(init.body));
       if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
       if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
       throw new Error(`unexpected request: ${url}`);
     });
@@ -150,6 +164,7 @@ describe("SettingsScreen", () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/libraries/check-now" && init?.method === "POST") return jsonResponse({ started }, 202);
       if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
       if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
       throw new Error(`unexpected request: ${url}`);
     });
@@ -160,5 +175,63 @@ describe("SettingsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check now" }));
     expect(await screen.findByText("A check is already running.")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/admin/libraries/check-now")).toHaveLength(2);
+  });
+
+  it("has two separate opt-ins, both off by default, and saves them (D41)", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && init?.method === "PUT") return JSON.parse(String(init.body));
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    const osm = (await screen.findByLabelText("Show OpenStreetMap map")) as HTMLInputElement;
+    const places = screen.getByLabelText("Offline place names") as HTMLInputElement;
+    expect([osm.checked, places.checked]).toEqual([false, false]);
+    expect(screen.getByTestId("geonames-attribution")).toHaveTextContent("GeoNames");
+    expect(screen.getByTestId("place-names-status")).toHaveTextContent("not downloaded");
+
+    fireEvent.click(osm);
+    fireEvent.click(places);
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Settings saved.");
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT" && String(init.body).includes("map_tiles_mode"));
+    expect(JSON.parse(String(put![1]!.body))).toMatchObject({ map_tiles_mode: "online", offline_place_names: true });
+  });
+
+  it("unchecking the OSM map falls back to a local file when one is set, else off", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && init?.method === "PUT") return JSON.parse(String(init.body));
+      if (url === "/api/admin/settings") return { ...SETTINGS, map_tiles_mode: "online", map_tiles_pmtiles_path: "/data/w.pmtiles" };
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    fireEvent.click(await screen.findByLabelText("Show OpenStreetMap map"));
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Settings saved.");
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT");
+    expect(JSON.parse(String(put![1]!.body))).toMatchObject({ map_tiles_mode: "local_file" });
+  });
+
+  it("downloads the place-name data on an explicit click and shows the result", async () => {
+    let downloaded = false;
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names/download" && init?.method === "POST") {
+        downloaded = true;
+        return { ...PLACE_NAMES, downloaded: true, size_bytes: 2_097_152 };
+      }
+      if (url === "/api/admin/place-names") return { ...PLACE_NAMES, downloaded };
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    await screen.findByLabelText("Offline place names");
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("/download"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Download place-name data" }));
+    await waitFor(() => expect(screen.getByTestId("place-names-status")).toHaveTextContent("downloaded (2048 KB)"));
   });
 });

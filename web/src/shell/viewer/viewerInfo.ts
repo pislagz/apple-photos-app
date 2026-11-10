@@ -27,22 +27,22 @@ export function formatCoordinates(latitude: number | null, longitude: number | n
   return `${lat}, ${lon}`;
 }
 
-// The one place label (viewer title, Info "Location"). The text is the
-// record Photos stored in the library (`place_address`, osxphotos' full
-// formatted address, else `place`, its shorter name), shown unchanged.
-// Nothing is ever geocoded: with GPS and no record it is the coordinates
-// ("Unknown place" if they are unusable); with no GPS either, empty.
-// D41: the viewer title only uses a name Photos saved. GPS without one keeps
-// the date as the title (like a photo without GPS); the coordinates stay in the
-// Info panel's Location row (`formatLocationLine`).
-export function formatPlaceName(detail: Pick<AssetDetailResponse, "place" | "place_address">): string {
-  return detail.place_address || detail.place || "";
+// A saved place name: the record Photos stored in the library (`place_address`,
+// osxphotos' full formatted address, else `place`, its shorter name), shown
+// unchanged; only when Photos has none, the opt-in offline name from the
+// server's own city list (D41). The viewer title uses just this: GPS without
+// any name keeps the date as the title, like a photo without GPS.
+export function formatPlaceName(detail: Pick<AssetDetailResponse, "place" | "place_address" | "place_offline">): string {
+  return detail.place_address || detail.place || detail.place_offline || "";
 }
 
+// The Info "Location" row. A name if there is one; nothing is ever geocoded
+// online, so with GPS and no name it is the coordinates ("Unknown place" if
+// they are unusable); with no GPS either, empty.
 export function formatLocationLine(
-  detail: Pick<AssetDetailResponse, "place" | "place_address" | "latitude" | "longitude">,
+  detail: Pick<AssetDetailResponse, "place" | "place_address" | "place_offline" | "latitude" | "longitude">,
 ): string {
-  const named = detail.place_address || detail.place;
+  const named = formatPlaceName(detail);
   if (named) return named;
   if (detail.latitude == null && detail.longitude == null) return "";
   return formatCoordinates(detail.latitude, detail.longitude) ?? "Unknown place";

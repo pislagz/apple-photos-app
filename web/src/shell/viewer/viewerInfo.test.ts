@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInfoRows, buildSelectionRows, formatCoordinates, formatDateRange, formatLocationLine } from "./viewerInfo";
+import { buildInfoRows, buildSelectionRows, formatCoordinates, formatDateRange, formatLocationLine, formatPlaceName } from "./viewerInfo";
 
 const none = { place: null, place_address: null, latitude: null, longitude: null };
 
@@ -21,6 +21,17 @@ describe("place label", () => {
     expect(formatLocationLine({ ...none, latitude: 10, longitude: null })).toBe("Unknown place");
     expect(formatLocationLine(none)).toBe("");
     expect(buildInfoRows({ ...none, people: [], albums: [], date_created: null } as never)).toEqual([]);
+  });
+});
+
+describe("offline place names (D41)", () => {
+  it("uses Photos' names first, then the offline name, then coordinates for the row only", () => {
+    const base = { ...none, latitude: 52.2297, longitude: 21.0122 };
+    expect(formatPlaceName({ ...base, place: "Zürich", place_offline: "Warsaw, PL" })).toBe("Zürich");
+    expect(formatPlaceName({ ...base, place_offline: "Warsaw, PL" })).toBe("Warsaw, PL");
+    expect(formatLocationLine({ ...base, place_offline: "Warsaw, PL" })).toBe("Warsaw, PL");
+    expect(formatPlaceName(base)).toBe("");
+    expect(formatLocationLine(base)).toBe("52.2297° N, 21.0122° E");
   });
 });
 

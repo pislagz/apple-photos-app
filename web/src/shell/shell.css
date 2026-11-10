@@ -2840,3 +2840,33 @@ body {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* D41: the Map view with OpenStreetMap tiles switched off. */
+.map-view__off-note {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: min(520px, calc(100% - 24px));
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* D41: first-run opt-ins. */
+.login-options {
+  margin: 12px 0;
+  border: 1px solid var(--ios-separator);
+  border-radius: 8px;
+}
+.login-hint {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  opacity: 0.75;
+}

@@ -6,6 +6,7 @@ import {
   login as apiLogin,
   logout as apiLogout,
   setLayoutOverride as apiSetLayoutOverride,
+  type SetupChoices,
   setupAdmin as apiSetupAdmin,
   type MeResponse,
 } from "../api";
@@ -88,10 +89,10 @@ export default function AppShell() {
     })();
   }, [refreshMe]);
 
-  async function handleSetup(username: string, password: string) {
+  async function handleSetup(username: string, password: string, choices: SetupChoices) {
     setSetupError(null);
     try {
-      await apiSetupAdmin(username, password);
+      await apiSetupAdmin(username, password, choices);
       await apiLogin(username, password, false, isStandalone() ? "pwa" : "desktop");
       await refreshMe();
     } catch (error) {

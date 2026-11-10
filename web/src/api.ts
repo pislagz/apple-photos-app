@@ -98,8 +98,14 @@ export function getSetupStatus(): Promise<SetupStatusResponse> {
   return request<SetupStatusResponse>("/api/setup/status");
 }
 
-export function setupAdmin(username: string, password: string): Promise<AuthUserResponse> {
-  return mutate<AuthUserResponse>("POST", "/api/setup/admin", { username, password });
+// D41: both optional features start off; the first-run form can turn them on.
+export interface SetupChoices {
+  show_osm_map: boolean;
+  offline_place_names: boolean;
+}
+
+export function setupAdmin(username: string, password: string, choices?: SetupChoices): Promise<AuthUserResponse> {
+  return mutate<AuthUserResponse>("POST", "/api/setup/admin", { username, password, ...choices });
 }
 
 // `client` picks the session lifetime (`session_auth.py`): longer for the
@@ -323,6 +329,8 @@ export interface AssetDetailResponse {
   place: string | null;
   place_country_code: string | null;
   place_address: string | null;
+  // D41: nearest city from the opt-in offline gazetteer; Photos' own names win.
+  place_offline?: string | null;
   camera_make: string | null;
   camera_model: string | null;
   has_edited: boolean;
