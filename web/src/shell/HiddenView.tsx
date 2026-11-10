@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type AssetListItem, getHidden } from "../api";
+import { assetAlt } from "./assetAlt";
 import { HiddenUnlock } from "./HiddenUnlock";
 import DesktopViewer from "./viewer/DesktopViewer";
 import MobileViewer from "./viewer/MobileViewer";
@@ -156,12 +157,12 @@ export default function HiddenView({
             key={item.id}
             type="button"
             className="hidden-view__cell"
-            aria-label={item.filename ?? "Open photo"}
+            aria-label={assetAlt(item)}
             onClick={() => setOpenIndex(index)}
           >
             <img
               src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
-              alt={item.filename ?? ""}
+              alt={assetAlt(item)}
               loading="lazy"
               className="hidden-view__thumb"
             />

@@ -1,3 +1,4 @@
+import { assetAlt } from "../assetAlt";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
 import type { AssetListItem } from "../../api";
@@ -50,6 +51,7 @@ export function Filmstrip({
               data-selected={virtualItem.index === index}
               aria-current={virtualItem.index === index}
               style={{ position: "absolute", top: 0, left: 0, transform: `translateX(${virtualItem.start}px)` }}
+              aria-label={assetAlt(item)}
               onClick={() => onSelect(virtualItem.index)}
             >
               <img src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`} alt="" loading="lazy" />

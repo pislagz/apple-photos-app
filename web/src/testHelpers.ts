@@ -18,3 +18,20 @@ export function mockFetch(handler: FetchHandler): ReturnType<typeof vi.fn> {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+// Thumbnails are found by asset id (their src), because the alt text is the
+// title or date and not unique per asset (P3.4).
+export function queryThumb(id: string): HTMLImageElement | null {
+  return document.querySelector<HTMLImageElement>(`img[src*="/thumb/${id}?"]`);
+}
+
+export function getThumb(id: string): HTMLImageElement {
+  const found = queryThumb(id);
+  if (!found) throw new Error(`no thumbnail for asset ${id}`);
+  return found;
+}
+
+export async function findThumb(id: string): Promise<HTMLImageElement> {
+  const { waitFor } = await import("@testing-library/react");
+  return waitFor(() => getThumb(id));
+}

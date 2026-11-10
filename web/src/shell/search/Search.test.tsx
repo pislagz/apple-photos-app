@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../../api";
-import { jsonResponse, mockFetch } from "../../testHelpers";
+import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
@@ -80,7 +80,7 @@ describe("desktop search", () => {
     const field = screen.getByRole("searchbox", { name: "Search photos" });
 
     fireEvent.change(field, { target: { value: "dog" } });
-    expect(await screen.findByAltText("dog.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Results for .dog./ })).toBeInTheDocument();
     expect(requested.some((u) => u.startsWith("/api/libraries/1/search?") && u.includes("q=dog"))).toBe(true);
 
@@ -110,7 +110,7 @@ describe("desktop search", () => {
     expect(await screen.findByText("Couldn't search.")).toBeInTheDocument();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByAltText("dog.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
   });
 
   it("focuses the field on Cmd+F", () => {
@@ -133,7 +133,7 @@ describe("mobile search", () => {
     expect(requested.some((u) => u.includes("/search"))).toBe(false);
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "dog" } });
-    expect(await screen.findByAltText("dog.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/search/dog");
   });
 
@@ -142,7 +142,7 @@ describe("mobile search", () => {
     mockFetch(handler(requested, found));
     window.history.replaceState({}, "", "/search/dog");
     renderMobile();
-    expect(await screen.findByAltText("dog.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toHaveValue("dog");
   });
 
@@ -154,7 +154,7 @@ describe("mobile search", () => {
     expect(await screen.findByText("Couldn't search.")).toBeInTheDocument();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByAltText("dog.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zebra" } });
     expect(await screen.findByText(/No results for .zebra./)).toBeInTheDocument();

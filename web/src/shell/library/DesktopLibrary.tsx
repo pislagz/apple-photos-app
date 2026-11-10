@@ -3,6 +3,7 @@ import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
+import { assetAlt } from "../assetAlt";
 import { albumMessages } from "./albumText";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
@@ -698,7 +699,7 @@ export default function DesktopLibrary({
                       >
                         <img
                           src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
-                          alt={item.filename ?? ""}
+                          alt={assetAlt(item)}
                           loading="lazy"
                           draggable={false}
                           className="desktop-library__thumb"

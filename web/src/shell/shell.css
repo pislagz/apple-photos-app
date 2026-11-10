@@ -913,12 +913,20 @@ body {
 
 .shell--desktop .sidebar {
   flex: 0 0 220px;
+  width: 220px;
+  box-sizing: border-box;
+  overflow-x: hidden;
   overflow-y: auto;
+  transition:
+    flex-basis 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    width 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    padding 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.2s ease;
   background: var(--sequoia-sidebar-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-right: 1px solid var(--sequoia-border);
-  padding: 12px 8px;
+  padding: 44px 8px 12px;
   display: flex;
   flex-direction: column;
 }
@@ -2545,4 +2553,154 @@ body {
 .mobile-library__select-bar .zip-status progress {
   flex: 1;
   min-width: 0;
+}
+
+
+/* ---------------------------------------------------------------------- */
+/* P3.4 Polish: focus ring, motion, sidebar collapse                       */
+/* ---------------------------------------------------------------------- */
+
+/* One visible keyboard ring everywhere. #0a84ff is 3.6:1 on white and 4.6:1
+   on the dark stages (WCAG 1.4.11 asks for 3:1); on the dark viewers and
+   accent-filled controls the ring flips to white. Pointer clicks never show
+   it, :focus-visible only. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.desktop-viewer :focus-visible,
+.mobile-viewer :focus-visible {
+  outline-color: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  .mobile-viewer :focus-visible {
+    outline-color: var(--accent);
+  }
+}
+
+/* Clipped or edge-to-edge containers: draw the ring inside. */
+.desktop-library__grid:focus-visible,
+.desktop-viewer:focus-visible,
+.sidebar__item:focus-visible,
+.tab-bar__item:focus-visible,
+.hidden-view__cell:focus-visible,
+.mobile-library__tile:focus-visible,
+.desktop-viewer__filmstrip__item:focus-visible,
+.mobile-viewer__filmstrip__item:focus-visible {
+  outline-offset: -2px;
+}
+
+.desktop-viewer:focus {
+  outline: none; /* programmatic focus only; the viewer is not a control */
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sequoia-text-secondary);
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.shell--desktop {
+  position: relative;
+}
+
+.shell--desktop .toolbar,
+.shell--desktop .desktop-library__toolbar {
+  transition: padding-left 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.shell--sidebar-collapsed .sidebar {
+  flex-basis: 0;
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  border-right-width: 0;
+}
+
+/* Room for the floating sidebar toggle in the toolbar row. */
+.shell--sidebar-collapsed .toolbar,
+.shell--sidebar-collapsed .desktop-library__toolbar {
+  padding-left: 48px;
+}
+
+/* Tab bar: the selected tab tints and its glyph settles in; presses dip. */
+.tab-bar__item {
+  transition:
+    color 0.2s ease,
+    transform 0.12s ease;
+}
+
+.tab-bar__icon {
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tab-bar__item[aria-current="page"] .tab-bar__icon {
+  transform: scale(1.1);
+}
+
+.tab-bar__item:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* Viewer: opens by fading up from the grid and dismisses the same way
+   backwards (useDismiss adds .is-closing and removes the viewer after it). */
+@keyframes viewer-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes viewer-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.mobile-viewer,
+.desktop-viewer {
+  animation: viewer-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mobile-viewer.is-closing,
+.desktop-viewer.is-closing {
+  animation: viewer-out 0.18s ease-in forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+
+  .tab-bar__item[aria-current="page"] .tab-bar__icon,
+  .tab-bar__item:active:not(:disabled) {
+    transform: none;
+  }
 }

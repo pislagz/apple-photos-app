@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MapCluster, MapConfig, MeResponse } from "../../api";
-import { jsonResponse, mockFetch } from "../../testHelpers";
+import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopShell from "../DesktopShell";
 import MobileShell from "../MobileShell";
@@ -174,7 +174,7 @@ describe("desktop Map", () => {
     fireEvent.click(lone.element);
     expect(await screen.findByRole("heading", { name: "Photos here" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((u) => u.includes("place=20%2C10%2C20%2C10"))).toBe(true));
-    expect(await screen.findByAltText("p1.jpg")).toBeInTheDocument();
+    expect(await findThumb("p1")).toBeInTheDocument();
 
     // Back returns to the map.
     fireEvent.click(screen.getAllByRole("button", { name: "Map" }).at(-1) as HTMLElement);

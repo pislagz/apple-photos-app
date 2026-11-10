@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem, MeResponse } from "../api";
-import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
+import { getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
 import MobileShell from "./MobileShell";
 import { useFakeLayout } from "../testLayout";
 
@@ -185,8 +185,8 @@ describe("MobileShell Library tab re-tap (#146)", () => {
   async function drillToOlderMonth() {
     fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("January 2022"));
-    await waitFor(() => expect(screen.queryByAltText("recent.jpg")).toBeNull());
-    expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument();
+    await waitFor(() => expect(queryThumb("recent")).toBeNull());
+    expect(getThumb("jan22-0")).toBeInTheDocument();
   }
 
   it("returns to the newest photos when the already-active Library tab is tapped", async () => {
@@ -198,7 +198,7 @@ describe("MobileShell Library tab re-tap (#146)", () => {
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
     fireEvent.click(primary.getByRole("button", { name: "Library" }));
 
-    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
   });
 
   it("only navigates, without resetting, when Library is tapped from another tab", async () => {
@@ -214,8 +214,8 @@ describe("MobileShell Library tab re-tap (#146)", () => {
     expect(window.location.pathname).toBe("/");
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
     // Still on the older month: the anchor survived the round trip.
-    expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument();
-    expect(screen.queryByAltText("recent.jpg")).toBeNull();
+    expect(getThumb("jan22-0")).toBeInTheDocument();
+    expect(queryThumb("recent")).toBeNull();
   });
 });
 
