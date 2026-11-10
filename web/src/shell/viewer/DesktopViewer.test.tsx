@@ -233,6 +233,11 @@ describe("DesktopViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-panel");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
+    // D41: the title is the date, never the coordinates.
+    const title = document.querySelector(".desktop-viewer__title-primary");
+    expect(title?.textContent).toMatch(/2024/);
+    expect(title?.textContent).not.toContain("52.2297");
+    expect(document.querySelector(".desktop-viewer__title-secondary")).toBeNull();
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);

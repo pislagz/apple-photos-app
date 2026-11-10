@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import io
+import time
 import zipfile
 
 from PIL import Image
 
-from photos_viewer import app_db, media
+from photos_viewer import app_db, library_zip, media
 from tests.test_library_assets import (
     _assign,
     _client,
@@ -196,5 +197,218 @@ def test_zip_format_jpeg_converts_heic_and_keeps_other_files(tmp_path, monkeypat
         assert archive.namelist() == ["IMG_9.jpg", "IMG_0001.JPG"]
         assert Image.open(io.BytesIO(archive.read("IMG_9.jpg"))).format == "JPEG"
         assert archive.read("IMG_0001.JPG") == b"plain"
+    finally:
+        conn.close()
+
+
+def test_zip_ticket_then_plain_get_streams_the_same_archive_once(tmp_path):
+    files = {"a": b"alpha" * 100, "b": b"bravo" * 50}
+    conn, client, lib, library_path = _setup(tmp_path, files)
+    try:
+        before = _tree(library_path)
+        issued = client.post(
+            f"/api/libraries/{lib}/zip/ticket", json={"asset_ids": ["a", "b"]}
+        )
+        assert issued.status_code == 200
+        body = issued.json()
+        assert body["total_bytes"] == sum(len(v) for v in files.values())
+        assert body["expires_in"] == library_zip.TICKET_TTL_SECONDS
+        # The ticket alone writes no audit row; the download does, once.
+        assert (
+            conn.execute("SELECT * FROM audit_log WHERE action = 'zip'").fetchone()
+            is None
+        )
+        # A plain navigation: GET, no body, no Content-Type, cookie only.
+        response = client.get(
+            f"/api/libraries/{lib}/zip/download", params={"ticket": body["ticket"]}
+        )
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/zip"
+        assert "attachment" in response.headers["content-disposition"]
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        assert [archive.read(n) for n in archive.namelist()] == list(files.values())
+        assert (
+            len(conn.execute("SELECT * FROM audit_log WHERE action = 'zip'").fetchall())
+            == 1
+        )
+        assert _tree(library_path) == before
+        # Single use.
+        again = client.get(
+            f"/api/libraries/{lib}/zip/download", params={"ticket": body["ticket"]}
+        )
+        assert again.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_zip_ticket_enforces_the_size_limit_and_unknown_tickets_404(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path, {"a": b"x" * 600, "b": b"y" * 600})
+    try:
+        app_db.set_setting(conn, "zip_size_limit_bytes", "1000")
+        refused = client.post(
+            f"/api/libraries/{lib}/zip/ticket", json={"asset_ids": ["a", "b"]}
+        )
+        assert refused.status_code == 413
+        for ticket in ("", "nope"):
+            response = client.get(
+                f"/api/libraries/{lib}/zip/download", params={"ticket": ticket}
+            )
+            assert response.status_code == 404
+        missing = client.get(f"/api/libraries/{lib}/zip/download")
+        assert missing.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_zip_ticket_expires(tmp_path, monkeypatch):
+    conn, client, lib, _ = _setup(tmp_path, {"a": b"1"})
+    try:
+        ticket = client.post(
+            f"/api/libraries/{lib}/zip/ticket", json={"asset_ids": ["a"]}
+        ).json()["ticket"]
+        now = time.monotonic()
+        monkeypatch.setattr(library_zip.time, "monotonic", lambda: now + 61)
+        response = client.get(
+            f"/api/libraries/{lib}/zip/download", params={"ticket": ticket}
+        )
+        assert response.status_code == 404
+    finally:
+        conn.close()
+
+
+def test_zip_ticket_needs_json_like_the_other_posts(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path, {"a": b"1"})
+    try:
+        response = client.post(
+            f"/api/libraries/{lib}/zip/ticket", data={"asset_ids": "a"}
+        )
+        assert response.status_code == 415
+    finally:
+        conn.close()
+
+
+def _heic_setup(tmp_path, monkeypatch, *, broken: bool):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client, lib, library_path = _setup(tmp_path, {"b": b"plain"})
+    heic = library_path / "originals" / "a.heic"
+    if broken:
+        heic.write_bytes(b"not really a heic")
+    else:
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 24)).save(buffer, format="HEIF", quality=50)
+        heic.write_bytes(buffer.getvalue())
+    _insert_asset(
+        conn, lib, "a", path_original=str(heic), original_filename="IMG_9.HEIC"
+    )
+    return conn, client, lib
+
+
+def test_zip_report_lists_heic_files_that_stayed_original(tmp_path, monkeypatch):
+    conn, client, lib = _heic_setup(tmp_path, monkeypatch, broken=True)
+    try:
+        response = client.post(
+            f"/api/libraries/{lib}/zip",
+            json={"asset_ids": ["a", "b"], "format": "jpeg"},
+        )
+        assert response.status_code == 200
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        assert archive.namelist() == ["IMG_9.HEIC", "IMG_0001.JPG"]
+        job = response.headers["x-zip-job"]
+        report = client.get(f"/api/libraries/{lib}/zip/report", params={"job": job})
+        assert report.status_code == 200
+        assert report.json() == {
+            "done": True,
+            "unconverted": [{"id": "a", "name": "IMG_9.HEIC"}],
+        }
+    finally:
+        conn.close()
+
+
+def test_zip_report_is_empty_when_everything_converted_and_absent_for_native(
+    tmp_path, monkeypatch
+):
+    conn, client, lib = _heic_setup(tmp_path, monkeypatch, broken=False)
+    try:
+        response = client.post(
+            f"/api/libraries/{lib}/zip",
+            json={"asset_ids": ["a", "b"], "format": "jpeg"},
+        )
+        report = client.get(
+            f"/api/libraries/{lib}/zip/report",
+            params={"job": response.headers["x-zip-job"]},
+        )
+        assert report.json() == {"done": True, "unconverted": []}
+        native = client.post(f"/api/libraries/{lib}/zip", json={"asset_ids": ["a"]})
+        assert "x-zip-job" not in native.headers
+    finally:
+        conn.close()
+
+
+def test_zip_report_through_a_ticket_is_pending_until_the_stream_ends(
+    tmp_path, monkeypatch
+):
+    conn, client, lib = _heic_setup(tmp_path, monkeypatch, broken=True)
+    try:
+        issued = client.post(
+            f"/api/libraries/{lib}/zip/ticket",
+            json={"asset_ids": ["a", "b"], "format": "jpeg"},
+        ).json()
+        job = issued["job"]
+        url = f"/api/libraries/{lib}/zip/report"
+        assert client.get(url, params={"job": job}).json() == {
+            "done": False,
+            "unconverted": [],
+        }
+        download = client.get(
+            f"/api/libraries/{lib}/zip/download", params={"ticket": issued["ticket"]}
+        )
+        assert download.headers["x-zip-job"] == job
+        assert client.get(url, params={"job": job}).json() == {
+            "done": True,
+            "unconverted": [{"id": "a", "name": "IMG_9.HEIC"}],
+        }
+        # A native ticket has no job.
+        native = client.post(
+            f"/api/libraries/{lib}/zip/ticket", json={"asset_ids": ["b"]}
+        ).json()
+        assert native["job"] is None
+    finally:
+        conn.close()
+
+
+def test_zip_report_is_private_to_the_user_and_library_and_expires(
+    tmp_path, monkeypatch
+):
+    conn, client, lib = _heic_setup(tmp_path, monkeypatch, broken=True)
+    try:
+        other = _create_library(conn, "L2", path=tmp_path / "L2.photoslibrary")
+        response = client.post(
+            f"/api/libraries/{lib}/zip", json={"asset_ids": ["a"], "format": "jpeg"}
+        )
+        job = response.headers["x-zip-job"]
+        assert (
+            client.get(
+                f"/api/libraries/{other}/zip/report", params={"job": job}
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get(
+                f"/api/libraries/{lib}/zip/report", params={"job": "nope"}
+            ).status_code
+            == 404
+        )
+        now = time.monotonic()
+        monkeypatch.setattr(
+            library_zip.time,
+            "monotonic",
+            lambda: now + library_zip.REPORT_TTL_SECONDS + 1,
+        )
+        assert (
+            client.get(
+                f"/api/libraries/{lib}/zip/report", params={"job": job}
+            ).status_code
+            == 404
+        )
     finally:
         conn.close()

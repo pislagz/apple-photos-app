@@ -294,11 +294,18 @@ describe("MobileViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-sheet");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
+    // D41: the title is the date, never the coordinates.
+    const title = document.querySelector(".mobile-viewer__title-primary");
+    expect(title?.textContent).toMatch(/2024/);
+    expect(title?.textContent).not.toContain("52.2297");
+    expect(document.querySelector(".mobile-viewer__title-secondary")).toBeNull();
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
     }
     rerender(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={() => {}} onClose={() => {}} />);
+    // The sheet closes on a new photo, and the title is the date now (D41).
+    fireEvent.click(screen.getByLabelText("Info"));
     await screen.findAllByText("Unknown place");
   });
 

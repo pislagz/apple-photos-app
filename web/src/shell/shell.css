@@ -2809,3 +2809,34 @@ body {
     color: #ffe2b0;
   }
 }
+
+/* D50: HEIC files a JPEG zip could not convert. */
+.heic-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.heic-fallback__card {
+  max-width: 420px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  overflow-wrap: anywhere;
+}
+.heic-fallback__card p {
+  margin: 0 0 14px;
+}
+.heic-fallback__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

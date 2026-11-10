@@ -8,9 +8,10 @@ import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
+import { thumbnailFor, useFocusScope } from "./focusScope";
 import { useDismiss } from "./useDismiss";
 import { viewerKeyAction } from "./viewerKeys";
-import { buildInfoRows, formatDateLine, formatLocationLine } from "./viewerInfo";
+import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
 
 export interface ViewerProps {
   libraryId: number;
@@ -49,6 +50,18 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
   const [dragY, setDragY] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  // D59: the library behind is inert while the Viewer is open; focus goes back
+  // to the thumbnail it was opened from.
+  const openedFromId = useRef(item?.id);
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  // D23/D59: the Info sheet covers the toolbar and filmstrip, so while it is
+  // open only the sheet is reachable; closing it puts focus back on Info.
+  useFocusScope(sheetRef, {
+    active: infoOpen,
+    initialFocus: () => sheetRef.current?.querySelector<HTMLElement>("button") ?? null,
+  });
 
   const gesture = useRef<{
     startX: number;
@@ -164,14 +177,19 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
-  const placeLine = detail ? formatLocationLine(detail) : "";
+  const placeLine = detail ? formatPlaceName(detail) : "";
   // ios17-viewer.png: place is the bold title, date is the subtitle below
   // it. When a photo has no place, the date becomes the title on its own.
   const titleLine = placeLine || dateLine;
   const subtitleLine = placeLine ? dateLine : "";
 
   return (
-    <div className={`mobile-viewer${closing ? " is-closing" : ""}`} data-testid="mobile-viewer" style={{ opacity: 1 - Math.min(dragY / 400, 0.6) }}>
+    <div
+      className={`mobile-viewer${closing ? " is-closing" : ""}`}
+      data-testid="mobile-viewer"
+      ref={rootRef}
+      tabIndex={-1}
+      style={{ opacity: 1 - Math.min(dragY / 400, 0.6) }}>
       <div className="mobile-viewer__topbar">
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={20} className="mobile-viewer__back-chevron" />
@@ -290,7 +308,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         </button>
       </div>
       {infoOpen && (
-        <div className="mobile-viewer__info-sheet" data-testid="viewer-info-sheet">
+        <div className="mobile-viewer__info-sheet" data-testid="viewer-info-sheet" ref={sheetRef}>
           <button
             type="button"
             className="mobile-viewer__info-sheet-close"

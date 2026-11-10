@@ -1,3 +1,4 @@
+import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -752,6 +753,8 @@ export default function DesktopLibrary({
                         key={item.id}
                         ref={(element) => setCellRef(item.id, element)}
                         data-asset-id={item.id}
+                        // Focus lands here when the Viewer closes (D59); arrow keys bubble to the grid.
+                        tabIndex={-1}
                         data-testid="library-cell"
                         data-selected={selected.has(item.id)}
                         className="desktop-library__cell"
@@ -816,6 +819,9 @@ export default function DesktopLibrary({
           data-testid="marquee"
           style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
         />
+      )}
+      {zip.heicFallback && (
+        <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
       )}
       {viewerIndex !== null && (
         <DesktopViewer

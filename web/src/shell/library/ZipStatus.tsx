@@ -37,6 +37,11 @@ export default function ZipStatus({
           {state.progress.total && !state.progress.totalUnknown ? ` of about ${formatBytes(state.progress.total)}` : ""}
         </span>
       )}
+      {state.phase === "started" && (
+        <span role="status" title="The zip is saved by your browser; it appears in its downloads when finished.">
+          Download started
+        </span>
+      )}
       {state.phase === "error" && (
         <span role="alert" className="zip-status__error">
           {state.message}

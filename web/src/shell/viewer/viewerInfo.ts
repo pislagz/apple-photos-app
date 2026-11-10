@@ -32,6 +32,13 @@ export function formatCoordinates(latitude: number | null, longitude: number | n
 // formatted address, else `place`, its shorter name), shown unchanged.
 // Nothing is ever geocoded: with GPS and no record it is the coordinates
 // ("Unknown place" if they are unusable); with no GPS either, empty.
+// D41: the viewer title only uses a name Photos saved. GPS without one keeps
+// the date as the title (like a photo without GPS); the coordinates stay in the
+// Info panel's Location row (`formatLocationLine`).
+export function formatPlaceName(detail: Pick<AssetDetailResponse, "place" | "place_address">): string {
+  return detail.place_address || detail.place || "";
+}
+
 export function formatLocationLine(
   detail: Pick<AssetDetailResponse, "place" | "place_address" | "latitude" | "longitude">,
 ): string {

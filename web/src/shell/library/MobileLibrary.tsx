@@ -1,3 +1,4 @@
+import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -378,6 +379,8 @@ export default function MobileLibrary({
                       <img
                         src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
                         alt={assetAlt(item)}
+                        data-asset-id={item.id}
+                        tabIndex={-1}
                         loading="lazy"
                         className="mobile-library__cell"
                         style={{ width: cellSize, height: cellSize }}
@@ -429,6 +432,9 @@ export default function MobileLibrary({
             <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
           )}
         </div>
+      )}
+      {zip.heicFallback && (
+        <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
       )}
       {openIndex !== null && (
         <MobileViewer

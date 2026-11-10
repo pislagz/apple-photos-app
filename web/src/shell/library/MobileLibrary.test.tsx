@@ -272,6 +272,22 @@ describe("MobileLibrary", () => {
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
   });
 
+  it("the library behind the Viewer is inert, and closing restores focus to the thumbnail (D59)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    await waitFor(() => expect(document.querySelector('[data-asset-id="a2"]')).not.toBeNull());
+    fireEvent.click(document.querySelector('[data-asset-id="a2"]') as HTMLElement);
+    const viewer = await screen.findByTestId("mobile-viewer");
+    expect(viewer.closest("[inert]")).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Library zoom" }).closest("[inert]")).not.toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("mobile-viewer")).toBeNull());
+    expect(document.querySelector("[inert]")).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a2"]'));
+  });
+
   it("tapping a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
