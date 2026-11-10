@@ -42,6 +42,8 @@ jobs:
         working-directory: server
         run: ruff check .
 
+      # P1.21: server/pyproject.toml addopts puts the whole suite under
+      # pytest-socket (loopback only); test_no_network.py proves it is on.
       - name: Run server tests
         working-directory: server
         run: python -m pytest -q
@@ -85,6 +87,8 @@ jobs:
         working-directory: server
         run: ruff check .
 
+      # P1.21: server/pyproject.toml addopts puts the whole suite under
+      # pytest-socket (loopback only); test_no_network.py proves it is on.
       - name: Run server tests
         working-directory: server
         run: python -m pytest -q
@@ -143,7 +147,8 @@ jobs:
 
       - name: Check the build has no unexpected external URL
         working-directory: web
-        # Only the OSM tile template and its copyright link may appear; see
-        # CLAUDE.md "Offline at runtime". The script self-tests its own
-        # allow-list before scanning the real build.
+        # P1.21: only the OSM tile template, its copyright link, localhost
+        # and a few exact library strings may appear (scripts/external_urls.mjs).
+        # The rules are unit-tested by web/src/externalUrls.test.ts in
+        # `npm test` above.
         run: npm run check-urls

@@ -28,3 +28,22 @@ def test_opening_the_fixture_makes_no_non_local_connections(tmp_path, monkeypatc
 
     with open_library_readonly(package_path) as opened:
         assert opened.db.photos_version == 5
+
+
+def test_suite_blocks_sockets_to_external_hosts():
+    # Relies on the suite-wide pytest-socket addopts (pytest.ini and
+    # server/pyproject.toml); a public address must be refused before any
+    # packet leaves the machine.
+    import pytest
+    from pytest_socket import SocketConnectBlockedError
+
+    with pytest.raises(SocketConnectBlockedError):
+        socket.create_connection(("93.184.216.34", 80), timeout=1)
+
+
+def test_suite_still_allows_loopback_sockets():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        with socket.create_connection(server.getsockname(), timeout=1):
+            pass
