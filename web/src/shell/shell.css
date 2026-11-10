@@ -1923,6 +1923,7 @@ body {
 }
 
 .desktop-viewer__stage {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -2937,4 +2938,22 @@ body {
 .place-hint:focus-within .place-hint__tip,
 .place-hint__tip--open {
   display: block;
+}
+
+/* #78: a referenced original outside the package is not served. */
+.viewer-outside-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+  color: #ffe2b0;
+  background: rgba(30, 20, 0, 0.82);
+  z-index: 3;
 }

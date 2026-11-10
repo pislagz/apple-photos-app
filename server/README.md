@@ -58,6 +58,12 @@ PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net \
 
 `PHOTOS_VIEWER_PUBLIC_ORIGINS` (comma-separated `scheme://host[:port]`) is validated at startup: an entry that fails to parse logs a `WARNING` naming the variable and the bad value and is dropped; if every entry fails to parse, the app refuses to start rather than silently falling back to same-origin-only checking.
 
+### Referenced originals, and `PHOTOS_VIEWER_REFERENCED_ROOTS`
+
+A "referenced" original is a file Photos records at a path outside the `.photoslibrary` package. By default the server does not serve it: `/original` and the live-photo video route answer `404` with `{"detail": "original_not_available"}` (a plain missing or foreign asset stays `{"detail": "not found"}`), the asset detail carries `original_outside_library: true`, and the viewer says "The original is stored outside the library and isn't available." Thumbnails and previews that come from the package keep working, and an "Optimize Storage" derivative inside the package still stands in.
+
+`PHOTOS_VIEWER_REFERENCED_ROOTS` (absolute paths separated by `:`, unset by default) lists extra read-only roots whose files may be served. Every recorded path is resolved, symlinks included, before it is compared with the library root or an allowed root; `..` parts, relative paths and symlinks that leave a root are still a plain 404, and nothing is ever written to these roots. In Docker, mount each root read-only as well.
+
 ### The per-client login-lockout bucket, and `PHOTOS_VIEWER_TRUSTED_PROXIES`
 
 Separately from the CSRF check, the login route also tracks failed attempts per client (`MAX_FAILED_LOGIN_ATTEMPTS_PER_IP`), to slow down a flood of guesses from one caller without touching the per-username lockout everyone else's login still depends on. That counter is keyed on `request.client.host` -- which `--forwarded-allow-ips` is what makes equal to the real tailnet device's address, same as above.

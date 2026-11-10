@@ -5,7 +5,7 @@ import { Icon } from "../icons";
 import { copyAssetLink, downloadVersion } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
-import { InfoRows, OriginalMissingNote } from "./InfoRows";
+import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
@@ -32,7 +32,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const { closing, dismiss: onClose } = useDismiss(onCloseNow);
   const item = items[index];
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [scale, setScale] = useState(1);
@@ -96,10 +96,12 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   }
 
   function handleDownload() {
+    if (detail?.original_outside_library) return;
     downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original");
   }
 
   function handleDownloadOriginal() {
+    if (detail?.original_outside_library) return;
     downloadVersion(libraryId, item.id, "original");
   }
 
@@ -225,6 +227,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               onError={stillOnError}
             />
           )}
+          <OriginalOutsideNote outside={detail?.original_outside_library} className="viewer-outside-banner" />
         </div>
         <Filmstrip
           libraryId={libraryId}

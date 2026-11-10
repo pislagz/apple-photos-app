@@ -1491,3 +1491,152 @@ def test_shared_fixture_hidden_asset_stays_out_of_assets_and_summary(tmp_path):
         assert [item["id"] for item in hidden] == [HIDDEN_ASSET_UUID]
     finally:
         conn.close()
+
+
+def _referenced_setup(tmp_path, *, raw_path=None, **asset_fields):
+    """One user/library; the asset's original lives outside the package."""
+    conn, client = _client(tmp_path)
+    library_path, inside = _library_root_with_jpeg(tmp_path)
+    outside_dir = tmp_path / "external"
+    outside_dir.mkdir()
+    outside = outside_dir / "ref.jpg"
+    outside.write_bytes(b"referenced bytes")
+    user_id = _create_user(conn, "alice")
+    library_id = _create_library(conn, "L1", path=library_path)
+    _assign(conn, user_id, library_id)
+    _insert_asset(
+        conn,
+        library_id,
+        "a",
+        path_original=str(raw_path or outside),
+        **asset_fields,
+    )
+    _login(client, "alice")
+    return conn, client, library_id, outside_dir, inside
+
+
+def test_inside_package_original_is_served_with_no_allow_list(tmp_path, monkeypatch):
+    monkeypatch.delenv(library_assets.REFERENCED_ROOTS_ENV, raising=False)
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(
+            tmp_path, content=b"inside bytes"
+        )
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", path_original=str(file_path))
+        _login(client, "alice")
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 200
+        assert response.content == b"inside bytes"
+        detail = client.get(f"/api/libraries/{library_id}/assets/a").json()
+        assert detail["original_outside_library"] is False
+    finally:
+        conn.close()
+
+
+def test_referenced_original_without_allow_list_is_original_not_available(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv(library_assets.REFERENCED_ROOTS_ENV, raising=False)
+    conn, client, library_id, _, _ = _referenced_setup(tmp_path)
+    try:
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "original_not_available"
+        detail = client.get(f"/api/libraries/{library_id}/assets/a").json()
+        assert detail["original_outside_library"] is True
+    finally:
+        conn.close()
+
+
+def test_referenced_live_photo_video_is_original_not_available(tmp_path, monkeypatch):
+    monkeypatch.delenv(library_assets.REFERENCED_ROOTS_ENV, raising=False)
+    conn, client, library_id, outside_dir, _ = _referenced_setup(tmp_path)
+    try:
+        video = outside_dir / "ref.mov"
+        video.write_bytes(b"mov")
+        conn.execute("UPDATE assets SET path_live_photo = ?", (str(video),))
+        conn.commit()
+        response = client.get(f"/api/libraries/{library_id}/livephoto/a/video")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "original_not_available"
+    finally:
+        conn.close()
+
+
+def test_referenced_original_is_served_from_an_allowed_root(tmp_path, monkeypatch):
+    conn, client, library_id, outside_dir, _ = _referenced_setup(tmp_path)
+    try:
+        monkeypatch.setenv(library_assets.REFERENCED_ROOTS_ENV, str(outside_dir))
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 200
+        assert response.content == b"referenced bytes"
+        detail = client.get(f"/api/libraries/{library_id}/assets/a").json()
+        assert detail["original_outside_library"] is False
+    finally:
+        conn.close()
+
+
+def test_allowed_root_does_not_cover_other_outside_paths(tmp_path, monkeypatch):
+    conn, client, library_id, _outside_dir, _ = _referenced_setup(tmp_path)
+    try:
+        other = tmp_path / "other_root"
+        other.mkdir()
+        monkeypatch.setenv(library_assets.REFERENCED_ROOTS_ENV, str(other))
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "original_not_available"
+    finally:
+        conn.close()
+
+
+def test_symlink_escaping_an_allowed_root_is_a_plain_404(tmp_path, monkeypatch):
+    secret = tmp_path / "secret"
+    secret.mkdir()
+    (secret / "s.jpg").write_bytes(b"secret")
+    root = tmp_path / "allowed"
+    root.mkdir()
+    (root / "link").symlink_to(secret)
+    conn, client, library_id, _, _ = _referenced_setup(
+        tmp_path, raw_path=root / "link" / "s.jpg"
+    )
+    try:
+        monkeypatch.setenv(library_assets.REFERENCED_ROOTS_ENV, str(root))
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "not found"
+    finally:
+        conn.close()
+
+
+def test_traversal_path_is_a_plain_404_even_with_allow_list(tmp_path, monkeypatch):
+    root = tmp_path / "allowed"
+    root.mkdir()
+    conn, client, library_id, _outside_dir, _ = _referenced_setup(
+        tmp_path, raw_path=f"{root}/../external/ref.jpg"
+    )
+    try:
+        monkeypatch.setenv(library_assets.REFERENCED_ROOTS_ENV, str(root))
+        response = client.get(f"/api/libraries/{library_id}/original/a")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "not found"
+    finally:
+        conn.close()
+
+
+def test_referenced_original_thumb_falls_back_to_the_package_derivative(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv(library_assets.REFERENCED_ROOTS_ENV, raising=False)
+    conn, client, library_id, _, inside = _referenced_setup(
+        tmp_path, path_derivative=None
+    )
+    try:
+        conn.execute("UPDATE assets SET path_derivative = ?", (str(inside),))
+        conn.commit()
+        response = client.get(f"/api/libraries/{library_id}/thumb/a")
+        assert response.status_code == 200
+    finally:
+        conn.close()
