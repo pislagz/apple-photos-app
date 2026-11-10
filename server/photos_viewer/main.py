@@ -38,6 +38,8 @@ from .session_passkeys import router as passkeys_router
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 # server/photos_viewer/main.py -> server/photos_viewer -> server -> repo root
 _DEFAULT_WEB_DIST_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
