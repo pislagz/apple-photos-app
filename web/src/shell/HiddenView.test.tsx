@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findThumb, getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
@@ -6,6 +6,14 @@ import { HiddenSession } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 
 afterEach(() => vi.unstubAllGlobals());
+
+// `findBy*` resolves the moment the node is in the DOM, but HiddenView attaches
+// its capture-phase image-error listener and its IntersectionObserver in
+// passive effects, which React may not have flushed yet. An event fired in that
+// gap is lost, so the tests that fire one wait for the effects first.
+async function flushEffects() {
+  await act(async () => {});
+}
 
 const LOCKED = { detail: { code: "hidden_locked", message: "password required to open Hidden" } };
 
@@ -256,6 +264,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     await findThumb("a1");
+    await flushEffects();
     scrollToEnd();
     expect(await findThumb("a3")).toBeInTheDocument();
     expect(getThumb("a1")).toBeInTheDocument();
@@ -279,6 +288,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     await findThumb("a1");
+    await flushEffects();
     scrollToEnd();
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     expect(queryThumb("a1")).not.toBeInTheDocument();
@@ -295,6 +305,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     const thumb = await findThumb("a3");
+    await flushEffects();
     locked = true;
     fireEvent.error(thumb);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
@@ -303,7 +314,9 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
   it("a failed image while still unlocked leaves the grid alone", async () => {
     const fetchMock = mockFetch((url) => (url.startsWith("/api/libraries/1/hidden") ? page2 : jsonResponse({}, 404)));
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
-    fireEvent.error(await findThumb("a3"));
+    const thumb = await findThumb("a3");
+    await flushEffects();
+    fireEvent.error(thumb);
     await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
     expect(screen.queryByText("Hidden is locked")).not.toBeInTheDocument();
   });
@@ -321,6 +334,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
       expect(el).not.toBeNull();
       return el!;
     });
+    await flushEffects();
     locked = true;
     fireEvent.error(preview);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
