@@ -27,7 +27,8 @@ export type MobileRoute =
   | { tab: "albums"; folderId?: string; albumId?: string }
   | { tab: "search" }
   | { tab: "more"; screen?: undefined }
-  | { tab: "more"; screen: "people" | "places" | "hidden" }
+  | { tab: "more"; screen: "people"; personId?: string }
+  | { tab: "more"; screen: "places" | "hidden" }
   | { tab: "more"; screen: "media"; mediaType: string };
 
 export function parseMobileRoute(pathname: string): MobileRoute {
@@ -50,6 +51,11 @@ export function parseMobileRoute(pathname: string): MobileRoute {
       if (folderMatch) return { tab: "albums", folderId: decodeURIComponent(folderMatch[1]) };
       const albumMatch = pathname.match(/^\/albums\/([^/]+)\/?$/);
       if (albumMatch) return { tab: "albums", albumId: decodeURIComponent(albumMatch[1]) };
+      // P2.2: /people/<uuid>.
+      const personMatch = pathname.match(/^\/people\/([^/]+)\/?$/);
+      if (personMatch) {
+        return { tab: "more", screen: "people", personId: decodeURIComponent(personMatch[1]) };
+      }
       const mediaMatch = pathname.match(/^\/media\/([^/]+)\/?$/);
       if (mediaMatch) {
         return { tab: "more", screen: "media", mediaType: decodeURIComponent(mediaMatch[1]) };
@@ -68,5 +74,6 @@ export function mobileRoutePath(route: MobileRoute): string {
   if (route.tab !== "more") return `/${route.tab}`;
   if (!route.screen) return "/more";
   if (route.screen === "media") return `/media/${encodeURIComponent(route.mediaType)}`;
+  if (route.screen === "people" && route.personId) return `/people/${encodeURIComponent(route.personId)}`;
   return `/${route.screen}`;
 }

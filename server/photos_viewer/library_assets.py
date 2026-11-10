@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import app_db, library_albums, library_watch, media, session_auth
+from . import app_db, library_albums, library_people, library_watch, media, session_auth
 
 router = APIRouter()
 
@@ -250,12 +250,16 @@ def list_assets(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
     # `album` is a user album's uuid or `smart:<slug>` (see library_albums);
-    # an id that is not this library's 404s. People is Phase 2.2: until then a
-    # `person` filter comes back empty rather than being ignored, which would
-    # return the unfiltered library.
+    # an id that is not this library's 404s. `person` is a named person's uuid
+    # (library_people), same 404 rule. Both may be combined (AND).
+    extras = []
+    if album:
+        extras.append(library_albums.album_clause(db, library["id"], album))
     if person:
-        return AssetListResponse(items=[], next_cursor=None)
-    extra = library_albums.album_clause(db, library["id"], album) if album else None
+        extras.append(library_people.person_clause(db, library["id"], person))
+    extra = (
+        (" AND ".join(e[0] for e in extras), [p for e in extras for p in e[1]]) if extras else None
+    )
 
     return _list_assets(
         db,

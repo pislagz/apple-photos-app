@@ -154,6 +154,25 @@ test("albums: folder tree and an album's photos", async ({ page }, info) => {
   await shot(page, "11-album", info.project.name);
 });
 
+test("people: faces grid and a person's photos", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  if (info.project.name === "desktop") {
+    await page.locator("aside.sidebar").getByRole("button", { name: "People & Pets" }).click();
+  } else {
+    await page.getByRole("button", { name: "More" }).click();
+    await page.getByRole("button", { name: /People & Pets/ }).click();
+  }
+  await expect(page.getByRole("button", { name: /Alex Demo/ })).toBeVisible();
+  // The unnamed cluster is omitted.
+  await expect(page.getByRole("button", { name: /Unnamed/ })).toHaveCount(0);
+  await shot(page, "12-people", info.project.name);
+  await page.getByRole("button", { name: /Alex Demo/ }).click();
+  await expect(page.getByRole("heading", { name: "Alex Demo" })).toBeVisible();
+  await expect(cells(page).first()).toBeVisible();
+  await shot(page, "13-person", info.project.name);
+});
+
 test("hidden asks for the password again", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page);

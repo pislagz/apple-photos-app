@@ -244,7 +244,21 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "Alex Demo",
             "D0000000-DEAD-4BEE-8000-000000000001",
             list(range(0, count, 9)),
-        )
+        ),
+        fixtures.FixturePerson(
+            "C0000000-DEAD-4BEE-8000-000000000002",
+            "Sam Sample",
+            "D0000000-DEAD-4BEE-8000-000000000002",
+            list(range(2, count, 13)),
+        ),
+        # Unnamed face cluster: People omits it (docs/TASKS.md P2.2).
+        fixtures.FixturePerson(
+            "C0000000-DEAD-4BEE-8000-000000000003",
+            "Unnamed",
+            "D0000000-DEAD-4BEE-8000-000000000003",
+            list(range(1, count, 17)),
+            named=False,
+        ),
     ]
     dest.mkdir(parents=True)
     return fixtures.build_library(

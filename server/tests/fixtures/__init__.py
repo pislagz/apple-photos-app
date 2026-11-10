@@ -247,6 +247,8 @@ class FixturePerson:
     name: str
     face_uuid: str
     asset_indexes: Sequence[int]
+    # False -> an unnamed face cluster (Photos' "add name" people).
+    named: bool = True
 
 
 def _default_assets() -> list[FixtureAsset]:
@@ -387,9 +389,9 @@ def build_library(
                 (
                     person_pk,
                     person.uuid,
-                    person.name,
+                    person.name if person.named else None,
                     len(person.asset_indexes),
-                    person.name,
+                    person.name if person.named else None,
                 ),
             )
             first_face_pk = face_pk + 1
@@ -402,10 +404,13 @@ def build_library(
                 )
                 conn.execute(
                     """
-                    INSERT INTO ZDETECTEDFACE (Z_PK, ZUUID, ZPERSON, ZASSET, ZHIDDEN, ZISINTRASH, ZMANUAL)
-                    VALUES (?, ?, ?, ?, 0, 0, 0)
+                    INSERT INTO ZDETECTEDFACE (
+                        Z_PK, ZUUID, ZPERSON, ZASSET, ZHIDDEN, ZISINTRASH, ZMANUAL,
+                        ZCENTERX, ZCENTERY, ZSIZE, ZQUALITY
+                    )
+                    VALUES (?, ?, ?, ?, 0, 0, 0, 0.3, 0.6, 0.2, ?)
                     """,
-                    (face_pk, face_uuid, person_pk, index + 1),
+                    (face_pk, face_uuid, person_pk, index + 1, 1.0 - 0.01 * face_pk),
                 )
             conn.execute(
                 "UPDATE ZPERSON SET ZKEYFACE = ? WHERE Z_PK = ?",

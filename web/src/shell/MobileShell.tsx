@@ -7,6 +7,7 @@ import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
+import PeopleScreen from "./people/PeopleScreen";
 import AlbumsTab, { AlbumPhotos } from "./albums/AlbumsTab";
 import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
@@ -98,7 +99,17 @@ export default function MobileShell({
       );
     }
     if (route.screen === "people") {
-      return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
+      if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
+        return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
+      }
+      return (
+        <PeopleScreen
+          key={activeLibraryId}
+          libraryId={activeLibraryId}
+          personId={route.personId}
+          onNavigate={navigate}
+        />
+      );
     }
     if (route.screen === "places") {
       return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;

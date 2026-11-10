@@ -173,6 +173,8 @@ export function getHidden(libraryId: number, cursor: string | null = null, limit
 // `favorite` query params; "all" sends neither.
 export type AssetFilter = "all" | "favorites" | "photos" | "videos";
 
+export const PERSON_PREFIX = "person:";
+
 export function getAssets(
   libraryId: number,
   cursor: string | null,
@@ -182,7 +184,10 @@ export function getAssets(
   album: string | null = null,
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
-  if (album) params.set("album", album);
+  // P2.2: `person:<uuid>` selects a person's photos (`?person=`); anything
+  // else is an album id, as in P2.1.
+  if (album?.startsWith(PERSON_PREFIX)) params.set("person", album.slice(PERSON_PREFIX.length));
+  else if (album) params.set("album", album);
   if (cursor) params.set("cursor", cursor);
   if (to) params.set("to", to);
   if (filter === "favorites") params.set("favorite", "true");
@@ -218,6 +223,29 @@ export interface AlbumsResponse {
 
 export function getAlbums(libraryId: number): Promise<AlbumsResponse> {
   return request<AlbumsResponse>(`/api/libraries/${libraryId}/albums`);
+}
+
+// P2.2: named people with at least one visible photo, most photos first.
+// `cover` is the person's best face on a visible photo: the circular crop is
+// the ordinary `/thumb/{asset_id}` clipped client-side (x/y centre, w/h size,
+// fractions of the displayed image, top-left origin).
+export interface FaceCrop {
+  asset_id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  count: number;
+  cover: FaceCrop | null;
+}
+
+export function getPeople(libraryId: number): Promise<{ people: Person[] }> {
+  return request<{ people: Person[] }>(`/api/libraries/${libraryId}/people`);
 }
 
 export interface SummaryBucket {
