@@ -497,6 +497,31 @@ def test_indexing_the_fixture_is_idempotent(tmp_path):
         conn.close()
 
 
+def test_a_full_index_pass_commits_in_batches_and_still_removes_vanished_assets(tmp_path, monkeypatch):
+    """#69: the write lock is released between batches, and the delete-missing
+    step still runs once, after the walk."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        conn.execute("INSERT INTO assets (library_id, uuid, filename) VALUES (?, 'gone-uuid', 'gone.jpg')", (added["id"],))
+        conn.commit()
+
+        monkeypatch.setattr(indexer, "INDEX_BATCH_SIZE", 1)
+        statements: list[str] = []
+        conn.set_trace_callback(statements.append)
+        assert indexer.index_library(conn, added["id"], package_path, force=True) is True
+        conn.set_trace_callback(None)
+
+        # One commit per batch boundary (2 assets, size 1 -> 1) plus the final one.
+        assert sum(1 for sql in statements if sql.strip().upper() == "COMMIT") >= 2
+        uuids = {row["uuid"] for row in conn.execute("SELECT uuid FROM assets WHERE library_id = ?", (added["id"],))}
+        assert "gone-uuid" not in uuids
+        assert len(uuids) == 2
+    finally:
+        conn.close()
+
+
 def test_reindex_keeps_the_assets_id_and_its_thumbnail_cache_row_stable(tmp_path):
     # A re-index upserts by (library_id, uuid) rather than delete+reinsert
     # specifically so rows that carry a foreign key to assets.id --

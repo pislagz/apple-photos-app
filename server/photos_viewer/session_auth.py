@@ -1155,6 +1155,42 @@ def reconfirm_password(
     return Response(status_code=204)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: LoginPassword
+    new_password: Password
+
+
+@router.post(
+    "/api/auth/change-password",
+    status_code=204,
+    dependencies=[Depends(reject_cross_site_requests)],
+)
+def change_password(
+    payload: ChangePasswordRequest,
+    session: sqlite3.Row = Depends(require_session),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    """#71: a signed-in user changes their own password. The current password
+    is re-checked (and shares the login lockout counters, like
+    `reconfirm_password`), every *other* session of the user is revoked so a
+    stolen or shared cookie dies with the old password, and the session making
+    the request stays signed in."""
+    username = session["username"]
+    _prune_old_login_failures(db)
+    if is_locked_out(db, username, user_exists=True):
+        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+    user = db.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,)).fetchone()
+    if user is None or not verify_password(user["password_hash"], payload.current_password):
+        record_login_failure(db, username, user_exists=True)
+        raise HTTPException(status_code=401, detail="wrong password")
+    clear_login_failures(db, username)
+    db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(payload.new_password), user["id"]))
+    db.commit()
+    revoke_sessions_for_user(db, user["id"], keep_session_id=session["id"])
+    app_db.write_audit_log(db, "change_password", user_id=user["id"], actor=username, detail="self-service")
+    return Response(status_code=204)
+
+
 @router.post("/api/auth/lock-hidden", status_code=204, dependencies=[Depends(reject_cross_site_requests)])
 def lock_hidden(
     session: sqlite3.Row = Depends(require_session), db: sqlite3.Connection = Depends(get_db)

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MeResponse } from "../api";
+import ChangePasswordDialog from "./ChangePasswordDialog";
 import { Icon } from "./icons";
 import LayoutOverrideControl from "./LayoutOverrideControl";
 import type { LayoutOverride } from "./useLayout";
@@ -15,14 +16,19 @@ function AccountMenuItems({
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
 }) {
+  const [changingPassword, setChangingPassword] = useState(false);
   return (
     <>
       <p className="account-menu__username">{me.username}</p>
       {me.role === "admin" && <a href="/admin">Admin</a>}
       <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
+      <button type="button" onClick={() => setChangingPassword(true)}>
+        Change password
+      </button>
       <button type="button" onClick={onLogout}>
         Log out
       </button>
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
     </>
   );
 }

@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Sequence
 
 import pillow_heif
@@ -164,7 +165,7 @@ def get_or_generate(
     result = _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
     _write_cache(cache_dir, library_id, asset_uuid, key, result.extension, result.data)
     if cache_size_limit_bytes is not None:
-        _evict_if_needed(cache_dir, cache_size_limit_bytes)
+        _note_cache_write(cache_dir, cache_size_limit_bytes, _cache_file(cache_dir, library_id, asset_uuid, key, result.extension))
     return result
 
 
@@ -192,11 +193,12 @@ def get_or_generate_jpeg(
     cache_dir = pathlib.Path(cache_dir)
     cached_path = _cache_file(cache_dir, library_id, asset_uuid, key, "jpg")
     if cached_path.exists():
+        _touch_cache_file(cached_path)
         return cached_path.read_bytes()
     data = to_jpeg(source_path, is_video=is_video)
     _write_cache(cache_dir, library_id, asset_uuid, key, "jpg", data)
     if cache_size_limit_bytes is not None:
-        _evict_if_needed(cache_dir, cache_size_limit_bytes)
+        _note_cache_write(cache_dir, cache_size_limit_bytes, cached_path)
     return data
 
 
@@ -221,6 +223,7 @@ def _read_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: 
     for content_type, extension in (("image/webp", "webp"), ("image/jpeg", "jpg")):
         path = _cache_file(cache_dir, library_id, asset_uuid, key, extension)
         if path.exists():
+            _touch_cache_file(path)
             return GeneratedImage(data=path.read_bytes(), content_type=content_type)
     return None
 
@@ -242,34 +245,88 @@ def _write_cache(
         raise
 
 
-def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int) -> None:
-    """Delete the least-recently-written cache files until the cache is
-    back under `size_limit_bytes`. The `thumbnail_cache` app.db table is
-    unused -- this is a filesystem mtime-LRU instead, since the cache's own
-    file mtime already orders writes without a separate index to keep in
-    sync."""
+# Evict down to this fraction of the limit, not to the limit itself, so a cache
+# sitting at its limit rescans once per batch of writes rather than every write.
+_EVICT_LOW_WATER = 0.9
+
+# Per cache dir, the running byte total since this process's first scan. Writes
+# add to it; only crossing the limit pays for a directory scan (which also
+# corrects drift from purges or another process). Guarded by `_cache_lock`,
+# which also serialises scan-and-delete so two evictions can't double-count.
+_cache_totals: dict[pathlib.Path, int] = {}
+_cache_lock = threading.Lock()
+
+
+def _touch_cache_file(path: pathlib.Path) -> None:
+    """Record a cache read in the file's mtime so eviction is least-recently-
+    *used*, not least-recently-written. A failure (read-only mount) only costs
+    LRU accuracy."""
+    try:
+        os.utime(path)
+    except OSError:
+        pass
+
+
+def _scan_cache(cache_dir: pathlib.Path) -> tuple[list[tuple[int, int, pathlib.Path]], int]:
     entries: list[tuple[int, int, pathlib.Path]] = []
     total = 0
     for path in cache_dir.rglob("*"):
-        if not path.is_file():
-            continue
         try:
             stat = path.stat()
         except OSError:
             continue
+        if not path.is_file() or path.name.startswith(".tmp-"):
+            continue
         entries.append((stat.st_mtime_ns, stat.st_size, path))
         total += stat.st_size
+    return entries, total
+
+
+def _note_cache_write(cache_dir: pathlib.Path, size_limit_bytes: int, written: pathlib.Path) -> None:
+    """Account for a just-written file and evict only when over the limit. The
+    first write per process scans once to learn the total (that scan already
+    includes `written`); later writes are O(1) until the limit is crossed."""
+    with _cache_lock:
+        if cache_dir not in _cache_totals:
+            _cache_totals[cache_dir] = _scan_cache(cache_dir)[1]
+        else:
+            try:
+                _cache_totals[cache_dir] += written.stat().st_size
+            except OSError:
+                return
+        if _cache_totals[cache_dir] > size_limit_bytes:
+            _evict_locked(cache_dir, size_limit_bytes, _EVICT_LOW_WATER, keep=written)
+
+
+def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int, low_water: float = 1.0) -> None:
+    """Delete the least-recently-used cache files (oldest mtime; reads touch
+    it) until the cache is at most `size_limit_bytes * low_water`. The
+    `thumbnail_cache` app.db table is unused: the file mtime already orders
+    use without an index to keep in sync."""
+    with _cache_lock:
+        _evict_locked(cache_dir, size_limit_bytes, low_water, keep=None)
+
+
+def _evict_locked(
+    cache_dir: pathlib.Path, size_limit_bytes: int, low_water: float, *, keep: pathlib.Path | None
+) -> None:
+    entries, total = _scan_cache(cache_dir)
+    _cache_totals[cache_dir] = total
     if total <= size_limit_bytes:
         return
+    target = int(size_limit_bytes * low_water)
     entries.sort(key=lambda entry: entry[0])
     for _, entry_size, path in entries:
-        if total <= size_limit_bytes:
+        if total <= target:
             break
+        if path == keep:
+            continue
         try:
             path.unlink()
         except OSError:
             continue
         total -= entry_size
+    _cache_totals[cache_dir] = total
 
 
 def _resolve_source(

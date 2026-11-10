@@ -200,7 +200,9 @@ def _write_index_and_update_signature(
     if own_transaction:
         db.execute("BEGIN IMMEDIATE")
     try:
-        counts, purge = _write_index(db, library_id, opened.db)
+        counts, purge = _write_index(
+            db, library_id, opened.db, batch_size=INDEX_BATCH_SIZE if own_transaction else None
+        )
         store_uuid = read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
         asset_count = db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0]
         # Applying a valid copy also ends any "Being updated" state, in the
@@ -246,7 +248,19 @@ _UPSERT_ASSET_SQL = (
 )
 
 
-def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> tuple[dict[str, int], list[str]]:
+# #69: assets per write transaction. The write lock is released between batches
+# so logins and other writes get in during a multi-million-asset walk.
+INDEX_BATCH_SIZE = 5000
+
+
+def _write_index(
+    db: sqlite3.Connection, library_id: int, photosdb, *, batch_size: int | None = None
+) -> tuple[dict[str, int], list[str]]:
+    """`batch_size` commits (and re-opens the write transaction) every that
+    many assets; None keeps everything in the caller's transaction. Deletion of
+    vanished assets only happens after the whole walk, in the last batch with
+    the signature update, so an interrupted pass never deletes anything and
+    simply re-runs (the signature is unchanged until the end)."""
     # People/albums have no stability requirement of their own (nothing
     # outside this module keeps a foreign key to them across index runs),
     # so a clean replace -- cascading to `asset_people`/`asset_albums` via
@@ -289,7 +303,10 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> tuple[dic
     purge: list[str] = []
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
-        for photo in photosdb.photos():
+        for walked, photo in enumerate(photosdb.photos(), start=1):
+            if batch_size is not None and walked % batch_size == 0:
+                db.commit()
+                db.execute("BEGIN IMMEDIATE")
             db.execute("INSERT INTO _seen_asset_uuids (uuid) VALUES (?)", (photo.uuid,))
 
             place = photo.place
