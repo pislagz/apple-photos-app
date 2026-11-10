@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import os
 import pathlib
 import sqlite3
 from typing import Literal
@@ -516,6 +517,10 @@ class AssetDetailResponse(BaseModel):
     # False on an Optimize Mac Storage copy: only a smaller derivative is on
     # disk, so a download is not the original (set at index time).
     original_available: bool = True
+    # True for a "referenced" original stored outside the package that no
+    # PHOTOS_VIEWER_REFERENCED_ROOTS entry covers: /original answers 404
+    # `original_not_available` for it.
+    original_outside_library: bool = False
     has_live_photo_video: bool
     people: list[str]
     albums: list[str]
@@ -616,6 +621,9 @@ def asset_detail(
         camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
         original_available=not asset["original_missing"],
+        original_outside_library=_original_not_available(
+            library["path"], asset["path_edited"] or asset["path_original"]
+        ),
         has_live_photo_video=bool(
             asset["path_live_photo"] or asset["path_edited_live_photo"]
         ),
@@ -694,17 +702,70 @@ def selection_summary(
     )
 
 
+ORIGINAL_NOT_AVAILABLE = "original_not_available"
+# Extra read-only roots (os.pathsep-separated absolute paths) that may hold
+# "referenced" originals stored outside a .photoslibrary. Unset = none.
+REFERENCED_ROOTS_ENV = "PHOTOS_VIEWER_REFERENCED_ROOTS"
+
+
+class OriginalNotAvailable(HTTPException):
+    """The recorded file lives outside the package (a Photos "referenced"
+    original) and no allowed root covers it. A 404 whose `detail` is
+    `original_not_available`, so the web can tell it from a plain 404."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=404, detail=ORIGINAL_NOT_AVAILABLE)
+
+
+def _referenced_roots() -> list[pathlib.Path]:
+    roots = []
+    for raw in os.environ.get(REFERENCED_ROOTS_ENV, "").split(os.pathsep):
+        raw = raw.strip()
+        if raw and os.path.isabs(raw):
+            roots.append(pathlib.Path(raw).resolve())
+    return roots
+
+
+def _is_under(path: pathlib.Path, root: pathlib.Path) -> bool:
+    return path == root or path.is_relative_to(root)
+
+
 def _resolve_within_library(library_path: str, raw_path: str) -> pathlib.Path:
     """The path `assets` recorded for this asset, checked against the
-    library's own registered root. Never takes a path from the request --
+    library's own registered root (or an allowed referenced root, resolved
+    with symlinks first). Never takes a path from the request --
     `raw_path` always comes from an `app.db` row already scoped to this
     `library_id` -- this is defense in depth against a corrupted index row,
-    not a defense against a malicious caller."""
+    not a defense against a malicious caller.
+
+    A clean absolute path outside every root is a referenced original and
+    raises `OriginalNotAvailable`; `..` parts, relative paths and symlinks
+    that leave a root stay a plain 404."""
     library_root = pathlib.Path(library_path).resolve()
-    resolved = pathlib.Path(raw_path).resolve()
-    if resolved != library_root and not resolved.is_relative_to(library_root):
+    allowed = [library_root, *_referenced_roots()]
+    raw = pathlib.Path(raw_path)
+    resolved = raw.resolve()
+    if any(_is_under(resolved, root) for root in allowed):
+        return resolved
+    if not raw.is_absolute() or ".." in raw.parts:
         raise HTTPException(status_code=404, detail="not found")
-    return resolved
+    lexical_roots = [pathlib.Path(library_path), *allowed]
+    if any(_is_under(raw, root) for root in lexical_roots):
+        # Looked inside a root but a symlink leads out of it.
+        raise HTTPException(status_code=404, detail="not found")
+    raise OriginalNotAvailable()
+
+
+def _original_not_available(library_path: str, raw_path: str | None) -> bool:
+    if not raw_path:
+        return False
+    try:
+        _resolve_within_library(library_path, raw_path)
+    except OriginalNotAvailable:
+        return True
+    except HTTPException:
+        return False
+    return False
 
 
 @router.get("/api/libraries/{library_id}/thumb/{asset_id}")
@@ -730,12 +791,19 @@ def asset_thumb(
     # this mirrors media.py's own fallback instead of fighting it); only
     # list it as a *derivative* candidate when it isn't already the source.
     main_path = edited or original or derivative
-    source_path = _resolve_within_library(library["path"], main_path)
-    derivatives = (
-        [_resolve_within_library(library["path"], derivative)]
-        if derivative and derivative != main_path
-        else []
-    )
+    try:
+        source_path = _resolve_within_library(library["path"], main_path)
+        derivatives = (
+            [_resolve_within_library(library["path"], derivative)]
+            if derivative and derivative != main_path
+            else []
+        )
+    except OriginalNotAvailable:
+        # Referenced original: the package's own derivative still works.
+        if not derivative or derivative == main_path:
+            raise
+        source_path = _resolve_within_library(library["path"], derivative)
+        derivatives = []
     sizes, quality, cache_limit = _media_settings(db)
     try:
         result = media.get_or_generate(
@@ -784,6 +852,7 @@ def asset_original(
         and asset["path_derivative"]
         and (
             not raw_path
+            or _original_not_available(library["path"], raw_path)
             or not _resolve_within_library(library["path"], raw_path).exists()
         )
     ):

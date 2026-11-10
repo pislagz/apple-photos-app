@@ -824,3 +824,26 @@ test("library load error shows Retry (#89)", async ({ page }, info) => {
   await expect(cells(page).first()).toBeVisible();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("#78: the viewer says a referenced original is stored outside the library", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  // The demo library has no referenced originals; mark every asset as one.
+  await page.route(/\/api\/libraries\/\d+\/assets\/[^/?]+$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    await route.fulfill({ response, json: { ...body, original_outside_library: true } });
+  });
+  await page.route(/\/api\/libraries\/\d+\/original\//, (route) =>
+    route.fulfill({ status: 404, json: { detail: "original_not_available" } }),
+  );
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const viewer = page.locator('[data-testid="desktop-viewer"], [data-testid="mobile-viewer"]');
+  if (info.project.name === "desktop") await cells(page).first().dblclick();
+  else await cells(page).first().tap();
+  await expect(viewer).toBeVisible();
+  await expect(page.getByTestId("original-outside-note")).toContainText("stored outside the library");
+  await page.waitForTimeout(600);
+  await shot(page, "16-original-outside-library", info.project.name);
+});

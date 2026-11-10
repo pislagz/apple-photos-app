@@ -339,6 +339,9 @@ export interface AssetDetailResponse {
   has_edited: boolean;
   // False when only a smaller derivative is on disk (Optimize Mac Storage).
   original_available?: boolean;
+  // True when the original is stored outside the library package and the server
+  // isn't allowed to serve it (/original answers 404 "original_not_available").
+  original_outside_library?: boolean;
   has_live_photo_video: boolean;
   people: string[];
   albums: string[];

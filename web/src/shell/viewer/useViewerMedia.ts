@@ -49,6 +49,9 @@ export function useViewerMedia(
   libraryId: number,
   item: AssetListItem | undefined,
   hasEdited: boolean | undefined,
+  // Referenced original outside the package: never request /original, the
+  // preview thumb (from the package) stays on screen.
+  originalBlocked = false,
 ): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
@@ -92,15 +95,15 @@ export function useViewerMedia(
     liveVideoSrc: item ? livePhotoVideoUrl(libraryId, item.id) : "",
     isVideo: item?.is_video ?? false,
     isLivePhoto: item?.is_live_photo ?? false,
-    wantsOriginal,
+    wantsOriginal: wantsOriginal && !originalBlocked,
     requestOriginal: () => setWantsOriginal(true),
-    videoPlaying,
+    videoPlaying: videoPlaying && !originalBlocked,
     startVideo: () => setVideoPlaying(true),
     livePlaying,
     startLive: () => setLivePlaying(true),
     stopLive: () => setLivePlaying(false),
     onOriginalError: () => setJpegFallback(true),
-    showingOriginal,
+    showingOriginal: showingOriginal && !originalBlocked,
     showOriginalSrc: item
       ? jpegFallback
         ? originalJpegFallbackUrl(libraryId, item.id, "original")
