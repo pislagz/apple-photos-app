@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlbumsResponse, MeResponse } from "../../api";
 import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
@@ -101,6 +101,37 @@ describe("desktop Albums sidebar group", () => {
     expect(screen.getByRole("button", { name: "Paris" })).toHaveAttribute("aria-current", "page");
     // No Years/Months switch inside an album.
     expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
+  });
+
+  it("shows a disclosure chevron on folders, toggles them and remembers the state", async () => {
+    localStorage.clear();
+    mockFetch(handler([]));
+    renderDesktop();
+
+    const summary = (await screen.findByText("Trips")).closest("summary") as HTMLElement;
+    const details = summary.closest("details") as HTMLDetailsElement;
+    expect(summary.querySelector(".sidebar__disclosure")).not.toBeNull();
+    // Albums at the same depth get a spacer, not a chevron.
+    const paris = screen.getByRole("button", { name: "Paris" });
+    expect(paris.querySelector(".sidebar__disclosure")).toBeNull();
+    expect(paris.querySelector(".sidebar__disclosure-spacer")).not.toBeNull();
+    expect(details.open).toBe(true);
+
+    fireEvent.click(summary);
+    await waitFor(() => expect(details.open).toBe(false));
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("photos-viewer.sidebar-closed-folders") ?? "[]")).toEqual(["F1"]),
+    );
+
+    cleanup();
+    renderDesktop();
+    const again = (await screen.findByText("Trips")).closest("details") as HTMLDetailsElement;
+    expect(again.open).toBe(false);
+
+    fireEvent.click(again.querySelector("summary") as HTMLElement);
+    await waitFor(() => expect(again.open).toBe(true));
+    expect(JSON.parse(localStorage.getItem("photos-viewer.sidebar-closed-folders") ?? "[]")).toEqual([]);
+    localStorage.clear();
   });
 
   it("opens Favorites as the smart album", async () => {

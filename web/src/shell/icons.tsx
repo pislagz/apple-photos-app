@@ -31,6 +31,30 @@ function rr(x: number, y: number, w: number, h: number, r: number): string {
 const circle = (cx: number, cy: number, r: number) =>
   `M${n(cx)} ${n(cy + r)}a${n(r)} ${n(r)} 0 1 0 0 ${n(-2 * r)} ${n(r)} ${n(r)} 0 0 0 0 ${n(2 * r)}Z`;
 
+// Short radial dashes (round caps make them read as dots) evenly spaced on a
+// ring; the Live Photo icon's outer ring.
+function ringDashes(cx: number, cy: number, r: number, count: number, half: number): string {
+  let d = "";
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * 2 * Math.PI;
+    const t = half / r;
+    const p = (ang: number) => `${n(cx + r * Math.sin(ang))} ${n(cy - r * Math.cos(ang))}`;
+    d += `M${p(a - t)}A${n(r)} ${n(r)} 0 0 1 ${p(a + t)}`;
+  }
+  return d;
+}
+
+// Closed stadium (pill) outline of overall `len` x `wid`, centred on (cx, cy)
+// and turned by `deg`. Used by the chain link.
+function stadium(cx: number, cy: number, len: number, wid: number, deg: number): string {
+  const r = wid / 2;
+  const h = len / 2 - r;
+  const a = (deg * Math.PI) / 180;
+  const pt = (u: number, v: number) =>
+    `${n(cx + u * Math.cos(a) - v * Math.sin(a))} ${n(cy + u * Math.sin(a) + v * Math.cos(a))}`;
+  return `M${pt(-h, -r)}L${pt(h, -r)}A${n(r)} ${n(r)} 0 0 1 ${pt(h, r)}L${pt(-h, r)}A${n(r)} ${n(r)} 0 0 1 ${pt(-h, -r)}Z`;
+}
+
 // Approved sample shapes (sample sheet v1), used as drawn.
 const LIBRARY_BACK = "M6.5 6.3V5.6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-.8";
 const LIBRARY_FRONT = "M4.5 6.5h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z";
@@ -50,6 +74,9 @@ const INFO_RING = "M10 17.2a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z";
 const INFO_STEM = "M10 9.2v4.6";
 const INFO_DOT = "M10 7.4a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9Z";
 
+const LIVE_DASHES = ringDashes(10, 10, 8.5, 12, 0.45);
+const LINK_A = stadium(7.5, 12.5, 10.4, 5.6, -45);
+const LINK_B = stadium(12.5, 7.5, 10.4, 5.6, -45);
 const VIDEO_BODY = rr(2.5, 5.5, 10.5, 9, 2);
 const VIDEO_LENS = "M13 8.7l3.3-1.9a.8.8 0 0 1 1.2.7v5a.8.8 0 0 1-1.2.7L13 11.3";
 const DOC_BODY =
@@ -258,12 +285,14 @@ export const ICONS = {
   close: { parts: [["M5 5l10 10 M15 5 5 15", "s"]] },
   livephoto: {
     parts: [
-      [circle(10, 10, 6.8), "s"],
-      [circle(10, 10, 2.4), "f"],
+      [circle(10, 10, 1.9), "f"],
+      [circle(10, 10, 5), "s"],
+      [LIVE_DASHES, "s"],
     ],
     filled: [
-      [circle(10, 10, 6.8), "fs"],
-      [circle(10, 10, 2.4), "kf"],
+      [circle(10, 10, 5.75), "f"],
+      [circle(10, 10, 1.9), "kf"],
+      [LIVE_DASHES, "s"],
     ],
   },
   video: {
@@ -352,8 +381,8 @@ export const ICONS = {
   },
   link: {
     parts: [
-      ["M8.4 11.6a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9", "s"],
-      ["M11.6 8.4a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l.9-.9", "s"],
+      [LINK_A, "s"],
+      [LINK_B, "s"],
     ],
   },
   original: {

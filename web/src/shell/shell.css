@@ -2155,6 +2155,26 @@ body {
   display: none;
 }
 
+/* Disclosure triangle at the folder row's leading edge. Same small solid
+   triangle in the secondary text colour as the section headers; albums at the
+   same depth get a spacer of equal width so icons and titles line up. */
+.sidebar__disclosure,
+.sidebar__disclosure-spacer {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: -2px;
+}
+
+.sidebar__disclosure {
+  color: var(--sequoia-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.sidebar__folder[open] > summary > .sidebar__disclosure {
+  transform: rotate(90deg);
+}
+
 .albums-list {
   list-style: none;
   margin: 0;

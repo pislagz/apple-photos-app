@@ -823,6 +823,53 @@ test.describe("icon set shots (#235)", () => {
         await page.locator("aside.sidebar").screenshot({ path: `${SHOTS}/icons-sidebar-${scheme}.png` });
       });
 
+      test(`livephoto and link, before | after (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const dark = scheme === "dark";
+        const svg = (size: number, body: string) =>
+          `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+        const OLD: Record<string, string> = {
+          livephoto: `<circle cx="10" cy="10" r="6.8"/><circle cx="10" cy="10" r="2.4" fill="currentColor" stroke="none"/>`,
+          link: `<path d="M8.4 11.6a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9"/><path d="M11.6 8.4a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l.9-.9"/>`,
+        };
+        const rows = (["livephoto", "link"] as const)
+          .map((name) => {
+            const cell = (size: number) =>
+              `<span class="c">${svg(size, OLD[name])}</span><span class="c">${renderToStaticMarkup(createElement(Icon, { name, size }))}</span>`;
+            return `<div class="r"><b>${name}</b><div class="g"><i>before</i><i>after</i>${cell(120)}</div><div class="g"><i>20 px</i><i></i>${cell(20)}</div><div class="g"><i>16 px</i><i></i>${cell(16)}</div></div>`;
+          })
+          .join("");
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 24px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .r { display: flex; align-items: flex-end; gap: 36px; margin-bottom: 28px; }
+            .r b { width: 80px; }
+            .g { display: grid; grid-template-columns: 140px 140px; gap: 6px; align-items: center; }
+            .g i { color: ${dark ? "#98989d" : "#6e6e73"}; font-style: normal; }
+            .c { display: flex; align-items: center; color: #0a84ff; }
+          </style>${rows}`,
+        );
+        await page.setViewportSize({ width: 1000, height: 420 });
+        await page.screenshot({ path: `${SHOTS}/icons2-before-after-${scheme}.png`, fullPage: true });
+      });
+
+      test(`sidebar nested folders (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await signIn(page);
+        const side = page.locator("aside.sidebar");
+        await expect(side.getByText("Europe")).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-open-${scheme}.png` });
+        // Collapse Family; keep Trips > Europe open.
+        await side.getByText("Family", { exact: true }).click();
+        await expect(side.getByRole("button", { name: "Birthdays" })).toBeHidden();
+        await side.locator("summary", { hasText: "Family" }).focus();
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Shift+Tab");
+        await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-collapsed-${scheme}.png` });
+        await side.getByText("Family", { exact: true }).click();
+      });
+
       test(`icon gallery (${scheme})`, async ({ page }, info) => {
         test.skip(info.project.name !== "desktop", "desktop only");
         const markup = renderToStaticMarkup(createElement(IconGallery));
