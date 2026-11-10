@@ -802,3 +802,25 @@ test("Decisions 5: the map without consent and no file is off", async ({ page },
   await expect(page.getByTestId("map-off-note")).toBeVisible();
   await shot(page, "27-map-without-consent-off", info.project.name);
 });
+
+// #89: a failed /assets request is an error with Retry, never "No photos yet."
+test("library load error shows Retry (#89)", async ({ page }, info) => {
+  let fail = true;
+  // The injected 500 is logged by the browser as a console error; that is the point of the test.
+  page.on("console", (message) => {
+    if (/status of 500/.test(message.text())) consoleErrors = consoleErrors.filter((e) => e !== message.text());
+  });
+  await page.route(/\/api\/libraries\/\d+\/assets\?/, (route) =>
+    fail ? route.fulfill({ status: 500, body: "boom" }) : route.continue(),
+  );
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  const alert = page.getByRole("alert").filter({ hasText: "Couldn't load" });
+  await expect(alert).toBeVisible();
+  await expect(page.getByText("No photos yet.")).toHaveCount(0);
+  await shot(page, "14-library-load-error", info.project.name);
+  fail = false;
+  await alert.getByRole("button", { name: "Retry" }).click();
+  await expect(cells(page).first()).toBeVisible();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
