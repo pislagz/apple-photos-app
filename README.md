@@ -93,7 +93,7 @@ On iPhone, open the Serve URL in Safari → Share → Add to Home Screen. It ope
 
 ## Offline rule
 
-The server makes no outbound connections: no update check, no geocoding, no CDN, no telemetry; `OSXPHOTOS_NO_VERSION_CHECK=1` is set everywhere. The only external connection is the browser fetching OSM tiles from `tile.openstreetmap.org` when a map is open. Admin → Settings → Map tiles can switch to Local file (a Protomaps PMTiles file: mount it read-only at `/tiles/map.pmtiles` in Docker) or Off, after which browsers make no OSM requests.
+The server makes no outbound connections: no update check, no geocoding, no CDN, no telemetry; `OSXPHOTOS_NO_VERSION_CHECK=1` is set everywhere. The only external connection is the browser fetching OSM tiles from `tile.openstreetmap.org` when a map is open. Without the admin's "Map & place names" consent browsers make no OSM requests: the map uses a local Protomaps PMTiles file if one is set in Admin → Settings (mount it read-only at `/tiles/map.pmtiles` in Docker), otherwise it is off. With consent, OSM tiles are used and the file is only a fallback.
 
 ### No outbound egress (Docker)
 

@@ -14,8 +14,12 @@ def _app_with_db(tmp_path, mode=None):
     (tmp_path / "index.html").write_text("<html></html>")
     app = create_app(web_dist_dir=tmp_path)
     conn = app_db.connect(tmp_path / "data")
-    if mode is not None:
-        app_db.set_setting(conn, "map_tiles_mode", mode)
+    # `mode` "online" stands for consent; "local_file" is a PMTiles file with
+    # no consent (offline, so no external host either).
+    if mode == "online":
+        app_db.set_setting(conn, "osm_consent", "1")
+    elif mode == "local_file":
+        app_db.set_setting(conn, "map_tiles_pmtiles_path", "/data/world.pmtiles")
     app.dependency_overrides[session_auth.get_db] = lambda: conn
     return app, conn
 
@@ -81,6 +85,16 @@ def test_only_external_host_is_osm_tiles_and_only_when_turned_on(tmp_path):
     conn.close()
 
 
+def test_declined_consent_adds_no_host_even_with_a_local_file(tmp_path):
+    app, conn = _make(tmp_path, "online")
+    app_db.set_setting(conn, "osm_consent", "0")
+    app_db.set_setting(conn, "map_tiles_pmtiles_path", "/data/world.pmtiles")
+    app.state.csp_cache = None
+    header = TestClient(app).get("/").headers["content-security-policy"]
+    assert "openstreetmap" not in header
+    conn.close()
+
+
 def test_saving_settings_updates_the_policy_at_once(tmp_path):
     app, conn = _make(tmp_path, "online")
     client = TestClient(app, base_url="https://testserver")
@@ -88,7 +102,7 @@ def test_saving_settings_updates_the_policy_at_once(tmp_path):
         "tile.openstreetmap.org" in client.get("/").headers["content-security-policy"]
     )
     # Saving the setting drops the cached policy; the next response follows it.
-    app_db.set_setting(conn, "map_tiles_mode", "off")
+    app_db.set_setting(conn, "osm_consent", "0")
     app.state.csp_cache = None
     assert (
         "tile.openstreetmap.org"

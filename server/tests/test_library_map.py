@@ -180,8 +180,8 @@ def _pmtiles(tmp_path):
     return path
 
 
-def _set(conn, mode, path=None):
-    app_db.set_setting(conn, "map_tiles_mode", mode)
+def _set(conn, consent, path=None):
+    app_db.set_setting(conn, "osm_consent", "1" if consent else "0")
     app_db.set_setting(
         conn, "map_tiles_pmtiles_path", "" if path is None else str(path)
     )
@@ -198,17 +198,17 @@ def test_config_requires_login_and_defaults_to_off(env):
         "mode": "off",
         "pmtiles_url": None,
     }
-    _set(conn, "online", None)
+    _set(conn, True, None)
     assert client.get("/api/map/config").json() == {
         "mode": "online",
         "pmtiles_url": None,
     }
 
 
-def test_local_file_serves_a_range_response(env):
+def test_without_consent_a_local_file_is_used_and_serves_ranges(env):
     conn, client, _ids, login, tmp_path = env
     login("alice", "L1")
-    _set(conn, "local_file", _pmtiles(tmp_path))
+    _set(conn, False, _pmtiles(tmp_path))
     assert client.get("/api/map/config").json() == {
         "mode": "local_file",
         "pmtiles_url": "/api/map/tiles.pmtiles",
@@ -221,8 +221,20 @@ def test_local_file_serves_a_range_response(env):
     assert client.get("/api/map/tiles.pmtiles").status_code == 200
 
 
+def test_with_consent_osm_wins_and_the_file_is_only_the_fallback(env):
+    conn, client, _ids, login, tmp_path = env
+    login("alice", "L1")
+    _set(conn, True, _pmtiles(tmp_path))
+    assert client.get("/api/map/config").json() == {
+        "mode": "online",
+        "pmtiles_url": "/api/map/tiles.pmtiles",
+    }
+    assert client.get("/api/map/tiles.pmtiles").status_code == 200
+
+
 @pytest.mark.parametrize("kind", ["missing", "not_pmtiles", "directory"])
-def test_bad_local_file_is_off_not_osm(env, kind):
+@pytest.mark.parametrize("consent", [False, True])
+def test_bad_local_file_counts_as_no_file(env, kind, consent):
     conn, client, _ids, login, tmp_path = env
     login("alice", "L1")
     path = tmp_path / "x.pmtiles"
@@ -230,18 +242,19 @@ def test_bad_local_file_is_off_not_osm(env, kind):
         path.write_bytes(b"hello")
     elif kind == "directory":
         path.mkdir()
-    _set(conn, "local_file", path)
-    assert client.get("/api/map/config").json() == {"mode": "off", "pmtiles_url": None}
+    _set(conn, consent, path)
+    assert client.get("/api/map/config").json() == {
+        "mode": "online" if consent else "off",
+        "pmtiles_url": None,
+    }
     assert client.get("/api/map/tiles.pmtiles").status_code == 404
 
 
-def test_archive_is_not_served_unless_local_mode(env):
-    conn, client, _ids, login, tmp_path = env
+def test_no_file_means_no_archive_route(env):
+    conn, client, _ids, login, _tmp = env
     login("alice", "L1")
-    _set(conn, "online", _pmtiles(tmp_path))
+    _set(conn, False, None)
     assert client.get("/api/map/tiles.pmtiles").status_code == 404
-    _set(conn, "off", _pmtiles(tmp_path))
-    assert client.get("/api/map/config").json() == {"mode": "off", "pmtiles_url": None}
 
 
 def test_indexed_fixture_locations_reach_the_map(tmp_path):

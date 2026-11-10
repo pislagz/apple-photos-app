@@ -17,9 +17,9 @@ const ME: MeResponse = {
 };
 
 const PEOPLE: Person[] = [
-  { id: "P1", name: "Ann", count: 3, cover: { asset_id: "c1", x: 0.3, y: 0.4, w: 0.2, h: 0.1 } },
-  { id: "P2", name: "Ben", count: 1, cover: null },
-  { id: "P3", name: null, count: 7, cover: { asset_id: "c3", x: 0.5, y: 0.5, w: 0.3, h: 0.3 } },
+  { id: "P1", name: "Ann", label: "Ann", count: 3, cover: { asset_id: "c1", x: 0.3, y: 0.4, w: 0.2, h: 0.1 } },
+  { id: "P2", name: "Ben", label: "Ben", count: 1, cover: null },
+  { id: "P3", name: null, label: "Person A", count: 7, cover: { asset_id: "c3", x: 0.5, y: 0.5, w: 0.3, h: 0.3 } },
 ];
 
 const ITEM = {
@@ -93,9 +93,9 @@ describe("desktop People & Pets", () => {
     expect(img.style.width).toBe(`${100 / (0.2 * 1.8)}%`);
 
     // An unnamed face group comes after the named people, with a muted
-    // placeholder instead of a name.
-    const buttons = screen.getAllByRole("button", { name: /Ann|Ben|Add Name/ });
-    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Add Name"]);
+    // generated label instead of a name.
+    const buttons = screen.getAllByRole("button", { name: /Ann|Ben|Person A/ });
+    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Person A"]);
     expect(buttons[2].querySelector(".people-grid__name--unnamed")).not.toBeNull();
     expect(buttons[0].querySelector(".people-grid__name--unnamed")).toBeNull();
 
@@ -115,10 +115,26 @@ describe("desktop People & Pets", () => {
     mockFetch(handler(requested));
     renderDesktop();
     fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Add Name/ }));
-    expect(await screen.findByRole("heading", { name: "Add Name" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Person A/ }));
+    expect(await screen.findByRole("heading", { name: "Person A" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("person=P3"))).toBe(true));
     expect(await findThumb("p1")).toBeInTheDocument();
+  });
+
+  it("uses the same generated label in the list and on the page", async () => {
+    const people: Person[] = [
+      ...PEOPLE,
+      { id: "P4", name: null, label: "Person B", count: 2, cover: null },
+    ];
+    mockFetch(handler([], () => ({ people })));
+    renderDesktop();
+    fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
+    const names = (await screen.findAllByRole("button", { name: /Person/ })).map(
+      (b) => b.querySelector(".people-grid__name")?.textContent,
+    );
+    expect(names).toEqual(["Person A", "Person B"]);
+    fireEvent.click(screen.getByRole("button", { name: /Person B/ }));
+    expect(await screen.findByRole("heading", { name: "Person B" })).toBeInTheDocument();
   });
 
   it("says people could not be loaded and retries", async () => {
@@ -173,9 +189,9 @@ describe("mobile People & Pets", () => {
     mockFetch(handler(requested));
     window.history.replaceState({}, "", "/people");
     renderMobile();
-    fireEvent.click(await screen.findByRole("button", { name: /Add Name/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Person A/ }));
     expect(window.location.pathname).toBe("/people/P3");
-    expect(await screen.findByRole("heading", { name: "Add Name" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Person A" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("person=P3"))).toBe(true));
   });
 

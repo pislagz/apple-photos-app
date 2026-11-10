@@ -1854,6 +1854,7 @@ body {
 .mobile-viewer__info-rows__row dd {
   margin: 0;
   font-size: 14px;
+  color: #fff; /* the sheet is dark in both colour schemes */
 }
 
 .desktop-viewer {
@@ -2865,8 +2866,75 @@ body {
   border: 1px solid var(--ios-separator);
   border-radius: 8px;
 }
+/* A normal checkbox row: box and label on one line, left aligned. */
+.login-screen .login-card .login-options label {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: none;
+}
+.login-screen .login-card .login-options input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
 .login-hint {
   margin: 2px 0 10px;
   font-size: 12px;
   opacity: 0.75;
+}
+
+/* Decisions 5: the "i" after coordinates when place names are off. */
+/* The tip is positioned against the whole row, so a narrow panel never clips it. */
+.info-row--hint {
+  position: relative;
+}
+.place-hint {
+  display: inline-block;
+  margin-inline-start: 6px;
+  vertical-align: middle;
+}
+.place-hint__button {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font: italic 600 10px/1 serif;
+  opacity: 0.65;
+  cursor: pointer;
+}
+.place-hint__button:hover,
+.place-hint__button:focus-visible {
+  opacity: 1;
+}
+.place-hint__tip {
+  display: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  z-index: 30;
+  /* A transparent strip keeps the pointer inside :hover on the way to the link. */
+  border-top: 6px solid transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #2c2c2e;
+  background-clip: padding-box;
+  color: #fff;
+  font: 400 12px/1.35 system-ui, sans-serif;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.place-hint__tip a {
+  color: #64b5ff;
+}
+.place-hint:hover .place-hint__tip,
+.place-hint:focus-within .place-hint__tip,
+.place-hint__tip--open {
+  display: block;
 }

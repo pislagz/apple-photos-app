@@ -202,8 +202,8 @@ function LoadedMap({
       <Attribution config={config} />
       {config.mode === "off" && (
         <p className="map-view__off-note" role="note" data-testid="map-off-note">
-          The OpenStreetMap map is off, so photos are shown on a blank background. To turn it on, an admin opens Admin →
-          Settings and ticks “Show OpenStreetMap map”.
+          The map is off, so photos are shown on a blank background. To turn it on, an admin opens Admin → Settings and
+          agrees to “Map &amp; place names”.
         </p>
       )}
       {empty && <p className="map-view__note">No photos with a location.</p>}

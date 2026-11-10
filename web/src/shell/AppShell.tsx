@@ -17,6 +17,7 @@ import { isCancelled, loginWithPasskey } from "../passkeys";
 import LoginScreen, { type LoginError } from "./LoginScreen";
 import MobileShell from "./MobileShell";
 import { parsePhotoPath } from "./route";
+import { PlaceInfoContext } from "./PlaceInfoContext";
 import SetupScreen from "./SetupScreen";
 import { isStandalone, type LayoutOverride, useLayout } from "./useLayout";
 
@@ -181,9 +182,29 @@ export default function AppShell() {
 
   const deepLinkAssetId = deepLink && activeLibraryId === deepLink.libraryId ? deepLink.assetId : undefined;
 
+  const placeInfo = { consent: me.osm_consent === true, canChangeSettings: me.role === "admin" };
+
   if (layout === "mobile") {
     return (
-      <MobileShell
+      <PlaceInfoContext.Provider value={placeInfo}>
+        <MobileShell
+          me={me}
+          activeLibraryId={activeLibraryId}
+          onActiveLibraryChange={setActiveLibraryId}
+          layoutOverride={override}
+          onLayoutOverrideChange={handleLayoutOverrideChange}
+          onLogout={handleLogout}
+          deepLinkAssetId={deepLinkAssetId}
+          onDeepLinkConsumed={consumeDeepLink}
+          onNoteDismissed={refreshMe}
+        />
+      </PlaceInfoContext.Provider>
+    );
+  }
+
+  return (
+    <PlaceInfoContext.Provider value={placeInfo}>
+      <DesktopShell
         me={me}
         activeLibraryId={activeLibraryId}
         onActiveLibraryChange={setActiveLibraryId}
@@ -194,20 +215,6 @@ export default function AppShell() {
         onDeepLinkConsumed={consumeDeepLink}
         onNoteDismissed={refreshMe}
       />
-    );
-  }
-
-  return (
-    <DesktopShell
-      me={me}
-      activeLibraryId={activeLibraryId}
-      onActiveLibraryChange={setActiveLibraryId}
-      layoutOverride={override}
-      onLayoutOverrideChange={handleLayoutOverrideChange}
-      onLogout={handleLogout}
-      deepLinkAssetId={deepLinkAssetId}
-      onDeepLinkConsumed={consumeDeepLink}
-      onNoteDismissed={refreshMe}
-    />
+    </PlaceInfoContext.Provider>
   );
 }

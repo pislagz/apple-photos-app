@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
-import { ApiError, getMe, login, type MeResponse, type PlaceNamesStatus, readPlaceNames } from "./api";
+import {
+  answerPlaceNamesNotice,
+  ApiError,
+  downloadPlaceNames,
+  getMe,
+  login,
+  type MeResponse,
+  type PlaceNamesStatus,
+  readPlaceNames,
+} from "./api";
+import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
 import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
@@ -22,12 +32,19 @@ const SCREENS: { key: Screen; label: string }[] = [
 export default function AdminApp() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [checkedSession, setCheckedSession] = useState(false);
-  const [screen, setScreen] = useState<Screen>("libraries");
+  const [screen, setScreen] = useState<Screen>(() =>
+    window.location.hash === `#${MAP_PLACE_NAMES_ANCHOR}` ? "settings" : "libraries",
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
-  // D41: shown until an admin has saved Settings (or chosen at first run).
+  // Shown until an admin has answered the "Map & place names" question.
   const [optInsReviewed, setOptInsReviewed] = useState(true);
+  // After "Allow": the automatic place-name download, shown like the manual one.
+  const [noticeProgress, setNoticeProgress] = useState<{ kind: "working" | "done" | "failed" | "error"; text: string } | null>(
+    null,
+  );
+  const [answering, setAnswering] = useState(false);
 
   useEffect(() => {
     getMe()
@@ -40,9 +57,40 @@ export default function AdminApp() {
   useEffect(() => {
     if (!isAdmin) return;
     readPlaceNames()
-      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.opt_ins_reviewed))
+      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.consent_decided))
       .catch(() => setOptInsReviewed(true));
   }, [isAdmin, screen]);
+
+  async function startPlaceNamesDownload() {
+    setNoticeProgress({ kind: "working", text: "Downloading place-name data…" });
+    try {
+      await downloadPlaceNames();
+      setNoticeProgress({ kind: "done", text: "Place-name data downloaded." });
+    } catch (err) {
+      const reason = err instanceof ApiError ? err.message : "something went wrong";
+      setNoticeProgress({
+        kind: "failed",
+        text: `Place-name data could not be downloaded: ${reason}. You can retry it in Settings.`,
+      });
+    }
+  }
+
+  async function answerNotice(agree: boolean) {
+    setAnswering(true);
+    try {
+      await answerPlaceNamesNotice(agree);
+      setOptInsReviewed(true);
+    } catch (err) {
+      setNoticeProgress({
+        kind: "error",
+        text: err instanceof ApiError ? err.message : "something went wrong",
+      });
+      return;
+    } finally {
+      setAnswering(false);
+    }
+    if (agree) await startPlaceNamesDownload();
+  }
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -106,11 +154,32 @@ export default function AdminApp() {
       </nav>
       <main className="admin-main">
         {!optInsReviewed && (
-          <p className="admin-notice" role="note" data-testid="opt-in-notice">
-            Two optional features are off: the OpenStreetMap map and offline place names.{" "}
-            <button type="button" className="admin-link" onClick={() => setScreen("settings")}>
-              Review them in Settings
-            </button>
+          <div className="admin-notice" role="note" data-testid="opt-in-notice">
+            <p>
+              The map and place names are off until you agree to use OpenStreetMap data. Allowing it also downloads a
+              public city list (GeoNames) once; nothing about your photos is sent.
+            </p>
+            <div className="admin-notice__actions">
+              <button type="button" onClick={() => answerNotice(true)} disabled={answering}>
+                Allow
+              </button>
+              <button type="button" onClick={() => answerNotice(false)} disabled={answering}>
+                Not now
+              </button>
+              <button type="button" className="admin-link" onClick={() => setScreen("settings")}>
+                Review it in Settings
+              </button>
+            </div>
+          </div>
+        )}
+        {noticeProgress && (
+          <p className="admin-notice" role="status" data-testid="place-names-progress" data-state={noticeProgress.kind}>
+            {noticeProgress.text}{" "}
+            {noticeProgress.kind === "failed" && (
+              <button type="button" onClick={startPlaceNamesDownload}>
+                Retry
+              </button>
+            )}
           </p>
         )}
         {screen === "libraries" && <LibrariesScreen />}

@@ -57,6 +57,8 @@ def geonames_server(monkeypatch):
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            if "on_get" in payload:
+                payload["on_get"]()
             self.send_response(payload["status"])
             self.end_headers()
             self.wfile.write(payload["body"])
@@ -85,8 +87,8 @@ def _gazetteer(cities=CITIES) -> place_names.Gazetteer:
 
 def test_nearest_city_within_range_and_none_far_from_any():
     g = _gazetteer()
-    assert g.lookup(52.2297, 21.0122) == "Warsaw, PL"
-    assert g.lookup(48.9, 2.4) == "Paris, FR"
+    assert g.lookup(52.2297, 21.0122) == "Warsaw, Poland"
+    assert g.lookup(48.9, 2.4) == "Paris, France"
     assert g.lookup(0.0, -140.0) is None  # open Pacific
     assert g.lookup(None, 10) is None
     assert g.lookup(999, 0) is None
@@ -95,10 +97,10 @@ def test_nearest_city_within_range_and_none_far_from_any():
 def test_lookup_wraps_the_antimeridian_and_works_near_the_pole():
     g = _gazetteer()
     # A photo just across the date line (179.99W) from Taveuni at 179.98E.
-    assert g.lookup(-16.9, -179.99) == "Taveuni, FJ"
-    assert g.lookup(78.0, 15.0) == "Longyearbyen, SJ"
+    assert g.lookup(-16.9, -179.99) == "Taveuni, Fiji"
+    assert g.lookup(78.0, 15.0) == "Longyearbyen, Svalbard and Jan Mayen"
     # 1 degree of longitude near 64N is ~48 km, so the ring search must widen.
-    assert g.lookup(64.7, 179.0) == "Anadyr, RU"
+    assert g.lookup(64.7, 179.0) == "Anadyr, Russia"
 
 
 def test_grid_lookup_matches_brute_force():
@@ -116,9 +118,7 @@ def test_grid_lookup_matches_brute_force():
                 for n, _c, la, lo in cities
             )
         )
-        expected = (
-            f"{nearest[1]}, XX" if nearest[0] <= place_names._MAX_DISTANCE_KM else None
-        )
+        expected = nearest[1] if nearest[0] <= place_names._MAX_DISTANCE_KM else None
         assert g.lookup(lat, lon) == expected
 
 
@@ -245,7 +245,7 @@ def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
         assert _detail(client, lib, 1)["place_offline"] is None
 
         # On but not downloaded yet: still nothing.
-        _settings(client, offline_place_names=True)
+        _settings(client, osm_consent=True)
         indexer.index_library(conn, lib, package, force=True)
         assert _detail(client, lib, 1)["place_offline"] is None
 
@@ -254,18 +254,18 @@ def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
         assert (
             client.post("/api/admin/place-names/download", json={}).status_code == 200
         )
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
-        assert _detail(client, lib, 2)["place_offline"] == "Paris, FR"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
+        assert _detail(client, lib, 2)["place_offline"] == "Paris, France"
         assert _detail(client, lib, 3)["place_offline"] is None  # no GPS
         indexer.index_library(conn, lib, package, force=True)
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
 
         # Apple's own record stays untouched next to it, and is not overwritten.
         detail = _detail(client, lib, 1)
         assert (detail["place"], detail["place_address"]) == (None, None)
 
         # Turning it off blanks the column.
-        _settings(client, offline_place_names=False)
+        _settings(client, osm_consent=False)
         assert _detail(client, lib, 1)["place_offline"] is None
     finally:
         conn.close()
@@ -277,7 +277,9 @@ def test_apple_place_names_are_never_looked_up_over(tmp_path):
         address_str = None
 
     assert indexer._offline_place(_gazetteer(), Place(), 52.2297, 21.0122) is None
-    assert indexer._offline_place(_gazetteer(), None, 52.2297, 21.0122) == "Warsaw, PL"
+    assert (
+        indexer._offline_place(_gazetteer(), None, 52.2297, 21.0122) == "Warsaw, Poland"
+    )
     assert indexer._offline_place(None, None, 52.2297, 21.0122) is None
 
 
@@ -289,7 +291,7 @@ def test_backfill_skips_assets_that_have_an_apple_name(tmp_path):
         conn.commit()
         place_names.backfill(conn, _gazetteer())
         assert _detail(client, lib, 1)["place_offline"] is None
-        assert _detail(client, lib, 2)["place_offline"] == "Paris, FR"
+        assert _detail(client, lib, 2)["place_offline"] == "Paris, France"
     finally:
         conn.close()
 
@@ -304,9 +306,9 @@ def test_lookup_and_indexing_make_no_connections(tmp_path, monkeypatch):
         path = place_names.gazetteer_path(tmp_path / "data")
         path.parent.mkdir(parents=True)
         path.write_text(_dump())
-        _settings(client, offline_place_names=True)
+        _settings(client, osm_consent=True)
         indexer.index_library(conn, lib, package, force=True)
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
         assert attempts == []
     finally:
         conn.close()
@@ -317,7 +319,7 @@ def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_
     try:
         indexer.index_library(conn, lib, package, force=True)
         conn.execute(
-            "UPDATE assets SET place_offline = 'Warsaw, PL' WHERE uuid IN (?, ?)",
+            "UPDATE assets SET place_offline = 'Warsaw, Poland' WHERE uuid IN (?, ?)",
             (_uuid(1), _uuid(2)),
         )
         conn.commit()
@@ -325,7 +327,7 @@ def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_
             f"/api/libraries/{lib}/selection-summary",
             json={"asset_ids": [_uuid(1), _uuid(2)]},
         )
-        assert response.json()["place"] == "Warsaw, PL"
+        assert response.json()["place"] == "Warsaw, Poland"
     finally:
         conn.close()
 
@@ -337,7 +339,9 @@ def test_place_name_admin_routes_are_admin_only_audited_and_report_errors(
     try:
         status = client.get("/api/admin/place-names").json()
         assert status["downloaded"] is False
-        assert status["opt_ins_reviewed"] is True  # setup recorded the choice
+        assert status["consent_decided"] is True  # setup recorded the choice
+        assert status["consent"] is False
+        _settings(client, osm_consent=True)  # downloading needs the consent
         assert "GeoNames" in status["attribution"]
 
         geonames_server["body"] = b"junk"
@@ -364,6 +368,12 @@ def test_place_name_admin_routes_are_admin_only_audited_and_report_errors(
         assert (
             client.post("/api/admin/place-names/download", json={}).status_code == 403
         )
+        assert (
+            client.put(
+                "/api/admin/place-names/consent", json={"agree": False}
+            ).status_code
+            == 403
+        )
     finally:
         conn.close()
 
@@ -372,10 +382,10 @@ def _provider(conn):
     return lambda: conn
 
 
-def test_first_run_setup_records_both_opt_ins_off_by_default(tmp_path):
-    for body, mode, offline in (
+def test_first_run_setup_records_the_single_consent_off_by_default(tmp_path):
+    for body, mode, consent in (
         ({}, "off", "0"),
-        ({"show_osm_map": True, "offline_place_names": True}, "online", "1"),
+        ({"osm_consent": True}, "online", "1"),
     ):
         directory = tmp_path / mode
         directory.mkdir()
@@ -387,23 +397,171 @@ def test_first_run_setup_records_both_opt_ins_off_by_default(tmp_path):
             "/api/setup/admin", json={"username": "admin", "password": PASSWORD, **body}
         )
         assert response.status_code == 201
-        assert app_db.get_setting(conn, "map_tiles_mode") == mode
-        assert app_db.get_setting(conn, "offline_place_names") == offline
-        assert app_db.get_setting(conn, "privacy_opt_ins_reviewed") == "1"
+        assert app_db.effective_map_mode(conn) == mode
+        assert app_db.get_setting(conn, "osm_consent") == consent
+        audited = conn.execute(
+            "SELECT detail FROM audit_log WHERE action = 'osm_consent_agreed'"
+        ).fetchall()
+        assert len(audited) == (1 if consent == "1" else 0)
         conn.close()
 
 
-def test_opt_in_notice_stays_until_settings_are_saved(tmp_path):
+def test_consent_notice_stays_until_the_question_is_answered(tmp_path):
     _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
     try:
-        conn.execute("DELETE FROM settings WHERE key = 'privacy_opt_ins_reviewed'")
+        # No saved answer yet.
+        conn.execute("DELETE FROM settings WHERE key = 'osm_consent'")
         conn.commit()
-        assert client.get("/api/admin/place-names").json()["opt_ins_reviewed"] is False
+        status = client.get("/api/admin/place-names").json()
+        assert status["consent_decided"] is False and status["consent"] is False
+        # Saving Settings does not answer the notice...
         _settings(client)
-        assert client.get("/api/admin/place-names").json()["opt_ins_reviewed"] is True
+        status = client.get("/api/admin/place-names").json()
+        assert status["consent_decided"] is False
+        # ..."Not now" does, and is audited.
+        answered = client.put("/api/admin/place-names/consent", json={"agree": False})
+        assert answered.status_code == 200
+        assert answered.json()["consent_decided"] is True
+        assert answered.json()["consent"] is False
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'osm_consent_not_now'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert client.get("/api/map/config").json()["mode"] == "off"
+    finally:
+        conn.close()
+
+
+def test_notice_allow_agrees_audits_and_enables_the_download(tmp_path, geonames_server):
+    _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
+    try:
+        conn.execute("DELETE FROM settings WHERE key = 'osm_consent'")
+        conn.commit()
+        refused = client.post("/api/admin/place-names/download", json={})
+        assert refused.status_code == 403
+        answered = client.put("/api/admin/place-names/consent", json={"agree": True})
+        assert answered.status_code == 200
+        assert answered.json()["consent"] is True
+        assert client.get("/api/map/config").json()["mode"] == "online"
+        downloaded = client.post("/api/admin/place-names/download", json={})
+        assert downloaded.status_code == 200 and downloaded.json()["downloaded"]
+        actions = [
+            r[0]
+            for r in conn.execute(
+                "SELECT action FROM audit_log WHERE action LIKE 'osm_consent%'"
+            )
+        ]
+        assert actions == ["osm_consent_agreed"]
+    finally:
+        conn.close()
+
+
+def test_without_consent_nothing_is_downloaded_looked_up_or_mapped(
+    tmp_path, geonames_server
+):
+    hits = []
+    geonames_server["on_get"] = lambda: hits.append(1)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
+    try:
+        # Data on disk, but no consent.
+        path = place_names.gazetteer_path(tmp_path / "data")
+        path.parent.mkdir(parents=True)
+        path.write_text(_dump())
+        assert not app_db.osm_consent(conn)
+
+        refused = client.post("/api/admin/place-names/download", json={})
+        assert refused.status_code == 403
+        assert hits == []
+
+        indexer.index_library(conn, lib, package, force=True)
+        assert _detail(client, lib, 1)["place_offline"] is None
+        assert client.get("/api/map/config").json() == {
+            "mode": "off",
+            "pmtiles_url": None,
+        }
+        assert client.get("/api/me").json()["osm_consent"] is False
+    finally:
+        conn.close()
+
+
+def test_agreeing_and_withdrawing_are_audited_and_blank_the_names(
+    tmp_path, geonames_server
+):
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
+    try:
+        indexer.index_library(conn, lib, package, force=True)
+        _settings(client, osm_consent=True)
+        assert client.get("/api/me").json()["osm_consent"] is True
+        assert client.get("/api/map/config").json()["mode"] == "online"
+        assert (
+            client.post("/api/admin/place-names/download", json={}).status_code == 200
+        )
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
+        _settings(client, osm_consent=False)
+        assert _detail(client, lib, 1)["place_offline"] is None
+        assert client.get("/api/map/config").json()["mode"] == "off"
+        actions = [
+            row["action"]
+            for row in conn.execute(
+                "SELECT action FROM audit_log WHERE action LIKE 'osm_consent%' ORDER BY id"
+            )
+        ]
+        assert actions == ["osm_consent_agreed", "osm_consent_withdrawn"]
     finally:
         conn.close()
 
 
 def test_math_import_is_used():  # keeps the module's haversine honest
     assert math.isclose(place_names._haversine_km(0, 0, 0, 1), 111.19, rel_tol=0.01)
+
+
+def test_label_uses_full_english_country_name_and_keeps_utf8():
+    g = _gazetteer(
+        [
+            ("Kraków", "PL", 50.06143, 19.93658),
+            ("New York City", "US", 40.71427, -74.00597),
+            ("Prague", "CZ", 50.08804, 14.42076),
+            ("Seoul", "KR", 37.566, 126.9784),
+            ("Nowhere", "ZZ", 10.0, 10.0),
+            ("Blank", "", -10.0, -10.0),
+        ]
+    )
+    assert g.lookup(50.06, 19.94) == "Kraków, Poland"
+    assert g.lookup(40.7, -74.0) == "New York City, United States"
+    assert g.lookup(50.09, 14.42) == "Prague, Czechia"
+    assert g.lookup(37.57, 126.98) == "Seoul, South Korea"
+    assert g.lookup(10.0, 10.0) == "Nowhere"
+    assert g.lookup(-10.0, -10.0) == "Blank"
+
+
+def test_startup_recomputes_labels_stored_in_the_old_format(tmp_path):
+    data_dir = tmp_path
+    gaz = place_names.gazetteer_path(data_dir)
+    gaz.parent.mkdir(parents=True)
+    gaz.write_text(_dump(), encoding="utf-8")
+    conn = app_db.connect(data_dir)
+    try:
+        app_db.set_setting(conn, app_db.OSM_CONSENT_KEY, "1")
+        lib = conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('L', '/x')"
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO assets (library_id, uuid, latitude, longitude, place_offline) "
+            "VALUES (?, 'u1', 52.2297, 21.0122, 'Warsaw, PL')",
+            (lib,),
+        )
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise
+    conn.close()
+    place_names.refresh_labels_on_startup(data_dir)
+    conn = app_db.connect(data_dir)
+    try:
+        row = conn.execute("SELECT place_offline FROM assets").fetchone()
+        assert row["place_offline"] == "Warsaw, Poland"
+        assert app_db.get_setting(conn, place_names.LABEL_FORMAT_KEY) == "2"
+    finally:
+        conn.close()

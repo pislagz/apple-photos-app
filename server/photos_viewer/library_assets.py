@@ -98,6 +98,9 @@ class MeResponse(BaseModel):
     role: Literal["admin", "user"]
     libraries: list[LibrarySummary]
     layout_override: Literal["desktop", "mobile"] | None
+    # Whether the admin agreed to "Map & place names"; the Info panel explains
+    # a missing place name with it.
+    osm_consent: bool = False
 
 
 def _updated_note(
@@ -186,6 +189,7 @@ def read_me(
         role=session["role"],
         libraries=[_library_summary(db, row, session["user_id"]) for row in rows],
         layout_override=session["layout_override"],
+        osm_consent=app_db.osm_consent(db),
     )
 
 

@@ -76,6 +76,8 @@ export interface MeResponse {
   role: Role;
   libraries: LibrarySummary[];
   layout_override: "desktop" | "mobile" | null;
+  // The admin agreed to "Map & place names" (OpenStreetMap data, GeoNames).
+  osm_consent?: boolean;
 }
 
 export interface AuthUserResponse {
@@ -98,10 +100,9 @@ export function getSetupStatus(): Promise<SetupStatusResponse> {
   return request<SetupStatusResponse>("/api/setup/status");
 }
 
-// D41: both optional features start off; the first-run form can turn them on.
+// "Map & place names": off unless the admin agrees at first run.
 export interface SetupChoices {
-  show_osm_map: boolean;
-  offline_place_names: boolean;
+  osm_consent: boolean;
 }
 
 export function setupAdmin(username: string, password: string, choices?: SetupChoices): Promise<AuthUserResponse> {
@@ -271,6 +272,8 @@ export interface FaceCrop {
 export interface Person {
   id: string;
   name: string | null;
+  // The name, or the generated "Person A" for an unnamed group.
+  label: string;
   count: number;
   cover: FaceCrop | null;
 }

@@ -186,9 +186,7 @@ def map_clusters(
 
 def _local_pmtiles(db: sqlite3.Connection) -> pathlib.Path | None:
     """The configured archive if it is a readable PMTiles file, else None."""
-    if app_db.get_setting(db, "map_tiles_mode") != "local_file":
-        return None
-    raw = app_db.get_setting(db, "map_tiles_pmtiles_path")
+    raw = app_db.map_pmtiles_path(db)
     if not raw:
         return None
     path = pathlib.Path(raw)
@@ -204,10 +202,12 @@ def _local_pmtiles(db: sqlite3.Connection) -> pathlib.Path | None:
 
 
 class MapConfig(BaseModel):
-    # online: browser fetches OSM tiles (an admin opt-in; the default is off,
-    # D41). local_file: `pmtiles_url` (same
-    # origin). off: no basemap. A local_file whose archive is missing or
-    # unreadable is reported as "off" -- it never falls back to OSM.
+    # online: the admin agreed to "Map & place names", so the browser fetches
+    # OSM tiles; `pmtiles_url` is then set only when a readable local archive
+    # exists, as a fallback if the tiles cannot be loaded. local_file: no
+    # consent, an archive is configured and readable (same origin, offline).
+    # off: no basemap. A configured archive that is missing or unreadable
+    # counts as no archive.
     mode: Literal["online", "local_file", "off"]
     pmtiles_url: str | None = None
 
@@ -217,14 +217,13 @@ def map_config(
     session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> MapConfig:
-    mode = app_db.get_setting(db, "map_tiles_mode") or app_db.DEFAULT_MAP_TILES_MODE
-    if mode == "local_file":
-        return (
-            MapConfig(mode="local_file", pmtiles_url=PMTILES_URL)
-            if _local_pmtiles(db)
-            else MapConfig(mode="off")
-        )
-    return MapConfig(mode="off" if mode == "off" else "online")
+    has_file = _local_pmtiles(db) is not None
+    pmtiles_url = PMTILES_URL if has_file else None
+    if app_db.osm_consent(db):
+        return MapConfig(mode="online", pmtiles_url=pmtiles_url)
+    if has_file:
+        return MapConfig(mode="local_file", pmtiles_url=pmtiles_url)
+    return MapConfig(mode="off")
 
 
 @router.get("/api/map/tiles.pmtiles")

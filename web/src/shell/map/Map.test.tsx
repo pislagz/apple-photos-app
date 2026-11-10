@@ -189,7 +189,7 @@ describe("desktop Map", () => {
     expect(created[0].config.mode).toBe("off");
     expect(screen.queryByRole("link", { name: /OpenStreetMap/ })).not.toBeInTheDocument();
     // D41: the view says the map is off and how to enable it.
-    expect(screen.getByTestId("map-off-note")).toHaveTextContent(/Show OpenStreetMap map/);
+    expect(screen.getByTestId("map-off-note")).toHaveTextContent(/Map & place names/);
   });
 
   it("Online mode shows no off-note (D41)", async () => {

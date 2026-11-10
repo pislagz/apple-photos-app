@@ -63,6 +63,9 @@ export function formatFileSize(bytes: number | null): string {
 export interface InfoRow {
   label: string;
   value: string;
+  // The value is bare coordinates because no place name exists; the Info panel
+  // adds the "why" icon when the OSM-data consent is missing.
+  coordinatesOnly?: boolean;
 }
 
 // Shared by the mobile info sheet and the desktop info panel -- the desktop
@@ -77,7 +80,10 @@ export function buildInfoRows(detail: AssetDetailResponse, options: { includeFil
   if (detail.people.length > 0) rows.push({ label: "People", value: detail.people.join(", ") });
   if (detail.albums.length > 0) rows.push({ label: "Albums", value: detail.albums.join(", ") });
   const location = formatLocationLine(detail);
-  if (location) rows.push({ label: "Location", value: location });
+  if (location) {
+    const coordinatesOnly = !formatPlaceName(detail) && formatCoordinates(detail.latitude, detail.longitude) !== null;
+    rows.push({ label: "Location", value: location, ...(coordinatesOnly ? { coordinatesOnly } : {}) });
+  }
   if (options.includeFile) {
     const filename = detail.original_filename || detail.filename;
     if (filename) rows.push({ label: "Filename", value: filename });

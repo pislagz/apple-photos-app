@@ -47,6 +47,18 @@ def person_clause(
     return "id IN (SELECT asset_id FROM asset_people WHERE person_id = ?)", [row["id"]]
 
 
+def unnamed_label(index: int) -> str:
+    """1 -> "Person A", 26 -> "Person Z", 27 -> "Person AA" (bijective base 26,
+    like spreadsheet columns)."""
+    if index < 1:
+        raise ValueError("index starts at 1")
+    letters = ""
+    while index > 0:
+        index, rem = divmod(index - 1, 26)
+        letters = chr(ord("A") + rem) + letters
+    return f"Person {letters}"
+
+
 class FaceCrop(BaseModel):
     # Thumbnail of this asset, cropped around the face. x/y: face centre,
     # w/h: face size, all as fractions of the displayed image, top-left origin.
@@ -60,6 +72,9 @@ class FaceCrop(BaseModel):
 class Person(BaseModel):
     id: str
     name: str | None  # null: an unnamed face group
+    # What to show: the name, or a generated "Person A" for an unnamed group.
+    # Letters follow this list's order, so list and page agree.
+    label: str
     count: int
     cover: FaceCrop | None
 
@@ -108,10 +123,17 @@ def list_people(
             Person(
                 id=row["uuid"],
                 name=row["label"],
+                label=row["label"] or "",
                 count=row["n"],
                 cover=covers.get(row["id"]),
             )
         )
     # Named people first, then unnamed groups; each most photos first.
-    out.sort(key=lambda p: (p.name is None, -p.count, (p.name or "").lower()))
+    # The group id breaks ties so the generated letters stay stable.
+    out.sort(key=lambda p: (p.name is None, -p.count, (p.name or "").lower(), p.id))
+    unnamed = 0
+    for person in out:
+        if person.name is None:
+            unnamed += 1
+            person.label = unnamed_label(unnamed)
     return PeopleResponse(people=out)

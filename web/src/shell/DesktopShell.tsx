@@ -16,7 +16,6 @@ import LibrarySwitcher from "./LibrarySwitcher";
 import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
-import { UNNAMED_PERSON } from "./people/PeopleGrid";
 
 const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
 function readSidebarCollapsed(): boolean {
@@ -379,7 +378,7 @@ export default function DesktopShell({
                 <PeopleGrid
                   key={activeLibraryId}
                   libraryId={activeLibraryId}
-                  onOpen={(person) => openAlbum(`${PERSON_PREFIX}${person.id}`, person.name ?? UNNAMED_PERSON)}
+                  onOpen={(person) => openAlbum(`${PERSON_PREFIX}${person.id}`, person.label)}
                 />
               </div>
             ) : activeLibraryId !== undefined ? (

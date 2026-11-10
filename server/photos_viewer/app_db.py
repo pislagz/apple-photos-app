@@ -593,8 +593,12 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-# D41: nothing talks to OpenStreetMap until an admin turns it on.
-DEFAULT_MAP_TILES_MODE = "off"
+# D41 / Decisions 5: nothing talks to OpenStreetMap or GeoNames until an admin
+# has agreed, once, to "Map & place names". The stored value is "1" (agreed) or
+# "0" (answered "Not now" or declined); no row means the question has not been
+# answered, which counts as not agreed.
+OSM_CONSENT_KEY = "osm_consent"
+PMTILES_PATH_KEY = "map_tiles_pmtiles_path"
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -608,6 +612,28 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         (key, value),
     )
     conn.commit()
+
+
+def osm_consent(conn: sqlite3.Connection) -> bool:
+    return get_setting(conn, OSM_CONSENT_KEY) == "1"
+
+
+def osm_consent_decided(conn: sqlite3.Connection) -> bool:
+    return get_setting(conn, OSM_CONSENT_KEY) in ("0", "1")
+
+
+def map_pmtiles_path(conn: sqlite3.Connection) -> str | None:
+    return get_setting(conn, PMTILES_PATH_KEY) or None
+
+
+def effective_map_mode(conn: sqlite3.Connection) -> str:
+    """Derived, never stored. With consent the browser draws OpenStreetMap
+    tiles (a configured PMTiles file is only the fallback). Without consent
+    a configured PMTiles file is used, since reading it needs no outbound
+    connection; with none the map is off."""
+    if osm_consent(conn):
+        return "online"
+    return "local_file" if map_pmtiles_path(conn) else "off"
 
 
 def write_audit_log(

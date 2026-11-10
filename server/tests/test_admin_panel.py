@@ -589,7 +589,7 @@ def test_settings_default_then_round_trip(tmp_path):
         defaults = client.get("/api/admin/settings")
         assert defaults.status_code == 200
         assert defaults.json()["map_tiles_mode"] == "off"  # D41: opt-in
-        assert defaults.json()["offline_place_names"] is False
+        assert defaults.json()["osm_consent"] is False
         assert defaults.json()["map_tiles_pmtiles_path"] is None
 
         updated = client.put(
@@ -604,12 +604,13 @@ def test_settings_default_then_round_trip(tmp_path):
                 "thumb_quality": 90,
                 "media_cache_size_limit_bytes": 1024**3,
                 "zip_size_limit_bytes": 1024,
-                "map_tiles_mode": "local_file",
+                "osm_consent": True,
                 "map_tiles_pmtiles_path": "/data/world.pmtiles",
             },
         )
         assert updated.status_code == 200, updated.text
-        assert updated.json()["map_tiles_mode"] == "local_file"
+        # Consent wins: OSM tiles; the file is only the fallback.
+        assert updated.json()["map_tiles_mode"] == "online"
         assert updated.json()["map_tiles_pmtiles_path"] == "/data/world.pmtiles"
         assert updated.json()["thumb_quality"] == 90
 
@@ -634,7 +635,7 @@ def test_settings_save_is_live_for_new_sessions(tmp_path):
                 "thumb_quality": 85,
                 "media_cache_size_limit_bytes": 1024**3,
                 "zip_size_limit_bytes": 1024,
-                "map_tiles_mode": "online",
+                "osm_consent": True,
                 "map_tiles_pmtiles_path": None,
             },
         )
@@ -658,7 +659,7 @@ def test_settings_rejects_out_of_range_values(tmp_path):
                 "thumb_quality": 150,
                 "media_cache_size_limit_bytes": 1024**3,
                 "zip_size_limit_bytes": 1024,
-                "map_tiles_mode": "online",
+                "osm_consent": True,
                 "map_tiles_pmtiles_path": None,
             },
         )

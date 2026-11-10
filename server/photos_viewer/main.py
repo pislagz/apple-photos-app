@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 
-from . import app_db
+from . import app_db, place_names
 from .admin_panel import router as admin_panel_router
 from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
@@ -58,8 +58,8 @@ _NO_STORE_EXACT = ("/api/me",)
 
 
 # P1.20, D41. The one external host is the OSM raster tile server, and it is on
-# connect-src only while an admin has turned "Show OpenStreetMap map" on
-# (setting `map_tiles_mode` = online; the default is off). MapLibre fetches
+# connect-src only while an admin has agreed to "Map & place names" and no
+# local PMTiles file is set (effective map mode = online; the default is off). MapLibre fetches
 # tile bytes with fetch(), then draws them from blob: URLs, covered by img-src.
 # No worker-src: the web app has no MapLibre worker yet; add
 # `worker-src 'self' blob:` with the Phase 2 map only if it needs one.
@@ -83,12 +83,16 @@ def content_security_policy(osm_tiles: bool) -> str:
 
 
 _CSP_CACHE_SECONDS = 5.0
-_SETTINGS_WRITES = ("/api/admin/settings", "/api/setup/admin")
+_SETTINGS_WRITES = (
+    "/api/admin/settings",
+    "/api/admin/place-names/consent",
+    "/api/setup/admin",
+)
 
 
 def _map_is_online(conn: sqlite3.Connection) -> bool:
     try:
-        return app_db.get_setting(conn, "map_tiles_mode") == "online"
+        return app_db.effective_map_mode(conn) == "online"
     except sqlite3.Error:
         return False
 
@@ -162,8 +166,11 @@ def _mount_web_app(app: FastAPI, dist_dir: pathlib.Path) -> None:
             raise HTTPException(status_code=404, detail="not found")
 
         safe_path = _safe_dist_file(dist_dir, full_path)
-        if safe_path is None:
-            return FileResponse(index_path)
+        if safe_path is None or safe_path == index_path.resolve():
+            # The shell carries the Content-Security-Policy, which changes
+            # when the map setting does; the browser must revalidate it
+            # instead of reusing a heuristically fresh copy.
+            return FileResponse(index_path, headers={"Cache-Control": "no-cache"})
         if full_path == "sw.js":
             # Never let the browser's HTTP cache serve a stale service
             # worker script -- that's how a shipped fix stops reaching
@@ -192,6 +199,9 @@ def _reset_stale_indexing_on_startup(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     _reset_stale_indexing_on_startup(app)
+    place_names.refresh_labels_on_startup(
+        app.dependency_overrides.get(get_data_dir, get_data_dir)()
+    )
     # Stat-only polling for replaced/copying libraries (P1.22). Resolves the
     # data dir on every pass so it follows `app.db` appearing later.
     checker = LibraryChecker(

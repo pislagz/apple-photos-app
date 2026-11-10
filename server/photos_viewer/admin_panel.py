@@ -743,8 +743,7 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_quality": media.DEFAULT_QUALITY,
     "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
-    "map_tiles_mode": app_db.DEFAULT_MAP_TILES_MODE,
-    "offline_place_names": False,
+    "osm_consent": False,
     "map_tiles_pmtiles_path": None,
     "library_check_interval_minutes": library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
     "library_stable_minutes": library_watch.DEFAULT_STABLE_MINUTES,
@@ -764,7 +763,7 @@ class SettingsResponse(BaseModel):
     zip_size_limit_bytes: int
     map_tiles_mode: Literal["online", "local_file", "off"]
     map_tiles_pmtiles_path: str | None
-    offline_place_names: bool
+    osm_consent: bool
     library_check_interval_minutes: int
     library_stable_minutes: int
     show_library_updated_note: bool
@@ -780,9 +779,10 @@ class SettingsUpdateRequest(BaseModel):
     thumb_quality: int = Field(ge=1, le=100)
     media_cache_size_limit_bytes: int = Field(ge=0)
     zip_size_limit_bytes: int = Field(ge=1)
-    map_tiles_mode: Literal["online", "local_file", "off"] = "off"
+    # "Map & place names": one consent for OpenStreetMap tiles and the GeoNames
+    # place-name download. The map mode is derived from it and the PMTiles path.
+    osm_consent: bool = False
     map_tiles_pmtiles_path: str | None = None
-    offline_place_names: bool = False
     # 0 is "Manual only": the background checker is off, "Check now" still works.
     library_check_interval_minutes: int = Field(
         default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
@@ -798,16 +798,16 @@ class SettingsUpdateRequest(BaseModel):
 
 
 def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
-    values: dict[str, int | str | None] = {}
+    values: dict[str, int | str | None] = {
+        "map_tiles_mode": app_db.effective_map_mode(db)
+    }
     for key, default in _SETTINGS_DEFAULTS.items():
         stored = app_db.get_setting(db, key)
         if stored is None:
             values[key] = default
-        elif key == "map_tiles_mode":
-            values[key] = stored
         elif key == "map_tiles_pmtiles_path":
             values[key] = stored or None
-        elif key in ("show_library_updated_note", "offline_place_names"):
+        elif key in ("show_library_updated_note", "osm_consent"):
             values[key] = stored in ("1", "True", "true")
         else:
             values[key] = int(stored)
@@ -832,23 +832,48 @@ def write_settings(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SettingsResponse:
-    was_offline = place_names.enabled(db)
-    for key, value in payload.model_dump().items():
+    was_agreed = app_db.osm_consent(db)
+    values = payload.model_dump()
+    path = (values["map_tiles_pmtiles_path"] or "").strip() or None
+    values["map_tiles_pmtiles_path"] = path
+    # Saving Settings does not answer the notice: the consent row is written
+    # only when the checkbox differs from the current answer (no answer = off).
+    del values["osm_consent"]
+    for key, value in values.items():
         if isinstance(value, bool):
             value = int(value)
         app_db.set_setting(db, key, "" if value is None else str(value))
-    app_db.set_setting(db, "privacy_opt_ins_reviewed", "1")
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
-    # The CSP names the OSM host only while the map is on; the security-headers
-    # middleware drops its cached copy after this PUT.
-    if payload.offline_place_names != was_offline:
-        data_dir = place_names.data_dir_of(db)
-        if data_dir is not None:
-            place_names.apply_setting(data_dir)
+    if payload.osm_consent != was_agreed:
+        _record_consent(db, admin, payload.osm_consent, "Map & place names (Settings)")
     return _read_settings(db)
 
 
-# D41: the two privacy opt-ins and the one-time gazetteer download.
+def _record_consent(
+    db: sqlite3.Connection,
+    admin: sqlite3.Row,
+    agree: bool,
+    detail: str,
+    *,
+    declined_action: str = "osm_consent_withdrawn",
+) -> None:
+    """Store the answer, audit it, and refill or blank the offline place names.
+    The security-headers middleware drops its cached CSP after this write."""
+    was_agreed = app_db.osm_consent(db)
+    app_db.set_setting(db, app_db.OSM_CONSENT_KEY, "1" if agree else "0")
+    app_db.write_audit_log(
+        db,
+        "osm_consent_agreed" if agree else declined_action,
+        actor=admin["username"],
+        detail=detail,
+    )
+    if agree != was_agreed:
+        data_dir = place_names.data_dir_of(db)
+        if data_dir is not None:
+            place_names.apply_setting(data_dir)
+
+
+# D41 / Decisions 5: the OSM-data consent and the one-time gazetteer download.
 class PlaceNamesStatus(BaseModel):
     dataset: str
     downloaded: bool
@@ -856,9 +881,10 @@ class PlaceNamesStatus(BaseModel):
     source_url: str
     attribution: str
     license_url: str
-    # False until an admin has saved Settings (or chosen at first-run setup):
-    # drives the dashboard notice.
-    opt_ins_reviewed: bool
+    # False until an admin has answered the "Map & place names" question (at
+    # first-run setup or in Settings): drives the dashboard notice.
+    consent_decided: bool
+    consent: bool
 
 
 def _place_names_status(db: sqlite3.Connection) -> PlaceNamesStatus:
@@ -866,7 +892,8 @@ def _place_names_status(db: sqlite3.Connection) -> PlaceNamesStatus:
     base = place_names.status(data_dir) if data_dir else place_names.status(".")
     return PlaceNamesStatus(
         **base,
-        opt_ins_reviewed=app_db.get_setting(db, "privacy_opt_ins_reviewed") == "1",
+        consent_decided=app_db.osm_consent_decided(db),
+        consent=app_db.osm_consent(db),
     )
 
 
@@ -875,6 +902,35 @@ def read_place_names(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> PlaceNamesStatus:
+    return _place_names_status(db)
+
+
+class ConsentAnswer(BaseModel):
+    agree: bool
+
+
+@router.put(
+    "/api/admin/place-names/consent",
+    response_model=PlaceNamesStatus,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def answer_place_names_notice(
+    payload: ConsentAnswer,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> PlaceNamesStatus:
+    """The notice's "Allow" and "Not now" buttons. "Not now" records the
+    answer (audited) so the notice goes away; the consent can still be
+    changed in Settings. The client starts the download after "Allow"."""
+    _record_consent(
+        db,
+        admin,
+        payload.agree,
+        "Map & place names (notice)",
+        declined_action=(
+            "osm_consent_withdrawn" if app_db.osm_consent(db) else "osm_consent_not_now"
+        ),
+    )
     return _place_names_status(db)
 
 
@@ -890,6 +946,11 @@ def download_place_names(
     """The one request in this server that reaches the internet: fetch the
     GeoNames dump once, on an admin's click. Photo coordinates are not part
     of it; the lookup afterwards is local."""
+    if not app_db.osm_consent(db):
+        raise HTTPException(
+            status_code=403,
+            detail='Agree to "Map & place names" in Settings before downloading place names.',
+        )
     data_dir = place_names.data_dir_of(db)
     if data_dir is None:
         raise HTTPException(status_code=500, detail="no data directory")

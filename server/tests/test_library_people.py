@@ -113,6 +113,13 @@ def test_people_round_trip_with_counts_equal_to_sql_and_hidden_excluded(tmp_path
         # Named first (most photos first), then unnamed by photo count.
         assert [p["id"] for p in body["people"]] == [ANN, BEN, NOBODY_BIG, NOBODY]
         assert [p["name"] for p in body["people"]] == ["Ann", "Ben", None, None]
+        # Generated labels follow list order; named people keep their names.
+        assert [p["label"] for p in body["people"]] == [
+            "Ann",
+            "Ben",
+            "Person A",
+            "Person B",
+        ]
         assert by_id[NOBODY_BIG]["count"] == 5 and by_id[NOBODY]["count"] == 2
         for uuid, person in by_id.items():
             expected = conn.execute(
@@ -239,5 +246,28 @@ def test_migration_19_flags_indexed_libraries_for_reindex(tmp_path):
         }
         assert flags == {"A": 1, "B": 0}
         assert conn.execute("SELECT COUNT(*) FROM faces").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_unnamed_labels_are_bijective_base_26():
+    from photos_viewer.library_people import unnamed_label
+
+    cases = {1: "A", 2: "B", 26: "Z", 27: "AA", 28: "AB", 52: "AZ", 53: "BA"}
+    cases.update({702: "ZZ", 703: "AAA"})
+    for index, letters in cases.items():
+        assert unnamed_label(index) == f"Person {letters}"
+
+
+def test_unnamed_label_is_the_same_on_each_request_and_ties_break_by_id(tmp_path):
+    conn, client, library_id = _setup(tmp_path)
+    try:
+        _login(conn, client, "alice", library_id)
+        url = f"/api/libraries/{library_id}/people"
+        first = client.get(url).json()["people"]
+        again = client.get(url).json()["people"]
+        assert first == again
+        labels = {p["id"]: p["label"] for p in first}
+        assert labels[NOBODY_BIG] == "Person A" and labels[NOBODY] == "Person B"
     finally:
         conn.close()

@@ -293,7 +293,7 @@ export interface SettingsResponse {
   zip_size_limit_bytes: number;
   map_tiles_mode: MapTilesMode;
   map_tiles_pmtiles_path: string | null;
-  offline_place_names: boolean;
+  osm_consent: boolean;
   library_check_interval_minutes: number;
   library_stable_minutes: number;
   show_library_updated_note: boolean;
@@ -307,7 +307,7 @@ export function writeSettings(settings: SettingsResponse): Promise<SettingsRespo
   return mutate<SettingsResponse>("PUT", "/api/admin/settings", settings);
 }
 
-// D41: offline place names (GeoNames) and the opt-in notice.
+// Offline place names (GeoNames), gated by the "Map & place names" consent.
 export interface PlaceNamesStatus {
   dataset: string;
   downloaded: boolean;
@@ -315,11 +315,18 @@ export interface PlaceNamesStatus {
   source_url: string;
   attribution: string;
   license_url: string;
-  opt_ins_reviewed: boolean;
+  // False until an admin answered the "Map & place names" question.
+  consent_decided: boolean;
+  consent: boolean;
 }
 
 export function readPlaceNames(): Promise<PlaceNamesStatus> {
   return request<PlaceNamesStatus>("/api/admin/place-names");
+}
+
+// The notice's "Allow" / "Not now". Saving Settings does not answer it.
+export function answerPlaceNamesNotice(agree: boolean): Promise<PlaceNamesStatus> {
+  return mutate<PlaceNamesStatus>("PUT", "/api/admin/place-names/consent", { agree });
 }
 
 export function downloadPlaceNames(): Promise<PlaceNamesStatus> {

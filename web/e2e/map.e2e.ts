@@ -18,7 +18,8 @@ type Mode = "online" | "local_file" | "off";
 async function setMode(page: Page, mode: Mode, path: string | null) {
   const current = await (await page.request.get("/api/admin/settings")).json();
   const response = await page.request.put("/api/admin/settings", {
-    data: { ...current, map_tiles_mode: mode, map_tiles_pmtiles_path: path },
+    // The mode follows the consent; a file with consent is only the fallback.
+    data: { ...current, osm_consent: mode === "online", map_tiles_pmtiles_path: path },
   });
   expect(response.ok()).toBe(true);
 }

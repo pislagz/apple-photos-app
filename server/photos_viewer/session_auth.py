@@ -1098,9 +1098,8 @@ LoginPassword = Annotated[str, Field(max_length=1024)]
 class AdminSetupRequest(BaseModel):
     username: Username
     password: Password
-    # D41: the two privacy opt-ins, both off unless ticked at first run.
-    show_osm_map: bool = False
-    offline_place_names: bool = False
+    # "Map & place names": off unless the admin agrees at first run.
+    osm_consent: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -1163,21 +1162,23 @@ def setup_admin(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
             (payload.username, password_hash),
         )
-        for key, value in (
-            ("map_tiles_mode", "online" if payload.show_osm_map else "off"),
-            ("offline_place_names", "1" if payload.offline_place_names else "0"),
-            ("privacy_opt_ins_reviewed", "1"),
-        ):
-            db.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, value),
-            )
+        db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (app_db.OSM_CONSENT_KEY, "1" if payload.osm_consent else "0"),
+        )
     except BaseException:
         db.rollback()
         raise
     else:
         db.commit()
+    if payload.osm_consent:
+        app_db.write_audit_log(
+            db,
+            "osm_consent_agreed",
+            actor=payload.username,
+            detail="Map & place names (first-run setup)",
+        )
     return AuthUserResponse(username=payload.username, role="admin")
 
 

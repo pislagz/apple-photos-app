@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SetupChoices } from "../api";
+import { MAP_PLACE_NAMES_TEXT } from "./PlaceInfoContext";
 import type { Layout } from "./useLayout";
 
 export default function SetupScreen({
@@ -13,12 +14,11 @@ export default function SetupScreen({
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [showOsmMap, setShowOsmMap] = useState(false);
-  const [offlinePlaceNames, setOfflinePlaceNames] = useState(false);
+  const [allowOsm, setAllowOsm] = useState(false);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    onSubmit(username, password, { show_osm_map: showOsmMap, offline_place_names: offlinePlaceNames });
+    onSubmit(username, password, { osm_consent: allowOsm });
   }
 
   return (
@@ -45,27 +45,14 @@ export default function SetupScreen({
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
-          <fieldset className="login-options">
-            <legend>Optional features (both off; change them any time in Admin → Settings)</legend>
+          <fieldset className="login-options" data-testid="setup-map-place-names">
+            <legend>Map &amp; place names</legend>
+            <p className="login-hint">{MAP_PLACE_NAMES_TEXT}</p>
             <label>
-              <input type="checkbox" checked={showOsmMap} onChange={(event) => setShowOsmMap(event.target.checked)} />
-              Show OpenStreetMap map
+              <input type="checkbox" checked={allowOsm} onChange={(event) => setAllowOsm(event.target.checked)} />
+              Allow
             </label>
-            <p className="login-hint">
-              Each person's browser fetches map tiles from tile.openstreetmap.org while a map is open. The server never does.
-            </p>
-            <label>
-              <input
-                type="checkbox"
-                checked={offlinePlaceNames}
-                onChange={(event) => setOfflinePlaceNames(event.target.checked)}
-              />
-              Offline place names
-            </label>
-            <p className="login-hint">
-              Names GPS photos after the nearest city, on this server, from a city list you download once in Settings. Photo
-              locations never leave the server.
-            </p>
+            <p className="login-hint">Off until you agree. You can change this any time in Admin → Settings.</p>
           </fieldset>
           <button type="submit">Create admin account</button>
         </form>
