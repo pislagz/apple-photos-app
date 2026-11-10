@@ -11,7 +11,7 @@ export interface LibrarySummaryState {
 // #91: Years and Months tiles come from one `/summary` call per library,
 // never from paging `/assets` -- unlike Days and All Photos, which keep
 // using `useLibraryAssets`.
-export function useLibrarySummary(libraryId: number): LibrarySummaryState {
+export function useLibrarySummary(libraryId: number, enabled = true): LibrarySummaryState {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -19,6 +19,8 @@ export function useLibrarySummary(libraryId: number): LibrarySummaryState {
   useEffect(() => {
     setSummary(null);
     setError(false);
+    // An album view never shows the Years/Months tiles.
+    if (!enabled) return;
     let cancelled = false;
     getSummary(libraryId)
       .then((response) => {
@@ -30,7 +32,7 @@ export function useLibrarySummary(libraryId: number): LibrarySummaryState {
     return () => {
       cancelled = true;
     };
-  }, [libraryId, attempt]);
+  }, [libraryId, attempt, enabled]);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 

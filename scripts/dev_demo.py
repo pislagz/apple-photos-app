@@ -217,11 +217,20 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             )
         )
     count = len(assets)
+    folders = [
+        fixtures.FixtureFolder("E0000000-DEAD-4BEE-8000-000000000001", "Trips"),
+        fixtures.FixtureFolder(
+            "E0000000-DEAD-4BEE-8000-000000000002",
+            "Europe",
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000001",
+        ),
+    ]
     albums = [
         fixtures.FixtureAlbum(
             "B0000000-DEAD-4BEE-8000-000000000001",
             "Favorites Trip",
             list(range(0, count, 11)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000002",
         ),
         fixtures.FixtureAlbum(
             "B0000000-DEAD-4BEE-8000-000000000002",
@@ -239,7 +248,7 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
     ]
     dest.mkdir(parents=True)
     return fixtures.build_library(
-        dest, assets, albums=albums, people=people, package_name="Demo.photoslibrary"
+        dest, assets, albums=albums, folders=folders, people=people, package_name="Demo.photoslibrary"
     )
 
 

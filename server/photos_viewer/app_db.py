@@ -368,6 +368,28 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE libraries ADD COLUMN reindex_needed INTEGER NOT NULL DEFAULT 0",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 18 (P2.1): the folder tree. `folders` comes from `PhotosDB.folder_info`
+    # (recursive via `subfolders`); `albums` gains its parent folder's uuid
+    # (NULL = top level) and Photos' own sidebar order. Nothing here can be
+    # derived from rows indexed before, so every indexed library is flagged
+    # for the one-time in-place re-index (see the note above `_MIGRATIONS`).
+    [
+        """
+        CREATE TABLE folders (
+            id INTEGER PRIMARY KEY,
+            library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+            uuid TEXT NOT NULL,
+            title TEXT,
+            parent_uuid TEXT,
+            list_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (library_id, uuid)
+        )
+        """,
+        "CREATE INDEX idx_folders_library_id ON folders(library_id)",
+        "ALTER TABLE albums ADD COLUMN parent_uuid TEXT",
+        "ALTER TABLE albums ADD COLUMN list_order INTEGER NOT NULL DEFAULT 0",
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

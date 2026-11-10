@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import app_db, library_watch, media, session_auth
+from . import app_db, library_albums, library_watch, media, session_auth
 
 router = APIRouter()
 
@@ -196,9 +196,13 @@ def _list_assets(
     from_: str | None,
     to: str | None,
     favorite: bool | None = None,
+    extra: tuple[str, list[object]] | None = None,
 ) -> AssetListResponse:
     clauses = ["library_id = ?", "hidden = ?"]
     params: list[object] = [library_id, int(hidden)]
+    if extra:
+        clauses.append(extra[0])
+        params.extend(extra[1])
     if type_ == "photo":
         clauses.append("is_video = 0")
     elif type_ == "video":
@@ -245,11 +249,13 @@ def list_assets(
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
-    # Albums and People are Phase 2: accept the filters so the client can
-    # already send them, but a request for either comes back empty rather
-    # than ignoring the filter and returning the unfiltered library.
-    if album or person:
+    # `album` is a user album's uuid or `smart:<slug>` (see library_albums);
+    # an id that is not this library's 404s. People is Phase 2.2: until then a
+    # `person` filter comes back empty rather than being ignored, which would
+    # return the unfiltered library.
+    if person:
         return AssetListResponse(items=[], next_cursor=None)
+    extra = library_albums.album_clause(db, library["id"], album) if album else None
 
     return _list_assets(
         db,
@@ -261,6 +267,7 @@ def list_assets(
         from_=from_,
         to=to,
         favorite=favorite,
+        extra=extra,
     )
 
 

@@ -2053,3 +2053,107 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+/* P2.1 Albums: desktop sidebar tree, phone list rows. */
+.sidebar__note {
+  margin: 0;
+  padding: 4px 22px;
+  font-size: 12px;
+  color: var(--sequoia-text-secondary);
+}
+
+.sidebar__retry {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sidebar__folder > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.sidebar__folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.albums-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--ios-card-bg);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.albums-list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--ios-separator);
+  background: transparent;
+  padding: 8px 14px;
+  font-size: 16px;
+  color: #1d1d1f;
+  text-align: left;
+  cursor: pointer;
+}
+
+.albums-list li:last-child .albums-list__item {
+  border-bottom: none;
+}
+
+.albums-list__cover {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--ios-separator);
+}
+
+.albums-list__cover--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.albums-list__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.albums-list__count {
+  color: var(--ios-label-secondary);
+  font-size: 15px;
+}
+
+.albums-list__chevron {
+  flex: 0 0 auto;
+  color: var(--ios-label-secondary);
+}
+
+/* The album's photos fill the screen under its title, like the Library tab. */
+.mobile-screen__album-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .albums-list {
+    background: #1c1c1e;
+  }
+
+  .albums-list__item {
+    color: #fff;
+  }
+}

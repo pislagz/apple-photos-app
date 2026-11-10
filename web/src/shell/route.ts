@@ -24,7 +24,7 @@ export type MobileTab = "library" | "albums" | "more" | "search";
 
 export type MobileRoute =
   | { tab: "library" }
-  | { tab: "albums" }
+  | { tab: "albums"; folderId?: string; albumId?: string }
   | { tab: "search" }
   | { tab: "more"; screen?: undefined }
   | { tab: "more"; screen: "people" | "places" | "hidden" }
@@ -45,6 +45,11 @@ export function parseMobileRoute(pathname: string): MobileRoute {
     case "/hidden":
       return { tab: "more", screen: "hidden" };
     default: {
+      // P2.1: /albums/folder/<uuid> and /albums/<uuid> (or smart:<slug>).
+      const folderMatch = pathname.match(/^\/albums\/folder\/([^/]+)\/?$/);
+      if (folderMatch) return { tab: "albums", folderId: decodeURIComponent(folderMatch[1]) };
+      const albumMatch = pathname.match(/^\/albums\/([^/]+)\/?$/);
+      if (albumMatch) return { tab: "albums", albumId: decodeURIComponent(albumMatch[1]) };
       const mediaMatch = pathname.match(/^\/media\/([^/]+)\/?$/);
       if (mediaMatch) {
         return { tab: "more", screen: "media", mediaType: decodeURIComponent(mediaMatch[1]) };
@@ -56,6 +61,10 @@ export function parseMobileRoute(pathname: string): MobileRoute {
 
 export function mobileRoutePath(route: MobileRoute): string {
   if (route.tab === "library") return "/";
+  if (route.tab === "albums") {
+    if (route.folderId) return `/albums/folder/${encodeURIComponent(route.folderId)}`;
+    if (route.albumId) return `/albums/${encodeURIComponent(route.albumId)}`;
+  }
   if (route.tab !== "more") return `/${route.tab}`;
   if (!route.screen) return "/more";
   if (route.screen === "media") return `/media/${encodeURIComponent(route.mediaType)}`;

@@ -130,11 +130,12 @@ describe("AppShell", () => {
     }
   });
 
-  it("renders the desktop sidebar with only Library enabled", async () => {
+  it("renders the desktop sidebar with Map and People still disabled", async () => {
     setViewport(1400, true);
     mockFetch((url) => {
       if (url === "/api/setup/status") return { needs_setup: false };
       if (url === "/api/me") return ME_RESPONSE;
+      if (url === "/api/libraries/1/albums") return { tree: [], smart: [] };
       throw new Error(`unexpected request: ${url}`);
     });
 
@@ -142,7 +143,11 @@ describe("AppShell", () => {
 
     const sections = within(await screen.findByRole("navigation", { name: "Sections" }));
     expect(sections.getByRole("button", { name: "Library" })).toBeEnabled();
-    for (const label of ["Favorites", "Recently Added", "Map", "People & Pets"]) {
+    // P2.1 enabled Favorites and Recently Added (smart albums).
+    for (const label of ["Favorites", "Recently Added"]) {
+      expect(sections.getByRole("button", { name: label })).toBeEnabled();
+    }
+    for (const label of ["Map", "People & Pets"]) {
       expect(sections.getByRole("button", { name: label })).toBeDisabled();
     }
   });
