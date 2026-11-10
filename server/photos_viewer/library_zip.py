@@ -94,6 +94,7 @@ def _resolve_source(
         and asset["path_derivative"]
         and (
             not raw_path
+            or library_assets._original_not_available(library["path"], raw_path)
             or not library_assets._resolve_within_library(
                 library["path"], raw_path
             ).exists()

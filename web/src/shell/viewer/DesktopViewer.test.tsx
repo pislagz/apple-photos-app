@@ -204,6 +204,21 @@ describe("DesktopViewer", () => {
   });
 
 
+  it("says the original is stored outside the library and never requests /original (#78)", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { original_outside_library: true }) });
+
+    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+
+    expect(await screen.findByTestId("original-outside-note")).toHaveTextContent(
+      "The original is stored outside the library and isn't available.",
+    );
+    fireEvent.load(screen.getAllByRole("img")[0]);
+    const still = screen.getAllByRole("img").find((img) => img.getAttribute("src")?.includes("/thumb/a1"));
+    expect(still).toBeTruthy();
+    expect(document.querySelector('img[src*="/original/"]')).toBeNull();
+  });
+
   it("the info panel says before download when only a smaller copy is on disk", async () => {
     const items = [makeItem("a1"), makeItem("a2")];
     mockDetail({ a1: makeDetail("a1", { original_available: false }), a2: makeDetail("a2", { original_available: true }) });
