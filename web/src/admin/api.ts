@@ -33,7 +33,60 @@ export interface LibraryStatusResponse {
   warnings: LibraryWarning[];
   updating?: boolean;
   updating_reason?: string | null;
-  last_update?: { summary: string } | null;
+  last_update?: RunSummary | null;
+  runs?: RunSummary[];
+  suggestion?: ReplaceSuggestion | null;
+}
+
+export interface RunSummary {
+  id: number;
+  trigger: string;
+  started_at: string;
+  finished_at: string | null;
+  outcome: string;
+  asset_count: number | null;
+  added: number | null;
+  removed: number | null;
+  changed: number | null;
+  hidden_changed: number | null;
+  originals_missing: number;
+  originals_missing_pct: number;
+  error: string | null;
+  summary: string;
+}
+
+export interface ReplaceSuggestion {
+  path: string;
+  name: string;
+  message: string;
+}
+
+export interface ReplacePreview {
+  path: string;
+  confirmed: boolean;
+  new_asset_count: number;
+  would_add: number;
+  would_remove: number;
+  overlap: number;
+  store_uuid_match: boolean | null;
+  originals_missing: number;
+  originals_missing_pct: number;
+  warnings: LibraryWarning[];
+  status: LibraryStatusResponse | null;
+}
+
+// Without `confirm` this is a read-only preview. `replaceAnyway` is only
+// needed when the preview carries warnings other than originals_missing.
+export function replaceLibrary(
+  id: number,
+  path: string,
+  options: { confirm?: boolean; replaceAnyway?: boolean } = {},
+): Promise<ReplacePreview> {
+  return mutate<ReplacePreview>("POST", `/api/admin/libraries/${id}/replace`, {
+    path,
+    confirm: options.confirm ?? false,
+    replace_anyway: options.replaceAnyway ?? false,
+  });
 }
 
 export function listLibraries(): Promise<LibraryResponse[]> {
@@ -217,6 +270,9 @@ export interface SettingsResponse {
   zip_size_limit_bytes: number;
   map_tiles_mode: MapTilesMode;
   map_tiles_pmtiles_path: string | null;
+  library_check_interval_minutes: number;
+  library_stable_minutes: number;
+  show_library_updated_note: boolean;
 }
 
 export function readSettings(): Promise<SettingsResponse> {

@@ -664,8 +664,8 @@ class SettingsUpdateRequest(BaseModel):
     map_tiles_mode: Literal["online", "local_file", "off"] = "online"
     map_tiles_pmtiles_path: str | None = None
     # 0 turns the background checker off.
-    library_check_interval_minutes: int = Field(default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES, ge=0)
-    library_stable_minutes: int = Field(default=library_watch.DEFAULT_STABLE_MINUTES, ge=0)
+    library_check_interval_minutes: int = Field(default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES, ge=0, le=1440)
+    library_stable_minutes: int = Field(default=library_watch.DEFAULT_STABLE_MINUTES, ge=0, le=1440)
     show_library_updated_note: bool = True
 
 

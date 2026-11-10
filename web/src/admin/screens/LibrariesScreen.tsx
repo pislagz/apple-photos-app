@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ReplaceDialog from "./ReplaceDialog";
 import {
   ApiError,
   addLibrary,
@@ -17,6 +18,7 @@ export default function LibrariesScreen() {
   const [path, setPath] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState<{ library: LibraryResponse; path: string } | null>(null);
 
   function refresh() {
     listLibraries().then(setLibraries).catch((err: unknown) => setError(describeError(err)));
@@ -76,10 +78,24 @@ export default function LibrariesScreen() {
     }
   }
 
+  async function handleReplaced(library: LibraryResponse) {
+    setReplacing(null);
+    refresh();
+    await handleStatus(library);
+  }
+
   return (
     <section>
       <h1>Libraries</h1>
       {error && <p role="alert">{error}</p>}
+      {replacing && (
+        <ReplaceDialog
+          library={replacing.library}
+          initialPath={replacing.path}
+          onClose={() => setReplacing(null)}
+          onReplaced={() => handleReplaced(replacing.library)}
+        />
+      )}
 
       <form onSubmit={handleAdd}>
         <label>
@@ -118,11 +134,37 @@ export default function LibrariesScreen() {
                       <li>{status.last_indexed_at ?? "never indexed"}</li>
                       {status.last_update && <li>{status.last_update.summary}</li>}
                       {status.updating && <li>Being updated: {status.updating_reason}</li>}
+                      {status.suggestion && (
+                        <li>
+                          {status.suggestion.message}{" "}
+                          <button
+                            type="button"
+                            onClick={() => setReplacing({ library, path: status.suggestion!.path })}
+                          >
+                            Replace with {status.suggestion.name}
+                          </button>
+                        </li>
+                      )}
                       {status.warnings.map((warning) => (
                         <li key={warning.code} role="alert">
                           {warning.message}
                         </li>
                       ))}
+                      {status.runs && status.runs.length > 0 && (
+                        <li>
+                          <details>
+                            <summary>Update history ({Math.min(status.runs.length, 10)})</summary>
+                            <ol aria-label="Update history">
+                              {status.runs.slice(0, 10).map((run) => (
+                                <li key={run.id}>
+                                  {run.started_at} · {run.trigger} · {run.outcome}: {run.summary}
+                                  {run.error ? ` (${run.error})` : ""}
+                                </li>
+                              ))}
+                            </ol>
+                          </details>
+                        </li>
+                      )}
                     </ul>
                   ) : (
                     <button type="button" onClick={() => handleStatus(library)}>
@@ -136,6 +178,9 @@ export default function LibrariesScreen() {
                   </button>
                   <button type="button" onClick={() => handleReindex(library)}>
                     Re-index
+                  </button>
+                  <button type="button" onClick={() => setReplacing({ library, path: "" })}>
+                    Replace library file
                   </button>
                   <button type="button" onClick={() => handleRemove(library)}>
                     Remove

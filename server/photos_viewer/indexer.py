@@ -18,7 +18,7 @@ import os
 import pathlib
 import sqlite3
 
-from . import libraries
+from . import libraries, media
 
 # `assets` columns written by `_write_index`, excluding `id` (assigned by
 # sqlite) and `library_id`/`uuid` (the upsert's conflict key, set once).
@@ -135,6 +135,7 @@ def index_library(
     force: bool = False,
     trigger: str = "admin",
     opened: libraries.OpenLibrary | None = None,
+    cache_dir: str | pathlib.Path | None = None,
 ) -> bool:
     """Replace `library_id`'s rows in `app.db` with a fresh osxphotos walk
     of `package_path`.
@@ -144,7 +145,9 @@ def index_library(
     the idempotency P1.6 requires. Returns `True` after a completed
     (re-)index, whether or not it changed any row. A caller that already
     opened the library for readiness checks passes it as `opened`; this
-    function closes it either way.
+    function closes it either way. After the commit, cache files of removed and
+    changed assets are deleted from `cache_dir` (default: `media_cache/` next
+    to `app.db`).
     """
     row = db.execute("SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)).fetchone()
     signature = sqlite_signature(package_path)
@@ -157,10 +160,27 @@ def index_library(
     if opened is None:
         opened = libraries.open_library_readonly(package_path)
     try:
-        _write_index_and_update_signature(db, library_id, opened, signature, trigger, started_at)
+        purge = _write_index_and_update_signature(db, library_id, opened, signature, trigger, started_at)
     finally:
         opened.close()
+    _purge_cache(db, library_id, purge, cache_dir)
     return True
+
+
+def _purge_cache(
+    db: sqlite3.Connection, library_id: int, uuids: list[str], cache_dir: str | pathlib.Path | None
+) -> None:
+    """Best effort, after the commit: a leftover thumbnail is harmless (the
+    LRU takes it), a failed purge must not fail an index that applied."""
+    if not uuids:
+        return
+    if cache_dir is None:
+        main = next((r["file"] for r in db.execute("PRAGMA database_list") if r["name"] == "main"), "")
+        if not main:
+            return
+        cache_dir = pathlib.Path(main).parent / "media_cache"
+    for uuid in uuids:
+        media.purge_asset_cache(pathlib.Path(cache_dir), library_id, uuid)
 
 
 def _write_index_and_update_signature(
@@ -170,7 +190,7 @@ def _write_index_and_update_signature(
     signature: str,
     trigger: str,
     started_at: str,
-) -> None:
+) -> list[str]:
     # `add_library` may already have an implicit transaction open (its own
     # `INSERT INTO libraries`, not yet committed) by the time it calls here,
     # and sqlite3 rejects a nested `BEGIN`. Only start one if we're not
@@ -180,7 +200,7 @@ def _write_index_and_update_signature(
     if own_transaction:
         db.execute("BEGIN IMMEDIATE")
     try:
-        counts = _write_index(db, library_id, opened.db)
+        counts, purge = _write_index(db, library_id, opened.db)
         store_uuid = read_store_uuid(opened.sqlite_path) if opened.sqlite_path else None
         asset_count = db.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (library_id,)).fetchone()[0]
         # Applying a valid copy also ends any "Being updated" state, in the
@@ -215,6 +235,7 @@ def _write_index_and_update_signature(
         raise
     else:
         db.commit()
+    return purge
 
 
 _UPSERT_ASSET_SQL = (
@@ -225,7 +246,7 @@ _UPSERT_ASSET_SQL = (
 )
 
 
-def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str, int]:
+def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> tuple[dict[str, int], list[str]]:
     # People/albums have no stability requirement of their own (nothing
     # outside this module keeps a foreign key to them across index runs),
     # so a clean replace -- cascading to `asset_people`/`asset_albums` via
@@ -265,6 +286,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str,
         )
     }
     counts = {"added": 0, "removed": 0, "changed": 0, "hidden_changed": 0, "originals_missing": 0}
+    purge: list[str] = []
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
         for photo in photosdb.photos():
@@ -281,6 +303,7 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str,
             else:
                 if old[:3] != (photo.path_edited, date_modified, photo.original_filesize):
                     counts["changed"] += 1
+                    purge.append(photo.uuid)
                 if old[3] != int(photo.hidden):
                     counts["hidden_changed"] += 1
             # Optimize Mac Storage: no full-size original on disk, but a
@@ -353,6 +376,13 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str,
                         (asset_id, album_id),
                     )
 
+        purge.extend(
+            row["uuid"]
+            for row in db.execute(
+                "SELECT uuid FROM assets WHERE library_id = ? AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
+                (library_id,),
+            )
+        )
         removed = db.execute(
             "DELETE FROM assets WHERE library_id = ? AND uuid NOT IN (SELECT uuid FROM _seen_asset_uuids)",
             (library_id,),
@@ -360,4 +390,4 @@ def _write_index(db: sqlite3.Connection, library_id: int, photosdb) -> dict[str,
         counts["removed"] = removed.rowcount
     finally:
         db.execute("DROP TABLE _seen_asset_uuids")
-    return counts
+    return counts, purge

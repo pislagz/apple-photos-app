@@ -4,7 +4,7 @@ synthetic fixture; the checker is driven by hand with a zero stability window.""
 
 import shutil
 
-from photos_viewer import app_db, library_watch
+from photos_viewer import app_db, library_watch, session_auth
 from tests.fixtures import FixtureAsset, _build_asset_image_bytes, build_library
 from tests.test_library_admin import _admin_client, _full_snapshot
 
@@ -17,6 +17,7 @@ def _asset(n: int, **kwargs) -> FixtureAsset:
 
 def _setup(tmp_path, assets, name="Alice.photoslibrary"):
     conn, client = _admin_client(tmp_path)
+    client.app.dependency_overrides[session_auth.get_media_cache_dir] = lambda: tmp_path / "media_cache"
     package = build_library(tmp_path / "lib", assets, package_name=name)
     added = client.post("/api/admin/libraries", json={"path": str(package)}).json()
     app_db.set_setting(conn, "library_stable_minutes", "0")
@@ -338,3 +339,70 @@ def test_user_facing_updating_reason_hides_internal_details() -> None:
     assert updating is True and "/secret" not in reason
     assert library_watch.public_availability(missing) == (True, "The library is temporarily unavailable.")
     assert library_watch.public_availability(clear) == (False, None)
+
+
+def test_cache_purge_removes_removed_and_changed_assets_only(tmp_path):
+    a = [_asset(n) for n in range(1, 5)]
+    conn, client, package, lib = _setup(tmp_path, a)
+    try:
+        for asset in a:
+            assert client.get(f"/api/libraries/{lib}/thumb/{asset.uuid}").status_code == 200
+
+        def cached(asset):
+            folder = tmp_path / "media_cache" / str(lib) / asset.uuid[:2] / asset.uuid
+            return folder.exists() and any(folder.iterdir())
+
+        assert all(cached(x) for x in a)
+        # 1 kept, 2 edited, 3 removed, 4 kept.
+        _replace_package(
+            package, [a[0], FixtureAsset(uuid=a[1].uuid, filename=a[1].filename, data=IMG + b"edit"), a[3]]
+        )
+        assert "applied" in _drive(conn, lib)
+        assert cached(a[0]) and cached(a[3])
+        assert not cached(a[1]) and not cached(a[2])
+    finally:
+        conn.close()
+
+
+def test_original_download_says_when_it_served_a_derivative(tmp_path):
+    a = [_asset(1)]
+    conn, client, package, lib = _setup(tmp_path, a)
+    try:
+        url = f"/api/libraries/{lib}/original/{a[0].uuid}"
+        full = client.get(url)
+        assert full.status_code == 200 and "x-photos-original-missing" not in full.headers
+        package = _replace_package(package, a)
+        derivatives = package / "resources" / "derivatives" / a[0].uuid[0]
+        derivatives.mkdir(parents=True, exist_ok=True)
+        (derivatives / f"{a[0].uuid}_1_105_c.jpeg").write_bytes(IMG)
+        for f in (package / "originals").rglob("*.HEIC"):
+            f.unlink()
+        assert "applied" in _drive(conn, lib)
+        fallback = client.get(url + "?download=1")
+        assert fallback.status_code == 200 and fallback.headers["x-photos-original-missing"] == "1"
+    finally:
+        conn.close()
+
+
+def test_status_suggests_an_unregistered_library_next_to_a_missing_one(tmp_path):
+    conn, client, package, lib = _setup(tmp_path, [_asset(1)])
+    try:
+        assert client.get(f"/api/admin/libraries/{lib}/status").json()["suggestion"] is None
+        build_library(tmp_path / "lib", [_asset(1)], package_name="Alice 2026.photoslibrary")
+        shutil.rmtree(package)
+        suggestion = client.get(f"/api/admin/libraries/{lib}/status").json()["suggestion"]
+        assert suggestion["name"] == "Alice 2026.photoslibrary"
+        assert suggestion["path"] == str(tmp_path / "lib" / "Alice 2026.photoslibrary")
+        assert suggestion["message"] == "A new library appeared next to this one: Alice 2026.photoslibrary. Replace?"
+    finally:
+        conn.close()
+
+
+def test_library_settings_are_bounded(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        body = client.get("/api/admin/settings").json()
+        for key, value in (("library_stable_minutes", -1), ("library_check_interval_minutes", 100000)):
+            assert client.put("/api/admin/settings", json={**body, key: value}).status_code == 422
+    finally:
+        conn.close()

@@ -564,6 +564,14 @@ def asset_original(
 ):
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     raw_path = asset["path_edited"] if version == "edited" else asset["path_original"]
+    # "Optimize Mac Storage" copy: no full-size original, only a derivative.
+    # Serve it and say so (X-Photos-Original-Missing) rather than 404.
+    fallback_headers: dict[str, str] = {}
+    if version == "original" and asset["path_derivative"] and (
+        not raw_path or not _resolve_within_library(library["path"], raw_path).exists()
+    ):
+        raw_path = asset["path_derivative"]
+        fallback_headers = {"X-Photos-Original-Missing": "1"}
     if not raw_path:
         raise HTTPException(status_code=404, detail="not found")
     file_path = _resolve_within_library(library["path"], raw_path)
@@ -594,7 +602,11 @@ def asset_original(
         return Response(
             content=data,
             media_type="image/jpeg",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"', **_media_cache_headers(asset)},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                **fallback_headers,
+                **_media_cache_headers(asset),
+            },
         )
 
     if not file_path.exists():
@@ -609,7 +621,7 @@ def asset_original(
         file_path,
         media_type=media_type or "application/octet-stream",
         filename=file_path.name,
-        headers=_media_cache_headers(asset),
+        headers={**fallback_headers, **_media_cache_headers(asset)},
     )
 
 

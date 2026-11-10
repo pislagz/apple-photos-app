@@ -120,6 +120,30 @@ def _recent_runs(db: sqlite3.Connection, library_id: int, limit: int = 10) -> li
     return [_run_summary(row) for row in rows]
 
 
+class ReplaceSuggestion(BaseModel):
+    path: str
+    name: str
+    message: str
+
+
+def _suggest_replacement(db: sqlite3.Connection, path: pathlib.Path) -> ReplaceSuggestion | None:
+    if path.exists():
+        return None
+    try:
+        candidates = sorted(p for p in path.parent.iterdir() if p.suffix == ".photoslibrary" and p.is_dir())
+    except OSError:
+        return None
+    registered = {pathlib.Path(r["path"]) for r in db.execute("SELECT path FROM libraries")}
+    for candidate in candidates:
+        if candidate not in registered:
+            return ReplaceSuggestion(
+                path=str(candidate),
+                name=candidate.name,
+                message=f"A new library appeared next to this one: {candidate.name}. Replace?",
+            )
+    return None
+
+
 class LibraryStatusResponse(BaseModel):
     id: int
     display_name: str
@@ -137,6 +161,9 @@ class LibraryStatusResponse(BaseModel):
     updating_reason: str | None = None
     last_update: RunSummary | None = None
     runs: list[RunSummary] = []
+    # An unregistered package next to a missing one: the admin UI offers a
+    # prefilled Replace. Never applied automatically.
+    suggestion: ReplaceSuggestion | None = None
 
 
 def _validate_library_path(path: pathlib.Path) -> None:
@@ -339,6 +366,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
         updating_reason=updating_reason,
         last_update=last_applied,
         runs=runs,
+        suggestion=_suggest_replacement(db, path),
         **_index_counts(db, row["id"], row["last_indexed_at"]),
     )
 

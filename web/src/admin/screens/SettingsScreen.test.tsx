@@ -14,6 +14,9 @@ const SETTINGS = {
   zip_size_limit_bytes: 2147483648,
   map_tiles_mode: "online" as const,
   map_tiles_pmtiles_path: null,
+  library_check_interval_minutes: 15,
+  library_stable_minutes: 10,
+  show_library_updated_note: true,
 };
 
 afterEach(() => {
@@ -54,5 +57,28 @@ describe("SettingsScreen", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("locked out");
     await waitFor(() => expect(screen.getByLabelText("Identities, one per line")).toHaveValue("someone-else@example.ts.net"));
+  });
+
+  it("saves the library check settings", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && init?.method === "PUT") return JSON.parse(String(init.body));
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    render(<SettingsScreen />);
+    fireEvent.change(await screen.findByLabelText(/Library check interval/), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText(/unchanged for/), { target: { value: "30" } });
+    fireEvent.click(screen.getByLabelText(/Tell users when their library was updated/));
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await screen.findByText("Settings saved.");
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT" && String(init.body).includes("library_"));
+    expect(JSON.parse(String(put![1]!.body))).toMatchObject({
+      library_check_interval_minutes: 0,
+      library_stable_minutes: 30,
+      show_library_updated_note: false,
+    });
   });
 });
