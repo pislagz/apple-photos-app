@@ -34,7 +34,9 @@ def unb64u(text: str) -> bytes:
 class SoftwareAuthenticator:
     def __init__(self) -> None:
         self.key = ec.generate_private_key(ec.SECP256R1())
-        self.credential_id = hashlib.sha256(self.key.public_key().public_numbers().x.to_bytes(32, "big")).digest()
+        self.credential_id = hashlib.sha256(
+            self.key.public_key().public_numbers().x.to_bytes(32, "big")
+        ).digest()
         self.counter = 0
         self.user_handle = b""
 
@@ -48,7 +50,9 @@ class SoftwareAuthenticator:
             }
         ).encode()
 
-    def create(self, options: dict, *, origin: str = ORIGIN, rp_id: str = RP_ID) -> dict:
+    def create(
+        self, options: dict, *, origin: str = ORIGIN, rp_id: str = RP_ID
+    ) -> dict:
         self.user_handle = unb64u(options["user"]["id"])
         numbers = self.key.public_key().public_numbers()
         cose = cbor2.dumps(
@@ -74,8 +78,12 @@ class SoftwareAuthenticator:
             "rawId": b64u(self.credential_id),
             "type": "public-key",
             "response": {
-                "clientDataJSON": b64u(self._client_data("webauthn.create", options["challenge"], origin)),
-                "attestationObject": b64u(cbor2.dumps({"fmt": "none", "attStmt": {}, "authData": auth_data})),
+                "clientDataJSON": b64u(
+                    self._client_data("webauthn.create", options["challenge"], origin)
+                ),
+                "attestationObject": b64u(
+                    cbor2.dumps({"fmt": "none", "attStmt": {}, "authData": auth_data})
+                ),
                 "transports": ["internal"],
             },
             "clientExtensionResults": {},
@@ -91,8 +99,14 @@ class SoftwareAuthenticator:
     ) -> dict:
         self.counter += 1
         client_data = self._client_data("webauthn.get", options["challenge"], origin)
-        auth_data = hashlib.sha256(rp_id.encode()).digest() + bytes([0x05]) + struct.pack(">I", self.counter)
-        signature = self.key.sign(auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+        auth_data = (
+            hashlib.sha256(rp_id.encode()).digest()
+            + bytes([0x05])
+            + struct.pack(">I", self.counter)
+        )
+        signature = self.key.sign(
+            auth_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256())
+        )
         return {
             "id": b64u(self.credential_id),
             "rawId": b64u(self.credential_id),
@@ -140,7 +154,9 @@ def add_user(db, name: str, *, role: str = "user") -> int:
 
 
 def password_login(client, name: str = "alice") -> None:
-    response = client.post("/api/auth/login", json={"username": name, "password": PASSWORD})
+    response = client.post(
+        "/api/auth/login", json={"username": name, "password": PASSWORD}
+    )
     assert response.status_code == 200
 
 
@@ -185,7 +201,12 @@ def test_register_then_sign_in_with_the_passkey_alone(client, db):
     assert signed_in.status_code == 200
     assert signed_in.json() == {"username": "alice", "role": "user"}
     assert anonymous.get("/api/auth/me").json()["username"] == "alice"
-    assert db.execute("SELECT sign_count, last_used_at FROM passkeys").fetchone()["sign_count"] == 1
+    assert (
+        db.execute("SELECT sign_count, last_used_at FROM passkeys").fetchone()[
+            "sign_count"
+        ]
+        == 1
+    )
 
 
 def test_passwords_still_work_with_a_passkey_registered(client, db):
@@ -202,9 +223,9 @@ def test_passkey_login_cookie_flags_match_the_password_login(client, db):
     password_login(client)
     authenticator = SoftwareAuthenticator()
     register(client, authenticator)
-    password_cookie = client.post("/api/auth/login", json={"username": "alice", "password": PASSWORD}).headers[
-        "set-cookie"
-    ]
+    password_cookie = client.post(
+        "/api/auth/login", json={"username": "alice", "password": PASSWORD}
+    ).headers["set-cookie"]
 
     anonymous = TestClient(client.app, base_url=ORIGIN)
     _, response = passkey_login(anonymous, authenticator)
@@ -225,7 +246,9 @@ def test_passkey_login_honours_client_and_remember_me_lifetimes(client, db):
     authenticator = SoftwareAuthenticator()
     register(client, authenticator)
     anonymous = TestClient(client.app, base_url=ORIGIN)
-    _, response = passkey_login(anonymous, authenticator, client="pwa", remember_me=True)
+    _, response = passkey_login(
+        anonymous, authenticator, client="pwa", remember_me=True
+    )
     expected = session_auth._DEFAULT_REMEMBER_ME_LIFETIME_SECONDS
     assert f"Max-Age={expected}" in response.headers["set-cookie"]
 
@@ -242,8 +265,12 @@ def test_a_challenge_can_only_be_used_once(client, db):
         "challenge_id": begun["challenge_id"],
         "credential": authenticator.get(begun["options"]),
     }
-    assert anonymous.post("/api/auth/passkeys/login/verify", json=body).status_code == 200
-    replay = TestClient(client.app, base_url=ORIGIN).post("/api/auth/passkeys/login/verify", json=body)
+    assert (
+        anonymous.post("/api/auth/passkeys/login/verify", json=body).status_code == 200
+    )
+    replay = TestClient(client.app, base_url=ORIGIN).post(
+        "/api/auth/passkeys/login/verify", json=body
+    )
     assert replay.status_code == 400
 
 
@@ -256,8 +283,12 @@ def test_a_replayed_registration_challenge_is_rejected(client, db):
         "challenge_id": begun["challenge_id"],
         "credential": authenticator.create(begun["options"]),
     }
-    assert client.post("/api/auth/passkeys/register/verify", json=body).status_code == 201
-    assert client.post("/api/auth/passkeys/register/verify", json=body).status_code == 400
+    assert (
+        client.post("/api/auth/passkeys/register/verify", json=body).status_code == 201
+    )
+    assert (
+        client.post("/api/auth/passkeys/register/verify", json=body).status_code == 400
+    )
 
 
 def test_an_expired_challenge_is_rejected(client, db):
@@ -267,7 +298,9 @@ def test_an_expired_challenge_is_rejected(client, db):
     register(client, authenticator)
     anonymous = TestClient(client.app, base_url=ORIGIN)
     begun = anonymous.post("/api/auth/passkeys/login/options", json={}).json()
-    db.execute("UPDATE passkey_challenges SET expires_at = datetime('now', '-1 seconds')")
+    db.execute(
+        "UPDATE passkey_challenges SET expires_at = datetime('now', '-1 seconds')"
+    )
     db.commit()
     response = anonymous.post(
         "/api/auth/passkeys/login/verify",
@@ -288,7 +321,9 @@ def test_a_login_challenge_cannot_complete_a_registration(client, db):
     authenticator = SoftwareAuthenticator()
     own = client.post("/api/auth/passkeys/register/options", json={}).json()["options"]
     # A genuine create() response, but for the *login* challenge id.
-    credential = authenticator.create({**own, "challenge": begun["options"]["challenge"]})
+    credential = authenticator.create(
+        {**own, "challenge": begun["options"]["challenge"]}
+    )
     response = client.post(
         "/api/auth/passkeys/register/verify",
         json={"challenge_id": begun["challenge_id"], "credential": credential},
@@ -398,7 +433,9 @@ def test_repeated_failures_lock_the_account_like_the_password_login(client, db):
         assert passkey_login(anonymous, forger)[1].status_code == 401
     # Locked out: even the genuine passkey is refused until the cool-off ends.
     assert passkey_login(anonymous, authenticator)[1].status_code == 429
-    login = anonymous.post("/api/auth/login", json={"username": "alice", "password": PASSWORD})
+    login = anonymous.post(
+        "/api/auth/login", json={"username": "alice", "password": PASSWORD}
+    )
     assert login.status_code == 429
 
 
@@ -408,6 +445,17 @@ def test_ip_lockout_applies_to_unknown_credentials(client, db):
     for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
         assert passkey_login(anonymous, SoftwareAuthenticator())[1].status_code == 401
     assert passkey_login(anonymous, SoftwareAuthenticator())[1].status_code == 429
+
+
+def test_unknown_challenge_ids_count_toward_the_ip_lockout(client, db):
+    add_user(db, "alice")
+    anonymous = TestClient(client.app, base_url=ORIGIN)
+    body = {"challenge_id": "nope", "credential": {}}
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP):
+        response = anonymous.post("/api/auth/passkeys/login/verify", json=body)
+        assert response.status_code == 400
+    locked = anonymous.post("/api/auth/passkeys/login/verify", json=body)
+    assert locked.status_code == 429
 
 
 def test_list_and_remove_only_your_own_passkeys(client, db):
@@ -445,13 +493,18 @@ def test_registering_the_same_authenticator_twice_is_refused(client, db):
     authenticator = SoftwareAuthenticator()
     assert register(client, authenticator).status_code == 201
     assert register(client, authenticator).status_code == 409
-    options = client.post("/api/auth/passkeys/register/options", json={}).json()["options"]
+    options = client.post("/api/auth/passkeys/register/options", json={}).json()[
+        "options"
+    ]
     assert options["excludeCredentials"][0]["id"] == b64u(authenticator.credential_id)
 
 
 def test_registration_and_management_need_a_session(client):
     anonymous = TestClient(client.app, base_url=ORIGIN)
-    assert anonymous.post("/api/auth/passkeys/register/options", json={}).status_code == 401
+    assert (
+        anonymous.post("/api/auth/passkeys/register/options", json={}).status_code
+        == 401
+    )
     assert (
         anonymous.post(
             "/api/auth/passkeys/register/verify",
@@ -492,7 +545,9 @@ def test_rp_id_and_origin_come_from_the_environment_when_set(client, db, monkeyp
         "/api/auth/passkeys/register/verify",
         json={
             "challenge_id": begun["challenge_id"],
-            "credential": authenticator.create(begun["options"], origin="https://box.ts.net", rp_id="box.ts.net"),
+            "credential": authenticator.create(
+                begun["options"], origin="https://box.ts.net", rp_id="box.ts.net"
+            ),
         },
     )
     assert response.status_code == 201
@@ -508,6 +563,8 @@ def test_default_rp_id_is_the_request_host(client, db):
 def test_pending_challenges_are_bounded(client, monkeypatch):
     monkeypatch.setattr(session_passkeys, "MAX_PENDING_CHALLENGES", 5)
     for _ in range(12):
-        assert client.post("/api/auth/passkeys/login/options", json={}).status_code == 200
+        assert (
+            client.post("/api/auth/passkeys/login/options", json={}).status_code == 200
+        )
     db = client.app.dependency_overrides[session_auth.get_db]()
     assert db.execute("SELECT COUNT(*) FROM passkey_challenges").fetchone()[0] <= 5

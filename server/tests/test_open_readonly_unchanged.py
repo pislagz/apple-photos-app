@@ -27,7 +27,11 @@ def _snapshot(package_path: pathlib.Path) -> dict:
     for path in sorted(package_path.rglob("*")):
         rel = str(path.relative_to(package_path))
         stat = path.stat()
-        snapshot[rel] = ("dir", stat.st_mtime_ns) if path.is_dir() else (stat.st_size, stat.st_mtime_ns)
+        snapshot[rel] = (
+            ("dir", stat.st_mtime_ns)
+            if path.is_dir()
+            else (stat.st_size, stat.st_mtime_ns)
+        )
     return snapshot
 
 
@@ -74,7 +78,9 @@ def test_copy_replays_a_real_uncheckpointed_wal_change(tmp_path):
     shutil.copy2(package_path / "database" / "Photos.sqlite", sqlite_only_copy)
     conn = sqlite3.connect(str(sqlite_only_copy))
     try:
-        favorite = conn.execute("SELECT ZFAVORITE FROM ZGENERICASSET WHERE Z_PK = 1").fetchone()[0]
+        favorite = conn.execute(
+            "SELECT ZFAVORITE FROM ZGENERICASSET WHERE Z_PK = 1"
+        ).fetchone()[0]
     finally:
         conn.close()
     assert favorite == 0
@@ -84,7 +90,9 @@ def test_copy_replays_a_real_uncheckpointed_wal_change(tmp_path):
         assert opened.open_mode == "copy"
         photos = opened.db.photos()
         assert len(photos) == 2
-        assert {p.original_filename: p.favorite for p in photos}["IMG_0001.HEIC"] is True
+        assert {p.original_filename: p.favorite for p in photos}[
+            "IMG_0001.HEIC"
+        ] is True
         after = _snapshot(package_path)
 
     assert before == after
@@ -120,7 +128,9 @@ def test_photosdb_error_on_a_made_copy_is_not_swallowed_into_fallback(tmp_path):
             pathlib.Path(dst).write_bytes(b"not a sqlite database")
 
     with (
-        unittest.mock.patch.object(libraries.shutil, "copy2", side_effect=corrupt_the_copy),
+        unittest.mock.patch.object(
+            libraries.shutil, "copy2", side_effect=corrupt_the_copy
+        ),
         pytest.raises(sqlite3.DatabaseError, match="file is not a database"),
     ):
         open_library_readonly(package_path)

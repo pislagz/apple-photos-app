@@ -202,19 +202,32 @@ def test_indexer_copies_photoinfo_place_into_the_place_columns(tmp_path):
     conn = app_db.connect(tmp_path / "data")
     opened = libraries.open_library_readonly(package)
     try:
-        conn.execute("INSERT INTO libraries (display_name, path) VALUES ('L1', ?)", (str(package),))
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('L1', ?)",
+            (str(package),),
+        )
         conn.commit()
         lib = conn.execute("SELECT id FROM libraries").fetchone()["id"]
-        places = {_uuid(1): _PlaceInfo("Zürich", "CH", "Bahnhofstrasse 1, Zürich, Switzerland")}
+        places = {
+            _uuid(1): _PlaceInfo(
+                "Zürich", "CH", "Bahnhofstrasse 1, Zürich, Switzerland"
+            )
+        }
         conn.execute("BEGIN IMMEDIATE")
         indexer._write_index(conn, lib, _PhotosDBWithPlaces(opened.db, places))
         conn.commit()
 
         rows = {
             r["uuid"]: (r["place"], r["place_country_code"], r["place_address"])
-            for r in conn.execute("SELECT uuid, place, place_country_code, place_address FROM assets")
+            for r in conn.execute(
+                "SELECT uuid, place, place_country_code, place_address FROM assets"
+            )
         }
-        assert rows[_uuid(1)] == ("Zürich", "CH", "Bahnhofstrasse 1, Zürich, Switzerland")
+        assert rows[_uuid(1)] == (
+            "Zürich",
+            "CH",
+            "Bahnhofstrasse 1, Zürich, Switzerland",
+        )
         assert rows[_uuid(2)] == (None, None, None)
     finally:
         opened.close()

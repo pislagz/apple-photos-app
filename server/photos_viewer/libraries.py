@@ -77,7 +77,7 @@ def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> No
     given as `dbfile` (`pathlib.Path(self._dbfile).parent / "search"`), so in
     copy mode that's the temp dir, not the package -- without this, search
     silently finds nothing and osxphotos logs "could not find search db".
-    Newer libraries (macOS 27+) keep the index in `leo.sqlite` instead.
+    Some library versions keep the index in `leo.sqlite` instead; copied if present.
     """
     search_dir = sqlite_path.parent / "search"
     for name in ("psi.sqlite", "leo.sqlite"):
@@ -135,7 +135,9 @@ def library_is_locked(package_path: str | pathlib.Path) -> bool:
     try:
         conn = sqlite3.connect(uri, uri=True, timeout=1)
         try:
-            conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;").fetchall()
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
+            ).fetchall()
         finally:
             conn.close()
     except sqlite3.Error:
@@ -193,5 +195,9 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
             shutil.rmtree(tempdir, ignore_errors=True)
         raise
     return OpenLibrary(
-        db=db, library_path=package_path, open_mode=open_mode, sqlite_path=opened_sqlite, _tempdir=tempdir
+        db=db,
+        library_path=package_path,
+        open_mode=open_mode,
+        sqlite_path=opened_sqlite,
+        _tempdir=tempdir,
     )

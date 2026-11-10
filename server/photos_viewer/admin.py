@@ -31,7 +31,10 @@ def _open_db_or_none(command: str) -> sqlite3.Connection | None:
     data_dir = app_db.data_dir_from_env()
     db_path = app_db.db_path(data_dir)
     if not db_path.exists():
-        print(f"{command}: no app.db at {db_path} -- check PHOTOS_VIEWER_DATA_DIR", file=sys.stderr)
+        print(
+            f"{command}: no app.db at {db_path} -- check PHOTOS_VIEWER_DATA_DIR",
+            file=sys.stderr,
+        )
         return None
     return app_db.connect(data_dir)
 
@@ -42,7 +45,9 @@ def _cmd_unlock(args: argparse.Namespace) -> int:
     if conn is None:
         return 1
     try:
-        user = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        user = conn.execute(
+            "SELECT id FROM users WHERE username = ?", (username,)
+        ).fetchone()
         if user is None:
             print(f"unlock: no such user {args.username!r}", file=sys.stderr)
             return 1
@@ -84,7 +89,9 @@ def _cmd_allowlist_clear(args: argparse.Namespace) -> int:
         return 1
     try:
         session_auth.set_allowed_tailnet_identities(conn, [])
-        app_db.write_audit_log(conn, "set_tailnet_allowlist", actor="cli", detail="count=0")
+        app_db.write_audit_log(
+            conn, "set_tailnet_allowlist", actor="cli", detail="count=0"
+        )
         print("allow-list cleared (everyone allowed)")
         return 0
     finally:
@@ -107,10 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     unlock.set_defaults(func=_cmd_unlock)
 
-    allowlist = subparsers.add_parser("allowlist", help="Inspect or reset the tailnet allow-list (P1.4).")
-    allowlist_subparsers = allowlist.add_subparsers(dest="allowlist_command", required=True)
+    allowlist = subparsers.add_parser(
+        "allowlist", help="Inspect or reset the tailnet allow-list (P1.4)."
+    )
+    allowlist_subparsers = allowlist.add_subparsers(
+        dest="allowlist_command", required=True
+    )
 
-    allowlist_show = allowlist_subparsers.add_parser("show", help="Print the current allow-list.")
+    allowlist_show = allowlist_subparsers.add_parser(
+        "show", help="Print the current allow-list."
+    )
     allowlist_show.set_defaults(func=_cmd_allowlist_show)
 
     allowlist_clear = allowlist_subparsers.add_parser(

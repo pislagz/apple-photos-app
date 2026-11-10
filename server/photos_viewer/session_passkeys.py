@@ -70,12 +70,19 @@ router = APIRouter()
 def _origin_string(scheme: str, host: str, port: int | None) -> str:
     host_part = f"[{host}]" if ":" in host else host
     default = {"http": 80, "https": 443}.get(scheme)
-    return f"{scheme}://{host_part}" if port in (None, default) else f"{scheme}://{host_part}:{port}"
+    return (
+        f"{scheme}://{host_part}"
+        if port in (None, default)
+        else f"{scheme}://{host_part}:{port}"
+    )
 
 
 def _relying_party(request: Request) -> tuple[str, list[str]]:
     """`(rp_id, expected_origins)` for this request."""
-    rp_id = os.environ.get(_RP_ID_ENV, "").strip().lower() or (request.url.hostname or "").lower()
+    rp_id = (
+        os.environ.get(_RP_ID_ENV, "").strip().lower()
+        or (request.url.hostname or "").lower()
+    )
     raw = os.environ.get(_ORIGINS_ENV, "")
     origins = [entry.strip().rstrip("/") for entry in raw.split(",") if entry.strip()]
     if not origins:
@@ -93,7 +100,9 @@ def _user_handle(user_id: int) -> bytes:
     return hashlib.sha256(f"photos-viewer:passkey-user:{user_id}".encode()).digest()
 
 
-def _store_challenge(db: sqlite3.Connection, purpose: str, challenge: bytes, user_id: int | None) -> str:
+def _store_challenge(
+    db: sqlite3.Connection, purpose: str, challenge: bytes, user_id: int | None
+) -> str:
     db.execute("DELETE FROM passkey_challenges WHERE expires_at <= datetime('now')")
     db.execute(
         "DELETE FROM passkey_challenges WHERE id IN "
@@ -117,7 +126,9 @@ def _store_challenge(db: sqlite3.Connection, purpose: str, challenge: bytes, use
     return challenge_id
 
 
-def _consume_challenge(db: sqlite3.Connection, challenge_id: str, purpose: str, user_id: int | None) -> bytes:
+def _consume_challenge(
+    db: sqlite3.Connection, challenge_id: str, purpose: str, user_id: int | None
+) -> bytes:
     """Delete-and-return in one statement, so a challenge verifies at most
     once even if two requests race; an expired, unknown, replayed, or
     wrong-purpose/wrong-user id is the same 400."""
@@ -178,7 +189,9 @@ def register_options(
     db: sqlite3.Connection = Depends(get_db),
 ) -> OptionsResponse:
     rp_id, _ = _relying_party(request)
-    existing = db.execute("SELECT credential_id FROM passkeys WHERE user_id = ?", (session["user_id"],)).fetchall()
+    existing = db.execute(
+        "SELECT credential_id FROM passkeys WHERE user_id = ?", (session["user_id"],)
+    ).fetchall()
     options = generate_registration_options(
         rp_id=rp_id,
         rp_name=_RP_NAME,
@@ -188,10 +201,17 @@ def register_options(
             resident_key=ResidentKeyRequirement.REQUIRED,
             user_verification=UserVerificationRequirement.REQUIRED,
         ),
-        exclude_credentials=[PublicKeyCredentialDescriptor(id=bytes(row["credential_id"])) for row in existing],
+        exclude_credentials=[
+            PublicKeyCredentialDescriptor(id=bytes(row["credential_id"]))
+            for row in existing
+        ],
     )
-    challenge_id = _store_challenge(db, "register", options.challenge, session["user_id"])
-    return OptionsResponse(challenge_id=challenge_id, options=json.loads(options_to_json(options)))
+    challenge_id = _store_challenge(
+        db, "register", options.challenge, session["user_id"]
+    )
+    return OptionsResponse(
+        challenge_id=challenge_id, options=json.loads(options_to_json(options))
+    )
 
 
 @router.post(
@@ -206,8 +226,12 @@ def register_verify(
     session: sqlite3.Row = Depends(require_session),
     db: sqlite3.Connection = Depends(get_db),
 ) -> PasskeyResponse:
-    challenge = _consume_challenge(db, payload.challenge_id, "register", session["user_id"])
-    (count,) = db.execute("SELECT COUNT(*) FROM passkeys WHERE user_id = ?", (session["user_id"],)).fetchone()
+    challenge = _consume_challenge(
+        db, payload.challenge_id, "register", session["user_id"]
+    )
+    (count,) = db.execute(
+        "SELECT COUNT(*) FROM passkeys WHERE user_id = ?", (session["user_id"],)
+    ).fetchone()
     if count >= MAX_PASSKEYS_PER_USER:
         raise HTTPException(status_code=409, detail="passkey limit reached")
     rp_id, origins = _relying_party(request)
@@ -221,7 +245,9 @@ def register_verify(
         )
     except Exception as exc:
         logger.info("passkey registration rejected: %s", exc)
-        raise HTTPException(status_code=400, detail="passkey registration failed") from exc
+        raise HTTPException(
+            status_code=400, detail="passkey registration failed"
+        ) from exc
 
     transports = payload.credential.get("response", {}).get("transports")
     public_id = secrets.token_hex(16)
@@ -242,7 +268,9 @@ def register_verify(
         )
     except sqlite3.IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=409, detail="passkey already registered") from exc
+        raise HTTPException(
+            status_code=409, detail="passkey already registered"
+        ) from exc
     db.commit()
     app_db.write_audit_log(
         db,
@@ -251,7 +279,9 @@ def register_verify(
         actor=session["username"],
         detail=public_id,
     )
-    row = db.execute("SELECT * FROM passkeys WHERE public_id = ?", (public_id,)).fetchone()
+    row = db.execute(
+        "SELECT * FROM passkeys WHERE public_id = ?", (public_id,)
+    ).fetchone()
     return _passkey_response(row)
 
 
@@ -260,7 +290,9 @@ def list_passkeys(
     session: sqlite3.Row = Depends(require_session),
     db: sqlite3.Connection = Depends(get_db),
 ) -> list[PasskeyResponse]:
-    rows = db.execute("SELECT * FROM passkeys WHERE user_id = ? ORDER BY id", (session["user_id"],)).fetchall()
+    rows = db.execute(
+        "SELECT * FROM passkeys WHERE user_id = ? ORDER BY id", (session["user_id"],)
+    ).fetchall()
     return [_passkey_response(row) for row in rows]
 
 
@@ -308,13 +340,19 @@ class LoginVerifyRequest(BaseModel):
         Depends(_enforce_tailnet_allowlist),
     ],
 )
-def login_options(request: Request, db: sqlite3.Connection = Depends(get_db)) -> OptionsResponse:
+def login_options(
+    request: Request, db: sqlite3.Connection = Depends(get_db)
+) -> OptionsResponse:
     """Usernameless: no allow-list, so the authenticator offers whichever
     passkey it holds for this RP and nothing here reveals which users exist."""
     rp_id, _ = _relying_party(request)
-    options = generate_authentication_options(rp_id=rp_id, user_verification=UserVerificationRequirement.REQUIRED)
+    options = generate_authentication_options(
+        rp_id=rp_id, user_verification=UserVerificationRequirement.REQUIRED
+    )
     challenge_id = _store_challenge(db, "login", options.challenge, None)
-    return OptionsResponse(challenge_id=challenge_id, options=json.loads(options_to_json(options)))
+    return OptionsResponse(
+        challenge_id=challenge_id, options=json.loads(options_to_json(options))
+    )
 
 
 @router.post(
@@ -335,8 +373,16 @@ def login_verify(
     peer_ip = _client_ip(request)
     ip_key = _ip_lockout_key(request)
     if ip_key is not None and session_auth.is_ip_locked_out(db, ip_key, peer_ip):
-        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
-    challenge = _consume_challenge(db, payload.challenge_id, "login", None)
+        raise HTTPException(
+            status_code=429, detail="too many failed attempts, try again later"
+        )
+    try:
+        challenge = _consume_challenge(db, payload.challenge_id, "login", None)
+    except HTTPException:
+        # An unknown/expired/replayed id counts like any other failed attempt.
+        if ip_key is not None:
+            session_auth.record_ip_login_failure(db, ip_key, peer_ip)
+        raise
 
     def fail(username: str | None) -> HTTPException:
         # Same bookkeeping as a wrong password: the per-IP counter always,
@@ -360,7 +406,9 @@ def login_verify(
     if row is None:
         raise fail(None)
     if session_auth.is_locked_out(db, row["username"], user_exists=True):
-        raise HTTPException(status_code=429, detail="too many failed attempts, try again later")
+        raise HTTPException(
+            status_code=429, detail="too many failed attempts, try again later"
+        )
     if row["disabled"]:
         raise fail(None)
 

@@ -31,7 +31,11 @@ def _snapshot(package_path: pathlib.Path) -> dict:
     for path in sorted(package_path.rglob("*")):
         rel = str(path.relative_to(package_path))
         stat = path.stat()
-        snapshot[rel] = ("dir", stat.st_mtime_ns) if path.is_dir() else (stat.st_size, stat.st_mtime_ns)
+        snapshot[rel] = (
+            ("dir", stat.st_mtime_ns)
+            if path.is_dir()
+            else (stat.st_size, stat.st_mtime_ns)
+        )
     return snapshot
 
 
@@ -48,7 +52,11 @@ def _full_snapshot(package_path: pathlib.Path) -> dict:
         if path.is_dir():
             snapshot[rel] = ("dir", stat.st_mtime_ns)
         else:
-            snapshot[rel] = ("file", stat.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest())
+            snapshot[rel] = (
+                "file",
+                stat.st_mtime_ns,
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
     return snapshot
 
 
@@ -57,7 +65,10 @@ def _add_asset_file_and_drive_checker(conn, package_path, library_id, filename):
     run the background checker by hand with a zero stability window until the
     changed package is applied."""
     (package_path / "originals" / "0").mkdir(exist_ok=True)
-    shutil.copy(next(package_path.joinpath("originals").rglob("IMG_0001.HEIC")), package_path / "originals" / "0" / filename)
+    shutil.copy(
+        next(package_path.joinpath("originals").rglob("IMG_0001.HEIC")),
+        package_path / "originals" / "0" / filename,
+    )
     app_db.set_setting(conn, "library_stable_minutes", "0")
     outcomes = [library_watch.check_library(conn, library_id) for _ in range(3)]
     assert "applied" in outcomes
@@ -76,8 +87,12 @@ def _client(tmp_path):
 
 def _admin_client(tmp_path):
     conn, client = _client(tmp_path)
-    client.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
-    client.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD})
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    client.post(
+        "/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}
+    )
     return conn, client
 
 
@@ -155,7 +170,8 @@ def test_add_library_honors_an_explicit_display_name(tmp_path):
         package_path = build_fixture_library(tmp_path)
 
         response = client.post(
-            "/api/admin/libraries", json={"path": str(package_path), "display_name": "Family Photos"}
+            "/api/admin/libraries",
+            json={"path": str(package_path), "display_name": "Family Photos"},
         )
 
         assert response.status_code == 201
@@ -183,7 +199,9 @@ def test_add_library_writes_an_audit_row(tmp_path):
         package_path = build_fixture_library(tmp_path)
         client.post("/api/admin/libraries", json={"path": str(package_path)})
 
-        row = conn.execute("SELECT action, actor, detail FROM audit_log WHERE action = 'add_library'").fetchone()
+        row = conn.execute(
+            "SELECT action, actor, detail FROM audit_log WHERE action = 'add_library'"
+        ).fetchone()
 
         assert row["actor"] == "admin"
         assert str(package_path) in row["detail"]
@@ -197,12 +215,19 @@ def test_add_library_grants_access_to_the_creating_admin(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
-        admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+        admin_id = conn.execute(
+            "SELECT id FROM users WHERE username = 'admin'"
+        ).fetchone()["id"]
         assigned = {
             row["library_id"]
-            for row in conn.execute("SELECT library_id FROM library_assignments WHERE user_id = ?", (admin_id,))
+            for row in conn.execute(
+                "SELECT library_id FROM library_assignments WHERE user_id = ?",
+                (admin_id,),
+            )
         }
         assert assigned == {added["id"]}
     finally:
@@ -217,7 +242,13 @@ def test_scheduling_an_index_job_does_not_hold_its_lock_until_the_job_runs(tmp_p
     it actually starts, means an unscheduled/dropped job never leaks it."""
     unrun_tasks = BackgroundTasks()
     library_id = 999999
-    library_admin._schedule_index_job(unrun_tasks, tmp_path, library_id, tmp_path / "missing.photoslibrary", force=True)
+    library_admin._schedule_index_job(
+        unrun_tasks,
+        tmp_path,
+        library_id,
+        tmp_path / "missing.photoslibrary",
+        force=True,
+    )
 
     lock = library_admin._lock_for(library_id)
     assert lock.acquire(blocking=False)
@@ -231,17 +262,28 @@ def test_reset_stale_indexing_state_clears_a_library_whose_job_died(tmp_path):
     "indexing" state with a free lock means the job that set it is gone."""
     conn = app_db.connect(tmp_path)
     try:
-        cursor = conn.execute("INSERT INTO libraries (display_name, path) VALUES ('Stuck', '/stuck.photoslibrary')")
+        cursor = conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Stuck', '/stuck.photoslibrary')"
+        )
         library_id = cursor.lastrowid
-        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        conn.execute(
+            "UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,)
+        )
         conn.commit()
 
         library_admin.reset_stale_indexing_state(conn)
 
-        row = conn.execute("SELECT index_state, index_error FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        row = conn.execute(
+            "SELECT index_state, index_error FROM libraries WHERE id = ?", (library_id,)
+        ).fetchone()
         assert row["index_state"] == "error"
         assert row["index_error"]
-        assert conn.execute("SELECT reindex_needed FROM libraries WHERE id = ?", (library_id,)).fetchone()[0] == 1
+        assert (
+            conn.execute(
+                "SELECT reindex_needed FROM libraries WHERE id = ?", (library_id,)
+            ).fetchone()[0]
+            == 1
+        )
     finally:
         conn.close()
 
@@ -249,15 +291,21 @@ def test_reset_stale_indexing_state_clears_a_library_whose_job_died(tmp_path):
 def test_reset_stale_indexing_state_leaves_a_genuinely_running_job_alone(tmp_path):
     conn = app_db.connect(tmp_path)
     try:
-        cursor = conn.execute("INSERT INTO libraries (display_name, path) VALUES ('Busy', '/busy.photoslibrary')")
+        cursor = conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Busy', '/busy.photoslibrary')"
+        )
         library_id = cursor.lastrowid
-        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        conn.execute(
+            "UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,)
+        )
         conn.commit()
         lock = library_admin._lock_for(library_id)
         lock.acquire()
         try:
             library_admin.reset_stale_indexing_state(conn)
-            row = conn.execute("SELECT index_state FROM libraries WHERE id = ?", (library_id,)).fetchone()
+            row = conn.execute(
+                "SELECT index_state FROM libraries WHERE id = ?", (library_id,)
+            ).fetchone()
             assert row["index_state"] == "indexing"
         finally:
             lock.release()
@@ -283,9 +331,13 @@ def test_rename_library(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
-        response = client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "Renamed"})
+        response = client.patch(
+            f"/api/admin/libraries/{added['id']}", json={"display_name": "Renamed"}
+        )
 
         assert response.status_code == 200
         assert response.json()["display_name"] == "Renamed"
@@ -298,7 +350,9 @@ def test_rename_library(tmp_path):
 def test_rename_unknown_library_is_404(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        response = client.patch("/api/admin/libraries/999", json={"display_name": "Renamed"})
+        response = client.patch(
+            "/api/admin/libraries/999", json={"display_name": "Renamed"}
+        )
 
         assert response.status_code == 404
     finally:
@@ -310,10 +364,13 @@ def test_remove_library_deletes_the_row_but_leaves_the_package_on_disk(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
         sqlite_path = package_path / "database" / "Photos.sqlite"
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         response = client.delete(
-            f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"}
+            f"/api/admin/libraries/{added['id']}",
+            headers={"content-type": "application/json"},
         )
 
         assert response.status_code == 204
@@ -327,7 +384,9 @@ def test_remove_library_deletes_the_row_but_leaves_the_package_on_disk(tmp_path)
 def test_remove_unknown_library_is_404(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        response = client.delete("/api/admin/libraries/999", headers={"content-type": "application/json"})
+        response = client.delete(
+            "/api/admin/libraries/999", headers={"content-type": "application/json"}
+        )
 
         assert response.status_code == 404
     finally:
@@ -338,11 +397,18 @@ def test_remove_library_writes_an_audit_row(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
-        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+        client.delete(
+            f"/api/admin/libraries/{added['id']}",
+            headers={"content-type": "application/json"},
+        )
 
-        row = conn.execute("SELECT actor, detail FROM audit_log WHERE action = 'remove_library'").fetchone()
+        row = conn.execute(
+            "SELECT actor, detail FROM audit_log WHERE action = 'remove_library'"
+        ).fetchone()
         assert row["actor"] == "admin"
         assert str(package_path) in row["detail"]
     finally:
@@ -353,7 +419,9 @@ def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_p
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         response = client.get(f"/api/admin/libraries/{added['id']}/status")
 
@@ -384,18 +452,27 @@ def test_library_status_does_not_write_into_the_package(tmp_path):
         package_path = build_fixture_library(tmp_path)
 
         before = _snapshot(package_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         status_response = client.get(f"/api/admin/libraries/{added['id']}/status")
         assert status_response.status_code == 200
         assert status_response.json()["warnings"] == []
 
-        client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
+        client.patch(
+            f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"}
+        )
         client.get(f"/api/admin/libraries/{added['id']}/status")
-        client.delete(f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"})
+        client.delete(
+            f"/api/admin/libraries/{added['id']}",
+            headers={"content-type": "application/json"},
+        )
 
         after = _snapshot(package_path)
-        assert set(after) - set(before) == set(), "status check created a new file or directory"
+        assert set(after) - set(before) == set(), (
+            "status check created a new file or directory"
+        )
         assert after == before, "status check changed an existing file's size or mtime"
     finally:
         conn.close()
@@ -420,7 +497,9 @@ def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
         before = _full_snapshot(package_path)
         # add_library indexes the fixture (P1.6); the status loop below and
         # the explicit reindex must not touch the package either.
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         assert added is not None
 
         for _ in range(3):
@@ -429,22 +508,31 @@ def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
             assert status_response.json()["warnings"] == []
             assert status_response.json()["asset_count"] == 1
 
-        reindex_response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
+        reindex_response = client.post(
+            f"/api/admin/libraries/{added['id']}/reindex", json={}
+        )
         assert reindex_response.status_code == 200
         assert reindex_response.json()["asset_count"] == 1
 
-        rename_response = client.patch(f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"})
+        rename_response = client.patch(
+            f"/api/admin/libraries/{added['id']}", json={"display_name": "renamed"}
+        )
         assert rename_response.status_code == 200
-        assert client.get(f"/api/admin/libraries/{added['id']}/status").status_code == 200
+        assert (
+            client.get(f"/api/admin/libraries/{added['id']}/status").status_code == 200
+        )
         remove_response = client.delete(
-            f"/api/admin/libraries/{added['id']}", headers={"content-type": "application/json"}
+            f"/api/admin/libraries/{added['id']}",
+            headers={"content-type": "application/json"},
         )
         assert remove_response.status_code == 204
 
         after = _full_snapshot(package_path)
         new_paths = set(after) - set(before)
         assert new_paths == set(), f"status check created new paths: {new_paths}"
-        assert after == before, "status check changed an existing file or directory's content/mtime"
+        assert after == before, (
+            "status check changed an existing file or directory's content/mtime"
+        )
     finally:
         conn.close()
 
@@ -453,7 +541,9 @@ def test_library_status_warns_when_the_drive_is_unmounted(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         shutil.rmtree(package_path)
 
         response = client.get(f"/api/admin/libraries/{added['id']}/status")
@@ -482,40 +572,60 @@ def test_indexing_the_fixture_is_idempotent(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         first = indexer.index_library(conn, added["id"], package_path)
         assert first is False, "unchanged sqlite file should skip the walk entirely"
-        asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
+        asset_rows = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()[0]
         assert asset_rows == 2
 
         second = indexer.index_library(conn, added["id"], package_path, force=True)
         assert second is True
-        asset_rows = conn.execute("SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)).fetchone()[0]
+        asset_rows = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()[0]
         assert asset_rows == 2
     finally:
         conn.close()
 
 
-def test_a_full_index_pass_commits_in_batches_and_still_removes_vanished_assets(tmp_path, monkeypatch):
+def test_a_full_index_pass_commits_in_batches_and_still_removes_vanished_assets(
+    tmp_path, monkeypatch
+):
     """#69: the write lock is released between batches, and the delete-missing
     step still runs once, after the walk."""
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
-        conn.execute("INSERT INTO assets (library_id, uuid, filename) VALUES (?, 'gone-uuid', 'gone.jpg')", (added["id"],))
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        conn.execute(
+            "INSERT INTO assets (library_id, uuid, filename) VALUES (?, 'gone-uuid', 'gone.jpg')",
+            (added["id"],),
+        )
         conn.commit()
 
         monkeypatch.setattr(indexer, "INDEX_BATCH_SIZE", 1)
         statements: list[str] = []
         conn.set_trace_callback(statements.append)
-        assert indexer.index_library(conn, added["id"], package_path, force=True) is True
+        assert (
+            indexer.index_library(conn, added["id"], package_path, force=True) is True
+        )
         conn.set_trace_callback(None)
 
         # One commit per batch boundary (2 assets, size 1 -> 1) plus the final one.
         assert sum(1 for sql in statements if sql.strip().upper() == "COMMIT") >= 2
-        uuids = {row["uuid"] for row in conn.execute("SELECT uuid FROM assets WHERE library_id = ?", (added["id"],))}
+        uuids = {
+            row["uuid"]
+            for row in conn.execute(
+                "SELECT uuid FROM assets WHERE library_id = ?", (added["id"],)
+            )
+        }
         assert "gone-uuid" not in uuids
         assert len(uuids) == 2
     finally:
@@ -530,7 +640,9 @@ def test_reindex_keeps_the_assets_id_and_its_thumbnail_cache_row_stable(tmp_path
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         asset_id_before = conn.execute(
             "SELECT id FROM assets WHERE library_id = ?", (added["id"],)
         ).fetchone()["id"]
@@ -547,21 +659,26 @@ def test_reindex_keeps_the_assets_id_and_its_thumbnail_cache_row_stable(tmp_path
         ).fetchone()["id"]
         assert asset_id_after == asset_id_before
         cache_rows = conn.execute(
-            "SELECT COUNT(*) FROM thumbnail_cache WHERE asset_id = ?", (asset_id_before,)
+            "SELECT COUNT(*) FROM thumbnail_cache WHERE asset_id = ?",
+            (asset_id_before,),
         ).fetchone()[0]
         assert cache_rows == 1
     finally:
         conn.close()
 
 
-def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(tmp_path):
+def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
+    tmp_path,
+):
     # `_maybe_reindex` compares the sqlite signature on every status poll so
     # a change still sitting in the WAL -- not yet checkpointed -- gets
     # picked up without the admin having to hit the explicit reindex button.
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         asset_count_before = conn.execute(
             "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
         ).fetchone()[0]
@@ -637,11 +754,19 @@ def test_hidden_flag_is_indexed_but_excluded_from_the_status_asset_count(tmp_pat
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
-        assert client.get(f"/api/admin/libraries/{added['id']}/status").json()["asset_count"] == 1
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        assert (
+            client.get(f"/api/admin/libraries/{added['id']}/status").json()[
+                "asset_count"
+            ]
+            == 1
+        )
 
         rows = conn.execute(
-            "SELECT uuid, hidden FROM assets WHERE library_id = ? ORDER BY uuid", (added["id"],)
+            "SELECT uuid, hidden FROM assets WHERE library_id = ? ORDER BY uuid",
+            (added["id"],),
         ).fetchall()
         assert len(rows) == 2
         assert {row["uuid"]: row["hidden"] for row in rows}[HIDDEN_ASSET_UUID] == 1
@@ -653,7 +778,9 @@ def test_status_video_count_excludes_hidden(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         # Inserted directly: `_maybe_reindex` skips a re-walk when the
         # package's own sqlite signature hasn't changed, so this row survives
@@ -677,7 +804,9 @@ def test_reindex_endpoint_forces_a_fresh_walk_and_is_audit_logged(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         first_indexed_at = conn.execute(
             "SELECT last_indexed_at FROM libraries WHERE id = ?", (added["id"],)
         ).fetchone()["last_indexed_at"]
@@ -687,10 +816,15 @@ def test_reindex_endpoint_forces_a_fresh_walk_and_is_audit_logged(tmp_path):
         assert response.status_code == 200
         body = response.json()
         assert body["asset_count"] == 1
-        assert conn.execute(
-            "SELECT last_indexed_at FROM libraries WHERE id = ?", (added["id"],)
-        ).fetchone()["last_indexed_at"] >= first_indexed_at
-        row = conn.execute("SELECT actor, detail FROM audit_log WHERE action = 'reindex_library'").fetchone()
+        assert (
+            conn.execute(
+                "SELECT last_indexed_at FROM libraries WHERE id = ?", (added["id"],)
+            ).fetchone()["last_indexed_at"]
+            >= first_indexed_at
+        )
+        row = conn.execute(
+            "SELECT actor, detail FROM audit_log WHERE action = 'reindex_library'"
+        ).fetchone()
         assert row["actor"] == "admin"
         assert str(package_path) in row["detail"]
     finally:
@@ -711,7 +845,9 @@ def test_reindex_an_unmounted_library_is_400(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         shutil.rmtree(package_path)
 
         response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
@@ -729,7 +865,9 @@ def test_library_status_reads_only_app_db_once_indexed(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         shutil.rmtree(package_path)
 
         response = client.get(f"/api/admin/libraries/{added['id']}/status")
@@ -749,16 +887,31 @@ def test_non_admin_is_403_on_every_library_admin_route(tmp_path):
     try:
         package_path = build_fixture_library(tmp_path)
 
-        assert client.post("/api/admin/libraries", json={"path": str(package_path)}).status_code == 403
-        assert client.get("/api/admin/libraries").status_code == 403
-        assert client.patch("/api/admin/libraries/1", json={"display_name": "x"}).status_code == 403
         assert (
-            client.delete("/api/admin/libraries/1", headers={"content-type": "application/json"}).status_code
+            client.post(
+                "/api/admin/libraries", json={"path": str(package_path)}
+            ).status_code
+            == 403
+        )
+        assert client.get("/api/admin/libraries").status_code == 403
+        assert (
+            client.patch(
+                "/api/admin/libraries/1", json={"display_name": "x"}
+            ).status_code
+            == 403
+        )
+        assert (
+            client.delete(
+                "/api/admin/libraries/1", headers={"content-type": "application/json"}
+            ).status_code
             == 403
         )
         assert client.get("/api/admin/libraries/1/status").status_code == 403
         assert (
-            client.post("/api/admin/libraries/1/reindex", headers={"content-type": "application/json"}).status_code
+            client.post(
+                "/api/admin/libraries/1/reindex",
+                headers={"content-type": "application/json"},
+            ).status_code
             == 403
         )
     finally:
@@ -802,7 +955,9 @@ def test_remove_library_without_a_content_type_succeeds(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         response = client.delete(f"/api/admin/libraries/{added['id']}")
 
@@ -815,10 +970,13 @@ def test_bodyless_delete_still_checks_origin(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
 
         response = client.delete(
-            f"/api/admin/libraries/{added['id']}", headers={"origin": "https://evil.example"}
+            f"/api/admin/libraries/{added['id']}",
+            headers={"origin": "https://evil.example"},
         )
 
         assert response.status_code == 403
@@ -831,11 +989,19 @@ def test_status_total_size_excludes_hidden_assets(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
-        visible = client.get(f"/api/admin/libraries/{added['id']}/status").json()["total_size_bytes"]
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        visible = client.get(f"/api/admin/libraries/{added['id']}/status").json()[
+            "total_size_bytes"
+        ]
         # Add a hidden asset to the index with a large size.
         columns = [row["name"] for row in conn.execute("PRAGMA table_info(assets)")]
-        row = dict(conn.execute("SELECT * FROM assets WHERE library_id = ?", (added["id"],)).fetchone())
+        row = dict(
+            conn.execute(
+                "SELECT * FROM assets WHERE library_id = ?", (added["id"],)
+            ).fetchone()
+        )
         row.update({"uuid": "hidden-extra", "hidden": 1, "original_filesize": 1000})
         if "id" in row:
             del row["id"]
@@ -859,18 +1025,28 @@ def test_flagged_library_is_reindexed_in_place_without_going_pending(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        added = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
         library_id = added["id"]
-        conn.execute("UPDATE assets SET duration = NULL, camera_make = 'stale' WHERE library_id = ?", (library_id,))
-        conn.execute("UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (library_id,))
+        conn.execute(
+            "UPDATE assets SET duration = NULL, camera_make = 'stale' WHERE library_id = ?",
+            (library_id,),
+        )
+        conn.execute(
+            "UPDATE libraries SET reindex_needed = 1 WHERE id = ?", (library_id,)
+        )
         conn.commit()
 
         assert library_watch.check_library(conn, library_id) == "reindexed"
 
-        row = conn.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM libraries WHERE id = ?", (library_id,)
+        ).fetchone()
         assert row["reindex_needed"] == 0 and row["pending_signature"] is None
         stale = conn.execute(
-            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND camera_make = 'stale'", (library_id,)
+            "SELECT COUNT(*) FROM assets WHERE library_id = ? AND camera_make = 'stale'",
+            (library_id,),
         ).fetchone()[0]
         assert stale == 0
         assert library_watch.check_library(conn, library_id) == "ok"
@@ -884,14 +1060,24 @@ def test_interrupted_index_is_requeued_and_error_cleared(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
         package_path = build_fixture_library(tmp_path)
-        library_id = client.post("/api/admin/libraries", json={"path": str(package_path)}).json()["id"]
-        conn.execute("UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,))
+        library_id = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()["id"]
+        conn.execute(
+            "UPDATE libraries SET index_state = 'indexing' WHERE id = ?", (library_id,)
+        )
         conn.commit()
 
         library_admin.reset_stale_indexing_state(conn)
         assert library_watch.check_library(conn, library_id) == "reindexed"
 
-        row = conn.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
-        assert row["index_state"] == "idle" and row["index_error"] is None and row["reindex_needed"] == 0
+        row = conn.execute(
+            "SELECT * FROM libraries WHERE id = ?", (library_id,)
+        ).fetchone()
+        assert (
+            row["index_state"] == "idle"
+            and row["index_error"] is None
+            and row["reindex_needed"] == 0
+        )
     finally:
         conn.close()

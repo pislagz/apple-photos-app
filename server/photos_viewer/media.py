@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Sequence
 
 import pillow_heif
@@ -47,7 +48,18 @@ SIZES: dict[str, int] = {"grid": 300, "grid2x": 600, "preview": 1600}
 DEFAULT_QUALITY = 82
 DEFAULT_CACHE_SIZE_LIMIT_BYTES = 5 * 1024**3
 
-_RAW_EXTENSIONS = {".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".raf", ".dng", ".pef", ".srw"}
+_RAW_EXTENSIONS = {
+    ".cr2",
+    ".cr3",
+    ".nef",
+    ".arw",
+    ".orf",
+    ".rw2",
+    ".raf",
+    ".dng",
+    ".pef",
+    ".srw",
+}
 # A video's `path_derivatives` entry, when present, is a pre-rendered JPEG
 # poster frame -- decode it like any other image instead of paying for an
 # ffmpeg still extraction.
@@ -90,11 +102,18 @@ def generate(
         raise ValueError(f"unknown size {size!r}; expected one of {sorted(SIZES)}")
     target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
-    chosen = _resolve_source(source_path, [pathlib.Path(d) for d in derivatives], target_px, is_video=is_video)
+    chosen = _resolve_source(
+        source_path,
+        [pathlib.Path(d) for d in derivatives],
+        target_px,
+        is_video=is_video,
+    )
     return _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
 
 
-def _generate_from_chosen(chosen: pathlib.Path, target_px: int, quality: int, *, is_video: bool) -> GeneratedImage:
+def _generate_from_chosen(
+    chosen: pathlib.Path, target_px: int, quality: int, *, is_video: bool
+) -> GeneratedImage:
     image = _decode(chosen, is_video=is_video, target_px=target_px)
     return _resize_and_encode(image, target_px, quality=quality)
 
@@ -115,8 +134,13 @@ def to_jpeg(source_path: str | pathlib.Path, *, is_video: bool = False) -> bytes
 
 
 def cache_key(
-    library_id: int, asset_uuid: str, size: str, source_path: str | pathlib.Path, source_mtime_ns: int,
-    size_px: int, quality: int,
+    library_id: int,
+    asset_uuid: str,
+    size: str,
+    source_path: str | pathlib.Path,
+    source_mtime_ns: int,
+    size_px: int,
+    quality: int,
 ) -> str:
     # `source_path` is part of the key, not just its mtime: an edit or a
     # revert (P1.17b) can swap which file backs an asset_uuid between two
@@ -149,12 +173,18 @@ def get_or_generate(
     target_px = size_px if size_px is not None else SIZES[size]
     source_path = pathlib.Path(source_path)
     derivative_paths = [pathlib.Path(d) for d in derivatives]
-    chosen = _resolve_source(source_path, derivative_paths, target_px, is_video=is_video)
+    chosen = _resolve_source(
+        source_path, derivative_paths, target_px, is_video=is_video
+    )
     try:
         source_mtime_ns = chosen.stat().st_mtime_ns
     except OSError as exc:
-        raise MediaBackendError(f"No usable original or derivative file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality)
+        raise MediaBackendError(
+            f"No usable original or derivative file for asset {asset_uuid}"
+        ) from exc
+    key = cache_key(
+        library_id, asset_uuid, size, chosen, source_mtime_ns, target_px, quality
+    )
     cache_dir = pathlib.Path(cache_dir)
     if cache_size_limit_bytes == 0:
         # A limit of 0 means "no cache": neither read nor write.
@@ -165,7 +195,11 @@ def get_or_generate(
     result = _generate_from_chosen(chosen, target_px, quality, is_video=is_video)
     _write_cache(cache_dir, library_id, asset_uuid, key, result.extension, result.data)
     if cache_size_limit_bytes is not None:
-        _note_cache_write(cache_dir, cache_size_limit_bytes, _cache_file(cache_dir, library_id, asset_uuid, key, result.extension))
+        _note_cache_write(
+            cache_dir,
+            cache_size_limit_bytes,
+            _cache_file(cache_dir, library_id, asset_uuid, key, result.extension),
+        )
     return result
 
 
@@ -187,7 +221,9 @@ def get_or_generate_jpeg(
         source_mtime_ns = source_path.stat().st_mtime_ns
     except OSError as exc:
         raise MediaBackendError(f"No usable file for asset {asset_uuid}") from exc
-    key = cache_key(library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92)
+    key = cache_key(
+        library_id, asset_uuid, "jpeg-full", source_path, source_mtime_ns, 0, 92
+    )
     if cache_size_limit_bytes == 0:
         return to_jpeg(source_path, is_video=is_video)
     cache_dir = pathlib.Path(cache_dir)
@@ -202,17 +238,27 @@ def get_or_generate_jpeg(
     return data
 
 
-def asset_cache_dir(cache_dir: pathlib.Path, library_id: int, asset_uuid: str) -> pathlib.Path:
+def asset_cache_dir(
+    cache_dir: pathlib.Path, library_id: int, asset_uuid: str
+) -> pathlib.Path:
     """`<library_id>/<uuid[:2]>/<uuid>/`: every cache file of one asset lives
     in one directory, so the indexer can purge a removed or changed asset
     without knowing its cache keys. Earlier flat `<key[:2]>/<key>.<ext>`
     entries are simply never read again and age out through the LRU."""
     asset_uuid = asset_uuid.split(":", 1)[0]
+    if not asset_uuid:
+        # An empty uuid would resolve to the whole library's cache dir, and
+        # purge_asset_cache would rmtree it.
+        raise ValueError("asset uuid must not be empty")
     return cache_dir / str(library_id) / asset_uuid[:2] / asset_uuid
 
 
-def purge_asset_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str) -> None:
-    shutil.rmtree(asset_cache_dir(cache_dir, library_id, asset_uuid), ignore_errors=True)
+def purge_asset_cache(
+    cache_dir: pathlib.Path, library_id: int, asset_uuid: str
+) -> None:
+    asset_dir = asset_cache_dir(cache_dir, library_id, asset_uuid)
+    shutil.rmtree(asset_dir, ignore_errors=True)
+    _prune_empty_parents(asset_dir.parent, cache_dir)
 
 
 def purge_library_cache(cache_dir: pathlib.Path, library_id: int) -> int:
@@ -236,11 +282,15 @@ def cache_total_bytes(cache_dir: pathlib.Path) -> int | None:
         return _cache_totals.get(cache_dir)
 
 
-def _cache_file(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str) -> pathlib.Path:
+def _cache_file(
+    cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str
+) -> pathlib.Path:
     return asset_cache_dir(cache_dir, library_id, asset_uuid) / f"{key}.{extension}"
 
 
-def _read_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str) -> GeneratedImage | None:
+def _read_cache(
+    cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str
+) -> GeneratedImage | None:
     for content_type, extension in (("image/webp", "webp"), ("image/jpeg", "jpg")):
         path = _cache_file(cache_dir, library_id, asset_uuid, key, extension)
         if path.exists():
@@ -250,7 +300,12 @@ def _read_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: 
 
 
 def _write_cache(
-    cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str, data: bytes
+    cache_dir: pathlib.Path,
+    library_id: int,
+    asset_uuid: str,
+    key: str,
+    extension: str,
+    data: bytes,
 ) -> None:
     """Write via a temp file in the same directory plus `os.replace()`, so
     a concurrent reader of this cache path never observes a partial file."""
@@ -275,7 +330,32 @@ _EVICT_LOW_WATER = 0.9
 # corrects drift from purges or another process). Guarded by `_cache_lock`,
 # which also serialises scan-and-delete so two evictions can't double-count.
 _cache_totals: dict[pathlib.Path, int] = {}
+# When each total was last learned from a real scan. With several worker
+# processes each total only counts its own writes, so a total older than
+# this is rescanned rather than incremented: overshoot is bounded by what the
+# other workers write in one interval, not unbounded until the limit is hit.
+_cache_scanned_at: dict[pathlib.Path, float] = {}
+_CACHE_RESCAN_SECONDS = 30.0
 _cache_lock = threading.Lock()
+
+
+def _prune_empty_parents(directory: pathlib.Path, cache_dir: pathlib.Path) -> None:
+    """Remove `directory` and its empty parents up to, not including, the
+    library dir directly under `cache_dir`. `rmdir` refuses a non-empty dir,
+    which is also what makes this safe against a concurrent write."""
+    try:
+        relative = directory.relative_to(cache_dir)
+    except ValueError:
+        return
+    if len(relative.parts) < 2:
+        return
+    library_dir = cache_dir / relative.parts[0]
+    while directory != library_dir:
+        try:
+            directory.rmdir()
+        except OSError:
+            return
+        directory = directory.parent
 
 
 def _touch_cache_file(path: pathlib.Path) -> None:
@@ -288,7 +368,9 @@ def _touch_cache_file(path: pathlib.Path) -> None:
         pass
 
 
-def _scan_cache(cache_dir: pathlib.Path) -> tuple[list[tuple[int, int, pathlib.Path]], int]:
+def _scan_cache(
+    cache_dir: pathlib.Path,
+) -> tuple[list[tuple[int, int, pathlib.Path]], int]:
     entries: list[tuple[int, int, pathlib.Path]] = []
     total = 0
     for path in cache_dir.rglob("*"):
@@ -303,13 +385,20 @@ def _scan_cache(cache_dir: pathlib.Path) -> tuple[list[tuple[int, int, pathlib.P
     return entries, total
 
 
-def _note_cache_write(cache_dir: pathlib.Path, size_limit_bytes: int, written: pathlib.Path) -> None:
+def _note_cache_write(
+    cache_dir: pathlib.Path, size_limit_bytes: int, written: pathlib.Path
+) -> None:
     """Account for a just-written file and evict only when over the limit. The
     first write per process scans once to learn the total (that scan already
     includes `written`); later writes are O(1) until the limit is crossed."""
     with _cache_lock:
-        if cache_dir not in _cache_totals:
+        now = time.monotonic()
+        if (
+            cache_dir not in _cache_totals
+            or now - _cache_scanned_at.get(cache_dir, 0.0) >= _CACHE_RESCAN_SECONDS
+        ):
             _cache_totals[cache_dir] = _scan_cache(cache_dir)[1]
+            _cache_scanned_at[cache_dir] = now
         else:
             try:
                 _cache_totals[cache_dir] += written.stat().st_size
@@ -319,7 +408,9 @@ def _note_cache_write(cache_dir: pathlib.Path, size_limit_bytes: int, written: p
             _evict_locked(cache_dir, size_limit_bytes, _EVICT_LOW_WATER, keep=written)
 
 
-def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int, low_water: float = 1.0) -> None:
+def _evict_if_needed(
+    cache_dir: pathlib.Path, size_limit_bytes: int, low_water: float = 1.0
+) -> None:
     """Delete the least-recently-used cache files (oldest mtime; reads touch
     it) until the cache is at most `size_limit_bytes * low_water`. The
     `thumbnail_cache` app.db table is unused: the file mtime already orders
@@ -329,10 +420,15 @@ def _evict_if_needed(cache_dir: pathlib.Path, size_limit_bytes: int, low_water: 
 
 
 def _evict_locked(
-    cache_dir: pathlib.Path, size_limit_bytes: int, low_water: float, *, keep: pathlib.Path | None
+    cache_dir: pathlib.Path,
+    size_limit_bytes: int,
+    low_water: float,
+    *,
+    keep: pathlib.Path | None,
 ) -> None:
     entries, total = _scan_cache(cache_dir)
     _cache_totals[cache_dir] = total
+    _cache_scanned_at[cache_dir] = time.monotonic()
     if total <= size_limit_bytes:
         return
     target = int(size_limit_bytes * low_water)
@@ -347,11 +443,16 @@ def _evict_locked(
         except OSError:
             continue
         total -= entry_size
+        _prune_empty_parents(path.parent, cache_dir)
     _cache_totals[cache_dir] = total
 
 
 def _resolve_source(
-    original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int, *, is_video: bool
+    original: pathlib.Path,
+    derivatives: Sequence[pathlib.Path],
+    target_px: int,
+    *,
+    is_video: bool,
 ) -> pathlib.Path:
     """The file `_decode()` will actually read. For a video, a poster-image
     derivative (a pre-rendered JPEG frame) when one decodes cleanly,
@@ -374,7 +475,9 @@ def _resolve_source(
     return _pick_source(original, derivatives, target_px)
 
 
-def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int) -> pathlib.Path:
+def _pick_source(
+    original: pathlib.Path, derivatives: Sequence[pathlib.Path], target_px: int
+) -> pathlib.Path:
     """The first derivative whose longest edge covers `target_px`, probing
     each candidate at most once and stopping as soon as one is sufficient.
     Falls back to `original` when it exists, otherwise to the largest
@@ -399,7 +502,9 @@ def _pick_source(original: pathlib.Path, derivatives: Sequence[pathlib.Path], ta
     return original
 
 
-def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None) -> Image.Image:
+def _decode(
+    path: pathlib.Path, *, is_video: bool, target_px: int | None = None
+) -> Image.Image:
     if sys.platform == "darwin":
         for tool in (_try_sips, _try_qlmanage):
             image = tool(path)
@@ -411,7 +516,9 @@ def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None)
         image = _try_rawpy(path)
         if image is not None:
             return image
-        raise MediaBackendError(f"{path.name} is a RAW file and the optional rawpy decoder is not installed")
+        raise MediaBackendError(
+            f"{path.name} is a RAW file and the optional rawpy decoder is not installed"
+        )
     try:
         image = Image.open(path)
         if target_px is not None:
@@ -424,12 +531,16 @@ def _decode(path: pathlib.Path, *, is_video: bool, target_px: int | None = None)
         image.load()
         return image
     except Image.DecompressionBombError as exc:
-        raise MediaBackendError(f"{path.name} decoded to an unreasonably large image: {exc}") from exc
+        raise MediaBackendError(
+            f"{path.name} decoded to an unreasonably large image: {exc}"
+        ) from exc
     except Exception as exc:
         raise MediaBackendError(f"No decoder could open {path.name}: {exc}") from exc
 
 
-def _resize_and_encode(image: Image.Image, target_px: int, *, quality: int = DEFAULT_QUALITY) -> GeneratedImage:
+def _resize_and_encode(
+    image: Image.Image, target_px: int, *, quality: int = DEFAULT_QUALITY
+) -> GeneratedImage:
     with image:
         oriented = ImageOps.exif_transpose(image) or image
         if oriented.mode not in ("RGB", "L"):
@@ -447,7 +558,9 @@ def _resize_and_encode(image: Image.Image, target_px: int, *, quality: int = DEF
 
 def _run_tool(args: list[str]) -> bool:
     try:
-        subprocess.run(args, check=True, capture_output=True, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
+        subprocess.run(
+            args, check=True, capture_output=True, timeout=_SUBPROCESS_TIMEOUT_SECONDS
+        )
     except (OSError, subprocess.SubprocessError):
         return False
     return True
@@ -466,7 +579,9 @@ def _try_sips(path: pathlib.Path) -> Image.Image | None:
         return None
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "out.jpg"
-        if not _run_tool(["sips", "-s", "format", "jpeg", str(path), "--out", str(out)]):
+        if not _run_tool(
+            ["sips", "-s", "format", "jpeg", str(path), "--out", str(out)]
+        ):
             return None
         if not out.exists():
             return None
@@ -480,7 +595,9 @@ def _try_qlmanage(path: pathlib.Path) -> Image.Image | None:
     if shutil.which("qlmanage") is None:
         return None
     with tempfile.TemporaryDirectory() as tmp:
-        if not _run_tool(["qlmanage", "-t", "-s", str(SIZES["preview"]), "-o", tmp, str(path)]):
+        if not _run_tool(
+            ["qlmanage", "-t", "-s", str(SIZES["preview"]), "-o", tmp, str(path)]
+        ):
             return None
         produced = pathlib.Path(tmp) / f"{path.name}.png"
         if not produced.exists():
@@ -493,17 +610,23 @@ def _try_qlmanage(path: pathlib.Path) -> Image.Image | None:
 
 def _decode_video_still(path: pathlib.Path) -> Image.Image:
     if shutil.which("ffmpeg") is None:
-        raise MediaBackendError(f"No video decoder (ffmpeg not found on PATH) for {path.name}")
+        raise MediaBackendError(
+            f"No video decoder (ffmpeg not found on PATH) for {path.name}"
+        )
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "still.jpg"
         if not _run_tool(["ffmpeg", "-y", "-i", str(path), "-vframes", "1", str(out)]):
-            raise MediaBackendError(f"ffmpeg could not extract a still frame from {path.name}")
+            raise MediaBackendError(
+                f"ffmpeg could not extract a still frame from {path.name}"
+            )
         if not out.exists():
             raise MediaBackendError(f"ffmpeg produced no output for {path.name}")
         try:
             return _load_and_close(out)
         except OSError as exc:
-            raise MediaBackendError(f"ffmpeg's still frame for {path.name} was unreadable: {exc}") from exc
+            raise MediaBackendError(
+                f"ffmpeg's still frame for {path.name} was unreadable: {exc}"
+            ) from exc
 
 
 def _try_rawpy(path: pathlib.Path) -> Image.Image | None:

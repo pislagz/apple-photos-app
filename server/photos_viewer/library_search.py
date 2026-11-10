@@ -15,6 +15,7 @@ are never searched. An empty query is an empty page, not the whole library.
 from __future__ import annotations
 
 import calendar
+import functools
 import re
 import sqlite3
 import unicodedata
@@ -46,8 +47,16 @@ def parse_terms(q: str) -> list[str]:
     return [t for t in terms if t][:MAX_TERMS]
 
 
+@functools.lru_cache(maxsize=8192)
+def _words(text: str | None) -> tuple[str, ...]:
+    """Folded words of a field. Cached: a scan calls `pv_wp` up to 9 times per
+    term per row, and place/camera/album strings repeat across rows, so most
+    calls skip the unicode folding and tokenising."""
+    return tuple(_WORD.findall(fold(text)))
+
+
 def _word_prefix(text: str | None, term: str) -> bool:
-    return any(word.startswith(term) for word in _WORD.findall(fold(text)))
+    return any(word.startswith(term) for word in _words(text))
 
 
 def _date_match(day: str | None, term: str) -> bool:

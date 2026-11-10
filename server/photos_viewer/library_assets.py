@@ -58,12 +58,17 @@ def _escape_content_disposition_filename(filename: str) -> str:
 
 def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
     sizes = {
-        key: int(app_db.get_setting(db, f"thumb_size_{key}") or default) for key, default in media.SIZES.items()
+        key: int(app_db.get_setting(db, f"thumb_size_{key}") or default)
+        for key, default in media.SIZES.items()
     }
     quality = int(app_db.get_setting(db, "thumb_quality") or media.DEFAULT_QUALITY)
     # 0 is a real value ("no cache"), so test for None, not truthiness.
     stored_limit = app_db.get_setting(db, "media_cache_size_limit_bytes")
-    cache_limit = media.DEFAULT_CACHE_SIZE_LIMIT_BYTES if stored_limit is None else int(stored_limit)
+    cache_limit = (
+        media.DEFAULT_CACHE_SIZE_LIMIT_BYTES
+        if stored_limit is None
+        else int(stored_limit)
+    )
     return sizes, quality, cache_limit
 
 
@@ -100,7 +105,11 @@ def _library_summary(db: sqlite3.Connection, row: sqlite3.Row) -> LibrarySummary
         ).fetchone()
         # Only an update that brought in new photos is worth a note, and only
         # for a few days.
-        if run and run["added"] and library_watch.within_days(run["finished_at"], UPDATED_NOTE_DAYS):
+        if (
+            run
+            and run["added"]
+            and library_watch.within_days(run["finished_at"], UPDATED_NOTE_DAYS)
+        ):
             note = f"{row['display_name']}'s library was updated: {run['added']:,} new photos"
     return LibrarySummary(
         id=row["id"],
@@ -134,7 +143,11 @@ class LayoutOverrideRequest(BaseModel):
     layout_override: Literal["desktop", "mobile"] | None
 
 
-@router.put("/api/me/layout-override", status_code=204, dependencies=[Depends(session_auth.reject_cross_site_requests)])
+@router.put(
+    "/api/me/layout-override",
+    status_code=204,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
 def write_layout_override(
     payload: LayoutOverrideRequest,
     session: sqlite3.Row = Depends(session_auth.require_session),
@@ -144,7 +157,8 @@ def write_layout_override(
     The web app's localStorage copy is only a fast default while this
     loads -- this value is authoritative once `/api/me` returns it."""
     db.execute(
-        "UPDATE users SET layout_override = ? WHERE id = ?", (payload.layout_override, session["user_id"])
+        "UPDATE users SET layout_override = ? WHERE id = ?",
+        (payload.layout_override, session["user_id"]),
     )
     db.commit()
 
@@ -173,7 +187,9 @@ def _encode_cursor(date_created: str, asset_row_id: int) -> str:
 
 def _decode_cursor(cursor: str) -> tuple[str, int]:
     try:
-        date_created, asset_row_id = base64.urlsafe_b64decode(cursor.encode()).decode().split("\x00")
+        date_created, asset_row_id = (
+            base64.urlsafe_b64decode(cursor.encode()).decode().split("\x00")
+        )
         return date_created, int(asset_row_id)
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail="invalid cursor") from exc
@@ -240,8 +256,12 @@ def _list_assets(
 
     has_more = len(rows) > limit
     page = rows[:limit]
-    next_cursor = _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
-    return AssetListResponse(items=[_to_list_item(row) for row in page], next_cursor=next_cursor)
+    next_cursor = (
+        _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
+    )
+    return AssetListResponse(
+        items=[_to_list_item(row) for row in page], next_cursor=next_cursor
+    )
 
 
 @router.get("/api/libraries/{library_id}/assets", response_model=AssetListResponse)
@@ -270,7 +290,9 @@ def list_assets(
     if place:
         extras.append(library_map.place_clause(place))
     extra = (
-        (" AND ".join(e[0] for e in extras), [p for e in extras for p in e[1]]) if extras else None
+        (" AND ".join(e[0] for e in extras), [p for e in extras for p in e[1]])
+        if extras
+        else None
     )
 
     return _list_assets(
@@ -304,7 +326,14 @@ def list_hidden_assets(
     guard so a foreign library still 404s."""
     session_auth.require_hidden_unlocked(session, db)
     return _list_assets(
-        db, library["id"], hidden=True, cursor=cursor, limit=limit, type_=type_, from_=from_, to=to
+        db,
+        library["id"],
+        hidden=True,
+        cursor=cursor,
+        limit=limit,
+        type_=type_,
+        from_=from_,
+        to=to,
     )
 
 
@@ -333,7 +362,9 @@ class SummaryResponse(BaseModel):
 _KEY_ASSETS_PER_BUCKET = 5
 
 
-def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryBucket]:
+def _buckets(
+    db: sqlite3.Connection, library_id: int, length: int
+) -> list[SummaryBucket]:
     rows = db.execute(
         f"SELECT substr({_LOCAL_DAY_SQL}, 1, ?) AS key, COUNT(*) AS count FROM assets "
         "WHERE library_id = ? AND hidden = 0 AND date_created IS NOT NULL GROUP BY key ORDER BY key",
@@ -342,7 +373,9 @@ def _buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[Summa
     return [SummaryBucket(key=row["key"], count=row["count"]) for row in rows]
 
 
-def _period_buckets(db: sqlite3.Connection, library_id: int, length: int) -> list[SummaryPeriodBucket]:
+def _period_buckets(
+    db: sqlite3.Connection, library_id: int, length: int
+) -> list[SummaryPeriodBucket]:
     buckets = _buckets(db, library_id, length)
     # Ranked within each bucket -- favorite first, then score, then most
     # recent -- and capped at `_KEY_ASSETS_PER_BUCKET` *before* grouping in
@@ -371,7 +404,11 @@ def _period_buckets(db: sqlite3.Connection, library_id: int, length: int) -> lis
     for row in key_rows:
         key_asset_ids.setdefault(row["key"], []).append(row["uuid"])
     return [
-        SummaryPeriodBucket(key=bucket.key, count=bucket.count, key_asset_ids=key_asset_ids.get(bucket.key, []))
+        SummaryPeriodBucket(
+            key=bucket.key,
+            count=bucket.count,
+            key_asset_ids=key_asset_ids.get(bucket.key, []),
+        )
         for bucket in buckets
     ]
 
@@ -424,7 +461,9 @@ class AssetDetailResponse(BaseModel):
     albums: list[str]
 
 
-def _get_asset_or_404(db: sqlite3.Connection, library_id: int, asset_id: str) -> sqlite3.Row:
+def _get_asset_or_404(
+    db: sqlite3.Connection, library_id: int, asset_id: str
+) -> sqlite3.Row:
     row = db.execute(
         "SELECT * FROM assets WHERE library_id = ? AND uuid = ?", (library_id, asset_id)
     ).fetchone()
@@ -452,9 +491,12 @@ def _media_cache_headers(asset: sqlite3.Row) -> dict[str, str]:
     return {"Cache-Control": "private, no-store"} if asset["hidden"] else {}
 
 
-@router.get("/api/libraries/{library_id}/assets/{asset_id}", response_model=AssetDetailResponse)
+@router.get(
+    "/api/libraries/{library_id}/assets/{asset_id}", response_model=AssetDetailResponse
+)
 def asset_detail(
     asset_id: str,
+    response: Response,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     session: sqlite3.Row = Depends(session_auth.require_session),
     db: sqlite3.Connection = Depends(session_auth.get_db),
@@ -462,6 +504,7 @@ def asset_detail(
     # A hidden asset's metadata (place, people, albums) is gated like its
     # media (#151).
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+    response.headers.update(_media_cache_headers(asset))
     people = [
         row["display_name"] or row["name"]
         for row in db.execute(
@@ -511,7 +554,9 @@ def asset_detail(
         camera_make=asset["camera_make"],
         camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
-        has_live_photo_video=bool(asset["path_live_photo"] or asset["path_edited_live_photo"]),
+        has_live_photo_video=bool(
+            asset["path_live_photo"] or asset["path_edited_live_photo"]
+        ),
         people=people,
         albums=albums,
     )
@@ -540,7 +585,11 @@ def asset_thumb(
     cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ) -> Response:
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
-    edited, original, derivative = asset["path_edited"], asset["path_original"], asset["path_derivative"]
+    edited, original, derivative = (
+        asset["path_edited"],
+        asset["path_original"],
+        asset["path_derivative"],
+    )
     if not edited and not original and not derivative:
         raise HTTPException(status_code=404, detail="not found")
     # Apple Photos always shows the edited render when one exists (P1.17b);
@@ -550,7 +599,11 @@ def asset_thumb(
     # list it as a *derivative* candidate when it isn't already the source.
     main_path = edited or original or derivative
     source_path = _resolve_within_library(library["path"], main_path)
-    derivatives = [_resolve_within_library(library["path"], derivative)] if derivative and derivative != main_path else []
+    derivatives = (
+        [_resolve_within_library(library["path"], derivative)]
+        if derivative and derivative != main_path
+        else []
+    )
     sizes, quality, cache_limit = _media_settings(db)
     try:
         result = media.get_or_generate(
@@ -571,7 +624,11 @@ def asset_thumb(
         # exists but no backend here could decode it (an unsupported RAW
         # variant, a corrupt file, a decompression-bomb guard trip).
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    return Response(content=result.data, media_type=result.content_type, headers=_media_cache_headers(asset))
+    return Response(
+        content=result.data,
+        media_type=result.content_type,
+        headers=_media_cache_headers(asset),
+    )
 
 
 @router.get("/api/libraries/{library_id}/original/{asset_id}")
@@ -590,8 +647,13 @@ def asset_original(
     # "Optimize Mac Storage" copy: no full-size original, only a derivative.
     # Serve it and say so (X-Photos-Original-Missing) rather than 404.
     fallback_headers: dict[str, str] = {}
-    if version == "original" and asset["path_derivative"] and (
-        not raw_path or not _resolve_within_library(library["path"], raw_path).exists()
+    if (
+        version == "original"
+        and asset["path_derivative"]
+        and (
+            not raw_path
+            or not _resolve_within_library(library["path"], raw_path).exists()
+        )
     ):
         raw_path = asset["path_derivative"]
         fallback_headers = {"X-Photos-Original-Missing": "1"}
@@ -601,7 +663,9 @@ def asset_original(
 
     if format == "jpeg":
         if asset["is_video"]:
-            raise HTTPException(status_code=400, detail="format=jpeg is not valid for a video asset")
+            raise HTTPException(
+                status_code=400, detail="format=jpeg is not valid for a video asset"
+            )
         _, _, cache_limit = _media_settings(db)
         try:
             data = media.get_or_generate_jpeg(
@@ -614,13 +678,19 @@ def asset_original(
         except media.MediaBackendError as exc:
             # Same convention as the thumb route: the asset exists, no backend can decode it.
             raise HTTPException(status_code=415, detail=str(exc)) from exc
-        filename = _escape_content_disposition_filename(file_path.with_suffix(".jpg").name)
+        filename = _escape_content_disposition_filename(
+            file_path.with_suffix(".jpg").name
+        )
         # `?download=1` is the explicit marker a Download/share action sends;
         # a bare viewer zoom or HEIC->JPEG fallback hits this same route
         # without it and must never write an audit row.
         if download:
             app_db.write_audit_log(
-                db, "download", user_id=session["user_id"], library_id=library["id"], asset_id=asset["id"],
+                db,
+                "download",
+                user_id=session["user_id"],
+                library_id=library["id"],
+                asset_id=asset["id"],
                 detail=f"version={version} format=jpeg",
             )
         return Response(
@@ -638,7 +708,11 @@ def asset_original(
     media_type, _ = mimetypes.guess_type(file_path.name)
     if download:
         app_db.write_audit_log(
-            db, "download", user_id=session["user_id"], library_id=library["id"], asset_id=asset["id"],
+            db,
+            "download",
+            user_id=session["user_id"],
+            library_id=library["id"],
+            asset_id=asset["id"],
             detail=f"version={version}",
         )
     return FileResponse(
@@ -665,5 +739,8 @@ def asset_live_photo_video(
         raise HTTPException(status_code=404, detail="not found")
     media_type, _ = mimetypes.guess_type(file_path.name)
     return FileResponse(
-        file_path, media_type=media_type or "video/quicktime", filename=file_path.name, headers=_media_cache_headers(asset)
+        file_path,
+        media_type=media_type or "video/quicktime",
+        filename=file_path.name,
+        headers=_media_cache_headers(asset),
     )
