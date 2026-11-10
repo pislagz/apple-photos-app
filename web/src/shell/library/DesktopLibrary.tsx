@@ -631,7 +631,7 @@ export default function DesktopLibrary({
             title="Filter By"
             onClick={() => setFilterMenuOpen((value) => !value)}
           >
-            <Icon name="filter" size={16} />
+            <Icon name="filter" size={16} filled={filter !== "all"} />
             <span className="sr-only">Filter By</span>
           </button>
           {filterMenuOpen && (
@@ -678,7 +678,7 @@ export default function DesktopLibrary({
           onClick={() => setInfoOpen((value) => !value)}
           title="Info"
         >
-          <Icon name="info" size={16} />
+          <Icon name="info" size={16} filled={infoOpen} />
           <span className="sr-only">Info</span>
         </button>
         {(selected.size > 1 || zip.state.phase !== "idle") && (

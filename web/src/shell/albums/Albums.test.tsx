@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlbumsResponse, MeResponse } from "../../api";
 import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
@@ -101,6 +101,56 @@ describe("desktop Albums sidebar group", () => {
     expect(screen.getByRole("button", { name: "Paris" })).toHaveAttribute("aria-current", "page");
     // No Years/Months switch inside an album.
     expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
+  });
+
+  it("shows a disclosure chevron on folders, toggles them and remembers the state", async () => {
+    localStorage.clear();
+    mockFetch(handler([]));
+    renderDesktop();
+
+    const summary = (await screen.findByText("Trips")).closest("summary") as HTMLElement;
+    const details = summary.closest("details") as HTMLDetailsElement;
+    expect(summary.querySelector(".sidebar__disclosure")).not.toBeNull();
+    // Albums at the same depth get a spacer, not a chevron.
+    const paris = screen.getByRole("button", { name: "Paris" });
+    expect(paris.querySelector(".sidebar__disclosure")).toBeNull();
+    expect(paris.querySelector(".sidebar__disclosure-spacer")).not.toBeNull();
+    expect(details.open).toBe(true);
+
+    fireEvent.click(summary);
+    await waitFor(() => expect(details.open).toBe(false));
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("photos-viewer.sidebar-closed-folders") ?? "[]")).toEqual(["F1"]),
+    );
+
+    cleanup();
+    renderDesktop();
+    const again = (await screen.findByText("Trips")).closest("details") as HTMLDetailsElement;
+    expect(again.open).toBe(false);
+
+    fireEvent.click(again.querySelector("summary") as HTMLElement);
+    await waitFor(() => expect(again.open).toBe(true));
+    expect(JSON.parse(localStorage.getItem("photos-viewer.sidebar-closed-folders") ?? "[]")).toEqual([]);
+    localStorage.clear();
+  });
+
+  it("keeps folder rows out of the section-header style, with their own chevron", async () => {
+    mockFetch(handler([]));
+    renderDesktop();
+    const folder = (await screen.findByText("Trips")).closest("summary") as HTMLElement;
+    // Section headers are the group's own <summary>; folders are nested deeper
+    // and are album-row styled.
+    expect(folder.classList.contains("sidebar__item")).toBe(true);
+    expect(folder.closest(".sidebar__group")?.querySelector(":scope > summary")).not.toBe(folder);
+    const sectionHeaders = [...document.querySelectorAll(".sidebar__group > summary")];
+    expect(sectionHeaders.length).toBeGreaterThan(0);
+    expect(sectionHeaders).not.toContain(folder);
+    // The chevron is a stroked SVG of its own, not the section's native triangle.
+    const chevron = folder.querySelector("svg.sidebar__chevron");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.querySelector("path")?.getAttribute("fill")).toBeNull();
+    expect(chevron?.getAttribute("stroke")).toBe("currentColor");
+    for (const header of sectionHeaders) expect(header.querySelector(".sidebar__chevron")).toBeNull();
   });
 
   it("opens Favorites as the smart album", async () => {

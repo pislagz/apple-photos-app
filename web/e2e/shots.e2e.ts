@@ -2,12 +2,16 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Page, expect, test } from "@playwright/test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import IconGallery from "../src/shell/IconGallery";
+import { ICON_NAMES, Icon } from "../src/shell/icons";
 
 // Dev-only logins printed by scripts/dev_demo.py for the synthetic demo library.
 const ADMIN = { username: "demo-admin", password: "demo-admin-pass-1" };
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 
-const SHOTS = "e2e/screenshots";
+const SHOTS = process.env.SHOTS_DIR ?? "e2e/screenshots";
 
 let consoleErrors: string[] = [];
 
@@ -801,6 +805,244 @@ test("Decisions 5: the map without consent and no file is off", async ({ page },
   await openMap(page, info.project.name);
   await expect(page.getByTestId("map-off-note")).toBeVisible();
   await shot(page, "27-map-without-consent-off", info.project.name);
+});
+
+// The app has no dark sidebar theme yet ("dark mode is a follow-up" in shell.css),
+// so emulating prefers-color-scheme: dark leaves it light. For the dark proof we
+// paint the sidebar's surface and text variables dark; the icon and chevron rules
+// under test are the app's own.
+async function darkenSidebar(page: Page) {
+  // CSSOM only: the app's CSP forbids injected <style> elements.
+  await page.evaluate((css) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  }, `
+      aside.sidebar { background: #232325 !important; }
+      .sidebar__item, .sidebar__item[aria-current="page"] { color: #f5f5f7; }
+      .sidebar__item[aria-current="page"] { background: rgba(255,255,255,0.14); }
+      .sidebar__group > summary, .sidebar__note { color: #98989d; }
+      :root { --sequoia-text-secondary: #98989d; }`);
+}
+
+// --- Icon set (#235): before/after proof shots ---
+
+test.describe("icon set shots (#235)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      test(`sidebar selected rows (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await signIn(page);
+        await expect(page.locator("aside.sidebar")).toBeVisible();
+        await page.locator("aside.sidebar").getByRole("button", { name: "Favorites", exact: true }).click();
+        if (scheme === "dark") await darkenSidebar(page);
+        await page.waitForLoadState("networkidle");
+        await page.locator("aside.sidebar").screenshot({ path: `${SHOTS}/icons-sidebar-${scheme}.png` });
+      });
+
+      test(`livephoto and link, before | after (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const dark = scheme === "dark";
+        const svg = (size: number, body: string) =>
+          `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+        // Round 2: twelve short dashes. Kept here only for the before | after proof.
+        const dashes = (count: number, half: number) => {
+          let d = "";
+          for (let i = 0; i < count; i++) {
+            const a = (i / count) * 2 * Math.PI;
+            const t = half / 8.5;
+            const p = (ang: number) => `${(10 + 8.5 * Math.sin(ang)).toFixed(2)} ${(10 - 8.5 * Math.cos(ang)).toFixed(2)}`;
+            d += `M${p(a - t)}A8.5 8.5 0 0 1 ${p(a + t)}`;
+          }
+          return d;
+        };
+        const OLD: Record<string, string> = {
+          livephoto: `<circle cx="10" cy="10" r="1.9" fill="currentColor"/><circle cx="10" cy="10" r="5"/><path d="${dashes(12, 0.45)}"/>`,
+          link: `<path d="M8.4 11.6a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9"/><path d="M11.6 8.4a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l.9-.9"/>`,
+        };
+        const rows = (["livephoto", "link"] as const)
+          .map((name) => {
+            const cell = (size: number) =>
+              `<span class="c">${svg(size, OLD[name])}</span><span class="c">${renderToStaticMarkup(createElement(Icon, { name, size }))}</span>`;
+            return `<div class="r"><b>${name}</b><div class="g"><i>before</i><i>after</i>${cell(120)}</div><div class="g"><i>20 px</i><i></i>${cell(20)}</div><div class="g"><i>16 px</i><i></i>${cell(16)}</div></div>`;
+          })
+          .join("");
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 24px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .r { display: flex; align-items: flex-end; gap: 36px; margin-bottom: 28px; }
+            .r b { width: 80px; }
+            .g { display: grid; grid-template-columns: 140px 140px; gap: 6px; align-items: center; }
+            .g i { color: ${dark ? "#98989d" : "#6e6e73"}; font-style: normal; }
+            .c { display: flex; align-items: center; color: #0a84ff; }
+          </style>${rows}`,
+        );
+        await page.setViewportSize({ width: 1000, height: 420 });
+        await page.screenshot({ path: `${SHOTS}/icons2-before-after-${scheme}.png`, fullPage: true });
+      });
+
+      test(`sidebar nested folders (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await signIn(page);
+        const side = page.locator("aside.sidebar");
+        await expect(side.getByText("Europe")).toBeVisible();
+        if (scheme === "dark") await darkenSidebar(page);
+        await page.waitForLoadState("networkidle");
+        await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-open-${scheme}.png` });
+        // Collapse Family; keep Trips > Europe open.
+        await side.getByText("Family", { exact: true }).click();
+        await expect(side.getByRole("button", { name: "Birthdays" })).toBeHidden();
+        await side.locator("summary", { hasText: "Family" }).focus();
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Shift+Tab");
+        await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-collapsed-${scheme}.png` });
+        await side.getByText("Family", { exact: true }).click();
+      });
+
+      test.describe("zoomed", () => {
+        test.use({ deviceScaleFactor: 2 });
+        // 4x device pixels so the 16 px and 20 px renderings can be inspected.
+        test(`livephoto 16/20 px before | after, outline and filled, 4x (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== "desktop", "desktop only");
+          const dark = scheme === "dark";
+          const dashes = (count: number, half: number) => {
+            let d = "";
+            for (let i = 0; i < count; i++) {
+              const a = (i / count) * 2 * Math.PI;
+              const t = half / 8.5;
+              const q = (ang: number) => `${(10 + 8.5 * Math.sin(ang)).toFixed(2)} ${(10 - 8.5 * Math.cos(ang)).toFixed(2)}`;
+              d += `M${q(a - t)}A8.5 8.5 0 0 1 ${q(a + t)}`;
+            }
+            return d;
+          };
+          const oldSvg = (size: number, filled: boolean) =>
+            `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">${
+              filled
+                ? `<circle cx="10" cy="10" r="5.75" fill="currentColor"/><circle cx="10" cy="10" r="1.9" fill="${dark ? "#1c1c1e" : "#fff"}" stroke="none"/>`
+                : `<circle cx="10" cy="10" r="1.9" fill="currentColor"/><circle cx="10" cy="10" r="5"/>`
+            }<path d="${dashes(12, 0.45)}"/></svg>`;
+          const cells = (size: number) =>
+            [false, true]
+              .map(
+                (filled) =>
+                  `<span class="c">${oldSvg(size, filled)}</span><span class="c">${renderToStaticMarkup(createElement(Icon, { name: "livephoto", size, filled }))}</span>`,
+              )
+              .join("");
+          await page.setContent(
+            `<style>
+              body { margin: 0; padding: 16px; font: 12px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+              .g { display: grid; grid-template-columns: 60px repeat(4, 56px); gap: 10px; align-items: center; margin-bottom: 12px; }
+              .c { color: #0a84ff; display: flex; justify-content: center; }
+              i { font-style: normal; color: ${dark ? "#98989d" : "#6e6e73"}; text-align: center; }
+            </style>
+            <div class="g"><i></i><i>old</i><i>new</i><i>old filled</i><i>new filled</i></div>
+            <div class="g"><b>16 px</b>${cells(16)}</div>
+            <div class="g"><b>20 px</b>${cells(20)}</div>`,
+          );
+          await page.setViewportSize({ width: 380, height: 120 });
+          await page.screenshot({ path: `${SHOTS}/icons3-livephoto-16-20-${scheme}.png`, scale: "device" });
+        });
+
+        test(`sidebar section vs folder arrows, 2x (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== "desktop", "desktop only");
+          await signIn(page);
+          const side = page.locator("aside.sidebar");
+          await expect(side.getByText("Europe")).toBeVisible();
+          if (scheme === "dark") await darkenSidebar(page);
+          await page.waitForLoadState("networkidle");
+          await side.getByText("Family", { exact: true }).click();
+          await expect(side.getByRole("button", { name: "Birthdays" })).toBeHidden();
+          await side.screenshot({ path: `${SHOTS}/icons3-sidebar-2x-${scheme}.png` });
+          await side.getByText("Family", { exact: true }).click();
+        });
+      });
+
+      test(`icon gallery (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const markup = renderToStaticMarkup(createElement(IconGallery));
+        const dark = scheme === "dark";
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 24px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .icon-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 32px; }
+            .icon-gallery__row { display: flex; align-items: center; gap: 14px; padding: 4px 0; border-bottom: 1px solid ${dark ? "#38383a" : "#e5e5ea"}; }
+            .icon-gallery__name { width: 84px; color: ${dark ? "#98989d" : "#6e6e73"}; }
+            svg { flex: none; color: #0a84ff; }
+          </style><h3 style="margin:0 0 12px">Icons: 20 px outline, 20 px filled, 40 px outline, 40 px filled</h3>${markup}`,
+        );
+        await page.setViewportSize({ width: 1440, height: 760 });
+        await page.screenshot({ path: `${SHOTS}/icons-gallery-${scheme}.png`, fullPage: true });
+      });
+
+      test(`size ladder 16/18/20 beside text (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        const dark = scheme === "dark";
+        const names = ICON_NAMES.filter((name) => name !== "chevron");
+        const rows = [16, 18, 20]
+          .map((size) => {
+            const icons = names
+              .map((name) => renderToStaticMarkup(createElement(Icon, { name, size, filled: false })))
+              .join("");
+            const solid = names
+              .map((name) => renderToStaticMarkup(createElement(Icon, { name, size, filled: true })))
+              .join("");
+            return `<div class="r"><b>${size}px</b><span>${icons}</span></div><div class="r"><b>filled</b><span>${solid}</span></div>`;
+          })
+          .join("");
+        await page.setContent(
+          `<style>
+            body { margin: 0; padding: 20px; font: 13px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+            .r { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+            .r b { width: 52px; font-weight: 500; }
+            .r span { display: flex; gap: 10px; align-items: center; }
+            svg { color: #0a84ff; }
+          </style>${rows}<p style="display:flex;align-items:center;gap:8px">${renderToStaticMarkup(createElement(Icon, { name: "library", size: 18, filled: true }))} Library &nbsp; ${renderToStaticMarkup(createElement(Icon, { name: "favorite", size: 18 }))} Favorites &nbsp; ${renderToStaticMarkup(createElement(Icon, { name: "map", size: 18 }))} Map</p>`,
+        );
+        await page.setViewportSize({ width: 1100, height: 400 });
+        await page.screenshot({ path: `${SHOTS}/icons-sizes-${scheme}.png`, fullPage: true });
+      });
+    });
+  }
+
+  test("iPhone tab bar", async ({ page }, info) => {
+    test.skip(info.project.name !== "iphone", "iPhone only");
+    await signIn(page);
+    await expect(page.locator("nav.tab-bar")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.locator("nav.tab-bar").screenshot({ path: `${SHOTS}/icons-tabbar-library.png` });
+    await page.getByRole("button", { name: "Albums" }).click();
+    await page.waitForLoadState("networkidle");
+    await page.locator("nav.tab-bar").screenshot({ path: `${SHOTS}/icons-tabbar-albums.png` });
+  });
+
+  test("viewer toolbar and Info panel (desktop)", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    await page.getByRole("button", { name: "Info" }).click();
+    await cells(page).first().click();
+    await expect(page.getByTestId("library-info-panel")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    await page.screenshot({ path: `${SHOTS}/icons-info-panel.png` });
+    await page.getByTestId("desktop-library-toolbar").screenshot({ path: `${SHOTS}/icons-library-toolbar.png` });
+    await cells(page).first().dblclick();
+    await expect(page.getByRole("button", { name: /close/i }).first()).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${SHOTS}/icons-viewer-toolbar.png` });
+  });
+
+  test("viewer toolbar (iPhone)", async ({ page }, info) => {
+    test.skip(info.project.name !== "iphone", "iPhone only");
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await cells(page).first().tap();
+    await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${SHOTS}/icons-viewer-iphone.png` });
+  });
 });
 
 // #89: a failed /assets request is an error with Retry, never "No photos yet."

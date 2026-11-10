@@ -240,7 +240,7 @@ export default function MobileShell({
               navigate(mobileRoutePath({ tab: tab.key } as MobileRoute));
             }}
           >
-            <Icon name={tab.icon} className="tab-bar__icon" />
+            <Icon name={tab.icon} className="tab-bar__icon" filled={route.tab === tab.key} />
             <span className="tab-bar__label">{tab.label}</span>
           </button>
         ))}

@@ -156,7 +156,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               onClick={() => media.toggleShowOriginal()}
               aria-label="Show Original"
             >
-              <Icon name="original" size={16} />
+              <Icon name="original" size={16} filled={media.showingOriginal} />
             </button>
           )}
           <button
@@ -166,7 +166,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             onClick={() => setInfoOpen((value) => !value)}
             aria-label="Info"
           >
-            <Icon name="info" size={16} />
+            <Icon name="info" size={16} filled={infoOpen} />
           </button>
         </div>
         <div

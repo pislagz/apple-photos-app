@@ -966,7 +966,7 @@ body {
   padding: 0;
 }
 
-.sidebar__group summary {
+.sidebar__group > summary {
   font-size: 11px;
   font-weight: 600;
   color: var(--sequoia-text-secondary);
@@ -2154,6 +2154,26 @@ body {
 
 .sidebar__folder > summary::-webkit-details-marker {
   display: none;
+}
+
+/* Thin stroked chevron at the folder row's leading edge, lighter than the
+   title and unlike the filled triangles on section headers. Albums at the same
+   depth get a spacer of equal width so icons and titles line up. */
+.sidebar__disclosure,
+.sidebar__disclosure-spacer {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-right: -4px;
+}
+
+.sidebar__disclosure {
+  color: var(--ios-label-secondary);
+  transition: transform 0.15s ease;
+}
+
+.sidebar__folder[open] > summary > .sidebar__disclosure {
+  transform: rotate(90deg);
 }
 
 .albums-list {

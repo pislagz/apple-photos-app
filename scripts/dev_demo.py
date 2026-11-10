@@ -255,6 +255,7 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "Europe",
             parent_uuid="E0000000-DEAD-4BEE-8000-000000000001",
         ),
+        fixtures.FixtureFolder("E0000000-DEAD-4BEE-8000-000000000003", "Family"),
     ]
     albums = [
         fixtures.FixtureAlbum(
@@ -267,6 +268,18 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "B0000000-DEAD-4BEE-8000-000000000002",
             "Busy Days",
             list(range(5, min(count, 60))),
+        ),
+        fixtures.FixtureAlbum(
+            "B0000000-DEAD-4BEE-8000-000000000003",
+            "Road Trip",
+            list(range(3, count, 19)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000001",
+        ),
+        fixtures.FixtureAlbum(
+            "B0000000-DEAD-4BEE-8000-000000000004",
+            "Birthdays",
+            list(range(7, count, 23)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000003",
         ),
     ]
     people = [

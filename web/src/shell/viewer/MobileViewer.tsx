@@ -284,7 +284,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       <div className="mobile-viewer__icon-row">
         {item.favorite && (
           <span className="mobile-viewer__status" role="img" aria-label="Favorite">
-            <Icon name="favorite" size={20} />
+            <Icon name="favorite" size={20} filled />
           </span>
         )}
         {detail?.has_edited && (
@@ -307,7 +307,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           onClick={() => setInfoOpen((value) => !value)}
           aria-label="Info"
         >
-          <Icon name="info" size={20} />
+          <Icon name="info" size={20} filled={infoOpen} />
         </button>
       </div>
       {infoOpen && (
