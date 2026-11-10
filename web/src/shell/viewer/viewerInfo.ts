@@ -17,10 +17,28 @@ export function formatCameraLine(detail: Pick<AssetDetailResponse, "camera_make"
   return [detail.camera_make, detail.camera_model].filter(Boolean).join(" ");
 }
 
-// `place_address` is osxphotos' full formatted address; `place` is its
-// shorter place name. Prefer the fuller one, fall back to the other.
-export function formatLocationLine(detail: Pick<AssetDetailResponse, "place" | "place_address">): string {
-  return detail.place_address || detail.place || "";
+// 52.2297° N, 21.0122° E. Null when either value is missing or out of range.
+export function formatCoordinates(latitude: number | null, longitude: number | null): string | null {
+  if (latitude == null || longitude == null) return null;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  const lat = `${Math.abs(latitude).toFixed(4)}° ${latitude < 0 ? "S" : "N"}`;
+  const lon = `${Math.abs(longitude).toFixed(4)}° ${longitude < 0 ? "W" : "E"}`;
+  return `${lat}, ${lon}`;
+}
+
+// The one place label (viewer title, Info "Location"). The text is the
+// record Photos stored in the library (`place_address`, osxphotos' full
+// formatted address, else `place`, its shorter name), shown unchanged.
+// Nothing is ever geocoded: with GPS and no record it is the coordinates
+// ("Unknown place" if they are unusable); with no GPS either, empty.
+export function formatLocationLine(
+  detail: Pick<AssetDetailResponse, "place" | "place_address" | "latitude" | "longitude">,
+): string {
+  const named = detail.place_address || detail.place;
+  if (named) return named;
+  if (detail.latitude == null && detail.longitude == null) return "";
+  return formatCoordinates(detail.latitude, detail.longitude) ?? "Unknown place";
 }
 
 export function formatFileSize(bytes: number | null): string {

@@ -263,6 +263,24 @@ describe("MobileViewer", () => {
     expect(sheet).not.toHaveTextContent("a1.jpg");
   });
 
+  it("shows coordinates, not a looked-up name, for GPS without a place record, and Unknown place for unusable GPS", async () => {
+    const items = [makeItem("a1"), makeItem("a2")];
+    mockDetail({
+      a1: makeDetail("a1", { place: null, place_address: null, place_country_code: null, latitude: 52.2297, longitude: 21.0122 }),
+      a2: makeDetail("a2", { place: null, place_address: null, place_country_code: null, latitude: 999, longitude: 0 }),
+    });
+    const { rerender } = render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText("Info"));
+    const panel = await screen.findByTestId("viewer-info-sheet");
+    expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
+    expect(global.fetch).toHaveBeenCalled();
+    for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
+      expect(String(call[0])).toMatch(/^\/api\//);
+    }
+    rerender(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findAllByText("Unknown place");
+  });
+
   it("opens the info sheet on a swipe up", async () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
