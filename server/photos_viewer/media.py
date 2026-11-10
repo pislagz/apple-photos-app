@@ -331,11 +331,12 @@ _EVICT_LOW_WATER = 0.9
 # which also serialises scan-and-delete so two evictions can't double-count.
 _cache_totals: dict[pathlib.Path, int] = {}
 # When each total was last learned from a real scan. With several worker
-# processes each total only counts its own writes, so a total older than
-# this is rescanned rather than incremented: overshoot is bounded by what the
-# other workers write in one interval, not unbounded until the limit is hit.
+# processes each total only counts its own writes, so an old total is
+# rescanned rather than incremented. Steady writes are O(1) in between; the
+# interval is long because a scan walks the whole cache, and overshoot is
+# bounded by what the other workers write in one interval.
 _cache_scanned_at: dict[pathlib.Path, float] = {}
-_CACHE_RESCAN_SECONDS = 30.0
+_CACHE_RESCAN_SECONDS = 600.0
 _cache_lock = threading.Lock()
 
 

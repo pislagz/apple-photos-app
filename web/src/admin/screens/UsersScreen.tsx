@@ -132,7 +132,7 @@ export default function UsersScreen() {
       </form>
 
       <div className="admin-table-wrap">
-        <table>
+        <table className="admin-users-table">
           <thead>
             <tr>
               <th>Username</th>

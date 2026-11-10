@@ -306,6 +306,9 @@ test("admin Users actions are compact on a phone (#179)", async ({ page }, info)
     Array.from(new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))),
   );
   expect(tops.length, "four buttons sit in two rows, not a stack").toBe(2);
+  const wrap = page.locator(".admin-table-wrap").first();
+  const overflow = await wrap.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow, "the Users table does not scroll sideways").toBeLessThanOrEqual(0);
   await shot(page, "12-admin-users-actions", info.project.name);
 });
 

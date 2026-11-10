@@ -645,3 +645,60 @@ def test_suggestion_skips_a_candidate_registered_under_an_unresolved_path(tmp_pa
         assert status["suggestion"] is None
     finally:
         conn.close()
+
+
+def test_confirmed_replace_reopens_the_copy_if_the_package_changed_while_waiting(
+    tmp_path, monkeypatch
+):
+    import os
+    import threading
+
+    from photos_viewer import library_admin
+
+    a = [_asset(n) for n in range(1, 4)]
+    conn, client, _package, lib = _setup(tmp_path, a)
+    try:
+        renamed = build_library(
+            tmp_path / "lib", a, package_name="Alice 2026.photoslibrary"
+        )
+        sqlite_file = renamed / "database" / "Photos.sqlite"
+
+        class _TouchingLock:
+            """Stands in for the library lock: something changes the package
+            while the confirm waits for it."""
+
+            def __init__(self):
+                self._lock = threading.Lock()
+
+            def acquire(self):
+                self._lock.acquire()
+                events.append("lock")
+                os.utime(sqlite_file, ns=(1_700_000_000_000_000_000,) * 2)
+
+            def release(self):
+                self._lock.release()
+
+        events: list[str] = []
+        touching = _TouchingLock()
+        monkeypatch.setattr(library_admin, "_lock_for", lambda _id: touching)
+        real_open = library_admin.open_library_readonly
+        monkeypatch.setattr(
+            library_admin,
+            "open_library_readonly",
+            lambda path: events.append("open") or real_open(path),
+        )
+        real_index = library_admin.indexer.index_library
+        monkeypatch.setattr(
+            library_admin.indexer,
+            "index_library",
+            lambda *a, **k: events.append("index") or real_index(*a, **k),
+        )
+        response = client.post(
+            f"/api/admin/libraries/{lib}/replace",
+            json={"path": str(renamed), "confirm": True},
+        )
+        assert response.status_code == 200 and response.json()["confirmed"] is True
+        # The copy is made again once the lock is held and shows a change.
+        assert events[events.index("lock") :][:3] == ["lock", "open", "index"]
+    finally:
+        conn.close()

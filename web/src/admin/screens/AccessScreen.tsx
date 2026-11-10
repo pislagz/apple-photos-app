@@ -10,10 +10,12 @@ export default function AccessScreen() {
   const [error, setError] = useState<string | null>(null);
 
   function refresh() {
-    readAccessMatrix().then((next) => {
+    readAccessMatrix()
+      .then((next) => {
         setMatrix(next);
         setError(null);
-      }).catch((err: unknown) => setError(describeError(err)));
+      })
+      .catch((err: unknown) => setError(describeError(err)));
   }
 
   useEffect(refresh, []);

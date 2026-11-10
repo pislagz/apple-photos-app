@@ -5,7 +5,7 @@ export interface ZipProgress {
   // From X-Zip-Total-Bytes (sum of the stored file sizes); null if absent.
   total: number | null;
   // HEIC->JPEG conversion changes the sizes, so the total is only a guess.
-  approximate?: boolean;
+  totalUnknown?: boolean;
 }
 
 // The server's cap on ids per zip request; more answers 422.
@@ -62,12 +62,12 @@ export async function fetchZip(
   const total = Number.isFinite(header) && header > 0 ? header : null;
   // `received` counts zip bytes (headers included) while `total` sums the
   // stored file sizes, and JPEG conversion changes them again: both are
-  // approximate, so the UI says so rather than showing an exact bar.
-  const approximate = format === "jpeg";
-  onProgress({ received: 0, total, approximate });
+  // approximate, so the UI hides the total rather than showing an exact bar.
+  const totalUnknown = format === "jpeg";
+  onProgress({ received: 0, total, totalUnknown });
   if (!response.body) {
     const blob = await response.blob();
-    onProgress({ received: blob.size, total, approximate });
+    onProgress({ received: blob.size, total, totalUnknown });
     return blob;
   }
   const reader = response.body.getReader();
@@ -78,7 +78,7 @@ export async function fetchZip(
     if (done) break;
     parts.push(value);
     received += value.length;
-    onProgress({ received, total, approximate });
+    onProgress({ received, total, totalUnknown });
   }
   return new Blob(parts as BlobPart[], { type: "application/zip" });
 }

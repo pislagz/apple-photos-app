@@ -582,3 +582,22 @@ def test_cache_total_is_rescanned_after_the_interval(tmp_path, monkeypatch):
     third = _write_entry(cache_dir, "c", 100)
     media._note_cache_write(cache_dir, 10_000, third)
     assert media.cache_total_bytes(cache_dir) == 800
+
+
+def test_steady_writes_do_not_rescan_the_cache(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    media._cache_totals.pop(cache_dir, None)
+    media._cache_scanned_at.pop(cache_dir, None)
+    now = [1000.0]
+    monkeypatch.setattr(media.time, "monotonic", lambda: now[0])
+    scans = []
+    real_scan = media._scan_cache
+    monkeypatch.setattr(media, "_scan_cache", lambda d: scans.append(d) or real_scan(d))
+    for n in range(20):
+        now[0] += 1.0
+        media._note_cache_write(cache_dir, 10_000, _write_entry(cache_dir, str(n), 10))
+    assert len(scans) == 1  # only the first write scanned
+    assert media.cache_total_bytes(cache_dir) == 200
+    # Evicting updates the running total without waiting for a rescan.
+    media._note_cache_write(cache_dir, 150, _write_entry(cache_dir, "big", 10))
+    assert media.cache_total_bytes(cache_dir) <= 150
