@@ -157,7 +157,10 @@ def update_user(
         # A reset or self-change must invalidate every cookie issued under
         # the old password -- otherwise a stolen or shared session keeps
         # working right through the "fix".
-        session_auth.revoke_sessions_for_user(db, target["id"])
+        # An admin changing their own password keeps the session they are
+        # using (#72); every other session of theirs is still revoked.
+        own = target["id"] == admin["user_id"]
+        session_auth.revoke_sessions_for_user(db, target["id"], keep_session_id=admin["id"] if own else None)
     db.commit()
     if changed_fields:
         app_db.write_audit_log(
@@ -623,7 +626,7 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_size_grid": media.SIZES["grid"],
     "thumb_size_grid2x": media.SIZES["grid2x"],
     "thumb_size_preview": media.SIZES["preview"],
-    "thumb_quality": 85,
+    "thumb_quality": media.DEFAULT_QUALITY,
     "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
     "map_tiles_mode": "online",

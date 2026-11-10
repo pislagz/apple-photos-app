@@ -170,6 +170,24 @@ def test_update_user_password_revokes_existing_sessions(tmp_path):
         conn.close()
 
 
+def test_admin_resetting_own_password_keeps_current_session_only(tmp_path):
+    """#72: the session making the change survives; the admin's other
+    sessions are revoked."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        other = TestClient(client.app, base_url="https://testserver")
+        assert other.post("/api/auth/login", json={"username": "admin", "password": VALID_PASSWORD}).status_code == 200
+        assert other.get("/api/me").status_code == 200
+
+        resp = client.patch("/api/admin/users/admin", json={"password": "a-different-password-1"})
+
+        assert resp.status_code == 200
+        assert client.get("/api/me").status_code == 200
+        assert other.get("/api/me").status_code == 401
+    finally:
+        conn.close()
+
+
 def test_user_changes_write_audit_rows(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
@@ -577,3 +595,9 @@ def test_non_admin_is_403_on_every_admin_panel_route(tmp_path):
         assert client.put("/api/admin/settings", json={}).status_code == 403
     finally:
         conn.close()
+
+
+def test_settings_default_quality_matches_the_media_default():
+    from photos_viewer import admin_panel, media
+
+    assert admin_panel._SETTINGS_DEFAULTS["thumb_quality"] == media.DEFAULT_QUALITY

@@ -110,7 +110,10 @@ IP_LOCKOUT_WINDOW_SECONDS = 15 * 60
 # `client_ip` bucket (every header value, plus the peer-IP fallback used when
 # a trusted, non-loopback proxy sends no header) that shares one direct peer
 # address, loopback included -- see `is_ip_locked_out`.
+# Default; `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` overrides it (#57), read
+# through `max_failed_logins_per_peer()`.
 MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER = MAX_FAILED_LOGIN_ATTEMPTS_PER_IP * 10
+_PER_PEER_CEILING_ENV = "PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER"
 
 _TAILSCALE_USER_LOGIN_HEADER = "tailscale-user-login"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1"}
@@ -275,6 +278,17 @@ def _env_seconds(name: str, default_seconds: int) -> int:
     return value
 
 
+def max_failed_logins_per_peer() -> int:
+    """The per-peer ceiling: `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` when
+    set to a positive integer, else `MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER`. Read
+    on each call, like the session-lifetime variables."""
+    value = _env_seconds(_PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
+    if value == 0:
+        logger.warning("%s=0 would lock every peer out; using default %d", _PER_PEER_CEILING_ENV, MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER)
+        return MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+    return value
+
+
 def _cookie_secure() -> bool:
     """Default true: the cookie is only safe to send over HTTPS (Tailscale
     Serve). Set `PHOTOS_VIEWER_COOKIE_SECURE=false` for local plain-HTTP dev
@@ -393,11 +407,13 @@ def revoke_session_by_public_id(conn: sqlite3.Connection, public_id: str) -> Non
     conn.commit()
 
 
-def revoke_sessions_for_user(conn: sqlite3.Connection, user_id: int) -> None:
+def revoke_sessions_for_user(conn: sqlite3.Connection, user_id: int, *, keep_session_id: str | None = None) -> None:
     """Revoke every session belonging to a user. Called whenever that
     user's password changes (an admin's reset, or their own change) -- a
-    stolen or shared cookie from before the change must not keep working."""
-    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    stolen or shared cookie from before the change must not keep working.
+    `keep_session_id` (a stored, hashed `sessions.id`) spares the session
+    that is making the change, so it is not signed out mid-action (#72)."""
+    conn.execute("DELETE FROM sessions WHERE user_id = ? AND id IS NOT ?", (user_id, keep_session_id))
     conn.commit()
 
 
@@ -489,7 +505,7 @@ def is_ip_locked_out(conn: sqlite3.Connection, client_ip: str, peer_ip: str) -> 
         "WHERE peer_ip = ? AND occurred_at >= datetime('now', ?)",
         (peer_ip, f"-{IP_LOCKOUT_WINDOW_SECONDS} seconds"),
     ).fetchone()[0]
-    return peer_count >= MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+    return peer_count >= max_failed_logins_per_peer()
 
 
 def clear_ip_login_failures(conn: sqlite3.Connection) -> None:

@@ -1853,3 +1853,28 @@ def test_reconfirm_password_rejects_cross_site_requests(client):
 
     assert cross_origin.status_code == 403
     assert form.status_code == 415
+
+
+def test_per_peer_ceiling_env_override(monkeypatch):
+    """#57: the ceiling is configurable; bad values fall back to the default."""
+    default = session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_PEER
+    monkeypatch.delenv("PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER", raising=False)
+    assert session_auth.max_failed_logins_per_peer() == default
+    monkeypatch.setenv("PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER", "1000")
+    assert session_auth.max_failed_logins_per_peer() == 1000
+    for bad in ("abc", "-5", "0"):
+        monkeypatch.setenv("PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER", bad)
+        assert session_auth.max_failed_logins_per_peer() == default
+
+
+def test_per_peer_ceiling_env_is_enforced(tmp_path, monkeypatch):
+    conn = app_db.connect(tmp_path)
+    try:
+        monkeypatch.setenv("PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER", "3")
+        for i in range(2):
+            session_auth.record_ip_login_failure(conn, f"user{i}", "127.0.0.1")
+        assert not session_auth.is_ip_locked_out(conn, "other", "127.0.0.1")
+        session_auth.record_ip_login_failure(conn, "user2", "127.0.0.1")
+        assert session_auth.is_ip_locked_out(conn, "other", "127.0.0.1")
+    finally:
+        conn.close()

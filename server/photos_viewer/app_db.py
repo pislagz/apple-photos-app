@@ -22,6 +22,11 @@ _DATA_DIR_ENV = "PHOTOS_VIEWER_DATA_DIR"
 # not one `executescript` blob: `executescript` issues an implicit COMMIT
 # before it runs, which would end the transaction `migrate()` holds open for
 # the whole migration plus its `PRAGMA user_version` bump.
+#
+# A migration that adds a column only a fresh library walk can fill must also
+# run `UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature
+# IS NOT NULL` (see 17, #100/#68): the background checker then re-indexes each
+# such library once, in place, instead of waiting for the file to change.
 _MIGRATIONS: list[list[str]] = [
     # 1: users, sessions, libraries, assignments, asset index, thumbnail
     # cache, audit log, login-failure tracking (for the P1.3 lockout).
