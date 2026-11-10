@@ -14,7 +14,7 @@ import secrets
 import sqlite3
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from . import (
@@ -829,7 +829,6 @@ def read_settings(
 )
 def write_settings(
     payload: SettingsUpdateRequest,
-    request: Request,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> SettingsResponse:
@@ -840,8 +839,8 @@ def write_settings(
         app_db.set_setting(db, key, "" if value is None else str(value))
     app_db.set_setting(db, "privacy_opt_ins_reviewed", "1")
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
-    # The CSP names the OSM host only while the map is on (main.py caches it).
-    request.app.state.csp_cache = None
+    # The CSP names the OSM host only while the map is on; the security-headers
+    # middleware drops its cached copy after this PUT.
     if payload.offline_place_names != was_offline:
         data_dir = place_names.data_dir_of(db)
         if data_dir is not None:

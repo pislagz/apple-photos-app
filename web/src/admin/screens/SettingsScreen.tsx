@@ -236,7 +236,7 @@ export default function SettingsScreen() {
               about 2 MB) from download.geonames.org. No photo data is sent.
             </p>
             <p className="admin-hint" data-testid="geonames-attribution">
-              {placeNames?.attribution ?? "Place names from GeoNames (https://www.geonames.org), CC BY 4.0."}
+              {placeNames?.attribution ?? "Place names from GeoNames (geonames.org), CC BY 4.0."}
             </p>
           </div>
         </fieldset>

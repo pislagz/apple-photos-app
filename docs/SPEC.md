@@ -19,16 +19,16 @@ Both use the same login. Admins also get an admin panel to register library file
 - PhotoKit is not used. It only reaches the System Photo Library, and it does not exist on Linux. Libraries are read directly from disk with [osxphotos](https://github.com/RhetTbull/osxphotos), which opens any library by path on macOS and on Linux.
 - **Strictly read-only.** Never write to, migrate, repair, or open-for-write any library package or its database. Open the database read-only (`mode=ro`), immutable, or as a copy that lives outside the package. Detect when Photos.app has the same library open and show a warning.
 - Access only over the Tailscale tailnet, with HTTPS through Tailscale Serve. Nothing is exposed publicly.
-- **No outbound connections except browser-side OSM map tiles.** The server makes zero outbound requests. The only external connection is the browser loading OpenStreetMap tiles while a map is open. See [No outbound network](#no-outbound-network).
+- **No outbound connections except browser-side OSM map tiles.** The server makes zero outbound requests, with one exception: an admin's one-time download of the GeoNames city list for the optional Offline place names (below). The only other external connection is the browser loading OpenStreetMap tiles while a map is open, and only after an admin has turned the OpenStreetMap map on. See [No outbound network](#no-outbound-network).
 - No paid Apple Developer account, so the iPhone side is a PWA added from Safari, with no native app.
 - Out of scope: editing, deleting, uploading, public share links, Memories, Featured Photos.
 
 ## No outbound network
 
-No outbound connections except browser-side OSM map tiles. The Python server, its background jobs, and Docker make zero outbound requests. Installing packages during a build or a developer setup may use the network. A running server may not.
+No outbound connections except browser-side OSM map tiles. The Python server, its background jobs, and Docker make zero outbound requests, apart from the admin-started GeoNames download described under Offline place names. Installing packages during a build or a developer setup may use the network. A running server may not.
 
 - **Map, default.** OpenStreetMap raster tiles, `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, drawn by MapLibre GL JS. The browser fetches a tile only when a user has a map view open (the main Map screen or the info-panel mini-map). The server does not fetch, proxy, or store those tiles.
-- **Map tiles setting.** Admin choice: OpenStreetMap (online), Local file, or Off. Default is OpenStreetMap. Local file is an optional Protomaps PMTiles archive on disk. This server then serves that file with HTTP Range, and the client makes no OSM requests. Off draws GPS clusters on a blank background and makes no tile requests. A Local file path that is missing or unreadable behaves as Off and does not fall back to OSM.
+- **Map tiles setting.** Admin choice, **off by default** (D41): the "Show OpenStreetMap map" opt-in (online), a Local file, or nothing. Until an admin ticks "Show OpenStreetMap map" (first-run setup or Admin → Settings) no browser contacts OpenStreetMap. While it is off the Map view says so ("The OpenStreetMap map is off … an admin ticks Show OpenStreetMap map") and still draws GPS clusters on a blank background. Local file is an optional Protomaps PMTiles archive on disk. This server then serves that file with HTTP Range, and the client makes no OSM requests. Off draws GPS clusters on a blank background and makes no tile requests. A Local file path that is missing or unreadable behaves as Off and does not fall back to OSM.
 - **OSM tile usage policy.** The public tile servers are a shared resource. Follow <https://operations.osmfoundation.org/policies/tiles/>.
   - Request only the tiles needed to draw the visible map. No bulk download, no background warm-up of every photo location, and no prefetch of zoom levels that are not on screen. The map library's small viewport overscan is acceptable.
   - Do not proxy the tiles through this server.
@@ -36,12 +36,17 @@ No outbound connections except browser-side OSM map tiles. The Python server, it
   - Attribution is visible on every map, including the mini-map: "© OpenStreetMap contributors", linking to <https://www.openstreetmap.org/copyright>.
   - This deployment is light personal use. If map traffic grows past that, switch the setting to a local PMTiles file instead of leaning on `tile.openstreetmap.org`.
   - No other OSM service. No Nominatim, no routing, no geocoding.
+- **Offline place names (D41, opt-in, off by default).** Photos with GPS but no place name saved by Photos can be named after the nearest city, resolved on this server:
+  - The admin ticks "Offline place names" and presses "Download place-name data" once. The server fetches the official GeoNames dump `https://download.geonames.org/export/dump/cities15000.zip` (cities of 15,000+ people, about 2 MB) into `<data dir>/geonames/cities15000.txt`. This is the **only** outbound request the server ever makes. It happens on that click only, sends no photo data, and is audited (`place_names_download`). The dataset is not committed to the repo and is not bundled in the Docker image; a container with egress blocked can instead be given the file by hand at that path. `cities1000` is a larger alternative if `cities15000` proves too coarse.
+  - Lookup is local: the cities go into 1-degree grid buckets in memory and the nearest city within 100 km wins (longitude-aware ring search, date line handled). Indexing fills `assets.place_offline` for assets with GPS and no Photos name; turning the setting on or finishing the download backfills from the coordinates already in `app.db`, with no library file touched; turning it off blanks the column. No per-photo network call, and coordinates never leave the server.
+  - The result lives in its own column and API field `place_offline` ("Warsaw, PL": city name and ISO country code). Photos' own `place`, `place_address` and `place_country_code` always take priority; the offline name is shown only when they are empty. The search index does not use it.
+  - Attribution (CC BY 4.0): "Place names from GeoNames (https://www.geonames.org), CC BY 4.0." It is shown in Admin → Settings next to the option and recorded in [ATTRIBUTION](#offline-place-names-attribution) below. There is no separate About page.
 - **Place names.** Labels come only from place data already in the libraries (`PhotoInfo.place` and related osxphotos fields). No online geocoding, and no call out to fill in a missing name.
 - **Web assets.** No CDNs, Google Fonts, analytics, telemetry, crash reporting, update checks, or external avatars. JavaScript, CSS, and fonts are bundled at build time. Glyphs and sprites used for our own labels are bundled and served same-origin. Do not load a hosted MapLibre style.
-- **Content-Security-Policy.** `default-src 'self'`. The only external host is `https://tile.openstreetmap.org`. MapLibre fetches raster tile bytes, so that host goes on `connect-src` and `connect-src` lists nothing else. If an implementation loads the tiles as images instead, put that host on `img-src` and leave `connect-src` as `'self'`. Do not list it on both unless a test shows both request types. `img-src` otherwise is `'self' blob: data:`. `font-src`, `script-src`, and `style-src` stay on `'self'`. `worker-src` may add `blob:` if the map library needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
+- **Content-Security-Policy.** `default-src 'self'`. The only external host is `https://tile.openstreetmap.org`, and it is on the policy **only while the OpenStreetMap map is on** (D41): with the setting off or on a local file, `connect-src` is `'self'` and the header names no external host. The server reads the setting per response (cached a few seconds, dropped when Settings are saved or first-run setup runs). When it is on, MapLibre fetches raster tile bytes, so that host goes on `connect-src` and `connect-src` lists nothing else. If an implementation loads the tiles as images instead, put that host on `img-src` and leave `connect-src` as `'self'`. Do not list it on both unless a test shows both request types. `img-src` otherwise is `'self' blob: data:`. `font-src`, `script-src`, and `style-src` stay on `'self'`. `worker-src` may add `blob:` if the map library needs a blob worker. `object-src 'none'`. `base-uri 'self'`. `frame-ancestors 'none'`.
 - **Service worker.** It caches same-origin app requests only. It does not intercept `tile.openstreetmap.org`. Those responses stay in the browser HTTP cache.
 - **Python dependencies.** osxphotos is used as a library (`PhotosDB`, `PhotoInfo`), not via its CLI. Do not call its update check or download helpers (`get_latest_version`, `check_version`, `selfupdate`, `download_url_to_dir`). Set `OSXPHOTOS_NO_VERSION_CHECK=1` for the process. Do not add an optional dependency that performs network I/O when imported or while serving.
-- **Docker.** The container has outbound egress blocked (an internal Docker network, or a firewall rule that drops connections the container initiates). Clients on the tailnet can still open inbound connections. The grid, viewer, and downloads work in that configuration. The default basemap needs the viewer's browser to reach `tile.openstreetmap.org`. A basemap that also works with the browser offline is the Local file setting.
+- **Docker.** The container has outbound egress blocked (an internal Docker network, or a firewall rule that drops connections the container initiates). Clients on the tailnet can still open inbound connections. The grid, viewer, and downloads work in that configuration. The OpenStreetMap basemap, when an admin has turned it on, needs the viewer's browser to reach `tile.openstreetmap.org`. A basemap that also works with the browser offline is the Local file setting.
 
 ## Platforms
 
@@ -97,6 +102,9 @@ Every endpoint requires a session, and every request is checked against the libr
 - `GET /api/libraries/:lib/map?bbox=&zoom=`: clustered GPS points. This response is not the basemap. In OpenStreetMap mode the browser loads raster tiles itself. In Local file mode the basemap is a same-origin range read of the PMTiles file.
 - `GET /api/libraries/:lib/search?q=`: by date, place, person, album name, camera, file name, title, or description.
 - `POST /api/libraries/:lib/zip`: builds a zip of selected originals for desktop batch download and streams it.
+- `POST /api/libraries/:lib/zip/ticket` and `GET /api/libraries/:lib/zip/download?ticket=` (D47): the same zip as a plain browser download. The JSON POST validates the selection (404/413 as JSON) and returns `{ticket, total_bytes, expires_in, job}`; the page then navigates to the GET, which streams `Content-Disposition: attachment`, so the browser writes it to disk and the tab never buffers it. Why not a form POST: the CSRF rule is "state-changing requests must be `application/json`", which a form cannot send, and a signed token would have to carry up to 5,000 ids in a URL. So the ticket is a random 24-byte string held in the server's memory (single process; a restart just voids pending tickets), valid 60 seconds, single use, bound to the user and library that asked, and the GET also needs the SameSite=Strict session cookie. Foreign library, other user, expired or unknown ticket: 404.
+- `GET /api/libraries/:lib/zip/report?job=` (D50): after a HEIC-as-JPEG zip, `{done, unconverted: [{id, name}]}` lists files that could not be converted and went in as originals. The job id comes from the `X-Zip-Job` header (in-page zip) or the ticket answer (browser download, which cannot read headers); the client polls until `done`. In-memory, 10 minutes after the stream ends, private to the user and library.
+- `POST /api/libraries/:lib/selection-summary` (D21): `{count, photos, videos, date_first, date_last, total_bytes, place}` for up to 50,000 ids, for the desktop Info panel.
 - `GET /api/health`
 - Admin API under `/api/admin/*`: users, libraries, assignments, sessions, jobs, audit log, and settings.
 
@@ -136,7 +144,7 @@ Every endpoint requires a session, and every request is checked against the libr
   - **Access matrix:** users as rows and libraries as columns, with a checkbox for each pair, to grant or revoke access quickly.
 - **Sessions:** list active sessions by user, device, and last seen, and revoke them.
 - **Audit log:** logins, failed logins, library access, and downloads, filterable by user, library, and date, with export to CSV.
-- **Settings:** session lifetimes, allowed tailnet identities, thumbnail sizes and quality, the zip size limit, and map tiles: OpenStreetMap (online), Local file, or Off, plus the optional PMTiles path.
+- **Settings:** session lifetimes, allowed tailnet identities, thumbnail sizes and quality, the zip size limit, and two separate opt-ins, both off by default ("Show OpenStreetMap map" and "Offline place names", also offered on the first-run setup screen, with a dashboard notice until they have been reviewed), plus the optional local PMTiles path. Offline place names also has a one-time "Download place-name data" button.
 - **First run:** a one-time setup screen to create the admin account.
 - Styled to fit the macOS Sequoia look: a System Settings-like sidebar and grouped forms.
 
@@ -186,12 +194,15 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
   - Date headers.
   - Hover shows a favorite heart and video duration.
 - **Selection:** click, ⌘-click, ⇧-click range, and drag-select, with a selection count shown.
+- **Info panel** (toolbar button): one selected photo shows its details; with 2+ selected (D21) a summary: item count (photos/videos split when both), date range ("3–9 Mar 2024"), total size, and the place if they all share one; with nothing selected, "No Selection".
 - **Keyboard:**
-  - Arrow keys to move, Space or Enter to open, Esc to close.
+  - Arrow keys to move, Space or Enter to open, Esc to close. Up/Down remember the column they started in, so passing through a full-width row (the Days lead photo) or a short last row returns to the same column on the next normal row. With nothing selected the first Down selects the first photo.
   - ⌘A to select all, ⌘F to search.
   - Left and right arrows in the viewer.
   - `+` and `-` to zoom.
 - **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums, plus the same smaller-copy note when the original is not on disk. Videos and Live Photos play inline.
+  - Focus (D59): while the Viewer is open, everything behind it is `inert`, so Tab cannot reach the grid, and focus returns to the thumbnail it was opened from on close; Esc still closes. The iPhone Info sheet does the same for what it covers (toolbar, filmstrip), and Info gets focus back when it closes. The HEIC fallback modal uses the same scope.
+  - Title (D41): a photo's name only when a place name exists (Photos' own, else the opt-in offline name); GPS without a name uses the date, and the coordinates stay in the Info panel's Location row.
 - **Map:** full content area with the same basemap setting and clustered thumbnails. Clicking a cluster filters the grid. Off, or a missing local file, leaves a blank background under the clusters.
 - **People:** grid of circular faces with names, opening a person's photos. Unnamed face groups follow the named people with a muted "Add Name" placeholder (display only).
 - **Right-click menu:** Download original, Download edited, Copy link (within the app only, never public), and Show in album.
@@ -206,7 +217,7 @@ Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots sho
   - Fallback download links save to Files.
 - **Desktop:**
   - Single download of the original or edited file.
-  - Multi-select downloads as a streamed zip, with a size limit set in settings and a progress indicator.
+  - Multi-select downloads as a streamed zip, with a size limit set in settings and a progress indicator. On iPhone/iPad (any iOS browser), and on any browser when the selection is estimated above 500 MB, the zip is a normal browser download (ticket + navigation above) with a "Download started" note instead of a progress bar; below that on desktop the in-page progress bar stays. HEIC-as-JPEG keeps streaming; if some HEIC files could not be converted, a modal after the stream says "These N files stayed HEIC: a, b, c" with "Download originals of these" (a native zip of just those files) and "OK".
   - Optional "convert HEIC to JPEG" toggle.
 - Log every download in the audit log.
 
@@ -221,7 +232,7 @@ Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots sho
   - Access control: user A can never reach user B's libraries through any endpoint, including thumbnails, originals, and zip.
   - Indexing against a small synthetic fixture library. CI runs on Linux.
   - Layout tests for both mobile and desktop.
-  - Outbound network: the server suite fails if any socket connects to a host other than localhost (`pytest-socket`). The production web build fails if JS, CSS, or HTML contains an absolute `http://` or `https://` URL whose host is not `tile.openstreetmap.org` or the OSM copyright page `www.openstreetmap.org`. A test asserts the Content-Security-Policy names that tile host and no other external host.
+  - Outbound network: the server suite fails if any socket connects to a host other than localhost (`pytest-socket`). The production web build fails if JS, CSS, or HTML contains an absolute `http://` or `https://` URL whose host is not `tile.openstreetmap.org` or the OSM copyright page `www.openstreetmap.org`. A test asserts the Content-Security-Policy names that tile host only while the map is on, and no other external host ever. A test asserts that only `place_names.py` imports an HTTP client.
   - Optional manual pass on a real library on a Mac (`docs/MANUAL_MAC_TESTS.md`), including the server blocked from the internet and the OSM versus local tile modes.
 
 ## Visual references
@@ -249,3 +260,7 @@ Sequoia's sidebar order changed between macOS 15.0 and 15.4. The screenshots sho
    - Phase 1: Auth, the admin panel (libraries, users, and the access matrix), the Library grid and viewer on both layouts, and downloads. The Linux media backend, Dockerfile, and launchd plist land in this phase.
    - Phase 2: Albums, People, Map, and search.
    - Phase 3: Passkeys, zip and pre-warm tuning, polish, and animations.
+
+## Offline place names attribution
+
+Place names produced by the opt-in Offline place names feature come from GeoNames (<https://www.geonames.org>), licensed under Creative Commons Attribution 4.0 (<https://creativecommons.org/licenses/by/4.0/>). The dataset is downloaded by the admin at run time and is not part of this repository. The same credit is shown in Admin → Settings.

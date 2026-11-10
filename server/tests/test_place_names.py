@@ -56,7 +56,7 @@ def geonames_server(monkeypatch):
     payload = {"body": _zip(_dump()), "status": 200}
 
     class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
+        def do_GET(self):
             self.send_response(payload["status"])
             self.end_headers()
             self.wfile.write(payload["body"])
@@ -238,7 +238,7 @@ def _detail(client, lib, n):
 def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
     tmp_path, geonames_server
 ):
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
     try:
         # Off by default: nothing stored, nothing shown.
         indexer.index_library(conn, lib, package, force=True)
@@ -282,7 +282,7 @@ def test_apple_place_names_are_never_looked_up_over(tmp_path):
 
 
 def test_backfill_skips_assets_that_have_an_apple_name(tmp_path):
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
     try:
         indexer.index_library(conn, lib, package, force=True)
         conn.execute("UPDATE assets SET place = 'Zürich' WHERE uuid = ?", (_uuid(1),))
@@ -299,7 +299,7 @@ def test_lookup_and_indexing_make_no_connections(tmp_path, monkeypatch):
     monkeypatch.setattr(
         socket.socket, "connect", lambda self, a, *r, **k: attempts.append(a)
     )
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
     try:
         path = place_names.gazetteer_path(tmp_path / "data")
         path.parent.mkdir(parents=True)
@@ -313,7 +313,7 @@ def test_lookup_and_indexing_make_no_connections(tmp_path, monkeypatch):
 
 
 def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_path):
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
     try:
         indexer.index_library(conn, lib, package, force=True)
         conn.execute(
@@ -333,7 +333,7 @@ def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_
 def test_place_name_admin_routes_are_admin_only_audited_and_report_errors(
     tmp_path, geonames_server
 ):
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
     try:
         status = client.get("/api/admin/place-names").json()
         assert status["downloaded"] is False
@@ -394,7 +394,7 @@ def test_first_run_setup_records_both_opt_ins_off_by_default(tmp_path):
 
 
 def test_opt_in_notice_stays_until_settings_are_saved(tmp_path):
-    app, conn, client, lib, package = _admin_with_library(tmp_path)
+    _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
     try:
         conn.execute("DELETE FROM settings WHERE key = 'privacy_opt_ins_reviewed'")
         conn.commit()

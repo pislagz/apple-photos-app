@@ -1141,9 +1141,7 @@ def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusRespons
     ],
 )
 def setup_admin(
-    payload: AdminSetupRequest,
-    request: Request,
-    db: sqlite3.Connection = Depends(get_db),
+    payload: AdminSetupRequest, db: sqlite3.Connection = Depends(get_db)
 ) -> AuthUserResponse:
     """Create the single admin account. Disables itself the moment any user
     row exists, so it cannot be used again to add a second account.
@@ -1180,7 +1178,6 @@ def setup_admin(
         raise
     else:
         db.commit()
-    request.app.state.csp_cache = None
     return AuthUserResponse(username=payload.username, role="admin")
 
 

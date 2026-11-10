@@ -412,3 +412,79 @@ test.describe("dark mode", () => {
     await shot(page, "13-dark-sidebar-toggle-hover", info.project.name);
   });
 });
+
+// ---- Decisions 3 --------------------------------------------------------
+
+async function setMapMode(page: Page, mode: "online" | "local_file" | "off", offlineNames = false) {
+  const current = await (await page.request.get("/api/admin/settings")).json();
+  const response = await page.request.put("/api/admin/settings", {
+    data: { ...current, map_tiles_mode: mode, map_tiles_pmtiles_path: null, offline_place_names: offlineNames },
+  });
+  expect(response.ok()).toBe(true);
+}
+
+test("D21: Info panel summarises a multi-selection", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop only");
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  await page.getByRole("button", { name: "Info" }).click();
+  await expect(page.getByTestId("library-info-panel")).toContainText("No Selection");
+  const grid = page.getByTestId("desktop-library-grid");
+  await cells(page).first().click();
+  await cells(page).nth(2).click({ modifiers: ["Shift"] });
+  const panel = page.getByTestId("library-info-panel");
+  await expect(panel).toContainText("Selected");
+  await expect(panel).toContainText(/\d+ photos?/);
+  await expect(panel).toContainText("Size");
+  await grid.focus();
+  await page.waitForLoadState("networkidle");
+  await shot(page, "14-info-multi-selection", info.project.name);
+});
+
+test("D41: the viewer title is the date for a photo with GPS but no place name", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  const first = cells(page).first();
+  await expect(first).toBeVisible();
+  if (info.project.name === "desktop") await first.dblclick();
+  else await first.tap();
+  const title = page.locator(".desktop-viewer__title-primary, .mobile-viewer__title-primary").first();
+  await expect(title).toBeVisible();
+  // The demo photos have coordinates and no saved place: the title is a date, never coordinates.
+  await expect(title).not.toContainText("°");
+  await page.getByRole("button", { name: "Info" }).first().click();
+  await expect(page.locator('[data-testid="viewer-info-panel"], [data-testid="viewer-info-sheet"]')).toContainText("°");
+  await page.waitForTimeout(500);
+  await shot(page, "15-viewer-title-no-place", info.project.name);
+});
+
+test("D41: the Map view explains that the OpenStreetMap map is off", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await setMapMode(page, "off");
+  await page.reload();
+  if (info.project.name === "desktop") {
+    await page.locator("aside.sidebar").getByRole("button", { name: "Map" }).click();
+  } else {
+    await page.goto("/places");
+  }
+  await expect(page.getByTestId("map-off-note")).toContainText("Show OpenStreetMap map");
+  await page.waitForLoadState("networkidle");
+  await shot(page, "16-map-off-note", info.project.name);
+});
+
+test("D41: Settings has the two optional features, both off by default", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await setMapMode(page, "off");
+  await page.goto("/admin");
+  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByLabel("Show OpenStreetMap map")).not.toBeChecked();
+  await expect(page.getByLabel("Offline place names")).not.toBeChecked();
+  await expect(page.getByTestId("geonames-attribution")).toContainText("GeoNames");
+  await page.getByLabel("Show OpenStreetMap map").scrollIntoViewIfNeeded();
+  await page.waitForLoadState("networkidle");
+  await shot(page, "17-settings-optional-features", info.project.name);
+});

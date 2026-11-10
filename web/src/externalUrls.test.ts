@@ -55,6 +55,10 @@ describe("check_external_urls", () => {
       "https://www.openstreetmap.org/api/0.6/map",
       "http://www.w3.org/TR/anything",
       "https://react.dev/learn",
+      // D41: GeoNames is only ever named as text (the server downloads it, the
+      // browser never does), so it must not appear as a URL in the bundle.
+      "https://download.geonames.org/export/dump/cities15000.zip",
+      "https://www.geonames.org",
       "http://localhost.evil.example/",
     ]) {
       expect(findDisallowedUrls(`x="${url}"`)).toEqual([url]);

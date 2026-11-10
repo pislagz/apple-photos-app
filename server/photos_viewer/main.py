@@ -83,6 +83,7 @@ def content_security_policy(osm_tiles: bool) -> str:
 
 
 _CSP_CACHE_SECONDS = 5.0
+_SETTINGS_WRITES = ("/api/admin/settings", "/api/setup/admin")
 
 
 def _map_is_online(conn: sqlite3.Connection) -> bool:
@@ -121,6 +122,8 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         response = await call_next(request)
+        if request.method in ("PUT", "POST") and request.url.path in _SETTINGS_WRITES:
+            request.app.state.csp_cache = None  # the map setting may have changed
         response.headers["Content-Security-Policy"] = content_security_policy(
             _osm_tiles_enabled(request.app)
         )
