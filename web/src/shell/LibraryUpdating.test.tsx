@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
 import DesktopShell from "./DesktopShell";
 import LibraryUpdating from "./LibraryUpdating";
@@ -21,6 +21,8 @@ const common = {
   onLogout: () => {},
 };
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("Being updated", () => {
   it("renders the notice with the reason", () => {
     render(<LibraryUpdating name="Family" reason="copy looks incomplete" />);
@@ -29,15 +31,18 @@ describe("Being updated", () => {
   });
 
   it("replaces the grid on the mobile shell without requesting any photos", () => {
-    const fetchSpy = (globalThis.fetch = (() => Promise.reject(new Error("no requests expected"))) as typeof fetch);
+    const fetchSpy = vi.fn(() => Promise.reject(new Error("no requests expected")));
+    vi.stubGlobal("fetch", fetchSpy);
     render(<MobileShell {...common} />);
     expect(screen.getByText("Family is being updated")).toBeTruthy();
-    expect(fetchSpy).toBeDefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("replaces the grid on the desktop shell", () => {
-    globalThis.fetch = (() => Promise.reject(new Error("no requests expected"))) as typeof fetch;
+    const fetchSpy = vi.fn(() => Promise.reject(new Error("no requests expected")));
+    vi.stubGlobal("fetch", fetchSpy);
     render(<DesktopShell {...common} />);
     expect(screen.getByText("Family is being updated")).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

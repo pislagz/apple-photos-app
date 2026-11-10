@@ -152,3 +152,70 @@ def test_place_code_paths_import_no_network_or_geocoder():
                 mods = [node.module]
             for m in mods:
                 assert m.split(".")[0] not in banned, f"{name} imports {m}"
+
+
+class _PlaceInfo:
+    """What the indexer reads from `PhotoInfo.place`."""
+
+    def __init__(self, name, country_code, address_str):
+        self.name = name
+        self.country_code = country_code
+        self.address_str = address_str
+
+
+class _PhotoWithPlace:
+    """A PhotoInfo stand-in: every attribute comes from the real record
+    except `place`, which the synthetic fixture cannot carry."""
+
+    def __init__(self, photo, place):
+        self._photo = photo
+        self.place = place
+
+    def __getattr__(self, name):
+        return getattr(self._photo, name)
+
+
+class _PhotosDBWithPlaces:
+    def __init__(self, photosdb, places):
+        self._photosdb = photosdb
+        self._places = places
+
+    def photos(self):
+        for photo in self._photosdb.photos():
+            yield _PhotoWithPlace(photo, self._places.get(photo.uuid))
+
+    def __getattr__(self, name):
+        return getattr(self._photosdb, name)
+
+
+def test_indexer_copies_photoinfo_place_into_the_place_columns(tmp_path):
+    from photos_viewer import libraries
+
+    data = _build_asset_image_bytes()
+    package = build_library(
+        tmp_path,
+        [
+            FixtureAsset(uuid=_uuid(1), filename="IMG_0001.HEIC", data=data),
+            FixtureAsset(uuid=_uuid(2), filename="IMG_0002.HEIC", data=data),
+        ],
+    )
+    conn = app_db.connect(tmp_path / "data")
+    opened = libraries.open_library_readonly(package)
+    try:
+        conn.execute("INSERT INTO libraries (display_name, path) VALUES ('L1', ?)", (str(package),))
+        conn.commit()
+        lib = conn.execute("SELECT id FROM libraries").fetchone()["id"]
+        places = {_uuid(1): _PlaceInfo("Zürich", "CH", "Bahnhofstrasse 1, Zürich, Switzerland")}
+        conn.execute("BEGIN IMMEDIATE")
+        indexer._write_index(conn, lib, _PhotosDBWithPlaces(opened.db, places))
+        conn.commit()
+
+        rows = {
+            r["uuid"]: (r["place"], r["place_country_code"], r["place_address"])
+            for r in conn.execute("SELECT uuid, place, place_country_code, place_address FROM assets")
+        }
+        assert rows[_uuid(1)] == ("Zürich", "CH", "Bahnhofstrasse 1, Zürich, Switzerland")
+        assert rows[_uuid(2)] == (None, None, None)
+    finally:
+        opened.close()
+        conn.close()

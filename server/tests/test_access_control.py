@@ -136,7 +136,7 @@ def world(tmp_path, monkeypatch):
 def library_routes(app):
     """(path template, method) for every library-scoped route, read from the app."""
     found = []
-    for route in session_auth._leaf_routes(app.routes):
+    for route in session_auth.leaf_routes(app.routes):
         path = getattr(route, "path", "")
         if path.startswith(LIBRARY_PREFIX):
             for method in sorted(getattr(route, "methods", None) or ()):
@@ -346,7 +346,7 @@ def test_non_admin_gets_403_on_admin_routes(world):
     client = world.login("alice")
     admin_paths = [
         (route.path, method)
-        for route in session_auth._leaf_routes(world.app.routes)
+        for route in session_auth.leaf_routes(world.app.routes)
         if getattr(route, "path", "").startswith("/api/admin/")
         for method in getattr(route, "methods", ())
         if method not in ("HEAD", "OPTIONS")

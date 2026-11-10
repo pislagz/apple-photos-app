@@ -1,4 +1,14 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
+
+// findBy*/waitFor default to 1 s. Every fetch in these tests is a mock that
+// resolves in microtasks, so a wait only runs long when the CPU is starved
+// (several vitest workers plus jsdom rendering a few hundred cells). 1 s was
+// the cause of the flaky HiddenView / DesktopLibrary failures (#170); a
+// passing wait still returns on the first poll, so a larger cap costs
+// nothing. Assertions that mean "this did NOT happen" must not rely on the
+// timeout; they await the promise they are guarding instead.
+configure({ asyncUtilTimeout: 8000 });
 
 // jsdom has no `ResizeObserver`. TanStack
 // Virtual (the mobile Library grid) reads the container's size from that
