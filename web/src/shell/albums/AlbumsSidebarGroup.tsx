@@ -1,20 +1,21 @@
 import type { AlbumNode } from "../../api";
 import { Icon } from "../icons";
-import { useAlbums } from "./useAlbums";
+import type { AlbumsState } from "./useAlbums";
 
 // P2.1: the desktop sidebar's Albums group -- the folder tree as nested
 // disclosure rows, albums as leaves. Loading and failure show inside the
 // group (with Retry) so the rest of the sidebar stays usable.
 export default function AlbumsSidebarGroup({
-  libraryId,
+  state,
   currentId,
   onOpen,
 }: {
-  libraryId: number;
+  // Owned by the sidebar, which also needs it for Media Types (one request).
+  state: AlbumsState;
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
-  const { albums, error, retry } = useAlbums(libraryId);
+  const { albums, error, retry } = state;
   if (error) {
     return (
       <p className="sidebar__note" role="alert">

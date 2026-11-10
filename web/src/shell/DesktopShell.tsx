@@ -3,6 +3,7 @@ import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../
 import MapView, { boundsParam } from "./map/MapView";
 import PeopleGrid from "./people/PeopleGrid";
 import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
+import { useAlbums } from "./albums/useAlbums";
 import AccountMenu from "./AccountMenu";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
@@ -14,6 +15,7 @@ import LibrarySwitcher from "./LibrarySwitcher";
 import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
+import { UNNAMED_PERSON } from "./people/PeopleGrid";
 
 const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
 function readSidebarCollapsed(): boolean {
@@ -51,6 +53,51 @@ const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
 // behind it; "Imports" stays disabled chrome. No Recently Deleted: deleted
 // items are excluded by design (#128).
 const UTILITIES: { label: string; icon: IconName }[] = [{ label: "Imports", icon: "tray" }];
+
+// Media Types and Albums share one /albums request. Like /albums itself, a
+// media type with no items is not listed; while loading or on failure none is
+// (the Albums group shows the failure with Retry).
+function SidebarAlbumGroups({
+  libraryId,
+  currentId,
+  onOpen,
+}: {
+  libraryId: number;
+  currentId: string | null;
+  onOpen: (id: string, title: string) => void;
+}) {
+  const state = useAlbums(libraryId);
+  const present = new Set(state.albums?.smart.map((album) => album.id));
+  const types = MEDIA_TYPES.filter((type) => present.has(`smart:${type.smart}`));
+  return (
+    <>
+      {types.length > 0 && (
+        <details className="sidebar__group" open>
+          <summary>Media Types</summary>
+          <ul>
+            {types.map((type) => (
+              <li key={type.label}>
+                <button
+                  type="button"
+                  aria-current={currentId === `smart:${type.smart}` ? "page" : undefined}
+                  className="sidebar__item sidebar__item--sub"
+                  onClick={() => onOpen(`smart:${type.smart}`, type.label)}
+                >
+                  <Icon name={type.icon} className="sidebar__icon" />
+                  {type.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <details className="sidebar__group" open>
+        <summary>Albums</summary>
+        <AlbumsSidebarGroup state={state} currentId={currentId} onOpen={onOpen} />
+      </details>
+    </>
+  );
+}
 
 export default function DesktopShell({
   me,
@@ -223,37 +270,19 @@ export default function DesktopShell({
             ))}
           </ul>
         </nav>
-        <details className="sidebar__group" open>
-          <summary>Media Types</summary>
-          <ul>
-            {MEDIA_TYPES.map((type) => (
-              <li key={type.label}>
-                <button
-                  type="button"
-                  aria-current={currentAlbumId === `smart:${type.smart}` ? "page" : undefined}
-                  className="sidebar__item sidebar__item--sub"
-                  onClick={() => openAlbum(`smart:${type.smart}`, type.label)}
-                >
-                  <Icon name={type.icon} className="sidebar__icon" />
-                  {type.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-        <details className="sidebar__group" open>
-          <summary>Albums</summary>
-          {activeLibraryId !== undefined && !activeLibrary?.updating ? (
-            <AlbumsSidebarGroup
-              key={activeLibraryId}
-              libraryId={activeLibraryId}
-              currentId={currentAlbumId}
-              onOpen={openAlbum}
-            />
-          ) : (
+        {activeLibraryId !== undefined && !activeLibrary?.updating ? (
+          <SidebarAlbumGroups
+            key={activeLibraryId}
+            libraryId={activeLibraryId}
+            currentId={currentAlbumId}
+            onOpen={openAlbum}
+          />
+        ) : (
+          <details className="sidebar__group" open>
+            <summary>Albums</summary>
             <p className="sidebar__note">No albums</p>
-          )}
-        </details>
+          </details>
+        )}
         <details className="sidebar__group" open>
           <summary>Utilities</summary>
           <ul>
@@ -347,7 +376,7 @@ export default function DesktopShell({
                 <PeopleGrid
                   key={activeLibraryId}
                   libraryId={activeLibraryId}
-                  onOpen={(person) => openAlbum(`${PERSON_PREFIX}${person.id}`, person.name)}
+                  onOpen={(person) => openAlbum(`${PERSON_PREFIX}${person.id}`, person.name ?? UNNAMED_PERSON)}
                 />
               </div>
             ) : activeLibraryId !== undefined ? (

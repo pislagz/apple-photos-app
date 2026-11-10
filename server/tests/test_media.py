@@ -601,3 +601,31 @@ def test_steady_writes_do_not_rescan_the_cache(tmp_path, monkeypatch):
     # Evicting updates the running total without waiting for a rescan.
     media._note_cache_write(cache_dir, 150, _write_entry(cache_dir, "big", 10))
     assert media.cache_total_bytes(cache_dir) <= 150
+
+
+def test_cache_near_the_limit_rescans_after_30_seconds(tmp_path, monkeypatch):
+    cache_dir = tmp_path / "cache"
+    media._cache_totals.pop(cache_dir, None)
+    media._cache_scanned_at.pop(cache_dir, None)
+    now = [1000.0]
+    monkeypatch.setattr(media.time, "monotonic", lambda: now[0])
+    limit = 1000
+    media._note_cache_write(cache_dir, limit, _write_entry(cache_dir, "a", 100))
+    # Far from the limit: a young scan is not repeated.
+    _write_entry(cache_dir, "other1", 100)
+    now[0] += 5.0
+    media._note_cache_write(cache_dir, limit, _write_entry(cache_dir, "b", 100))
+    assert media.cache_total_bytes(cache_dir) == 200
+    # Push this process's total to >= 80% of the limit.
+    media._note_cache_write(cache_dir, limit, _write_entry(cache_dir, "c", 650))
+    assert media.cache_total_bytes(cache_dir) == 850
+    # Another process writes; near the limit but under 30 s, nothing rescans.
+    _write_entry(cache_dir, "other2", 100)
+    now[0] += 10.0
+    media._note_cache_write(cache_dir, limit, _write_entry(cache_dir, "d", 10))
+    assert media.cache_total_bytes(cache_dir) == 860
+    # Past 30 s the near-limit total is rescanned and sees the other writes.
+    now[0] += 25.0
+    media._note_cache_write(cache_dir, limit, _write_entry(cache_dir, "e", 10))
+    assert media.cache_total_bytes(cache_dir) <= limit
+    assert media._cache_scanned_at[cache_dir] == now[0]

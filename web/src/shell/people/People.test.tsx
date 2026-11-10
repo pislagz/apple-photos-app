@@ -19,6 +19,7 @@ const ME: MeResponse = {
 const PEOPLE: Person[] = [
   { id: "P1", name: "Ann", count: 3, cover: { asset_id: "c1", x: 0.3, y: 0.4, w: 0.2, h: 0.1 } },
   { id: "P2", name: "Ben", count: 1, cover: null },
+  { id: "P3", name: null, count: 7, cover: { asset_id: "c3", x: 0.5, y: 0.5, w: 0.3, h: 0.3 } },
 ];
 
 const ITEM = {
@@ -91,6 +92,13 @@ describe("desktop People & Pets", () => {
     expect(img.getAttribute("src")).toBe("/api/libraries/1/thumb/c1?size=grid2x");
     expect(img.style.width).toBe(`${100 / (0.2 * 1.8)}%`);
 
+    // An unnamed face group comes after the named people, with a muted
+    // placeholder instead of a name.
+    const buttons = screen.getAllByRole("button", { name: /Ann|Ben|Add Name/ });
+    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Add Name"]);
+    expect(buttons[2].querySelector(".people-grid__name--unnamed")).not.toBeNull();
+    expect(buttons[0].querySelector(".people-grid__name--unnamed")).toBeNull();
+
     fireEvent.click(ann);
     expect(await screen.findByRole("heading", { name: "Ann" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("person=P1"))).toBe(true));
@@ -100,6 +108,17 @@ describe("desktop People & Pets", () => {
     // The toolbar's Back button (after the sidebar row in the DOM).
     fireEvent.click(screen.getAllByRole("button", { name: /People & Pets/ }).at(-1) as HTMLElement);
     expect(await screen.findByRole("button", { name: /Ben/ })).toBeInTheDocument();
+  });
+
+  it("opens an unnamed face group through person=", async () => {
+    const requested: string[] = [];
+    mockFetch(handler(requested));
+    renderDesktop();
+    fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Add Name/ }));
+    expect(await screen.findByRole("heading", { name: "Add Name" })).toBeInTheDocument();
+    await waitFor(() => expect(requested.some((url) => url.includes("person=P3"))).toBe(true));
+    expect(await findThumb("p1")).toBeInTheDocument();
   });
 
   it("says people could not be loaded and retries", async () => {
@@ -118,7 +137,7 @@ describe("desktop People & Pets", () => {
     mockFetch(handler([], () => ({ people: [] })));
     renderDesktop();
     fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
-    expect(await screen.findByText(/No named people/)).toBeInTheDocument();
+    expect(await screen.findByText(/No people/)).toBeInTheDocument();
   });
 });
 
@@ -147,6 +166,17 @@ describe("mobile People & Pets", () => {
 
     expect(await screen.findByRole("heading", { name: "Ann" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("person=P1"))).toBe(true));
+  });
+
+  it("opens an unnamed face group from the grid and from a deep link", async () => {
+    const requested: string[] = [];
+    mockFetch(handler(requested));
+    window.history.replaceState({}, "", "/people");
+    renderMobile();
+    fireEvent.click(await screen.findByRole("button", { name: /Add Name/ }));
+    expect(window.location.pathname).toBe("/people/P3");
+    expect(await screen.findByRole("heading", { name: "Add Name" })).toBeInTheDocument();
+    await waitFor(() => expect(requested.some((url) => url.includes("person=P3"))).toBe(true));
   });
 
   it("shows a failure with Retry", async () => {

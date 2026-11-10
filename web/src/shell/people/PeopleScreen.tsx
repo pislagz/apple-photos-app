@@ -1,7 +1,7 @@
 import { PERSON_PREFIX } from "../../api";
 import { Icon } from "../icons";
 import MobileLibrary from "../library/MobileLibrary";
-import PeopleGrid from "./PeopleGrid";
+import PeopleGrid, { UNNAMED_PERSON } from "./PeopleGrid";
 import { usePeople } from "./usePeople";
 
 // P2.2: More > People & Pets. `/people` is the grid of faces; `/people/<id>`
@@ -52,7 +52,7 @@ function PersonPhotos({
           <Icon name="chevron" className="mobile-screen__back-icon" />
           People & Pets
         </button>
-        <h1 className="mobile-screen__title">{person?.name ?? "Person"}</h1>
+        <h1 className="mobile-screen__title">{person ? (person.name ?? UNNAMED_PERSON) : "Person"}</h1>
       </header>
       <div className="mobile-screen__album-grid">
         <MobileLibrary key={personId} libraryId={libraryId} album={`${PERSON_PREFIX}${personId}`} />

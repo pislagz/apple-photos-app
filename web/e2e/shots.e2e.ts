@@ -164,8 +164,8 @@ test("people: faces grid and a person's photos", async ({ page }, info) => {
     await page.getByRole("button", { name: /People & Pets/ }).click();
   }
   await expect(page.getByRole("button", { name: /Alex Demo/ })).toBeVisible();
-  // The unnamed cluster is omitted.
-  await expect(page.getByRole("button", { name: /Unnamed/ })).toHaveCount(0);
+  // The unnamed cluster is listed after the named people, with a placeholder.
+  await expect(page.getByRole("button", { name: /Add Name/ })).toHaveCount(1);
   await shot(page, "12-people", info.project.name);
   await page.getByRole("button", { name: /Alex Demo/ }).click();
   await expect(page.getByRole("heading", { name: "Alex Demo" })).toBeVisible();
@@ -241,21 +241,32 @@ test("phone title never overlaps Select or the account button (#159)", async ({ 
   }
 });
 
-test("desktop Days lead photo stays capped in wide windows (#153)", async ({ page }, info) => {
+test("desktop Days lead photo: narrow rule, 960 cap, scaled cap on wide windows (#153, #170)", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "desktop only");
   await signIn(page);
   for (const [width, height] of [
-    [1440, 900],
-    [1920, 1080],
+    [1000, 800], // content under 960px: full width, two thumbnail rows tall
+    [1440, 900], // 960 cap
+    [1920, 1080], // content >= 1600px: four columns' worth, still 2:1
+    [2560, 1300],
   ]) {
     await page.setViewportSize({ width, height });
     await openZoom(page, "Days");
     await page.waitForTimeout(400);
+    const content = await page.locator(".desktop-library__grid").first().boundingBox();
     const box = await cells(page).first().boundingBox();
     expect(box, `${width}: lead photo`).not.toBeNull();
-    expect(box!.width, `${width}: lead width`).toBeLessThanOrEqual(960);
-    expect(box!.height, `${width}: lead height`).toBeLessThanOrEqual(480);
-    expect(box!.width / box!.height, `${width}: lead aspect`).toBeLessThanOrEqual(2.05);
+    const contentWidth = content!.width;
+    if (contentWidth < 960) {
+      expect(box!.width, `${width}: narrow lead is full width`).toBeGreaterThan(contentWidth - 24);
+    } else if (contentWidth < 1600) {
+      expect(box!.width, `${width}: lead width`).toBeLessThanOrEqual(960);
+      expect(box!.width / box!.height, `${width}: lead aspect`).toBeLessThanOrEqual(2.05);
+    } else {
+      expect(box!.width, `${width}: scaled lead is at least the cap`).toBeGreaterThanOrEqual(960);
+      expect(box!.width, `${width}: scaled lead fits`).toBeLessThanOrEqual(contentWidth);
+      expect(box!.width / box!.height, `${width}: lead aspect`).toBeLessThanOrEqual(2.05);
+    }
     // Resizing must re-measure rows: the next row starts below the lead photo.
     const next = await cells(page).nth(1).boundingBox();
     if (next) expect(next.y, `${width}: next row below lead`).toBeGreaterThanOrEqual(box!.y + box!.height);

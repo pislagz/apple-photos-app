@@ -2289,6 +2289,11 @@ body {
   font-weight: 500;
 }
 
+.people-grid__name--unnamed {
+  font-weight: 400;
+  color: var(--ios-label-secondary, #8e8e93);
+}
+
 .people-grid__count {
   margin-top: -4px;
   font-size: 12px;

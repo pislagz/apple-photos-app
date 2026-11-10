@@ -236,7 +236,8 @@ export function getAlbums(libraryId: number): Promise<AlbumsResponse> {
   return request<AlbumsResponse>(`/api/libraries/${libraryId}/albums`);
 }
 
-// P2.2: named people with at least one visible photo, most photos first.
+// P2.2/D25: people with at least one visible photo: named ones first, then
+// unnamed face groups (`name` null), each most photos first.
 // `cover` is the person's best face on a visible photo: the circular crop is
 // the ordinary `/thumb/{asset_id}` clipped client-side (x/y centre, w/h size,
 // fractions of the displayed image, top-left origin).
@@ -250,7 +251,7 @@ export interface FaceCrop {
 
 export interface Person {
   id: string;
-  name: string;
+  name: string | null;
   count: number;
   cover: FaceCrop | null;
 }

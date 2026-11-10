@@ -6,7 +6,8 @@ text is what the indexer copied from the library (P1.6).
 
 Matching is plain: the query is split on whitespace and every term must match
 (AND). A term matches when it is a word prefix, accent- and case-insensitively,
-of any of: place name or address, a person, an album title, camera make or
+of any of: the file name (original or current), title, description, place
+name or address, a person, an album title, camera make or
 model, or a label (Apple's scene/object labels in `asset_labels`); or when it
 is a prefix of the capture year, the month name, or the ISO day. Hidden assets
 are never searched. An empty query is an empty page, not the whole library.
@@ -49,7 +50,7 @@ def parse_terms(q: str) -> list[str]:
 
 @functools.lru_cache(maxsize=8192)
 def _words(text: str | None) -> tuple[str, ...]:
-    """Folded words of a field. Cached: a scan calls `pv_wp` up to 9 times per
+    """Folded words of a field. Cached: a scan calls `pv_wp` up to 13 times per
     term per row, and place/camera/album strings repeat across rows, so most
     calls skip the unicode folding and tokenising."""
     return tuple(_WORD.findall(fold(text)))
@@ -87,6 +88,8 @@ def search_clause(terms: list[str]) -> tuple[str, list[object]]:
             "pv_date(COALESCE(date_created_local_day, substr(date_created, 1, 10)), ?)"
             " OR pv_wp(place, ?) OR pv_wp(place_address, ?)"
             " OR pv_wp(camera_make, ?) OR pv_wp(camera_model, ?)"
+            " OR pv_wp(filename, ?) OR pv_wp(original_filename, ?)"
+            " OR pv_wp(title, ?) OR pv_wp(description, ?)"
             " OR id IN (SELECT ap.asset_id FROM asset_people ap JOIN people p ON p.id = ap.person_id"
             "           WHERE pv_wp(p.name, ?) OR pv_wp(p.display_name, ?))"
             " OR id IN (SELECT aa.asset_id FROM asset_albums aa JOIN albums al ON al.id = aa.album_id"
@@ -94,7 +97,7 @@ def search_clause(terms: list[str]) -> tuple[str, list[object]]:
             " OR id IN (SELECT asset_id FROM asset_labels WHERE pv_wp(label_normalized, ?))"
             ")"
         )
-        params.extend([term] * 9)
+        params.extend([term] * 13)
     return " AND ".join(parts), params
 
 

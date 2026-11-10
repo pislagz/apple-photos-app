@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AlbumsResponse, MeResponse } from "../../api";
 import { findThumb, jsonResponse, mockFetch } from "../../testHelpers";
@@ -112,6 +112,39 @@ describe("desktop Albums sidebar group", () => {
 
     await waitFor(() => expect(requested.some((url) => url.includes("album=smart%3Afavorites"))).toBe(true));
     expect(await screen.findByRole("heading", { name: "Favorites" })).toBeInTheDocument();
+  });
+
+  it("lists only the Media Types that have items, in one /albums request", async () => {
+    const requested: string[] = [];
+    mockFetch(
+      handler(requested, () => ({
+        ...ALBUMS,
+        smart: [
+          ...ALBUMS.smart,
+          { id: "smart:videos", title: "Videos", count: 2, cover_id: "p1" },
+          { id: "smart:panoramas", title: "Panoramas", count: 1, cover_id: "p1" },
+        ],
+      })),
+    );
+    renderDesktop();
+
+    const group = (await screen.findByText("Media Types")).closest("details") as HTMLElement;
+    await waitFor(() => expect(within(group).getByRole("button", { name: "Videos" })).toBeInTheDocument());
+    expect(within(group).getByRole("button", { name: "Panoramas" })).toBeInTheDocument();
+    for (const empty of ["Selfies", "Live Photos", "Portrait", "Screenshots", "RAW"]) {
+      expect(within(group).queryByRole("button", { name: empty })).not.toBeInTheDocument();
+    }
+    expect(requested.filter((url) => url === "/api/libraries/1/albums")).toHaveLength(1);
+
+    fireEvent.click(within(group).getByRole("button", { name: "Videos" }));
+    await waitFor(() => expect(requested.some((url) => url.includes("album=smart%3Avideos"))).toBe(true));
+  });
+
+  it("hides the Media Types group when no type has items, and while albums load or fail", async () => {
+    mockFetch(handler([], () => ALBUMS)); // only Favorites
+    renderDesktop();
+    expect(await screen.findByText("Trips")).toBeInTheDocument();
+    expect(screen.queryByText("Media Types")).not.toBeInTheDocument();
   });
 
   it("says albums could not be loaded and retries", async () => {

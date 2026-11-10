@@ -46,6 +46,9 @@ export function FaceCircle({ libraryId, cover }: { libraryId: number; cover: Fac
   );
 }
 
+// Shown for a face group Photos has no name for (display only, no editing).
+export const UNNAMED_PERSON = "Add Name";
+
 // P2.2: the grid of circular faces with names, shared by both layouts.
 export default function PeopleGrid({
   libraryId,
@@ -68,7 +71,7 @@ export default function PeopleGrid({
     );
   }
   if (!people) return <p className="people-grid__note">Loading…</p>;
-  if (people.length === 0) return <p className="people-grid__note">No named people in this library.</p>;
+  if (people.length === 0) return <p className="people-grid__note">No people in this library.</p>;
   return (
     <ul className="people-grid">
         {people.map((person) => (
@@ -80,7 +83,9 @@ export default function PeopleGrid({
               onClick={() => onOpen(person)}
             >
               <FaceCircle libraryId={libraryId} cover={person.cover} />
-              <span className="people-grid__name">{person.name}</span>
+              <span className={person.name === null ? "people-grid__name people-grid__name--unnamed" : "people-grid__name"}>
+                {person.name ?? UNNAMED_PERSON}
+              </span>
               <span className="people-grid__count">{person.count.toLocaleString()}</span>
             </button>
           </li>

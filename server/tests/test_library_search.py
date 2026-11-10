@@ -331,7 +331,8 @@ def test_search_scan_tokenises_each_distinct_field_value_once():
         """
         CREATE TABLE assets (id INTEGER PRIMARY KEY, date_created TEXT,
             date_created_local_day TEXT, place TEXT, place_address TEXT,
-            camera_make TEXT, camera_model TEXT);
+            camera_make TEXT, camera_model TEXT, filename TEXT,
+            original_filename TEXT, title TEXT, description TEXT);
         CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, display_name TEXT);
         CREATE TABLE asset_people (asset_id INTEGER, person_id INTEGER);
         CREATE TABLE albums (id INTEGER PRIMARY KEY, title TEXT);
@@ -342,7 +343,7 @@ def test_search_scan_tokenises_each_distinct_field_value_once():
     places = ["Zürich", "Paris", "Lisbon", "Oslo"]
     rows = 4000
     db.executemany(
-        "INSERT INTO assets VALUES (?, '2024-01-01T00:00:00', '2024-01-01', ?, ?, 'Apple', 'iPhone 15')",
+        "INSERT INTO assets VALUES (?, '2024-01-01T00:00:00', '2024-01-01', ?, ?, 'Apple', 'iPhone 15', 'f', 'f', NULL, NULL)",
         [(i, places[i % 4], f"{places[i % 4]} Road") for i in range(rows)],
     )
     library_search._register(db)
@@ -356,3 +357,48 @@ def test_search_scan_tokenises_each_distinct_field_value_once():
     assert found == rows // 4
     distinct_values = len(places) * 2 + 2 + 1  # place, address, make, model, +slack
     assert library_search._words.cache_info().misses <= distinct_values
+
+
+def test_matches_filename_original_filename_title_and_description(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        conn.execute(
+            "UPDATE assets SET filename = 'A1B2C3.heic', original_filename = 'DSC_Sunset.JPG', "
+            "title = 'Café terrace', description = 'Grandma birthday lunch' WHERE uuid = ?",
+            (_uuid(3),),
+        )
+        # A hidden photo with the same words never shows up.
+        conn.execute(
+            "UPDATE assets SET original_filename = 'DSC_Sunset2.JPG', "
+            "title = 'Café hidden', description = 'birthday' WHERE uuid = ?",
+            (_uuid(4),),
+        )
+        conn.commit()
+        assert _search(client, lib, "a1b2") == {_uuid(3)}  # filename
+        assert _search(client, lib, "DSC_Sun") == {_uuid(3)}  # original_filename
+        assert _search(client, lib, "cafe") == {_uuid(3)}  # title, accent-insensitive
+        assert _search(client, lib, "TERRACE") == {_uuid(3)}
+        assert _search(client, lib, "birthday") == {_uuid(3)}  # description
+        assert _search(client, lib, "grandma lunch") == {_uuid(3)}  # AND over words
+        assert _search(client, lib, "cafe dog") == set()  # every term must match
+        assert _search(client, lib, "dog a1b2") == set()
+        # Mixed: one term in the filename, one in the title.
+        assert _search(client, lib, "dsc terrace") == {_uuid(3)}
+    finally:
+        conn.close()
+
+
+def test_a_term_matching_only_the_filename_finds_the_photo(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        # IMG_0002.HEIC has no place, person, album title match, label or date
+        # for this term: only its original filename carries it.
+        conn.execute(
+            "UPDATE assets SET original_filename = 'Zebrafoto.HEIC' WHERE uuid = ?",
+            (_uuid(2),),
+        )
+        conn.commit()
+        assert _search(client, lib, "zebrafoto") == {_uuid(2)}
+        assert _search(client, lib, "zebrafoto", type="video") == set()
+    finally:
+        conn.close()

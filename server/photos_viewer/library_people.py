@@ -3,9 +3,10 @@
 Reads only `app.db`, never a `.photoslibrary` path, behind
 `session_auth.require_library_assignment` (a foreign `library_id` 404s).
 
-Rule for unnamed faces: they are omitted, from the list and from `person=`
-(an unnamed person's id 404s like any unknown id). Hidden assets never count
-and are never used as the cover face.
+Unnamed face groups are listed too, as Apple Photos does: `name` is null, and
+they come after every named person, most photos first. `person=` accepts them.
+People whose every asset is hidden are left out, named or not. Hidden assets
+never count and are never used as the cover face.
 
 A person's photos are listed through `GET /assets?person=<uuid>` (see
 `library_assets.py`). The circular crop is applied client-side: the list gives
@@ -36,9 +37,9 @@ def person_clause(
     db: sqlite3.Connection, library_id: int, person: str
 ) -> tuple[str, list[object]]:
     """SQL condition (on `assets`) for a `person=` value; 404 unless it is a
-    named person of *this* library."""
+    person (named or not) of *this* library."""
     row = db.execute(
-        f"SELECT id FROM people WHERE library_id = ? AND uuid = ? AND {_label_sql()} IS NOT NULL",
+        "SELECT id FROM people WHERE library_id = ? AND uuid = ?",
         (library_id, person),
     ).fetchone()
     if row is None:
@@ -58,7 +59,7 @@ class FaceCrop(BaseModel):
 
 class Person(BaseModel):
     id: str
-    name: str
+    name: str | None  # null: an unnamed face group
     count: int
     cover: FaceCrop | None
 
@@ -97,7 +98,7 @@ def list_people(
         SELECT p.id, p.uuid, {_label_sql("p")} AS label,
                (SELECT COUNT(*) FROM asset_people ap JOIN assets a ON a.id = ap.asset_id
                 WHERE ap.person_id = p.id AND a.hidden = 0) AS n
-        FROM people p WHERE p.library_id = ? AND {_label_sql("p")} IS NOT NULL
+        FROM people p WHERE p.library_id = ?
         """,
         (library_id,),
     ):
@@ -111,5 +112,6 @@ def list_people(
                 cover=covers.get(row["id"]),
             )
         )
-    out.sort(key=lambda p: (-p.count, p.name.lower()))
+    # Named people first, then unnamed groups; each most photos first.
+    out.sort(key=lambda p: (p.name is None, -p.count, (p.name or "").lower()))
     return PeopleResponse(people=out)
