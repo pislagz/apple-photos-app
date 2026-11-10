@@ -99,6 +99,23 @@ test("small phone library", async ({ page }, info) => {
   }
 });
 
+test("phone view switch fits the viewport", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone only");
+  await signIn(page);
+  await openZoom(page, "Years");
+  const tabs = page.getByRole("tablist", { name: "Library zoom" });
+  await expect(tabs).toBeVisible();
+  const vw = page.viewportSize()!.width;
+  const box = (await tabs.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(vw);
+  for (const tab of await tabs.getByRole("tab").all()) {
+    const b = (await tab.boundingBox())!;
+    expect(b.x).toBeGreaterThanOrEqual(box.x);
+    expect(b.x + b.width).toBeLessThanOrEqual(box.x + box.width + 0.5);
+  }
+});
+
 test("viewer opens on a photo", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page);
