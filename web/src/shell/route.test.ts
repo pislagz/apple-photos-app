@@ -32,6 +32,8 @@ describe("parseMobileRoute", () => {
   it("parses the More screens by their own stable route, independent of the More tab", () => {
     expect(parseMobileRoute("/people")).toEqual({ tab: "more", screen: "people" });
     expect(parseMobileRoute("/places")).toEqual({ tab: "more", screen: "places" });
+    expect(parseMobileRoute("/places/1%2C2%2C3%2C4")).toEqual({ tab: "more", screen: "places", bbox: "1,2,3,4" });
+    expect(mobileRoutePath({ tab: "more", screen: "places", bbox: "1,2,3,4" })).toBe("/places/1%2C2%2C3%2C4");
     expect(parseMobileRoute("/hidden")).toEqual({ tab: "more", screen: "hidden" });
     expect(parseMobileRoute("/media/videos")).toEqual({ tab: "more", screen: "media", mediaType: "videos" });
   });
@@ -81,5 +83,15 @@ describe("Albums routes (P2.1)", () => {
       expect(parseMobileRoute(mobileRoutePath(route))).toEqual(route);
     }
     expect(mobileRoutePath({ tab: "albums", folderId: "F-1" })).toBe("/albums/folder/F-1");
+  });
+});
+
+describe("malformed percent escapes", () => {
+  it("do not throw; the path just matches nothing", () => {
+    for (const path of ["/places/%E0", "/people/%E0", "/media/%E0", "/albums/%E0", "/albums/folder/%E0"]) {
+      expect(() => parseMobileRoute(path)).not.toThrow();
+      expect(parseMobileRoute(path)).toEqual({ tab: "library" });
+    }
+    expect(parsePhotoPath("/library/1/photo/%E0")).toBeNull();
   });
 });

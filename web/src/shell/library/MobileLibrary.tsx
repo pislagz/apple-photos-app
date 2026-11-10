@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
-import { PERSON_PREFIX } from "../../api";
+import { PERSON_PREFIX, PLACE_PREFIX } from "../../api";
 import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -292,7 +292,7 @@ export default function MobileLibrary({
       >
         {showSummaryError || showAssetsError ? (
           <div className="mobile-library__empty" role="alert">
-            <p>{album ? (album.startsWith(PERSON_PREFIX) ? "Couldn't load this person's photos." : "Couldn't load this album.") : "Couldn't load your library."}</p>
+            <p>{album ? (album.startsWith(PERSON_PREFIX) ? "Couldn't load this person's photos." : album.startsWith(PLACE_PREFIX) ? "Couldn't load these photos." : "Couldn't load this album.") : "Couldn't load your library."}</p>
             <button
               type="button"
               className="mobile-library__retry"
@@ -302,7 +302,7 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <p className="mobile-library__empty">{album ? (album.startsWith(PERSON_PREFIX) ? "No photos of this person." : "No photos in this album.") : "No photos yet."}</p>
+          <p className="mobile-library__empty">{album ? (album.startsWith(PERSON_PREFIX) ? "No photos of this person." : album.startsWith(PLACE_PREFIX) ? "No photos here." : "No photos in this album.") : "No photos yet."}</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

@@ -224,6 +224,8 @@ class FixtureAsset:
     height: int = 100
     favorite: bool = False
     hidden: bool = False
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -315,7 +317,7 @@ def build_library(
                 )
                 VALUES (
                     ?, ?, ?, ?, ?,
-                    ?, ?, ?, NULL, NULL,
+                    ?, ?, ?, ?, ?,
                     0, ?, ?, 0,
                     0, ?, ?, 1, 0,
                     0, 3, ?
@@ -330,6 +332,8 @@ def build_library(
                     int(asset.favorite),
                     directory,
                     asset.filename,
+                    asset.latitude,
+                    asset.longitude,
                     asset.kind,
                     asset.uti,
                     asset.height,

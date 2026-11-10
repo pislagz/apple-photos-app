@@ -22,7 +22,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import app_db, library_albums, library_people, library_watch, media, session_auth
+from . import (
+    app_db,
+    library_albums,
+    library_map,
+    library_people,
+    library_watch,
+    media,
+    session_auth,
+)
 
 router = APIRouter()
 
@@ -242,6 +250,7 @@ def list_assets(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     album: str | None = None,
     person: str | None = None,
+    place: str | None = None,
     type_: Literal["photo", "video"] | None = Query(None, alias="type"),
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
@@ -251,12 +260,15 @@ def list_assets(
 ) -> AssetListResponse:
     # `album` is a user album's uuid or `smart:<slug>` (see library_albums);
     # an id that is not this library's 404s. `person` is a named person's uuid
-    # (library_people), same 404 rule. Both may be combined (AND).
+    # (library_people), same 404 rule. `place` is a map bbox (library_map).
+    # All may be combined (AND).
     extras = []
     if album:
         extras.append(library_albums.album_clause(db, library["id"], album))
     if person:
         extras.append(library_people.person_clause(db, library["id"], person))
+    if place:
+        extras.append(library_map.place_clause(place))
     extra = (
         (" AND ".join(e[0] for e in extras), [p for e in extras for p in e[1]]) if extras else None
     )

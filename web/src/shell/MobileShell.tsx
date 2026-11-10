@@ -8,6 +8,7 @@ import MobileLibrary from "./library/MobileLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
 import PeopleScreen from "./people/PeopleScreen";
+import PlacesScreen from "./map/PlacesScreen";
 import AlbumsTab, { AlbumPhotos } from "./albums/AlbumsTab";
 import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
@@ -112,7 +113,10 @@ export default function MobileShell({
       );
     }
     if (route.screen === "places") {
-      return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;
+      if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
+        return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;
+      }
+      return <PlacesScreen key={activeLibraryId} libraryId={activeLibraryId} bbox={route.bbox} onNavigate={navigate} />;
     }
     if (route.screen === "media") {
       const title = MEDIA_TYPES.find((type) => type.slug === route.mediaType)?.label ?? route.mediaType;
