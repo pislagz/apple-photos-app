@@ -134,6 +134,25 @@ describe("desktop Albums sidebar group", () => {
     localStorage.clear();
   });
 
+  it("keeps folder rows out of the section-header style, with their own chevron", async () => {
+    mockFetch(handler([]));
+    renderDesktop();
+    const folder = (await screen.findByText("Trips")).closest("summary") as HTMLElement;
+    // Section headers are the group's own <summary>; folders are nested deeper
+    // and are album-row styled.
+    expect(folder.classList.contains("sidebar__item")).toBe(true);
+    expect(folder.closest(".sidebar__group")?.querySelector(":scope > summary")).not.toBe(folder);
+    const sectionHeaders = [...document.querySelectorAll(".sidebar__group > summary")];
+    expect(sectionHeaders.length).toBeGreaterThan(0);
+    expect(sectionHeaders).not.toContain(folder);
+    // The chevron is a stroked SVG of its own, not the section's native triangle.
+    const chevron = folder.querySelector("svg.sidebar__chevron");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.querySelector("path")?.getAttribute("fill")).toBeNull();
+    expect(chevron?.getAttribute("stroke")).toBe("currentColor");
+    for (const header of sectionHeaders) expect(header.querySelector(".sidebar__chevron")).toBeNull();
+  });
+
   it("opens Favorites as the smart album", async () => {
     const requested: string[] = [];
     mockFetch(handler(requested));

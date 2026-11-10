@@ -77,11 +77,24 @@ function AlbumTree({
   return <AlbumList nodes={nodes} depth={0} currentId={currentId} onOpen={onOpen} folders={folders} />;
 }
 
-// Small right-pointing triangle; CSS turns it down when the folder is open.
+// Thin stroked chevron (12 px box, 1.5 stroke) on folder rows. It is a row
+// affordance, deliberately unlike the filled section-header triangles. Points
+// right; CSS turns it down when the folder is open.
 function Disclosure() {
   return (
-    <svg className="sidebar__disclosure" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
-      <path d="M2 .8 6.4 4 2 7.2Z" fill="currentColor" />
+    <svg
+      className="sidebar__disclosure sidebar__chevron"
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4.4 2.6 7.8 6 4.4 9.4" />
     </svg>
   );
 }

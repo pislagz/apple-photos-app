@@ -74,7 +74,7 @@ const INFO_RING = "M10 17.2a7.2 7.2 0 1 0 0-14.4 7.2 7.2 0 0 0 0 14.4Z";
 const INFO_STEM = "M10 9.2v4.6";
 const INFO_DOT = "M10 7.4a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9Z";
 
-const LIVE_DASHES = ringDashes(10, 10, 8.5, 12, 0.45);
+const LIVE_DASHES = ringDashes(10, 10, 8.5, 8, 1);
 const LINK_A = stadium(7.5, 12.5, 10.4, 5.6, -45);
 const LINK_B = stadium(12.5, 7.5, 10.4, 5.6, -45);
 const VIDEO_BODY = rr(2.5, 5.5, 10.5, 9, 2);

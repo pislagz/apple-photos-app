@@ -11,7 +11,7 @@ import { ICON_NAMES, Icon } from "../src/shell/icons";
 const ADMIN = { username: "demo-admin", password: "demo-admin-pass-1" };
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 
-const SHOTS = "e2e/screenshots";
+const SHOTS = process.env.SHOTS_DIR ?? "e2e/screenshots";
 
 let consoleErrors: string[] = [];
 
@@ -807,6 +807,24 @@ test("Decisions 5: the map without consent and no file is off", async ({ page },
   await shot(page, "27-map-without-consent-off", info.project.name);
 });
 
+// The app has no dark sidebar theme yet ("dark mode is a follow-up" in shell.css),
+// so emulating prefers-color-scheme: dark leaves it light. For the dark proof we
+// paint the sidebar's surface and text variables dark; the icon and chevron rules
+// under test are the app's own.
+async function darkenSidebar(page: Page) {
+  // CSSOM only: the app's CSP forbids injected <style> elements.
+  await page.evaluate((css) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  }, `
+      aside.sidebar { background: #232325 !important; }
+      .sidebar__item, .sidebar__item[aria-current="page"] { color: #f5f5f7; }
+      .sidebar__item[aria-current="page"] { background: rgba(255,255,255,0.14); }
+      .sidebar__group > summary, .sidebar__note { color: #98989d; }
+      :root { --sequoia-text-secondary: #98989d; }`);
+}
+
 // --- Icon set (#235): before/after proof shots ---
 
 test.describe("icon set shots (#235)", () => {
@@ -819,6 +837,7 @@ test.describe("icon set shots (#235)", () => {
         await signIn(page);
         await expect(page.locator("aside.sidebar")).toBeVisible();
         await page.locator("aside.sidebar").getByRole("button", { name: "Favorites", exact: true }).click();
+        if (scheme === "dark") await darkenSidebar(page);
         await page.waitForLoadState("networkidle");
         await page.locator("aside.sidebar").screenshot({ path: `${SHOTS}/icons-sidebar-${scheme}.png` });
       });
@@ -828,8 +847,19 @@ test.describe("icon set shots (#235)", () => {
         const dark = scheme === "dark";
         const svg = (size: number, body: string) =>
           `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+        // Round 2: twelve short dashes. Kept here only for the before | after proof.
+        const dashes = (count: number, half: number) => {
+          let d = "";
+          for (let i = 0; i < count; i++) {
+            const a = (i / count) * 2 * Math.PI;
+            const t = half / 8.5;
+            const p = (ang: number) => `${(10 + 8.5 * Math.sin(ang)).toFixed(2)} ${(10 - 8.5 * Math.cos(ang)).toFixed(2)}`;
+            d += `M${p(a - t)}A8.5 8.5 0 0 1 ${p(a + t)}`;
+          }
+          return d;
+        };
         const OLD: Record<string, string> = {
-          livephoto: `<circle cx="10" cy="10" r="6.8"/><circle cx="10" cy="10" r="2.4" fill="currentColor" stroke="none"/>`,
+          livephoto: `<circle cx="10" cy="10" r="1.9" fill="currentColor"/><circle cx="10" cy="10" r="5"/><path d="${dashes(12, 0.45)}"/>`,
           link: `<path d="M8.4 11.6a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9"/><path d="M11.6 8.4a3 3 0 0 0-4.2 0L4.8 11a3 3 0 0 0 4.2 4.2l.9-.9"/>`,
         };
         const rows = (["livephoto", "link"] as const)
@@ -858,6 +888,7 @@ test.describe("icon set shots (#235)", () => {
         await signIn(page);
         const side = page.locator("aside.sidebar");
         await expect(side.getByText("Europe")).toBeVisible();
+        if (scheme === "dark") await darkenSidebar(page);
         await page.waitForLoadState("networkidle");
         await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-open-${scheme}.png` });
         // Collapse Family; keep Trips > Europe open.
@@ -868,6 +899,64 @@ test.describe("icon set shots (#235)", () => {
         await page.keyboard.press("Shift+Tab");
         await side.screenshot({ path: `${SHOTS}/icons2-sidebar-folders-collapsed-${scheme}.png` });
         await side.getByText("Family", { exact: true }).click();
+      });
+
+      test.describe("zoomed", () => {
+        test.use({ deviceScaleFactor: 2 });
+        // 4x device pixels so the 16 px and 20 px renderings can be inspected.
+        test(`livephoto 16/20 px before | after, outline and filled, 4x (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== "desktop", "desktop only");
+          const dark = scheme === "dark";
+          const dashes = (count: number, half: number) => {
+            let d = "";
+            for (let i = 0; i < count; i++) {
+              const a = (i / count) * 2 * Math.PI;
+              const t = half / 8.5;
+              const q = (ang: number) => `${(10 + 8.5 * Math.sin(ang)).toFixed(2)} ${(10 - 8.5 * Math.cos(ang)).toFixed(2)}`;
+              d += `M${q(a - t)}A8.5 8.5 0 0 1 ${q(a + t)}`;
+            }
+            return d;
+          };
+          const oldSvg = (size: number, filled: boolean) =>
+            `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">${
+              filled
+                ? `<circle cx="10" cy="10" r="5.75" fill="currentColor"/><circle cx="10" cy="10" r="1.9" fill="${dark ? "#1c1c1e" : "#fff"}" stroke="none"/>`
+                : `<circle cx="10" cy="10" r="1.9" fill="currentColor"/><circle cx="10" cy="10" r="5"/>`
+            }<path d="${dashes(12, 0.45)}"/></svg>`;
+          const cells = (size: number) =>
+            [false, true]
+              .map(
+                (filled) =>
+                  `<span class="c">${oldSvg(size, filled)}</span><span class="c">${renderToStaticMarkup(createElement(Icon, { name: "livephoto", size, filled }))}</span>`,
+              )
+              .join("");
+          await page.setContent(
+            `<style>
+              body { margin: 0; padding: 16px; font: 12px system-ui; background: ${dark ? "#1c1c1e" : "#fff"}; color: ${dark ? "#f5f5f7" : "#1d1d1f"}; }
+              .g { display: grid; grid-template-columns: 60px repeat(4, 56px); gap: 10px; align-items: center; margin-bottom: 12px; }
+              .c { color: #0a84ff; display: flex; justify-content: center; }
+              i { font-style: normal; color: ${dark ? "#98989d" : "#6e6e73"}; text-align: center; }
+            </style>
+            <div class="g"><i></i><i>old</i><i>new</i><i>old filled</i><i>new filled</i></div>
+            <div class="g"><b>16 px</b>${cells(16)}</div>
+            <div class="g"><b>20 px</b>${cells(20)}</div>`,
+          );
+          await page.setViewportSize({ width: 380, height: 120 });
+          await page.screenshot({ path: `${SHOTS}/icons3-livephoto-16-20-${scheme}.png`, scale: "device" });
+        });
+
+        test(`sidebar section vs folder arrows, 2x (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== "desktop", "desktop only");
+          await signIn(page);
+          const side = page.locator("aside.sidebar");
+          await expect(side.getByText("Europe")).toBeVisible();
+          if (scheme === "dark") await darkenSidebar(page);
+          await page.waitForLoadState("networkidle");
+          await side.getByText("Family", { exact: true }).click();
+          await expect(side.getByRole("button", { name: "Birthdays" })).toBeHidden();
+          await side.screenshot({ path: `${SHOTS}/icons3-sidebar-2x-${scheme}.png` });
+          await side.getByText("Family", { exact: true }).click();
+        });
       });
 
       test(`icon gallery (${scheme})`, async ({ page }, info) => {
