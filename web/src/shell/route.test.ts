@@ -95,3 +95,13 @@ describe("malformed percent escapes", () => {
     expect(parsePhotoPath("/library/1/photo/%E0")).toBeNull();
   });
 });
+
+describe("Search routes (P2.4)", () => {
+  it("round-trips a query and keeps /search as the empty field", () => {
+    expect(parseMobileRoute("/search")).toEqual({ tab: "search" });
+    const route: MobileRoute = { tab: "search", query: "dog beach/2024" };
+    expect(mobileRoutePath(route)).toBe("/search/dog%20beach%2F2024");
+    expect(parseMobileRoute(mobileRoutePath(route))).toEqual(route);
+    expect(parseMobileRoute("/search/%E0")).toEqual({ tab: "library" });
+  });
+});

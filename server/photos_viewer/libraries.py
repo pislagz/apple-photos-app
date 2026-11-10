@@ -70,19 +70,22 @@ def check_supported_version(photos_version: float) -> None:
 
 
 def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> None:
-    """Copy `search/psi.sqlite`, if present, next to the copied database.
+    """Copy `search/psi.sqlite` and `search/leo.sqlite`, if present, next to
+    the copied database.
 
     osxphotos resolves the search index relative to whatever path it was
     given as `dbfile` (`pathlib.Path(self._dbfile).parent / "search"`), so in
     copy mode that's the temp dir, not the package -- without this, search
     silently finds nothing and osxphotos logs "could not find search db".
+    Newer libraries (macOS 27+) keep the index in `leo.sqlite` instead.
     """
     search_dir = sqlite_path.parent / "search"
-    psi_path = search_dir / "psi.sqlite"
-    if psi_path.exists():
-        copy_search_dir = copy_path.parent / "search"
-        copy_search_dir.mkdir(exist_ok=True)
-        shutil.copy2(psi_path, copy_search_dir / "psi.sqlite")
+    for name in ("psi.sqlite", "leo.sqlite"):
+        source = search_dir / name
+        if source.exists():
+            copy_search_dir = copy_path.parent / "search"
+            copy_search_dir.mkdir(exist_ok=True)
+            shutil.copy2(source, copy_search_dir / name)
 
 
 @dataclasses.dataclass

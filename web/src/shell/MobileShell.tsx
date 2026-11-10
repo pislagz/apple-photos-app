@@ -14,6 +14,7 @@ import { MEDIA_TYPES } from "./more/mediaTypes";
 import MorePlaceholderScreen from "./more/MorePlaceholderScreen";
 import MoreScreen from "./more/MoreScreen";
 import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } from "./route";
+import SearchScreen from "./search/SearchScreen";
 import TabPlaceholderScreen from "./TabPlaceholderScreen";
 import type { LayoutOverride } from "./useLayout";
 
@@ -70,6 +71,12 @@ export default function MobileShell({
     setHiddenConfirmed(false);
   }
 
+  // Typing in Search rewrites the current entry instead of adding one.
+  function replaceRoute(path: string) {
+    window.history.replaceState(null, "", path);
+    setRoute(parseMobileRoute(path));
+  }
+
   function renderContent() {
     if (route.tab === "library") return null;
     if (route.tab === "albums") {
@@ -86,7 +93,19 @@ export default function MobileShell({
         />
       );
     }
-    if (route.tab === "search") return <TabPlaceholderScreen title="Search" />;
+    if (route.tab === "search") {
+      if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
+        return <TabPlaceholderScreen title="Search" />;
+      }
+      return (
+        <SearchScreen
+          key={activeLibraryId}
+          libraryId={activeLibraryId}
+          query={route.query ?? ""}
+          onQueryChange={(query) => replaceRoute(mobileRoutePath({ tab: "search", query }))}
+        />
+      );
+    }
 
     // route.tab === "more"
     if (!route.screen) {

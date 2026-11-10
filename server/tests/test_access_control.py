@@ -170,6 +170,8 @@ def requests_for(path, method, library):
                 for fmt in ("native", "jpeg")
                 for headers in ({}, {"Range": "bytes=0-9"})
             ]
+        elif path.endswith("/search"):
+            variants = [{"params": {"q": "test"}}]
         else:
             variants = [{}]
         out.extend((url, {"method": method, **variant}) for variant in variants)
@@ -235,6 +237,7 @@ def test_route_enumeration_covers_the_known_routes(world):
         "/albums",
         "/people",
         "/map",
+        "/search",
         "/assets/{asset_id}",
         "/thumb/{asset_id}",
         "/original/{asset_id}",

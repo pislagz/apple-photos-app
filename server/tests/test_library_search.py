@@ -1,0 +1,312 @@
+"""P2.4: Search, asset_labels, and the leo.sqlite copy."""
+
+from __future__ import annotations
+
+import ast
+import pathlib
+
+from fastapi.testclient import TestClient
+
+from photos_viewer import app_db, indexer, libraries, library_search, session_auth
+from photos_viewer.main import create_app
+from tests.fixtures import (
+    FixtureAlbum,
+    FixtureAsset,
+    FixturePerson,
+    _build_asset_image_bytes,
+    build_library,
+)
+
+VALID_PASSWORD = "correct-horse-battery"
+ANN = "C0000000-0000-0000-0000-000000000001"
+
+
+def _uuid(n):
+    return f"A0000000-0000-0000-0000-{n:012d}"
+
+
+def _assets(labels=None):
+    data = _build_asset_image_bytes()
+    labels = labels or {}
+    return [
+        FixtureAsset(
+            uuid=_uuid(n),
+            filename=f"IMG_{n:04d}.HEIC",
+            data=data,
+            # 700000000 is 2023-03-08; each asset a day later
+            created=700000000.0 + n * 86400,
+            hidden=(n == 4),
+            labels=labels.get(n, ()),
+        )
+        for n in range(1, 6)
+    ]
+
+
+def _build(tmp_path, labels, name="L.photoslibrary"):
+    return build_library(
+        tmp_path,
+        _assets(labels),
+        albums=[FixtureAlbum("B0000000-0000-0000-0000-000000000001", "Road Trip", [2])],
+        people=[
+            FixturePerson(ANN, "Ann Lee", "D0000000-0000-0000-0000-000000000001", [1])
+        ],
+        package_name=name,
+    )
+
+
+def _setup(tmp_path, labels=None):
+    app = create_app()
+    conn = app_db.connect(tmp_path / "data")
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    app.dependency_overrides[session_auth.get_media_cache_dir] = lambda: (
+        tmp_path / "media_cache"
+    )
+    client = TestClient(app, base_url="https://testserver")
+    package = _build(
+        tmp_path,
+        labels
+        or {1: ("Dog", "Beach"), 2: ("Snow",), 4: ("Dog",), 5: ("Sports Field",)},
+    )
+    conn.execute(
+        "INSERT INTO libraries (display_name, path) VALUES ('L1', ?)", (str(package),)
+    )
+    conn.commit()
+    library_id = conn.execute("SELECT id FROM libraries").fetchone()["id"]
+    indexer.index_library(conn, library_id, package, force=True)
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role) VALUES ('alice', ?, 'user')",
+        (session_auth.hash_password(VALID_PASSWORD),),
+    )
+    conn.execute(
+        "INSERT INTO library_assignments (user_id, library_id) VALUES (1, ?)",
+        (library_id,),
+    )
+    conn.commit()
+    assert (
+        client.post(
+            "/api/auth/login", json={"username": "alice", "password": VALID_PASSWORD}
+        ).status_code
+        == 200
+    )
+    return conn, client, library_id, package
+
+
+def _search(client, library_id, q, **params):
+    response = client.get(
+        f"/api/libraries/{library_id}/search", params={"q": q, **params}
+    )
+    assert response.status_code == 200, response.text
+    return {item["id"] for item in response.json()["items"]}
+
+
+def test_label_search_is_case_insensitive_and_excludes_hidden(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        # asset 4 also has "Dog" but is hidden
+        for q in ("dog", "DOG", "Dog", "do"):
+            assert _search(client, lib, q) == {_uuid(1)}, q
+        assert _search(client, lib, "field") == {_uuid(5)}  # a later word of a label
+        assert _search(client, lib, "dog beach") == {_uuid(1)}  # AND
+        assert _search(client, lib, "dog snow") == set()
+    finally:
+        conn.close()
+
+
+def test_labels_are_rebuilt_on_reindex(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        assert _search(client, lib, "dog") == {_uuid(1)}
+        rows = conn.execute(
+            "SELECT label, label_normalized FROM asset_labels"
+        ).fetchall()
+        assert ("Dog", "dog") in {(r[0], r[1]) for r in rows}
+        # The owner's Mac re-analysed: asset 1 lost "Dog", gained "Cat".
+        package = _build(tmp_path / "second", {1: ("Cat", "Beach"), 2: ("Snow",)})
+        indexer.index_library(conn, lib, package, force=True)
+        assert _search(client, lib, "dog") == set()
+        assert _search(client, lib, "cat") == {_uuid(1)}
+        assert _search(client, lib, "beach") == {_uuid(1)}
+    finally:
+        conn.close()
+
+
+def test_matches_date_place_person_album_and_camera(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        conn.execute(
+            "UPDATE assets SET place = 'Zürich', place_address = 'Bahnhofstrasse, Switzerland', "
+            "camera_make = 'Apple', camera_model = 'iPhone 15 Pro' WHERE uuid = ?",
+            (_uuid(3),),
+        )
+        conn.commit()
+        everyone = {_uuid(n) for n in (1, 2, 3, 5)}
+        assert _search(client, lib, "2023") == everyone
+        assert _search(client, lib, "march") == everyone
+        assert _search(client, lib, "2023-03-11") == {_uuid(3)}
+        assert _search(client, lib, "2022") == set()
+        assert _search(client, lib, "zurich") == {_uuid(3)}  # accent-insensitive
+        assert _search(client, lib, "switz") == {_uuid(3)}
+        assert _search(client, lib, "iphone 15") == {_uuid(3)}
+        assert _search(client, lib, "apple") == {_uuid(3)}
+        assert _search(client, lib, "ann") == {_uuid(2)}
+        assert _search(client, lib, "lee snow") == {_uuid(2)}  # person AND label
+        assert _search(client, lib, "road") == {_uuid(3)}  # album title
+        assert _search(client, lib, "road dog") == set()
+    finally:
+        conn.close()
+
+
+def test_empty_query_is_an_empty_page_and_paging_works(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        for q in ("", "   "):
+            body = client.get(f"/api/libraries/{lib}/search", params={"q": q}).json()
+            assert body == {"items": [], "next_cursor": None}
+        assert client.get(f"/api/libraries/{lib}/search").json()["items"] == []
+        first = client.get(
+            f"/api/libraries/{lib}/search", params={"q": "2023", "limit": 3}
+        ).json()
+        assert len(first["items"]) == 3 and first["next_cursor"]
+        rest = client.get(
+            f"/api/libraries/{lib}/search",
+            params={"q": "2023", "limit": 3, "cursor": first["next_cursor"]},
+        ).json()
+        assert {i["id"] for i in first["items"] + rest["items"]} == {
+            _uuid(n) for n in (1, 2, 3, 5)
+        }
+    finally:
+        conn.close()
+
+
+def test_wildcards_in_the_query_are_literal(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        for q in ("%", "_", "d%", "'; DROP TABLE assets; --"):
+            assert _search(client, lib, q) == set()
+        assert conn.execute("SELECT COUNT(*) FROM assets").fetchone()[0] == 5
+    finally:
+        conn.close()
+
+
+def _add_library(conn, tmp_path, labels):
+    package = _build(tmp_path / "other", labels, name="Other.photoslibrary")
+    conn.execute(
+        "INSERT INTO libraries (display_name, path) VALUES ('L2', ?)", (str(package),)
+    )
+    conn.commit()
+    other = conn.execute(
+        "SELECT id FROM libraries WHERE display_name = 'L2'"
+    ).fetchone()["id"]
+    indexer.index_library(conn, other, package, force=True)
+    return other
+
+
+def test_foreign_library_unknown_library_and_anonymous(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        other = _add_library(
+            conn, tmp_path, {1: ("Zebra",)}
+        )  # alice is not assigned to it
+        assert (
+            client.get(
+                f"/api/libraries/{other}/search", params={"q": "zebra"}
+            ).status_code
+            == 404
+        )
+        assert (
+            client.get("/api/libraries/9999/search", params={"q": "dog"}).status_code
+            == 404
+        )
+        anon = TestClient(client.app, base_url="https://testserver")
+        assert (
+            anon.get(f"/api/libraries/{lib}/search", params={"q": "dog"}).status_code
+            == 401
+        )
+    finally:
+        conn.close()
+
+
+def test_a_query_cannot_return_another_librarys_asset(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        other = _add_library(conn, tmp_path, {1: ("Zebra", "Dog")})
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM asset_labels al JOIN assets a ON a.id = al.asset_id "
+                "WHERE a.library_id = ? AND al.label_normalized = 'zebra'",
+                (other,),
+            ).fetchone()[0]
+            == 1
+        )
+        # The other library's label is invisible from this one; "dog" finds only this library's asset.
+        assert _search(client, lib, "zebra") == set()
+        rows = client.get(f"/api/libraries/{lib}/search", params={"q": "dog"}).json()[
+            "items"
+        ]
+        assert [i["id"] for i in rows] == [_uuid(1)]
+    finally:
+        conn.close()
+
+
+def test_search_module_imports_no_http_client():
+    tree = ast.parse(pathlib.Path(library_search.__file__).read_text())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    assert not imported & {
+        "requests",
+        "httpx",
+        "urllib",
+        "urllib3",
+        "http",
+        "aiohttp",
+        "socket",
+    }
+
+
+def test_copy_mode_copies_psi_and_leo(tmp_path):
+    package = _build(tmp_path, {1: ("Dog",)})
+    search_dir = package / "database" / "search"
+    (search_dir / "leo.sqlite").write_bytes(b"leo bytes")
+    sqlite_path = package / "database" / "Photos.sqlite"
+    dest = tmp_path / "copy"
+    dest.mkdir()
+    libraries._copy_search_index(sqlite_path, dest / "Photos.sqlite")
+    assert (dest / "search" / "psi.sqlite").read_bytes() == (
+        search_dir / "psi.sqlite"
+    ).read_bytes()
+    assert (dest / "search" / "leo.sqlite").read_bytes() == b"leo bytes"
+    # leo only (macOS 27+ shape)
+    (search_dir / "psi.sqlite").unlink()
+    dest2 = tmp_path / "copy2"
+    dest2.mkdir()
+    libraries._copy_search_index(sqlite_path, dest2 / "Photos.sqlite")
+    assert [p.name for p in (dest2 / "search").iterdir()] == ["leo.sqlite"]
+
+
+def test_migration_creates_asset_labels(tmp_path):
+    db = app_db.connect(tmp_path)
+    try:
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'asset_labels'"
+        ).fetchone()
+    finally:
+        db.close()
+
+
+def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
+    db = app_db.connect(tmp_path / "data")
+    try:
+        db.execute("PRAGMA user_version = 20")
+        db.execute("DROP TABLE asset_labels")
+        db.execute("INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')")
+        db.execute("INSERT INTO libraries (display_name, path) VALUES ('B', 'b')")
+        db.commit()
+        app_db.migrate(db)
+        flags = {r["display_name"]: r["reindex_needed"] for r in db.execute("SELECT * FROM libraries")}
+        assert flags == {"A": 1, "B": 0}
+    finally:
+        db.close()

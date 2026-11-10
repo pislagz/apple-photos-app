@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
-import { PERSON_PREFIX, PLACE_PREFIX } from "../../api";
+import { albumMessages } from "./albumText";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
@@ -87,7 +87,7 @@ function downloadSelection(libraryId: number, ids: Iterable<string>) {
 }
 
 // P1.15: the desktop Library grid. Toolbar (Years/Months/All Photos, zoom,
-// search UI-only, download, Info toggle, selection count), a virtualized
+// download, Info toggle, selection count), a virtualized
 // grid with inline date headers, hover heart/duration, and
 // click/modifier/shift/drag selection. Like the mobile Library (P1.14),
 // this only ever pages `/assets` -- never `/hidden` -- so a hidden asset
@@ -122,7 +122,6 @@ export default function DesktopLibrary({
   const view = fixedView ?? switchedView;
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
-  const [searchValue, setSearchValue] = useState("");
   const [filter, setFilter] = useState<AssetFilter>("all");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
@@ -146,7 +145,6 @@ export default function DesktopLibrary({
   const { detail: infoDetail, failed: infoFailed } = useAssetDetailState(libraryId, infoOpen ? focusedId : null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -227,19 +225,6 @@ export default function DesktopLibrary({
     const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === focusedId));
     if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
   }, [focusedId, rows, rowVirtualizer]);
-
-  // ⌘F focuses search from anywhere in the component, so it has to be a
-  // window listener rather than living on the grid's own key handler below.
-  useEffect(() => {
-    function onWindowKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    }
-    window.addEventListener("keydown", onWindowKeyDown);
-    return () => window.removeEventListener("keydown", onWindowKeyDown);
-  }, []);
 
   const selectSingle = useCallback((id: string) => {
     setSelected(new Set([id]));
@@ -630,17 +615,6 @@ export default function DesktopLibrary({
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}
         </span>
-        <div className="search-field">
-          <Icon name="search" size={14} />
-          <input
-            ref={searchInputRef}
-            type="text"
-            aria-label="Search"
-            placeholder="Search"
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-          />
-        </div>
       </div>
       <div className="desktop-library__body">
       <div
@@ -660,13 +634,13 @@ export default function DesktopLibrary({
         )}
         {items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
-            <p>{album ? (album.startsWith(PERSON_PREFIX) ? "Couldn't load this person's photos." : album.startsWith(PLACE_PREFIX) ? "Couldn't load these photos." : "Couldn't load this album.") : "Couldn't load your library."}</p>
+            <p>{albumMessages(album).error}</p>
             <button type="button" className="desktop-library__retry" onClick={retry}>
               Retry
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <p className="desktop-library__empty">{album ? (album.startsWith(PERSON_PREFIX) ? "No photos of this person." : album.startsWith(PLACE_PREFIX) ? "No photos here." : "No photos in this album.") : "No photos yet."}</p>
+          <p className="desktop-library__empty">{albumMessages(album).empty}</p>
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

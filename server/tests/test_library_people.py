@@ -195,6 +195,7 @@ def test_migration_19_flags_indexed_libraries_for_reindex(tmp_path):
     try:
         conn.execute("PRAGMA user_version = 18")
         conn.execute("DROP TABLE faces")
+        conn.execute("DROP TABLE asset_labels")
         conn.execute(
             "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 'sig')"
         )
