@@ -72,6 +72,16 @@ def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
     return sizes, quality, cache_limit
 
 
+class UpdatedNote(BaseModel):
+    """The latest applied index run that changed visible photos. Counts never
+    include Hidden photos (the banner must not reveal them)."""
+
+    run_id: int
+    added: int
+    removed: int
+    finished_at: str | None
+
+
 class LibrarySummary(BaseModel):
     id: int
     display_name: str
@@ -79,8 +89,8 @@ class LibrarySummary(BaseModel):
     # copying, or not valid yet; its photo routes answer 503 meanwhile.
     updating: bool = False
     updating_reason: str | None = None
-    # "Library updated" note: set for a few days after an applied update.
-    updated_note: str | None = None
+    # "Library updated" banner: set until this user dismisses that run.
+    updated_note: UpdatedNote | None = None
 
 
 class MeResponse(BaseModel):
@@ -90,27 +100,42 @@ class MeResponse(BaseModel):
     layout_override: Literal["desktop", "mobile"] | None
 
 
-UPDATED_NOTE_DAYS = 3
+def _updated_note(
+    db: sqlite3.Connection, library_id: int, user_id: int
+) -> UpdatedNote | None:
+    # The library's first run (its registration) is not an "update". A run
+    # recorded before the visible counts existed has NULLs and is skipped, so
+    # it can never leak Hidden photos into a count.
+    run = db.execute(
+        "SELECT id, added_visible, removed_visible, finished_at FROM library_index_runs "
+        "WHERE library_id = ? AND outcome = 'applied' "
+        "AND id > (SELECT MIN(id) FROM library_index_runs WHERE library_id = ?) "
+        "AND (added_visible > 0 OR removed_visible > 0) ORDER BY id DESC LIMIT 1",
+        (library_id, library_id),
+    ).fetchone()
+    if run is None:
+        return None
+    dismissed = db.execute(
+        "SELECT run_id FROM library_note_dismissals WHERE user_id = ? AND library_id = ?",
+        (user_id, library_id),
+    ).fetchone()
+    if dismissed is not None and dismissed["run_id"] >= run["id"]:
+        return None
+    return UpdatedNote(
+        run_id=run["id"],
+        added=run["added_visible"],
+        removed=run["removed_visible"],
+        finished_at=run["finished_at"],
+    )
 
 
-def _library_summary(db: sqlite3.Connection, row: sqlite3.Row) -> LibrarySummary:
+def _library_summary(
+    db: sqlite3.Connection, row: sqlite3.Row, user_id: int
+) -> LibrarySummary:
     updating, reason = library_watch.public_availability(row)
     note = None
     if not updating and library_watch.show_updated_note(db):
-        # The library's first run (its registration) is not an "update".
-        run = db.execute(
-            "SELECT added, finished_at FROM library_index_runs WHERE library_id = ? AND outcome = 'applied' "
-            "AND id > (SELECT MIN(id) FROM library_index_runs WHERE library_id = ?) ORDER BY id DESC LIMIT 1",
-            (row["id"], row["id"]),
-        ).fetchone()
-        # Only an update that brought in new photos is worth a note, and only
-        # for a few days.
-        if (
-            run
-            and run["added"]
-            and library_watch.within_days(run["finished_at"], UPDATED_NOTE_DAYS)
-        ):
-            note = f"{row['display_name']}'s library was updated: {run['added']:,} new photos"
+        note = _updated_note(db, row["id"], user_id)
     return LibrarySummary(
         id=row["id"],
         display_name=row["display_name"],
@@ -118,6 +143,31 @@ def _library_summary(db: sqlite3.Connection, row: sqlite3.Row) -> LibrarySummary
         updating_reason=reason,
         updated_note=note,
     )
+
+
+class DismissNoteRequest(BaseModel):
+    run_id: int
+
+
+@router.post(
+    "/api/libraries/{library_id}/updated-note/dismiss",
+    response_model=DismissNoteRequest,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def dismiss_updated_note(
+    payload: DismissNoteRequest,
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> DismissNoteRequest:
+    """Per user, so it follows them across devices. Keeps the highest run id."""
+    db.execute(
+        "INSERT INTO library_note_dismissals (user_id, library_id, run_id) VALUES (?, ?, ?) "
+        "ON CONFLICT (user_id, library_id) DO UPDATE SET run_id = MAX(run_id, excluded.run_id)",
+        (session["user_id"], library["id"], payload.run_id),
+    )
+    db.commit()
+    return payload
 
 
 @router.get("/api/me", response_model=MeResponse)
@@ -134,7 +184,7 @@ def read_me(
     return MeResponse(
         username=session["username"],
         role=session["role"],
-        libraries=[_library_summary(db, row) for row in rows],
+        libraries=[_library_summary(db, row, session["user_id"]) for row in rows],
         layout_override=session["layout_override"],
     )
 
@@ -456,6 +506,9 @@ class AssetDetailResponse(BaseModel):
     camera_make: str | None
     camera_model: str | None
     has_edited: bool
+    # False on an Optimize Mac Storage copy: only a smaller derivative is on
+    # disk, so a download is not the original (set at index time).
+    original_available: bool = True
     has_live_photo_video: bool
     people: list[str]
     albums: list[str]
@@ -554,6 +607,7 @@ def asset_detail(
         camera_make=asset["camera_make"],
         camera_model=asset["camera_model"],
         has_edited=asset["path_edited"] is not None,
+        original_available=not asset["original_missing"],
         has_live_photo_video=bool(
             asset["path_live_photo"] or asset["path_edited_live_photo"]
         ),

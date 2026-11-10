@@ -161,7 +161,9 @@ def password_login(client, name: str = "alice") -> None:
 
 
 def register(client, authenticator: SoftwareAuthenticator, name: str = "Laptop"):
-    begun = client.post("/api/auth/passkeys/register/options", json={}).json()
+    begun = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()
     return client.post(
         "/api/auth/passkeys/register/verify",
         json={
@@ -278,7 +280,9 @@ def test_a_replayed_registration_challenge_is_rejected(client, db):
     add_user(db, "alice")
     password_login(client)
     authenticator = SoftwareAuthenticator()
-    begun = client.post("/api/auth/passkeys/register/options", json={}).json()
+    begun = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()
     body = {
         "challenge_id": begun["challenge_id"],
         "credential": authenticator.create(begun["options"]),
@@ -319,7 +323,9 @@ def test_a_login_challenge_cannot_complete_a_registration(client, db):
     anonymous = TestClient(client.app, base_url=ORIGIN)
     begun = anonymous.post("/api/auth/passkeys/login/options", json={}).json()
     authenticator = SoftwareAuthenticator()
-    own = client.post("/api/auth/passkeys/register/options", json={}).json()["options"]
+    own = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()["options"]
     # A genuine create() response, but for the *login* challenge id.
     credential = authenticator.create(
         {**own, "challenge": begun["options"]["challenge"]}
@@ -335,7 +341,9 @@ def test_a_registration_challenge_belongs_to_the_user_who_asked(client, db):
     add_user(db, "alice")
     add_user(db, "bob")
     password_login(client, "alice")
-    begun = client.post("/api/auth/passkeys/register/options", json={}).json()
+    begun = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()
     bob = TestClient(client.app, base_url=ORIGIN)
     password_login(bob, "bob")
     authenticator = SoftwareAuthenticator()
@@ -493,16 +501,18 @@ def test_registering_the_same_authenticator_twice_is_refused(client, db):
     authenticator = SoftwareAuthenticator()
     assert register(client, authenticator).status_code == 201
     assert register(client, authenticator).status_code == 409
-    options = client.post("/api/auth/passkeys/register/options", json={}).json()[
-        "options"
-    ]
+    options = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()["options"]
     assert options["excludeCredentials"][0]["id"] == b64u(authenticator.credential_id)
 
 
 def test_registration_and_management_need_a_session(client):
     anonymous = TestClient(client.app, base_url=ORIGIN)
     assert (
-        anonymous.post("/api/auth/passkeys/register/options", json={}).status_code
+        anonymous.post(
+            "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+        ).status_code
         == 401
     )
     assert (
@@ -539,7 +549,9 @@ def test_rp_id_and_origin_come_from_the_environment_when_set(client, db, monkeyp
     monkeypatch.setenv("PHOTOS_VIEWER_WEBAUTHN_RP_ID", "box.ts.net")
     monkeypatch.setenv("PHOTOS_VIEWER_WEBAUTHN_ORIGINS", "https://box.ts.net")
     authenticator = SoftwareAuthenticator()
-    begun = client.post("/api/auth/passkeys/register/options", json={}).json()
+    begun = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()
     assert begun["options"]["rp"]["id"] == "box.ts.net"
     response = client.post(
         "/api/auth/passkeys/register/verify",
@@ -556,7 +568,9 @@ def test_rp_id_and_origin_come_from_the_environment_when_set(client, db, monkeyp
 def test_default_rp_id_is_the_request_host(client, db):
     add_user(db, "alice")
     password_login(client)
-    begun = client.post("/api/auth/passkeys/register/options", json={}).json()
+    begun = client.post(
+        "/api/auth/passkeys/register/options", json={"password": PASSWORD}
+    ).json()
     assert begun["options"]["rp"]["id"] == RP_ID
 
 
@@ -568,3 +582,59 @@ def test_pending_challenges_are_bounded(client, monkeypatch):
         )
     db = client.app.dependency_overrides[session_auth.get_db]()
     assert db.execute("SELECT COUNT(*) FROM passkey_challenges").fetchone()[0] <= 5
+
+
+def test_registering_needs_the_account_password(client, db):
+    add_user(db, "alice")
+    password_login(client)
+    url = "/api/auth/passkeys/register/options"
+    assert client.post(url, json={}).status_code == 422
+    wrong = client.post(url, json={"password": "not-the-password-at-all"})
+    assert wrong.status_code == 401
+    assert wrong.json()["detail"] == "wrong password"
+    # No challenge was issued, so there is nothing to verify with.
+    assert db.execute("SELECT COUNT(*) FROM passkey_challenges").fetchone()[0] == 0
+    assert client.get("/api/auth/passkeys").json() == []
+    assert client.post(url, json={"password": PASSWORD}).status_code == 200
+
+
+def test_a_verify_without_a_password_checked_challenge_registers_nothing(client, db):
+    add_user(db, "alice")
+    password_login(client)
+    # A challenge forged into the table is the only way around the options
+    # call; a made-up id is simply unknown.
+    response = client.post(
+        "/api/auth/passkeys/register/verify",
+        json={"challenge_id": "invented", "credential": {}, "name": "x"},
+    )
+    assert response.status_code == 400
+    assert client.get("/api/auth/passkeys").json() == []
+
+
+def test_wrong_passwords_at_registration_lock_out_like_login(client, db):
+    add_user(db, "alice")
+    password_login(client)
+    url = "/api/auth/passkeys/register/options"
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+        assert (
+            client.post(url, json={"password": "wrong-wrong-wrong"}).status_code == 401
+        )
+    # Locked: even the right password is refused, and so is the login form.
+    assert client.post(url, json={"password": PASSWORD}).status_code == 429
+    anonymous = TestClient(client.app, base_url=ORIGIN)
+    login = anonymous.post(
+        "/api/auth/login", json={"username": "alice", "password": PASSWORD}
+    )
+    assert login.status_code == 429
+
+
+def test_a_good_password_clears_the_registration_failures(client, db):
+    add_user(db, "alice")
+    password_login(client)
+    url = "/api/auth/passkeys/register/options"
+    for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS - 1):
+        assert (
+            client.post(url, json={"password": "wrong-wrong-wrong"}).status_code == 401
+        )
+    assert client.post(url, json={"password": PASSWORD}).status_code == 200
+    assert client.post(url, json={"password": "wrong-wrong-wrong"}).status_code == 401

@@ -55,7 +55,20 @@ export interface LibrarySummary {
   // P1.22: the package is missing, still copying, or not valid yet.
   updating?: boolean;
   updating_reason?: string | null;
-  updated_note?: string | null;
+  // The latest update that changed visible photos, until this user dismisses
+  // it. Counts never include Hidden photos.
+  updated_note?: UpdatedNote | null;
+}
+
+export interface UpdatedNote {
+  run_id: number;
+  added: number;
+  removed: number;
+  finished_at: string | null;
+}
+
+export function dismissUpdatedNote(libraryId: number, runId: number): Promise<{ run_id: number }> {
+  return mutate<{ run_id: number }>("POST", `/api/libraries/${libraryId}/updated-note/dismiss`, { run_id: runId });
 }
 
 export interface MeResponse {
@@ -313,6 +326,8 @@ export interface AssetDetailResponse {
   camera_make: string | null;
   camera_model: string | null;
   has_edited: boolean;
+  // False when only a smaller derivative is on disk (Optimize Mac Storage).
+  original_available?: boolean;
   has_live_photo_video: boolean;
   people: string[];
   albums: string[];

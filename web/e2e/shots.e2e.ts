@@ -323,6 +323,69 @@ test("admin Users actions are compact on a phone (#179)", async ({ page }, info)
   await shot(page, "12-admin-users-actions", info.project.name);
 });
 
+// The demo library has no update history and keeps every original, so these
+// three shots stub just the one response that carries the state (D4, D5).
+test("library updated banner (D4)", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await page.route("**/api/me", async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) return route.fulfill({ response }); // the signed-out probe
+    const body = await response.json();
+    body.libraries = body.libraries.map((library: object) => ({
+      ...library,
+      updated_note: { run_id: 99, added: 1204, removed: 3, finished_at: "2026-11-09T10:00:00Z" },
+    }));
+    await route.fulfill({ status: 200, json: body });
+  });
+  await page.route("**/updated-note/dismiss", (route) => route.fulfill({ json: { run_id: 99 } }));
+  await signIn(page);
+  const banner = page.getByTestId("library-updated-note");
+  await expect(banner).toContainText("Library updated · +1,204 added, \u22123 removed");
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  await shot(page, "13-library-updated-note", info.project.name);
+  await banner.getByRole("button", { name: "Dismiss library update note" }).click();
+  await expect(banner).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("info note when only a smaller copy is on disk (D5)", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await page.route(/\/api\/libraries\/\d+\/assets\/[^/?]+$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ status: 200, json: { ...(await response.json()), original_available: false } });
+  });
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  const first = cells(page).first();
+  await expect(first).toBeVisible();
+  if (info.project.name === "desktop") await first.dblclick();
+  else await first.tap();
+  await page.getByLabel("Info").click();
+  await expect(page.getByTestId("original-missing-note")).toContainText("Only a smaller copy is on this Mac");
+  await page.waitForTimeout(500);
+  await shot(page, "14-info-original-missing", info.project.name);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("admin Settings: Manual only and Check now (D6)", async ({ page }, info) => {
+  await signIn(page, ADMIN);
+  await page.goto("/admin");
+  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  const manual = page.getByLabel(/Manual only/);
+  await manual.scrollIntoViewIfNeeded();
+  await shot(page, "15-settings-interval", info.project.name);
+  await manual.check();
+  await expect(page.getByText(/only checked when you press "Check now"/)).toBeVisible();
+  await page.getByRole("button", { name: "Check now" }).scrollIntoViewIfNeeded();
+  await shot(page, "15-settings-manual-only", info.project.name);
+  await page.getByRole("button", { name: "Check now" }).click();
+  await expect(page.getByText(/Checking all libraries for changes now|already running/)).toBeVisible();
+  // Not saved: leave the demo as we found it.
+});
+
 test.describe("dark mode", () => {
   test.use({ colorScheme: "dark" });
   test("sidebar toggle hover is visible (#200)", async ({ page }, info) => {

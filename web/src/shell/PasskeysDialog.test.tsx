@@ -58,10 +58,45 @@ describe("PasskeysDialog (P3.1)", () => {
     render(<PasskeysDialog onClose={() => {}} />);
     await screen.findByText("No passkeys yet.");
 
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "pw-pw-pw-pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Add a passkey" }));
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("asks for the password and says so when it is wrong, without opening the browser sheet", async () => {
+    const create = vi.fn();
+    supportWebAuthn({ create });
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/auth/passkeys") return jsonResponse([]);
+      if (url === "/api/auth/passkeys/register/options") return jsonResponse({ detail: "wrong password" }, 401);
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<PasskeysDialog onClose={() => {}} />);
+    await screen.findByText("No passkeys yet.");
+
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "nope-nope-nope" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add a passkey" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That password is wrong.");
+    expect(create).not.toHaveBeenCalled();
+    const call = fetchMock.mock.calls.find(([url]) => url === "/api/auth/passkeys/register/options")!;
+    expect(JSON.parse(String(call[1].body))).toEqual({ password: "nope-nope-nope" });
+    expect(screen.getByLabelText("Current password")).toHaveValue("");
+  });
+
+  it("says when too many wrong passwords locked the account", async () => {
+    supportWebAuthn({ create: vi.fn() });
+    mockFetch((url) => {
+      if (url === "/api/auth/passkeys") return jsonResponse([]);
+      return jsonResponse({ detail: "too many failed attempts, try again later" }, 429);
+    });
+    render(<PasskeysDialog onClose={() => {}} />);
+    await screen.findByText("No passkeys yet.");
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "x-x-x-x-x-x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add a passkey" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts");
   });
 });
 

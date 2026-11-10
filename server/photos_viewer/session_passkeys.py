@@ -44,6 +44,7 @@ from webauthn.helpers.structs import (
 from . import app_db, session_auth
 from .session_auth import (
     AuthUserResponse,
+    LoginPassword,
     _client_ip,
     _enforce_tailnet_allowlist,
     _ip_lockout_key,
@@ -156,6 +157,10 @@ class OptionsResponse(BaseModel):
     options: dict[str, Any]
 
 
+class RegisterOptionsRequest(BaseModel):
+    password: LoginPassword
+
+
 class RegisterVerifyRequest(BaseModel):
     challenge_id: str = Field(max_length=200)
     credential: dict[str, Any]
@@ -184,10 +189,36 @@ def _passkey_response(row: sqlite3.Row) -> PasskeyResponse:
     dependencies=[Depends(reject_cross_site_requests)],
 )
 def register_options(
+    payload: RegisterOptionsRequest,
     request: Request,
     session: sqlite3.Row = Depends(require_session),
     db: sqlite3.Connection = Depends(get_db),
 ) -> OptionsResponse:
+    # D43: a stolen or left-open session must not be able to plant a passkey.
+    # Verify needs a challenge issued here, so confirming the password on this
+    # request covers the whole ceremony. Failures count like a wrong password
+    # at login (per-username and per-IP, same 429 lockout).
+    _prune_old_login_failures(db)
+    peer_ip = _client_ip(request)
+    ip_key = _ip_lockout_key(request)
+    username = session["username"]
+    if (
+        ip_key is not None and session_auth.is_ip_locked_out(db, ip_key, peer_ip)
+    ) or session_auth.is_locked_out(db, username, user_exists=True):
+        raise HTTPException(
+            status_code=429, detail="too many failed attempts, try again later"
+        )
+    user = db.execute(
+        "SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)
+    ).fetchone()
+    if user is None or not session_auth.verify_password(
+        user["password_hash"], payload.password
+    ):
+        session_auth.record_login_failure(db, username, user_exists=True)
+        if ip_key is not None:
+            session_auth.record_ip_login_failure(db, ip_key, peer_ip)
+        raise HTTPException(status_code=401, detail="wrong password")
+    session_auth.clear_login_failures(db, username)
     rp_id, _ = _relying_party(request)
     existing = db.execute(
         "SELECT credential_id FROM passkeys WHERE user_id = ?", (session["user_id"],)

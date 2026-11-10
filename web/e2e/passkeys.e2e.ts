@@ -44,6 +44,7 @@ test("register a passkey, sign out, sign in with it, then remove it", async ({ p
 
   await openPasskeys(page);
   await page.getByLabel("Passkey name").fill("E2E laptop");
+  await page.getByLabel("Current password").fill(ADMIN.password);
   await page.getByRole("button", { name: "Add a passkey" }).click();
   await expect(page.getByText("E2E laptop")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();

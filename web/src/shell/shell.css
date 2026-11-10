@@ -2734,3 +2734,63 @@ body {
     transform: none;
   }
 }
+
+/* "Library updated" banner (D4): stacked above the library view. */
+.library-note-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.library-note-frame__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.library-note {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: inherit;
+  background: rgba(120, 120, 128, 0.14);
+  z-index: 6;
+}
+
+.library-note--desktop {
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--sequoia-border);
+}
+
+/* The account button floats over the top-right of the mobile screen. */
+.library-note--mobile {
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 60px 6px 16px;
+}
+
+.library-note__close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* D5: Info panel / sheet note for an asset with no full-size original. */
+.viewer-info-note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  background: rgba(255, 159, 10, 0.16);
+}

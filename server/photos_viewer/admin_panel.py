@@ -773,12 +773,16 @@ class SettingsUpdateRequest(BaseModel):
     zip_size_limit_bytes: int = Field(ge=1)
     map_tiles_mode: Literal["online", "local_file", "off"] = "online"
     map_tiles_pmtiles_path: str | None = None
-    # 0 turns the background checker off.
+    # 0 is "Manual only": the background checker is off, "Check now" still works.
     library_check_interval_minutes: int = Field(
-        default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES, ge=0, le=1440
+        default=library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
+        ge=0,
+        le=library_watch.MAX_MINUTES,
     )
     library_stable_minutes: int = Field(
-        default=library_watch.DEFAULT_STABLE_MINUTES, ge=0, le=1440
+        default=library_watch.DEFAULT_STABLE_MINUTES,
+        ge=0,
+        le=library_watch.MAX_MINUTES,
     )
     show_library_updated_note: bool = True
 

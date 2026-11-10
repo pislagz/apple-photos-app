@@ -17,6 +17,7 @@ import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } f
 import SearchScreen from "./search/SearchScreen";
 import TabPlaceholderScreen from "./TabPlaceholderScreen";
 import type { LayoutOverride } from "./useLayout";
+import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 
 // #125, tracker R1: Library, Albums, More, Search -- no "For You" (Apple's
 // Memories and Featured Photos are curated by Apple, not in the library,
@@ -38,6 +39,7 @@ export default function MobileShell({
   onLogout,
   deepLinkAssetId,
   onDeepLinkConsumed,
+  onNoteDismissed,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
@@ -47,6 +49,7 @@ export default function MobileShell({
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
+  onNoteDismissed?: () => void;
 }) {
   const [route, setRoute] = useState<MobileRoute>(() => parseMobileRoute(window.location.pathname));
   // Resets on every navigation (including browser back/forward into
@@ -205,13 +208,20 @@ export default function MobileShell({
           {activeLibrary?.updating ? (
             <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
           ) : activeLibraryId !== undefined ? (
-            <MobileLibrary
-              key={activeLibraryId}
+            <LibraryNoteFrame
               libraryId={activeLibraryId}
-              resetSignal={libraryResetSignal}
-              initialAssetId={deepLinkAssetId}
-              onInitialAssetOpened={onDeepLinkConsumed}
-            />
+              note={activeLibrary?.updated_note}
+              variant="mobile"
+              onDismissed={onNoteDismissed}
+            >
+              <MobileLibrary
+                key={activeLibraryId}
+                libraryId={activeLibraryId}
+                resetSignal={libraryResetSignal}
+                initialAssetId={deepLinkAssetId}
+                onInitialAssetOpened={onDeepLinkConsumed}
+              />
+            </LibraryNoteFrame>
           ) : (
             <LibraryPlaceholder />
           )}

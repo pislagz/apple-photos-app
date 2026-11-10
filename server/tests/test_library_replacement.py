@@ -324,10 +324,8 @@ def test_updated_note_appears_after_an_update_with_new_photos(tmp_path):
         assert client.get("/api/me").json()["libraries"][0]["updated_note"] is None
         _replace_package(package, a + [_asset(2), _asset(3)])
         _drive(conn, lib)
-        assert (
-            "2 new photos"
-            in client.get("/api/me").json()["libraries"][0]["updated_note"]
-        )
+        note = client.get("/api/me").json()["libraries"][0]["updated_note"]
+        assert (note["added"], note["removed"]) == (2, 0)
         app_db.set_setting(conn, "show_library_updated_note", "0")
         assert client.get("/api/me").json()["libraries"][0]["updated_note"] is None
     finally:
@@ -700,5 +698,152 @@ def test_confirmed_replace_reopens_the_copy_if_the_package_changed_while_waiting
         assert response.status_code == 200 and response.json()["confirmed"] is True
         # The copy is made again once the lock is held and shows a change.
         assert events[events.index("lock") :][:3] == ["lock", "open", "index"]
+    finally:
+        conn.close()
+
+
+def test_candidate_ranking_prefers_name_then_recency_then_size():
+    from photos_viewer.library_admin import rank_candidates
+
+    # Name similarity beats recency: the older, similarly named copy wins.
+    assert rank_candidates(
+        "Alice.photoslibrary",
+        [
+            ("Zed.photoslibrary", 900.0, 10),
+            ("Alice 2.photoslibrary", 100.0, 10),
+            ("Alicia.photoslibrary", 500.0, 10),
+        ],
+    ) == ["Alice 2.photoslibrary", "Alicia.photoslibrary", "Zed.photoslibrary"]
+    # Copy suffixes are ignored, so equal names fall to most recent.
+    assert rank_candidates(
+        "Alice.photoslibrary",
+        [
+            ("Alice copy.photoslibrary", 100.0, 10),
+            ("Alice 2.photoslibrary", 300.0, 10),
+            ("Alice 3.photoslibrary", 200.0, 10),
+        ],
+    ) == ["Alice 2.photoslibrary", "Alice 3.photoslibrary", "Alice copy.photoslibrary"]
+    # Same name and mtime: the closest Photos.sqlite size to the old one.
+    assert (
+        rank_candidates(
+            "Alice.photoslibrary",
+            [
+                ("Alice 2.photoslibrary", 100.0, 5000),
+                ("Alice 3.photoslibrary", 100.0, 1100),
+                ("Alice 4.photoslibrary", 100.0, None),
+            ],
+            old_size=1000,
+        )[0]
+        == "Alice 3.photoslibrary"
+    )
+
+
+def test_status_suggests_the_best_match_and_lists_the_others(tmp_path):
+    import os
+
+    conn, client, package, lib = _setup(tmp_path, [_asset(1)])
+    try:
+        lib_dir = tmp_path / "lib"
+        for name in (
+            "Aaron.photoslibrary",
+            "Alice 2.photoslibrary",
+            "Zoe.photoslibrary",
+        ):
+            build_library(lib_dir, [_asset(1)], package_name=name)
+        # Zoe is the most recent and Aaron sorts first: neither wins on that.
+        os.utime(lib_dir / "Zoe.photoslibrary", (2**31 - 1, 2**31 - 1))
+        shutil.rmtree(package)
+        status = client.get(f"/api/admin/libraries/{lib}/status").json()
+        assert status["suggestion"]["name"] == "Alice 2.photoslibrary"
+        assert sorted(a["name"] for a in status["alternatives"]) == [
+            "Aaron.photoslibrary",
+            "Zoe.photoslibrary",
+        ]
+    finally:
+        conn.close()
+
+
+def test_timing_settings_accept_up_to_seven_days_and_zero(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        body = client.get("/api/admin/settings").json()
+        for key in ("library_check_interval_minutes", "library_stable_minutes"):
+            for value, status in ((10080, 200), (0, 200), (10081, 422)):
+                response = client.put("/api/admin/settings", json={**body, key: value})
+                assert response.status_code == status, (key, value)
+                if status == 200:
+                    assert response.json()[key] == value
+    finally:
+        conn.close()
+
+
+def test_check_now_reindexes_a_changed_library(tmp_path):
+    a = [_asset(1)]
+    conn, client, package, lib = _setup(tmp_path, a)
+    try:
+        body = client.get("/api/admin/settings").json()
+        client.put(
+            "/api/admin/settings",
+            json={
+                **body,
+                "library_check_interval_minutes": 0,
+                "library_stable_minutes": 0,
+            },
+        )
+        _replace_package(package, a + [_asset(2)])
+        # Two clicks apart: the first notices the change, the second applies it
+        # once the (zero) stability window has passed.
+        for _ in range(2):
+            assert client.post("/api/admin/libraries/check-now", json={}).json() == {
+                "started": True
+            }
+            library_watch._manual_thread.join(timeout=60)
+        count = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (lib,)
+        ).fetchone()[0]
+        assert count == 2
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'library.check_now'"
+            ).fetchone()[0]
+            == 2
+        )
+    finally:
+        conn.close()
+
+
+def test_check_now_while_a_pass_is_running_starts_nothing(tmp_path):
+    conn, client, _package, _lib = _setup(tmp_path, [_asset(1)])
+    try:
+        assert library_watch._pass_lock.acquire(blocking=False)
+        try:
+            response = client.post("/api/admin/libraries/check-now", json={})
+            assert response.status_code == 202
+            assert response.json() == {"started": False}
+            assert library_watch.check_all_exclusive(conn) is None
+        finally:
+            library_watch._pass_lock.release()
+    finally:
+        conn.close()
+
+
+def test_check_now_is_admin_only_and_csrf_guarded(tmp_path):
+    from tests.test_library_admin import _non_admin_client
+
+    conn, client = _non_admin_client(tmp_path)
+    try:
+        assert client.post("/api/admin/libraries/check-now", json={}).status_code == 403
+        client.cookies.clear()
+        assert client.post("/api/admin/libraries/check-now", json={}).status_code == 401
+    finally:
+        conn.close()
+    conn, client = _admin_client(tmp_path / "second")
+    try:
+        response = client.post(
+            "/api/admin/libraries/check-now",
+            json={},
+            headers={"Origin": "https://evil.example"},
+        )
+        assert response.status_code == 403
     finally:
         conn.close()

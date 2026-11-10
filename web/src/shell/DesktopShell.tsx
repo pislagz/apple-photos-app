@@ -11,6 +11,7 @@ import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
+import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 import LibrarySwitcher from "./LibrarySwitcher";
 import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
@@ -108,6 +109,7 @@ export default function DesktopShell({
   onLogout,
   deepLinkAssetId,
   onDeepLinkConsumed,
+  onNoteDismissed,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
@@ -117,6 +119,7 @@ export default function DesktopShell({
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
+  onNoteDismissed?: () => void;
 }) {
   const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
@@ -380,6 +383,12 @@ export default function DesktopShell({
                 />
               </div>
             ) : activeLibraryId !== undefined ? (
+              <LibraryNoteFrame
+                libraryId={activeLibraryId}
+                note={view === "library" || view === "days" ? activeLibrary?.updated_note : null}
+                variant="desktop"
+                onDismissed={onNoteDismissed}
+              >
               <DesktopLibrary
                 key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
@@ -398,6 +407,7 @@ export default function DesktopShell({
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
               />
+              </LibraryNoteFrame>
             ) : (
               <LibraryPlaceholder />
             )}

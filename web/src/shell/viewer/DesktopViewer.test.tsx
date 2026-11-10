@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -51,6 +51,7 @@ function makeDetail(id: string, overrides: Partial<AssetDetailResponse> = {}): A
     camera_make: "Apple",
     camera_model: "iPhone 15 Pro",
     has_edited: false,
+    original_available: true,
     has_live_photo_video: false,
     people: ["Alex"],
     albums: ["Trip"],
@@ -200,6 +201,26 @@ describe("DesktopViewer", () => {
     expect(panel).toHaveTextContent("San Francisco, CA");
     expect(panel).toHaveTextContent("a1.jpg");
     expect(panel).toHaveTextContent("2.3 MB");
+  });
+
+
+  it("the info panel says before download when only a smaller copy is on disk", async () => {
+    const items = [makeItem("a1"), makeItem("a2")];
+    mockDetail({ a1: makeDetail("a1", { original_available: false }), a2: makeDetail("a2", { original_available: true }) });
+
+    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText("Info"));
+    const panel = await screen.findByTestId("viewer-info-panel");
+    expect(await screen.findByTestId("original-missing-note")).toHaveTextContent(
+      "Only a smaller copy is on this Mac \u2014 downloads won't be the original.",
+    );
+    expect(panel).toContainElement(screen.getByTestId("original-missing-note"));
+
+    cleanup();
+    render(<DesktopViewer libraryId={1} items={[items[1]]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByLabelText("Info"));
+    expect(await screen.findByTestId("viewer-info-panel")).toHaveTextContent("Alex");
+    expect(screen.queryByTestId("original-missing-note")).toBeNull();
   });
 
   it("shows coordinates, not a looked-up name, for GPS without a place record, and Unknown place for unusable GPS", async () => {

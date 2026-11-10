@@ -14,6 +14,7 @@ function formatDate(value: string | null): string {
 export default function PasskeysDialog({ onClose }: { onClose: () => void }) {
   const [passkeys, setPasskeys] = useState<Passkey[] | null>(null);
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const supported = passkeysSupported();
@@ -37,14 +38,17 @@ export default function PasskeysDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await registerPasskey(name.trim());
+      await registerPasskey(name.trim(), password);
       setName("");
       await refresh();
     } catch (err) {
       if (isCancelled(err)) setError(null);
+      else if (err instanceof ApiError && err.status === 401) setError("That password is wrong.");
+      else if (err instanceof ApiError && err.status === 429) setError("Too many attempts. Try again later.");
       else if (err instanceof ApiError && err.status === 409) setError(err.message);
       else setError("Couldn’t add a passkey. Try again.");
     } finally {
+      setPassword("");
       setBusy(false);
     }
   }
@@ -95,6 +99,15 @@ export default function PasskeysDialog({ onClose }: { onClose: () => void }) {
               maxLength={64}
               value={name}
               onChange={(event) => setName(event.target.value)}
+            />
+            <input
+              type="password"
+              aria-label="Current password"
+              placeholder="Confirm with your password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
             />
             <button type="submit" className="change-password__submit" disabled={busy}>
               Add a passkey
