@@ -80,10 +80,12 @@ describe("MobileShell layout", () => {
   // need their own dark-mode color or they're unreadable on the #000
   // mobile-screen background.
   it("gives .mobile-screen__title a readable color in dark mode", () => {
-    const darkBlockStart = css.indexOf("@media (prefers-color-scheme: dark) {\n  .mobile-screen,");
-    const darkBlockEnd = css.indexOf("\n}\n", darkBlockStart);
-    const darkBlock = css.slice(darkBlockStart, darkBlockEnd);
-    expect(darkBlock).toMatch(/\.mobile-screen__title\s*\{\s*color:\s*#fff;\s*\}/);
+    // #218: no per-component dark block. The title inherits the body's
+    // --color-label, which tokens.css flips in dark mode.
+    const tokens = readFileSync(join(__dirname, "tokens.css"), "utf-8");
+    expect(css).toMatch(/body \{[^}]*color:\s*var\(--color-label\)/);
+    expect(tokens).toMatch(/prefers-color-scheme: dark\) \{\s*:root \{[^}]*--color-label:\s*#f5f5f7/);
+    expect(css).not.toMatch(/\.mobile-screen__title\s*\{[^}]*color:\s*#/);
   });
 });
 

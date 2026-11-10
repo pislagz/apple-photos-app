@@ -1089,3 +1089,41 @@ test("#78: the viewer says a referenced original is stored outside the library",
   await page.waitForTimeout(600);
   await shot(page, "16-original-outside-library", info.project.name);
 });
+
+// #218: the same screens in both appearances, for before/after comparison.
+// THEME_SHOTS_PREFIX names the files (`before`, `after`); run with -g "theme shots".
+for (const scheme of ["light", "dark"] as const) {
+  test(`theme shots: ${scheme}`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone only");
+    const prefix = process.env.THEME_SHOTS_PREFIX ?? "after";
+    const kind = info.project.name === "desktop" ? "desktop" : "phone";
+    const out = (name: string) => `${SHOTS}/${prefix}-${scheme}-${kind}-${name}.png`;
+    const snap = async (name: string) => {
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: out(name) });
+    };
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await snap("login");
+
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    await snap("library");
+
+    if (kind === "desktop") {
+      await page.locator(".account-menu__row-trigger").click();
+      await expect(page.locator(".account-menu__popover")).toBeVisible();
+      await snap("menu");
+      await page.locator(".account-menu__row-trigger").click();
+    }
+
+    const first = cells(page).first();
+    if (kind === "desktop") await first.dblclick();
+    else await first.tap();
+    await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+    await snap("viewer");
+  });
+}

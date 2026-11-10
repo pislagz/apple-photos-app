@@ -1,0 +1,226 @@
+/* Design tokens (#218): the only file that may hold colour literals or a
+   prefers-color-scheme block (scripts/check_css_colours.mjs enforces it).
+   Light values are the shipped look; dark values follow the system, like
+   Apple Photos on iOS 17 / macOS Sequoia. `color-scheme` makes form controls,
+   scrollbars and Canvas/CanvasText follow it too. */
+:root {
+  color-scheme: light dark;
+
+  /* Type. Scale: title-large 34, title 28, title-2 22, headline 17, body 15,
+     subhead 13, caption 12, footnote 11 (+ the in-between sizes in use). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-size-title-large: 34px;
+  --font-size-title: 28px;
+  --font-size-title-sm: 26px;
+  --font-size-title-2: 22px;
+  --font-size-title-3: 20px;
+  --font-size-headline-sm: 18px;
+  --font-size-headline: 17px;
+  --font-size-body-lg: 16px;
+  --font-size-body: 15px;
+  --font-size-body-sm: 14px;
+  --font-size-subhead: 13px;
+  --font-size-caption-lg: 12.5px;
+  --font-size-caption: 12px;
+  --font-size-footnote: 11px;
+  --font-size-micro: 10px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Spacing. */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+
+  /* Radii. Tiles are square (0). */
+  --radius-tile: 0;
+  --radius-xs: 4px;
+  --radius-xs-2: 5px;
+  --radius-small: 6px;
+  --radius-small-2: 7px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+  --radius-card: 12px;
+  --radius-13: 13px;
+  --radius-14: 14px;
+  --radius-16: 16px;
+  --radius-large: 20px;
+  --radius-pill: 999px;
+
+  /* Grid gaps between thumbnails. */
+  --grid-gap: 2px;
+  --grid-gap-dense: 1px;
+
+  /* Colour (light). */
+  --accent: #0a84ff;
+  --accent-ios: #007aff;
+  --color-white: #fff;
+  --color-black: #000;
+  --color-bg: #fff;
+  --color-bg-window: #fff;
+  --color-bg-grouped: #f2f2f7;
+  --color-bg-login: #e8e8ea;
+  --color-card: #fff;
+  --color-card-raised: #fff;
+  --color-label: #1d1d1f;
+  --color-label-secondary: #6e6e73;
+  --color-label-tertiary: #8e8e93;
+  --color-label-tab: rgba(60, 60, 67, 0.6);
+  --color-label-pill: rgba(60, 60, 67, 0.7);
+  --color-label-status: #6c6c70;
+  --color-separator: rgba(60, 60, 67, 0.29);
+  --color-line: rgba(60, 60, 67, 0.2);
+  --color-hairline: rgba(0, 0, 0, 0.1);
+  --color-bar-line: rgba(0, 0, 0, 0.08);
+  --color-placeholder: #e5e5ea;
+  --color-placeholder-map: #ccc;
+  --color-fill-subtle: rgba(118, 118, 128, 0.12);
+  --color-fill-note: rgba(120, 120, 128, 0.14);
+  --color-fill-button: rgba(120, 120, 128, 0.16);
+  --color-fill-strong: rgba(120, 120, 128, 0.28);
+  --color-fill-clear: rgba(118, 118, 128, 0.4);
+  --color-segment-selected: #fff;
+  --color-hover: rgba(0, 0, 0, 0.06);
+  --color-hover-faint: rgba(0, 0, 0, 0.05);
+  --color-selected: rgba(0, 0, 0, 0.08);
+  --sidebar-toggle-hover: rgba(0, 0, 0, 0.06);
+  --color-accent-soft: rgba(10, 132, 255, 0.15);
+  --color-accent-tint: rgba(10, 132, 255, 0.12);
+  --color-marquee-line: rgba(0, 122, 255, 0.9);
+  --color-marquee-fill: rgba(0, 122, 255, 0.18);
+  --color-danger: #ff3b30;
+  --color-danger-text: #d70015;
+  --color-danger-bg: rgba(255, 59, 48, 0.12);
+  --color-warn-bg: rgba(255, 159, 10, 0.16);
+  --color-warn-text: #3d2a00;
+  --color-focus-viewer: var(--accent);
+
+  /* Surfaces that stay dark in both appearances (photo viewers and the info
+     sheet over them), and the text and lines on them. */
+  --surface-dark: #1c1c1e;
+  --surface-dark-raised: #2c2c2e;
+  --color-on-dark-secondary: rgba(255, 255, 255, 0.6);
+  --color-on-dark-line: rgba(255, 255, 255, 0.15);
+  --color-on-dark-play: rgba(255, 255, 255, 0.9);
+  --color-link-on-dark: #64b5ff;
+  --color-warn-text-on-dark: #ffe2b0;
+  --color-warn-bg-on-dark: rgba(30, 20, 0, 0.82);
+  --color-filmstrip-bg: rgba(0, 0, 0, 0.3);
+
+  /* The map tiles are light in both appearances, so their attribution is too. */
+  --color-attribution-bg: rgba(255, 255, 255, 0.8);
+  --color-attribution-text: #333;
+
+  /* Materials: translucent bars, sidebar, menus. */
+  --material-bar: rgba(249, 249, 249, 0.86);
+  --material-bar-strong: rgba(249, 249, 249, 0.92);
+  --material-sidebar: rgba(246, 246, 246, 0.82);
+  --material-toolbar: rgba(246, 246, 246, 0.92);
+  --material-popover: rgba(255, 255, 255, 0.95);
+  --material-pill: rgba(255, 255, 255, 0.75);
+  --material-pill-selected: #fff;
+  --material-overlay: rgba(255, 255, 255, 0.92);
+  --material-banner: rgba(255, 255, 255, 0.94);
+  --color-on-overlay: #000;
+
+  /* Scrims over photos (the text on them is always white). */
+  --scrim-clear: rgba(0, 0, 0, 0);
+  --scrim-soft: rgba(0, 0, 0, 0.45);
+  --scrim-medium: rgba(0, 0, 0, 0.55);
+  --scrim-strong: rgba(0, 0, 0, 0.6);
+  --scrim-badge: rgba(0, 0, 0, 0.35);
+  --color-dim-light: rgba(0, 0, 0, 0.25);
+  --color-dim: rgba(0, 0, 0, 0.35);
+  --color-dim-strong: rgba(0, 0, 0, 0.4);
+
+  /* Shadows. */
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.15);
+  --shadow-pill: 0 4px 16px rgba(0, 0, 0, 0.18);
+  --shadow-pill-selected: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-banner: 0 1px 6px rgba(0, 0, 0, 0.2);
+  --shadow-note: 0 2px 12px rgba(0, 0, 0, 0.25);
+  --shadow-tip: 0 2px 12px rgba(0, 0, 0, 0.35);
+  --shadow-pin: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --shadow-minipin: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --text-shadow-overlay: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #000;
+    --color-bg-window: #1e1e1e;
+    --color-bg-grouped: #000;
+    --color-bg-login: #000;
+    --color-card: #1c1c1e;
+    --color-card-raised: #2c2c2e;
+    --color-label: #f5f5f7;
+    --color-label-secondary: #98989f;
+    --color-label-tertiary: #8e8e93;
+    --color-label-tab: rgba(255, 255, 255, 0.5);
+    --color-label-pill: rgba(255, 255, 255, 0.8);
+    --color-label-status: #aeaeb2;
+    --color-separator: rgba(84, 84, 88, 0.6);
+    --color-line: rgba(84, 84, 88, 0.6);
+    --color-hairline: rgba(255, 255, 255, 0.1);
+    --color-bar-line: rgba(255, 255, 255, 0.12);
+    --color-placeholder: #1c1c1e;
+    --color-placeholder-map: #48484a;
+    --color-fill-subtle: rgba(118, 118, 128, 0.24);
+    --color-fill-note: rgba(120, 120, 128, 0.24);
+    --color-fill-button: rgba(120, 120, 128, 0.32);
+    --color-fill-strong: rgba(120, 120, 128, 0.4);
+    --color-fill-clear: rgba(118, 118, 128, 0.6);
+    --color-segment-selected: #636366;
+    --color-hover: rgba(255, 255, 255, 0.14);
+    --color-hover-faint: rgba(255, 255, 255, 0.08);
+    --color-selected: rgba(255, 255, 255, 0.14);
+    --sidebar-toggle-hover: rgba(255, 255, 255, 0.14);
+    --color-accent-soft: rgba(10, 132, 255, 0.3);
+    --color-accent-tint: rgba(10, 132, 255, 0.2);
+    --color-danger: #ff453a;
+    --color-danger-text: #ff6961;
+    --color-danger-bg: rgba(255, 69, 58, 0.18);
+    --color-warn-bg: rgba(255, 159, 10, 0.2);
+    --color-warn-text: #ffe2b0;
+    --color-focus-viewer: #fff;
+
+    --material-bar: rgba(22, 22, 24, 0.86);
+    --material-bar-strong: rgba(22, 22, 24, 0.92);
+    --material-sidebar: rgba(30, 30, 30, 0.82);
+    --material-toolbar: rgba(30, 30, 30, 0.92);
+    --material-popover: rgba(44, 44, 46, 0.95);
+    --material-pill: rgba(60, 60, 67, 0.72);
+    --material-pill-selected: rgba(255, 255, 255, 0.95);
+    --material-overlay: rgba(28, 28, 30, 0.92);
+    --material-banner: rgba(44, 44, 46, 0.94);
+    --color-on-overlay: #f5f5f7;
+
+    --color-dim-light: rgba(0, 0, 0, 0.5);
+    --color-dim: rgba(0, 0, 0, 0.55);
+    --color-dim-strong: rgba(0, 0, 0, 0.6);
+
+    --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.55);
+    --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
+    --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.5);
+    --shadow-pill: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-pill-selected: none;
+    --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-banner: 0 1px 6px rgba(0, 0, 0, 0.45);
+    --shadow-note: 0 2px 12px rgba(0, 0, 0, 0.5);
+  }
+}

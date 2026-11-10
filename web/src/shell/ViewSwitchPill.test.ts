@@ -20,7 +20,7 @@ describe("mobile view-switch pill (#117)", () => {
   });
 
   it("tightens item padding on 320px phones", () => {
-    expect(css).toMatch(/@container mobile-library \(max-width: 359px\)\s*\{\s*\.mobile-library__view-switch-item\s*\{[^}]*padding:\s*6px 8px/);
+    expect(css).toMatch(/@container mobile-library \(max-width: 359px\)\s*\{\s*\.mobile-library__view-switch-item\s*\{[^}]*padding:\s*var\(--space-6\) var\(--space-8\)/);
   });
 
   it("keys the compact layout to the container width, not the viewport (#155)", () => {

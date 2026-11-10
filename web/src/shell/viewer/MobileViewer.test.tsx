@@ -519,7 +519,9 @@ describe("MobileViewer info sheet styling (#112)", () => {
   it("is opaque so the icon row and filmstrip do not show through", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const rule = /\.mobile-viewer__info-sheet \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(rule).toMatch(/background:\s*#[0-9a-f]{6}\s*;/i);
+    expect(rule).toMatch(/background:\s*var\(--surface-dark\)\s*;/);
     expect(rule).not.toMatch(/rgba/);
+    const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
+    expect(tokens).toMatch(/--surface-dark:\s*#[0-9a-f]{6}\s*;/i);
   });
 });
