@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
 import { ApiError, getMe, login, type MeResponse } from "./api";
+import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
 import SessionsScreen from "./screens/SessionsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import UsersScreen from "./screens/UsersScreen";
 
-type Screen = "libraries" | "users" | "sessions" | "audit-log" | "settings";
+type Screen = "libraries" | "users" | "access" | "sessions" | "audit-log" | "settings";
 
 const SCREENS: { key: Screen; label: string }[] = [
   { key: "libraries", label: "Libraries" },
   { key: "users", label: "Users" },
+  { key: "access", label: "Access" },
   { key: "sessions", label: "Sessions" },
   { key: "audit-log", label: "Audit log" },
   { key: "settings", label: "Settings" },
@@ -95,6 +97,7 @@ export default function AdminApp() {
       <main className="admin-main">
         {screen === "libraries" && <LibrariesScreen />}
         {screen === "users" && <UsersScreen />}
+        {screen === "access" && <AccessScreen />}
         {screen === "sessions" && <SessionsScreen />}
         {screen === "audit-log" && <AuditLogScreen />}
         {screen === "settings" && <SettingsScreen />}

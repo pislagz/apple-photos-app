@@ -245,7 +245,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           </span>
         )}
       </div>
-      <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" />
+      <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" itemSize={44} />
       <div className="mobile-viewer__icon-row">
         {item.favorite && (
           <span className="mobile-viewer__icon-button mobile-viewer__status" role="img" aria-label="Favorite">

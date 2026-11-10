@@ -250,7 +250,7 @@ Not blocking; pick up when convenient.
 - `main.py` uses the deprecated `@app.on_event("startup")` (hundreds of deprecation warnings in pytest); move to a `lifespan` handler.
 - If `web/dist` exists but has no `index.html` (half-finished build), every non-API path 500s; check for `index.html` before mounting the web app.
 - `_NO_STORE_PREFIXES` uses a plain `startswith("/api/me")`, so any future `/api/media...` or `/api/messages` route would silently get `no-store` too; match `/api/me` exactly or `/api/me/`.
-- Access matrix as its own admin sidebar item (optional in P1.12B) was not done.
+- Access matrix as its own admin sidebar item: done (#77), `AccessScreen`.
 
 #### Planned: UI styling pass
 

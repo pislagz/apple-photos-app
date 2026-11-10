@@ -170,7 +170,7 @@ test("admin panel", async ({ page }, info) => {
   // #158: styled, and no page-level horizontal overflow on any screen.
   await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  for (const [i, label] of ["Libraries", "Users", "Sessions", "Audit log", "Settings"].entries()) {
+  for (const [i, label] of ["Libraries", "Users", "Access", "Sessions", "Audit log", "Settings"].entries()) {
     await nav.getByRole("button", { name: label }).click();
     await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
     await page.waitForLoadState("networkidle");
@@ -223,4 +223,25 @@ test("desktop Days lead photo stays capped in wide windows (#153)", async ({ pag
     const next = await cells(page).nth(1).boundingBox();
     if (next) expect(next.y, `${width}: next row below lead`).toBeGreaterThanOrEqual(box!.y + box!.height);
   }
+});
+
+// #88: unit tests run with a faked layout; this checks the real thing. The
+// library scroll container must be bounded by the viewport (not grow with its
+// content), and virtualization must mount far fewer cells than exist.
+test("phone library scroll container is viewport-bounded and virtualized (#88)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone widths only");
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await page.waitForTimeout(500);
+  const scroll = page.locator(".mobile-library__scroll");
+  const { clientHeight, scrollHeight, innerHeight } = await scroll.evaluate((el) => ({
+    clientHeight: el.clientHeight,
+    scrollHeight: el.scrollHeight,
+    innerHeight: window.innerHeight,
+  }));
+  expect(clientHeight, "scroll container fits the viewport").toBeLessThanOrEqual(innerHeight);
+  expect(scrollHeight, "content overflows inside it").toBeGreaterThan(clientHeight);
+  const mounted = await page.locator(".mobile-library__cell").count();
+  expect(mounted, "cells are virtualized").toBeGreaterThan(0);
+  expect(mounted, "far fewer cells than photos").toBeLessThan(120);
 });

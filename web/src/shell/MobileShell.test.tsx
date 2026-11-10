@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem, MeResponse } from "../api";
 import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import MobileShell from "./MobileShell";
+import { useFakeLayout } from "../testLayout";
+
+// Virtualized grids need a sized viewport; jsdom has none (#88).
+useFakeLayout();
 
 // Vitest mocks plain CSS imports (no stylesheet to attach them to in
 // jsdom), so read the source directly instead.

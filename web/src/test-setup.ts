@@ -1,11 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 
-// jsdom does no real layout: `getBoundingClientRect` is always zero, and
-// jsdom's own built-in `ResizeObserver` never fires its callback. TanStack
+// jsdom has no `ResizeObserver`. TanStack
 // Virtual (the mobile Library grid) reads the container's size from that
 // callback, not a direct `getBoundingClientRect` call, so this stub has to
 // invoke it once with the (fixed) rect for virtualized-list tests to see
-// non-zero rows. It replaces jsdom's inert built-in, not just a missing one.
+// non-zero rows (zero unless the test opted into `useFakeLayout`).
 class ResizeObserverStub {
   private callback: ResizeObserverCallback;
 
@@ -31,23 +30,10 @@ class ResizeObserverStub {
 }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 
-Element.prototype.getBoundingClientRect = () =>
-  ({ width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON() {} }) as DOMRect;
-
-for (const prop of ["clientWidth", "offsetWidth"]) {
-  Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => 800 });
-}
-for (const prop of ["clientHeight", "offsetHeight"]) {
-  Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => 600 });
-}
-
-// jsdom's `scrollHeight`/`scrollWidth` default to 0 (no real layout), so
-// TanStack Virtual's scroll clamp (`min(offset, scrollHeight - clientHeight)`)
-// forces every `scrollToOffset`/`scrollToIndex` call to 0. A large constant
-// keeps that clamp a no-op in tests.
-for (const prop of ["scrollHeight", "scrollWidth"]) {
-  Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => 1_000_000 });
-}
+// jsdom does no layout, but this file deliberately does NOT fake any (#88): a
+// global 800x600 box for every element let real layout bugs pass CI, e.g. a
+// scroll container with no height limit still "virtualized" fine. Tests that
+// need a sized viewport opt in with `useFakeLayout()` from `testLayout.ts`.
 
 // jsdom's `Element.scrollTo` is a documented no-op: it neither moves
 // `scrollTop`/`scrollLeft` nor fires a `scroll` event. TanStack Virtual's
