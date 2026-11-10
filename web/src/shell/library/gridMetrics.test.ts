@@ -52,16 +52,34 @@ describe("gridMetrics", () => {
     expect(featureRowHeight(1200, 200)).toBe(featureHeight(1200, 200) + GRID_GAP);
   });
 
-  it("from 1600px the cap grows with the thumbnail size, keeping 2:1", () => {
-    // 2560 wide window, ~2300px of content, 6 columns: ~388px cells.
-    const cell = computeCellSize(2300, 6);
+  it("from 1600px the cap blends in and grows with the thumbnail size, keeping 2:1", () => {
+    // A 3440 wide window (well past the blend), 6 columns.
+    const cell = computeCellSize(3200, 6);
     const expected = FEATURE_COLUMNS * cell + (FEATURE_COLUMNS - 1) * GRID_GAP;
-    expect(featureWidth(2300, cell)).toBeCloseTo(expected);
-    expect(featureWidth(2300, cell)).toBeGreaterThan(FEATURE_MAX_WIDTH);
-    expect(featureHeight(2300, cell)).toBe(Math.round(featureWidth(2300, cell) / FEATURE_ASPECT));
+    expect(featureWidth(3200, cell)).toBeCloseTo(expected);
+    expect(featureWidth(3200, cell)).toBeGreaterThan(FEATURE_MAX_WIDTH);
+    expect(featureHeight(3200, cell)).toBe(Math.round(featureWidth(3200, cell) / FEATURE_ASPECT));
     // Small thumbnails never shrink it below the 960 cap.
     expect(featureWidth(1920, computeCellSize(1920, 10))).toBe(FEATURE_MAX_WIDTH);
     // Large thumbnails never exceed the content width.
-    expect(featureWidth(1700, computeCellSize(1700, 2))).toBe(1700);
+    expect(featureWidth(2200, computeCellSize(2200, 2))).toBe(2200);
+    expect(featureWidth(1700, computeCellSize(1700, 2))).toBeLessThanOrEqual(1700);
+  });
+
+  it("the Days lead photo has no step at any width (#177)", () => {
+    // The container itself grows 1 px per px; the blend adds a little on top
+    // (at most ~4 px per px, with 2 columns). The old hard switch jumped
+    // ~100 px at 1600 with 6 columns.
+    const MAX_STEP = 5;
+    for (const columns of [2, 3, 4, 5, 6, 8, 10, 14]) {
+      let previous = featureWidth(900, computeCellSize(900, columns));
+      for (let width = 901; width <= 2600; width++) {
+        const lead = featureWidth(width, computeCellSize(width, columns));
+        expect(lead).toBeGreaterThanOrEqual(previous);
+        expect(lead - previous).toBeLessThanOrEqual(MAX_STEP);
+        expect(lead).toBeLessThanOrEqual(width);
+        previous = lead;
+      }
+    }
   });
 });

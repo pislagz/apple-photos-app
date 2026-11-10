@@ -290,10 +290,22 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             list(range(1, count, 17)),
             named=False,
         ),
+        fixtures.FixturePerson(
+            "C0000000-DEAD-4BEE-8000-000000000004",
+            "Unnamed",
+            "D0000000-DEAD-4BEE-8000-000000000004",
+            list(range(3, count, 29)),
+            named=False,
+        ),
     ]
     dest.mkdir(parents=True)
     return fixtures.build_library(
-        dest, assets, albums=albums, folders=folders, people=people, package_name="Demo.photoslibrary"
+        dest,
+        assets,
+        albums=albums,
+        folders=folders,
+        people=people,
+        package_name="Demo.photoslibrary",
     )
 
 

@@ -593,8 +593,11 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-# D41: nothing talks to OpenStreetMap until an admin turns it on.
+# D41 / Decisions 5: nothing talks to OpenStreetMap or GeoNames until an admin
+# has agreed, once, to "Map & place names". The stored value is "1" (agreed) or
+# "0"; no row means the question has not been answered, which counts as not agreed.
 DEFAULT_MAP_TILES_MODE = "off"
+OSM_CONSENT_KEY = "osm_consent"
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -608,6 +611,21 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         (key, value),
     )
     conn.commit()
+
+
+def osm_consent(conn: sqlite3.Connection) -> bool:
+    return get_setting(conn, OSM_CONSENT_KEY) == "1"
+
+
+def osm_consent_decided(conn: sqlite3.Connection) -> bool:
+    return get_setting(conn, OSM_CONSENT_KEY) in ("0", "1")
+
+
+def effective_map_mode(conn: sqlite3.Connection) -> str:
+    """The map mode in force: always "off" without consent, whatever else is stored."""
+    if not osm_consent(conn):
+        return "off"
+    return get_setting(conn, "map_tiles_mode") or DEFAULT_MAP_TILES_MODE
 
 
 def write_audit_log(

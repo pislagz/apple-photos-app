@@ -16,6 +16,7 @@ def _app_with_db(tmp_path, mode=None):
     conn = app_db.connect(tmp_path / "data")
     if mode is not None:
         app_db.set_setting(conn, "map_tiles_mode", mode)
+        app_db.set_setting(conn, "osm_consent", "1")
     app.dependency_overrides[session_auth.get_db] = lambda: conn
     return app, conn
 
@@ -78,6 +79,15 @@ def test_only_external_host_is_osm_tiles_and_only_when_turned_on(tmp_path):
         "'self'",
         "https://tile.openstreetmap.org",
     ]
+    conn.close()
+
+
+def test_stored_online_mode_without_consent_adds_no_host(tmp_path):
+    app, conn = _make(tmp_path, "online")
+    app_db.set_setting(conn, "osm_consent", "0")
+    app.state.csp_cache = None
+    header = TestClient(app).get("/").headers["content-security-policy"]
+    assert "openstreetmap" not in header
     conn.close()
 
 

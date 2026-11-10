@@ -58,8 +58,8 @@ _NO_STORE_EXACT = ("/api/me",)
 
 
 # P1.20, D41. The one external host is the OSM raster tile server, and it is on
-# connect-src only while an admin has turned "Show OpenStreetMap map" on
-# (setting `map_tiles_mode` = online; the default is off). MapLibre fetches
+# connect-src only while an admin has agreed to "Map & place names" and no
+# local PMTiles file is set (effective map mode = online; the default is off). MapLibre fetches
 # tile bytes with fetch(), then draws them from blob: URLs, covered by img-src.
 # No worker-src: the web app has no MapLibre worker yet; add
 # `worker-src 'self' blob:` with the Phase 2 map only if it needs one.
@@ -88,7 +88,7 @@ _SETTINGS_WRITES = ("/api/admin/settings", "/api/setup/admin")
 
 def _map_is_online(conn: sqlite3.Connection) -> bool:
     try:
-        return app_db.get_setting(conn, "map_tiles_mode") == "online"
+        return app_db.effective_map_mode(conn) == "online"
     except sqlite3.Error:
         return False
 

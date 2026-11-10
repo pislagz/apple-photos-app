@@ -1,4 +1,5 @@
 import type { InfoRow } from "./viewerInfo";
+import { PlaceNamesHint } from "./PlaceNamesHint";
 
 export function InfoRows({ rows, className }: { rows: InfoRow[]; className: string }) {
   return (
@@ -6,7 +7,10 @@ export function InfoRows({ rows, className }: { rows: InfoRow[]; className: stri
       {rows.map((row) => (
         <div key={row.label} className={`${className}__row`}>
           <dt>{row.label}</dt>
-          <dd>{row.value}</dd>
+          <dd className={row.coordinatesOnly ? "info-row--hint" : undefined}>
+            {row.value}
+            {row.coordinatesOnly && <PlaceNamesHint />}
+          </dd>
         </div>
       ))}
     </dl>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./admin.css";
 import { ApiError, getMe, login, type MeResponse, type PlaceNamesStatus, readPlaceNames } from "./api";
+import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
 import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
@@ -22,11 +23,13 @@ const SCREENS: { key: Screen; label: string }[] = [
 export default function AdminApp() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [checkedSession, setCheckedSession] = useState(false);
-  const [screen, setScreen] = useState<Screen>("libraries");
+  const [screen, setScreen] = useState<Screen>(() =>
+    window.location.hash === `#${MAP_PLACE_NAMES_ANCHOR}` ? "settings" : "libraries",
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
-  // D41: shown until an admin has saved Settings (or chosen at first run).
+  // Shown until an admin has answered the "Map & place names" question.
   const [optInsReviewed, setOptInsReviewed] = useState(true);
 
   useEffect(() => {
@@ -40,7 +43,7 @@ export default function AdminApp() {
   useEffect(() => {
     if (!isAdmin) return;
     readPlaceNames()
-      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.opt_ins_reviewed))
+      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.consent_decided))
       .catch(() => setOptInsReviewed(true));
   }, [isAdmin, screen]);
 
@@ -107,9 +110,9 @@ export default function AdminApp() {
       <main className="admin-main">
         {!optInsReviewed && (
           <p className="admin-notice" role="note" data-testid="opt-in-notice">
-            Two optional features are off: the OpenStreetMap map and offline place names.{" "}
+            The map and place names are off until you agree to use OpenStreetMap data.{" "}
             <button type="button" className="admin-link" onClick={() => setScreen("settings")}>
-              Review them in Settings
+              Review it in Settings
             </button>
           </p>
         )}

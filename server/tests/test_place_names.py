@@ -57,6 +57,8 @@ def geonames_server(monkeypatch):
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            if "on_get" in payload:
+                payload["on_get"]()
             self.send_response(payload["status"])
             self.end_headers()
             self.wfile.write(payload["body"])
@@ -245,7 +247,7 @@ def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
         assert _detail(client, lib, 1)["place_offline"] is None
 
         # On but not downloaded yet: still nothing.
-        _settings(client, offline_place_names=True)
+        _settings(client, osm_consent=True)
         indexer.index_library(conn, lib, package, force=True)
         assert _detail(client, lib, 1)["place_offline"] is None
 
@@ -265,7 +267,7 @@ def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
         assert (detail["place"], detail["place_address"]) == (None, None)
 
         # Turning it off blanks the column.
-        _settings(client, offline_place_names=False)
+        _settings(client, osm_consent=False)
         assert _detail(client, lib, 1)["place_offline"] is None
     finally:
         conn.close()
@@ -304,7 +306,7 @@ def test_lookup_and_indexing_make_no_connections(tmp_path, monkeypatch):
         path = place_names.gazetteer_path(tmp_path / "data")
         path.parent.mkdir(parents=True)
         path.write_text(_dump())
-        _settings(client, offline_place_names=True)
+        _settings(client, osm_consent=True)
         indexer.index_library(conn, lib, package, force=True)
         assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
         assert attempts == []
@@ -337,7 +339,9 @@ def test_place_name_admin_routes_are_admin_only_audited_and_report_errors(
     try:
         status = client.get("/api/admin/place-names").json()
         assert status["downloaded"] is False
-        assert status["opt_ins_reviewed"] is True  # setup recorded the choice
+        assert status["consent_decided"] is True  # setup recorded the choice
+        assert status["consent"] is False
+        _settings(client, osm_consent=True)  # downloading needs the consent
         assert "GeoNames" in status["attribution"]
 
         geonames_server["body"] = b"junk"
@@ -372,10 +376,10 @@ def _provider(conn):
     return lambda: conn
 
 
-def test_first_run_setup_records_both_opt_ins_off_by_default(tmp_path):
-    for body, mode, offline in (
+def test_first_run_setup_records_the_single_consent_off_by_default(tmp_path):
+    for body, mode, consent in (
         ({}, "off", "0"),
-        ({"show_osm_map": True, "offline_place_names": True}, "online", "1"),
+        ({"osm_consent": True}, "online", "1"),
     ):
         directory = tmp_path / mode
         directory.mkdir()
@@ -388,19 +392,81 @@ def test_first_run_setup_records_both_opt_ins_off_by_default(tmp_path):
         )
         assert response.status_code == 201
         assert app_db.get_setting(conn, "map_tiles_mode") == mode
-        assert app_db.get_setting(conn, "offline_place_names") == offline
-        assert app_db.get_setting(conn, "privacy_opt_ins_reviewed") == "1"
+        assert app_db.get_setting(conn, "osm_consent") == consent
+        audited = conn.execute(
+            "SELECT detail FROM audit_log WHERE action = 'osm_consent_agreed'"
+        ).fetchall()
+        assert len(audited) == (1 if consent == "1" else 0)
         conn.close()
 
 
-def test_opt_in_notice_stays_until_settings_are_saved(tmp_path):
+def test_consent_notice_stays_until_the_question_is_answered(tmp_path):
     _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
     try:
-        conn.execute("DELETE FROM settings WHERE key = 'privacy_opt_ins_reviewed'")
+        # An install from before the consent existed: no saved answer.
+        conn.execute("DELETE FROM settings WHERE key = 'osm_consent'")
         conn.commit()
-        assert client.get("/api/admin/place-names").json()["opt_ins_reviewed"] is False
+        status = client.get("/api/admin/place-names").json()
+        assert status["consent_decided"] is False and status["consent"] is False
         _settings(client)
-        assert client.get("/api/admin/place-names").json()["opt_ins_reviewed"] is True
+        assert client.get("/api/admin/place-names").json()["consent_decided"] is True
+    finally:
+        conn.close()
+
+
+def test_without_consent_nothing_is_downloaded_looked_up_or_mapped(
+    tmp_path, geonames_server
+):
+    hits = []
+    geonames_server["on_get"] = lambda: hits.append(1)
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
+    try:
+        # Data on disk and every old switch on, but no consent.
+        path = place_names.gazetteer_path(tmp_path / "data")
+        path.parent.mkdir(parents=True)
+        path.write_text(_dump())
+        app_db.set_setting(conn, "map_tiles_mode", "online")
+        app_db.set_setting(conn, "offline_place_names", "1")
+        assert app_db.get_setting(conn, "osm_consent") == "0"
+
+        refused = client.post("/api/admin/place-names/download", json={})
+        assert refused.status_code == 403
+        assert hits == []
+
+        indexer.index_library(conn, lib, package, force=True)
+        assert _detail(client, lib, 1)["place_offline"] is None
+        assert client.get("/api/map/config").json() == {
+            "mode": "off",
+            "pmtiles_url": None,
+        }
+        assert client.get("/api/me").json()["osm_consent"] is False
+    finally:
+        conn.close()
+
+
+def test_agreeing_and_withdrawing_are_audited_and_blank_the_names(
+    tmp_path, geonames_server
+):
+    _app, conn, client, lib, package = _admin_with_library(tmp_path)
+    try:
+        indexer.index_library(conn, lib, package, force=True)
+        _settings(client, osm_consent=True)
+        assert client.get("/api/me").json()["osm_consent"] is True
+        assert client.get("/api/map/config").json()["mode"] == "online"
+        assert (
+            client.post("/api/admin/place-names/download", json={}).status_code == 200
+        )
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        _settings(client, osm_consent=False)
+        assert _detail(client, lib, 1)["place_offline"] is None
+        assert client.get("/api/map/config").json()["mode"] == "off"
+        actions = [
+            row["action"]
+            for row in conn.execute(
+                "SELECT action FROM audit_log WHERE action LIKE 'osm_consent%' ORDER BY id"
+            )
+        ]
+        assert actions == ["osm_consent_agreed", "osm_consent_withdrawn"]
     finally:
         conn.close()
 

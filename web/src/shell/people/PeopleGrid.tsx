@@ -46,9 +46,6 @@ export function FaceCircle({ libraryId, cover }: { libraryId: number; cover: Fac
   );
 }
 
-// Shown for a face group Photos has no name for (display only, no editing).
-export const UNNAMED_PERSON = "Add Name";
-
 // P2.2: the grid of circular faces with names, shared by both layouts.
 export default function PeopleGrid({
   libraryId,
@@ -84,7 +81,7 @@ export default function PeopleGrid({
             >
               <FaceCircle libraryId={libraryId} cover={person.cover} />
               <span className={person.name === null ? "people-grid__name people-grid__name--unnamed" : "people-grid__name"}>
-                {person.name ?? UNNAMED_PERSON}
+                {person.label}
               </span>
               <span className="people-grid__count">{person.count.toLocaleString()}</span>
             </button>

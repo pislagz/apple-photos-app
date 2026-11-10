@@ -68,22 +68,38 @@ describe("AdminApp", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Libraries" })).toBeInTheDocument());
   });
 
-  it("shows a notice about the two optional features until they have been reviewed (D41)", async () => {
+  it("asks the 'Map & place names' question once, until it is answered", async () => {
     let reviewed = false;
     mockFetch((url) => {
       if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
       if (url === "/api/admin/libraries") return [];
       if (url === "/api/admin/place-names") {
-        return { dataset: "cities15000", downloaded: false, size_bytes: 0, source_url: "", attribution: "", license_url: "", opt_ins_reviewed: reviewed };
+        return { dataset: "cities15000", downloaded: false, size_bytes: 0, source_url: "", attribution: "", license_url: "", consent_decided: reviewed, consent: false };
       }
       throw new Error(`unexpected request: ${url}`);
     });
     const { unmount } = render(<AdminApp />);
-    expect(await screen.findByTestId("opt-in-notice")).toHaveTextContent("OpenStreetMap map and offline place names");
+    expect(await screen.findByTestId("opt-in-notice")).toHaveTextContent("agree to use OpenStreetMap data");
     unmount();
     reviewed = true;
     render(<AdminApp />);
     await screen.findByRole("heading", { name: "Libraries" });
     await waitFor(() => expect(screen.queryByTestId("opt-in-notice")).toBeNull());
+  });
+
+  it("opens Settings from the #map-place-names deep link", async () => {
+    window.history.replaceState({}, "", "/admin#map-place-names");
+    mockFetch((url) => {
+      if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
+      if (url === "/api/admin/place-names") {
+        return { dataset: "cities15000", downloaded: false, size_bytes: 0, source_url: "", attribution: "", license_url: "", consent_decided: true, consent: false };
+      }
+      if (url === "/api/admin/settings") return { osm_consent: false, map_tiles_pmtiles_path: null, session_lifetime_desktop_seconds: 1, session_lifetime_pwa_seconds: 1, session_lifetime_remember_me_seconds: 1, thumb_size_grid: 1, thumb_size_grid2x: 1, thumb_size_preview: 1, thumb_quality: 1, zip_size_limit_bytes: 1, map_tiles_mode: "off", library_check_interval_minutes: 1, library_stable_minutes: 1, show_library_updated_note: true };
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<AdminApp />);
+    expect(await screen.findByTestId("map-place-names")).toBeInTheDocument();
+    window.history.replaceState({}, "", "/");
   });
 });

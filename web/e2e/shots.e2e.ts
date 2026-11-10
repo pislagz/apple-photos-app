@@ -164,8 +164,8 @@ test("people: faces grid and a person's photos", async ({ page }, info) => {
     await page.getByRole("button", { name: /People & Pets/ }).click();
   }
   await expect(page.getByRole("button", { name: /Alex Demo/ })).toBeVisible();
-  // The unnamed cluster is listed after the named people, with a placeholder.
-  await expect(page.getByRole("button", { name: /Add Name/ })).toHaveCount(1);
+  // Unnamed clusters are listed after the named people, as Person A, B, ...
+  await expect(page.getByRole("button", { name: /Person A/ })).toHaveCount(1);
   await shot(page, "12-people", info.project.name);
   await page.getByRole("button", { name: /Alex Demo/ }).click();
   await expect(page.getByRole("heading", { name: "Alex Demo" })).toBeVisible();
@@ -415,10 +415,10 @@ test.describe("dark mode", () => {
 
 // ---- Decisions 3 --------------------------------------------------------
 
-async function setMapMode(page: Page, mode: "online" | "local_file" | "off", offlineNames = false) {
+async function setConsent(page: Page, consent: boolean) {
   const current = await (await page.request.get("/api/admin/settings")).json();
   const response = await page.request.put("/api/admin/settings", {
-    data: { ...current, map_tiles_mode: mode, map_tiles_pmtiles_path: null, offline_place_names: offlineNames },
+    data: { ...current, osm_consent: consent, map_tiles_pmtiles_path: null },
   });
   expect(response.ok()).toBe(true);
 }
@@ -477,28 +477,126 @@ test("D41: the viewer title is the date for a photo with GPS but no place name",
 test("D41: the Map view explains that the OpenStreetMap map is off", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page, ADMIN);
-  await setMapMode(page, "off");
+  await setConsent(page, false);
   await page.reload();
   if (info.project.name === "desktop") {
     await page.locator("aside.sidebar").getByRole("button", { name: "Map" }).click();
   } else {
     await page.goto("/places");
   }
-  await expect(page.getByTestId("map-off-note")).toContainText("Show OpenStreetMap map");
+  await expect(page.getByTestId("map-off-note")).toContainText("Map & place names");
   await page.waitForLoadState("networkidle");
   await shot(page, "16-map-off-note", info.project.name);
 });
 
-test("D41: Settings has the two optional features, both off by default", async ({ page }, info) => {
+test("Decisions 5: Settings has one Map & place names consent, off by default", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page, ADMIN);
-  await setMapMode(page, "off");
-  await page.goto("/admin");
-  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Settings" }).click();
-  await expect(page.getByLabel("Show OpenStreetMap map")).not.toBeChecked();
-  await expect(page.getByLabel("Offline place names")).not.toBeChecked();
+  await setConsent(page, false);
+  await page.goto("/admin#map-place-names");
+  const section = page.getByTestId("map-place-names");
+  await expect(section).toBeVisible();
+  await expect(section.getByLabel("Allow")).not.toBeChecked();
+  await expect(section).toContainText("Nothing about your photos is sent.");
+  await expect(section.getByLabel(/Local map file/)).toBeVisible();
   await expect(page.getByTestId("geonames-attribution")).toContainText("GeoNames");
-  await page.getByLabel("Show OpenStreetMap map").scrollIntoViewIfNeeded();
+  await section.scrollIntoViewIfNeeded();
   await page.waitForLoadState("networkidle");
-  await shot(page, "17-settings-optional-features", info.project.name);
+  await shot(page, "17-settings-map-place-names", info.project.name);
 });
+
+test("Decisions 5: first-run setup asks the Map & place names question", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  // The demo already has an admin; pretend it has not, only to draw the screen.
+  await page.route("**/api/setup/status", (route) => route.fulfill({ json: { needs_setup: true } }));
+  await page.goto("/");
+  const group = page.getByRole("group", { name: "Map & place names" });
+  await expect(group).toBeVisible();
+  await expect(group.getByLabel("Allow")).not.toBeChecked();
+  await expect(group).toContainText("This app works fully offline.");
+  await group.scrollIntoViewIfNeeded();
+  await shot(page, "18-setup-map-place-names", info.project.name);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+for (const who of ["user", "admin"] as const) {
+  test(`Decisions 5: Info shows coordinates and an i icon with its tooltip until consent is given (${who})`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone only");
+    // Consent off, and the admin can see the library (the demo assigns it to the user only).
+    const adminContext = await page.context().browser()!.newContext({ baseURL: info.project.use.baseURL ?? process.env.DEMO_URL ?? "http://127.0.0.1:8000" });
+    const adminPage = await adminContext.newPage();
+    await adminPage.goto("/");
+    await adminPage.getByLabel("Username").fill(ADMIN.username);
+    await adminPage.getByLabel("Password").fill(ADMIN.password);
+    await adminPage.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(adminPage.getByLabel("Username")).toHaveCount(0);
+    await setConsent(adminPage, false);
+    if (who === "admin") {
+      const users = await (await adminPage.request.get("/api/admin/users")).json();
+      const libraries = await (await adminPage.request.get("/api/admin/libraries")).json();
+      const admin = users.find((u: { username: string }) => u.username === ADMIN.username);
+      await adminPage.request.put(`/api/admin/users/${admin.id}/libraries/${libraries[0].id}`);
+    }
+    await adminContext.close();
+
+    await signIn(page, who === "admin" ? ADMIN : USER);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    const viewer = page.locator('[data-testid="desktop-viewer"], [data-testid="mobile-viewer"]');
+    let found = false;
+    for (let index = 0; index < 8 && !found; index++) {
+      const cell = cells(page).nth(index);
+      if (info.project.name === "desktop") await cell.dblclick();
+      else await cell.tap();
+      await expect(viewer).toBeVisible();
+      await viewer.getByRole("button", { name: "Info" }).click();
+      const panel = page.locator('[data-testid="viewer-info-panel"], [data-testid="viewer-info-sheet"]');
+      await expect(panel).toBeVisible();
+      await page.waitForTimeout(400);
+      if ((await panel.innerText()).includes("°")) {
+        found = true;
+        const hint = panel.getByRole("button", { name: "Why is there no place name?" });
+        await expect(hint).toBeVisible();
+        if (info.project.name === "desktop") await hint.hover();
+        else await hint.tap();
+        const tip = panel.getByRole("tooltip");
+        await expect(tip).toBeVisible();
+        await expect(tip).toContainText("Place names are off because you haven't agreed to use OpenStreetMap data.");
+        if (who === "admin") {
+          await expect(tip.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/admin#map-place-names");
+        } else {
+          await expect(tip).toContainText("An admin can change this in Settings.");
+          await expect(tip.getByRole("link")).toHaveCount(0);
+        }
+        await page.waitForTimeout(300);
+        await shot(page, `19-info-coordinates-hint-${who}`, info.project.name);
+      } else {
+        await page.keyboard.press("Escape");
+        await expect(viewer).toHaveCount(0);
+      }
+    }
+    expect(found, "a demo photo with GPS and no place name").toBe(true);
+  });
+}
+
+// The demo content width where the lead photo used to jump (1600) and its neighbours.
+for (const content of [1500, 1600, 1700]) {
+  test(`Decisions 5: Days lead photo at ${content}px content width`, async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await signIn(page);
+    await page.setViewportSize({ width: content + 200, height: 900 });
+    await openZoom(page, "Days");
+    await page.waitForTimeout(400);
+    // Aim at the content width: the sidebar and padding take the rest.
+    const measured = (await page.locator(".desktop-library__grid").first().boundingBox())!.width;
+    await page.setViewportSize({ width: Math.round(content + 200 + (content - measured)), height: 900 });
+    await page.waitForTimeout(400);
+    const grid = (await page.locator(".desktop-library__grid").first().boundingBox())!.width;
+    expect(Math.abs(grid - content), `content width ${grid}`).toBeLessThanOrEqual(2);
+    const lead = (await cells(page).first().boundingBox())!;
+    expect(lead.width / lead.height).toBeLessThanOrEqual(2.05);
+    expect(lead.width).toBeLessThanOrEqual(grid);
+    console.log(`content ${grid}px: lead ${lead.width}x${lead.height}`);
+    await shot(page, `20-days-lead-${content}`, info.project.name);
+  });
+}

@@ -182,6 +182,7 @@ def _pmtiles(tmp_path):
 
 def _set(conn, mode, path=None):
     app_db.set_setting(conn, "map_tiles_mode", mode)
+    app_db.set_setting(conn, "osm_consent", "1")
     app_db.set_setting(
         conn, "map_tiles_pmtiles_path", "" if path is None else str(path)
     )

@@ -12,8 +12,10 @@ over) Apple's `place`, `place_address` and `place_country_code`, which always
 win in the UI. Turning the setting off blanks the column.
 
 The one outbound request this server ever makes is `download()`, started by an
-admin from Settings, to the official GeoNames dump URL below. It runs only on
-that request; indexing, serving and the test suite never reach it.
+admin from Settings once the admin has agreed to "Map & place names", to the
+official GeoNames dump URL below. It runs only on that request; indexing,
+serving and the test suite never reach it. Without that consent the lookup is
+off and the column stays empty.
 """
 
 from __future__ import annotations
@@ -42,8 +44,6 @@ _MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 _MAX_DISTANCE_KM = 100.0
 _EARTH_RADIUS_KM = 6371.0
 _CELL_DEGREES = 1.0
-
-SETTING = "offline_place_names"
 
 
 def gazetteer_path(data_dir: str | pathlib.Path) -> pathlib.Path:
@@ -150,7 +150,8 @@ def data_dir_of(db: sqlite3.Connection) -> pathlib.Path | None:
 
 
 def enabled(db: sqlite3.Connection) -> bool:
-    return app_db.get_setting(db, SETTING) in ("1", "True", "true")
+    """Offline place names follow the single OSM-data consent."""
+    return app_db.osm_consent(db)
 
 
 def indexing_lookup(db: sqlite3.Connection) -> Gazetteer | None:

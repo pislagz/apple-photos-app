@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MAP_PLACE_NAMES_ANCHOR, MAP_PLACE_NAMES_TEXT } from "../../shell/PlaceInfoContext";
 import {
   ApiError,
   checkLibrariesNow,
@@ -39,6 +40,14 @@ export default function SettingsScreen() {
       .then((response) => setAllowlist(response.identities.join("\n")))
       .catch((err: unknown) => setError(describeError(err)));
   }, []);
+
+  // Deep link from the Info panel: /admin#map-place-names.
+  const loaded = settings !== null;
+  useEffect(() => {
+    if (loaded && window.location.hash === `#${MAP_PLACE_NAMES_ANCHOR}`) {
+      document.getElementById(MAP_PLACE_NAMES_ANCHOR)?.scrollIntoView?.();
+    }
+  }, [loaded]);
 
   function updateField<K extends keyof SettingsResponse>(key: K, value: SettingsResponse[K]) {
     setSettings((prev) => (prev === null ? prev : { ...prev, [key]: value }));
@@ -178,48 +187,29 @@ export default function SettingsScreen() {
           Zip size limit (bytes)
           <input {...numberProps("zip_size_limit_bytes")} />
         </label>
-        <fieldset className="admin-privacy-options">
-          <legend>Optional features that reach outside this server (both off by default)</legend>
+        <fieldset className="admin-privacy-options" id={MAP_PLACE_NAMES_ANCHOR} data-testid="map-place-names">
+          <legend>Map &amp; place names</legend>
+          <p className="admin-hint">{MAP_PLACE_NAMES_TEXT}</p>
           <label>
             <input
               type="checkbox"
-              checked={settings.map_tiles_mode === "online"}
-              onChange={(event) =>
-                updateField(
-                  "map_tiles_mode",
-                  event.target.checked ? "online" : settings.map_tiles_pmtiles_path ? "local_file" : "off",
-                )
-              }
+              checked={settings.osm_consent}
+              onChange={(event) => updateField("osm_consent", event.target.checked)}
             />
-            Show OpenStreetMap map
+            Allow
           </label>
           <p className="admin-hint">
-            The Map view draws OpenStreetMap tiles. Each person's browser fetches them from tile.openstreetmap.org while a map is
-            open; this server never does. Off: the Map view says the map is off.
+            Off until you agree. Agreed: the Map view draws OpenStreetMap tiles, which each person's browser fetches from
+            tile.openstreetmap.org while a map is open (this server never does), and place names come from a city list you
+            download once below. Not agreed: nothing is downloaded, the map is off and so are offline place names.
           </p>
           <label>
-            Local map file (PMTiles), used when the OpenStreetMap map is off
+            Local map file (PMTiles), used instead of the OpenStreetMap tiles when set
             <input
               value={settings.map_tiles_pmtiles_path ?? ""}
-              onChange={(event) => {
-                const path = event.target.value === "" ? null : event.target.value;
-                updateField("map_tiles_pmtiles_path", path);
-                if (settings.map_tiles_mode !== "online") updateField("map_tiles_mode", path ? "local_file" : "off");
-              }}
+              onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
             />
           </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.offline_place_names}
-              onChange={(event) => updateField("offline_place_names", event.target.checked)}
-            />
-            Offline place names
-          </label>
-          <p className="admin-hint">
-            Names a photo's GPS position after the nearest large city, on this server, from a city list you download once. Photo
-            coordinates never leave the server, and names saved by Photos always win.
-          </p>
           <div className="admin-place-names" data-testid="place-names-status">
             <p>
               {placeNames === null
@@ -228,12 +218,13 @@ export default function SettingsScreen() {
                   ? `Place-name data: downloaded (${Math.max(1, Math.round(placeNames.size_bytes / 1024))} KB).`
                   : "Place-name data: not downloaded."}
             </p>
-            <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces}>
+            <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
               {placeNames?.downloaded ? "Download again" : "Download place-name data"}
             </button>
             <p className="admin-hint">
-              This is the one time the server contacts the internet: it fetches the public GeoNames list of cities (cities15000,
-              about 2 MB) from download.geonames.org. No photo data is sent.
+              {settings.osm_consent
+                ? "This is the one time the server contacts the internet: it fetches the public GeoNames list of cities (cities15000, about 2 MB) from download.geonames.org. No photo data is sent."
+                : "Agree and save above to enable the download. Nothing is fetched until then."}
             </p>
             <p className="admin-hint" data-testid="geonames-attribution">
               {placeNames?.attribution ?? "Place names from GeoNames (geonames.org), CC BY 4.0."}

@@ -322,7 +322,7 @@ describe("AppShell", () => {
     await waitFor(() => expect(screen.getByRole("navigation", { name: "Sections" })).toBeInTheDocument());
   });
 
-  it("first-run setup sends both optional features off unless they are ticked (D41)", async () => {
+  it("first-run setup asks the single 'Map & place names' question, off unless agreed", async () => {
     setViewport(1400, true);
     const bodies: unknown[] = [];
     let adminCreated = false;
@@ -342,13 +342,13 @@ describe("AppShell", () => {
 
     render(<AppShell />);
     await screen.findByRole("heading", { name: "Create admin account" });
-    expect((screen.getByLabelText("Show OpenStreetMap map") as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText("Offline place names") as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByLabelText("Offline place names"));
+    expect(screen.getByRole("group", { name: "Map & place names" })).toHaveTextContent("Nothing about your photos is sent.");
+    expect((screen.getByLabelText("Allow") as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByLabelText("Allow"));
     fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2hunter2" } });
     fireEvent.click(screen.getByRole("button", { name: "Create admin account" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ show_osm_map: false, offline_place_names: true });
+    expect(bodies[0]).toMatchObject({ osm_consent: true });
   });
 });
