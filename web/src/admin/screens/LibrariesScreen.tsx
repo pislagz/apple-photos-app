@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import PrewarmControls from "./PrewarmControls";
 import ReplaceDialog from "./ReplaceDialog";
 import {
   ApiError,
@@ -133,6 +134,7 @@ export default function LibrariesScreen() {
                       <li>{status.video_count ?? "?"} videos</li>
                       <li>{status.last_indexed_at ?? "never indexed"}</li>
                       {status.last_update && <li>{status.last_update.summary}</li>}
+                      <PrewarmControls key={`${library.id}-${status.prewarm?.state}`} libraryId={library.id} initial={status.prewarm} />
                       {status.updating && <li>Being updated: {status.updating_reason}</li>}
                       {status.suggestion && (
                         <li>

@@ -28,7 +28,7 @@ import sqlite3
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import app_db, indexer, libraries, library_watch, session_auth
+from . import app_db, indexer, libraries, library_prewarm, library_watch, session_auth
 from .libraries import UnsupportedPhotosVersionError, open_library_readonly
 
 logger = logging.getLogger(__name__)
@@ -156,6 +156,7 @@ class LibraryStatusResponse(BaseModel):
     index_state: str | None = None
     index_error: str | None = None
     prewarm_progress: float | None = None
+    prewarm: library_prewarm.PrewarmStatus | None = None
     warnings: list[LibraryWarning]
     updating: bool = False
     updating_reason: str | None = None
@@ -355,6 +356,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
                 message=f"Being updated for over {library_watch.STALE_PENDING_HOURS} hours: {updating_reason}",
             )
         )
+    prewarm = library_prewarm.job_status(db, row["id"])
     last_applied = next((run for run in runs if run.outcome == "applied"), None)
     if last_applied and last_applied.originals_missing_pct >= OPTIMIZE_STORAGE_WARN_PCT:
         warnings.append(
@@ -371,6 +373,8 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
         last_indexed_at=row["last_indexed_at"],
         index_state=row["index_state"],
         index_error=row["index_error"],
+        prewarm_progress=library_prewarm.progress(prewarm),
+        prewarm=prewarm,
         warnings=warnings,
         updating=updating,
         updating_reason=updating_reason,

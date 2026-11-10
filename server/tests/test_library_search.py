@@ -304,6 +304,7 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("DROP TABLE asset_labels")
         db.execute("DROP TABLE passkey_challenges")  # migration 22
         db.execute("DROP TABLE passkeys")
+        db.execute("DROP TABLE prewarm_jobs")  # migration 23
         db.execute("INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')")
         db.execute("INSERT INTO libraries (display_name, path) VALUES ('B', 'b')")
         db.commit()

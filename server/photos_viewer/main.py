@@ -26,6 +26,8 @@ from .library_albums import router as library_albums_router
 from .library_assets import router as library_assets_router
 from .library_map import router as library_map_router
 from .library_people import router as library_people_router
+from .library_prewarm import PrewarmWorker
+from .library_prewarm import router as library_prewarm_router
 from .library_search import router as library_search_router
 from .library_watch import LibraryChecker
 from .library_zip import router as library_zip_router
@@ -36,8 +38,6 @@ from .session_auth import (
 )
 from .session_auth import router as auth_router
 from .session_passkeys import router as passkeys_router
-
-logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +143,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     checker = LibraryChecker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
     app.state.library_checker = checker
     checker.start()
+    # Resumes any pre-warm job left `running` by a previous process (P3.3).
+    prewarm_worker = PrewarmWorker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
+    app.state.prewarm_worker = prewarm_worker
+    prewarm_worker.start()
     try:
         yield
     finally:
         checker.stop()
+        prewarm_worker.stop()
 
 
 def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
@@ -163,6 +168,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.include_router(library_search_router)
     app.include_router(library_assets_router)
     app.include_router(library_zip_router)
+    app.include_router(library_prewarm_router)
     app.include_router(admin_panel_router)
 
     @app.get("/api/health")

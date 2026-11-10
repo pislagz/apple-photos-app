@@ -215,6 +215,27 @@ def purge_asset_cache(cache_dir: pathlib.Path, library_id: int, asset_uuid: str)
     shutil.rmtree(asset_cache_dir(cache_dir, library_id, asset_uuid), ignore_errors=True)
 
 
+def purge_library_cache(cache_dir: pathlib.Path, library_id: int) -> int:
+    """Delete one library's cache files (`<cache_dir>/<library_id>/`), nothing
+    else; returns the bytes freed. Other libraries' entries are untouched."""
+    root = cache_dir / str(library_id)
+    freed = 0
+    with _cache_lock:
+        if root.is_dir():
+            freed = sum(size for _, size, _ in _scan_cache(root)[0])
+            shutil.rmtree(root, ignore_errors=True)
+        # Forget the running total; the next write rescans and corrects it.
+        _cache_totals.pop(cache_dir, None)
+    return freed
+
+
+def cache_total_bytes(cache_dir: pathlib.Path) -> int | None:
+    """The running cache size this process tracks, or None before the first
+    write-with-a-limit has scanned it."""
+    with _cache_lock:
+        return _cache_totals.get(cache_dir)
+
+
 def _cache_file(cache_dir: pathlib.Path, library_id: int, asset_uuid: str, key: str, extension: str) -> pathlib.Path:
     return asset_cache_dir(cache_dir, library_id, asset_uuid) / f"{key}.{extension}"
 

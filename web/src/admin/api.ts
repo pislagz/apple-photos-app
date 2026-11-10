@@ -30,12 +30,21 @@ export interface LibraryStatusResponse {
   total_size_bytes: number | null;
   last_indexed_at: string | null;
   prewarm_progress: number | null;
+  prewarm?: PrewarmStatus | null;
   warnings: LibraryWarning[];
   updating?: boolean;
   updating_reason?: string | null;
   last_update?: RunSummary | null;
   runs?: RunSummary[];
   suggestion?: ReplaceSuggestion | null;
+}
+
+export interface PrewarmStatus {
+  state: "idle" | "running" | "paused" | "done";
+  total: number;
+  done: number;
+  failed: number;
+  note: string | null;
 }
 
 export interface RunSummary {
@@ -111,6 +120,18 @@ export function libraryStatus(id: number): Promise<LibraryStatusResponse> {
 
 export function reindexLibrary(id: number): Promise<LibraryStatusResponse> {
   return mutate<LibraryStatusResponse>("POST", `/api/admin/libraries/${id}/reindex`);
+}
+
+export function startPrewarm(id: number): Promise<PrewarmStatus> {
+  return mutate<PrewarmStatus>("POST", `/api/admin/libraries/${id}/prewarm/start`, {});
+}
+
+export function pausePrewarm(id: number): Promise<PrewarmStatus> {
+  return mutate<PrewarmStatus>("POST", `/api/admin/libraries/${id}/prewarm/pause`, {});
+}
+
+export function clearThumbnailCache(id: number): Promise<{ freed_bytes: number; status: PrewarmStatus }> {
+  return mutate("POST", `/api/admin/libraries/${id}/thumbnail-cache/clear`, {});
 }
 
 // -- Users ------------------------------------------------------------------

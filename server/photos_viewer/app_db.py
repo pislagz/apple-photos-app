@@ -463,6 +463,23 @@ _MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # 23 (P3.3): one resumable thumbnail pre-warm job per library. The cursor
+    # is the last asset uuid handled (uuids sort stably across a re-index,
+    # row ids do not); progress is derived from it, so a killed process
+    # resumes from here and the cache itself is the "already done" record.
+    [
+        """
+        CREATE TABLE prewarm_jobs (
+            library_id INTEGER PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+            state TEXT NOT NULL CHECK (state IN ('running', 'paused', 'done')),
+            cursor_uuid TEXT,
+            total INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            note TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """,
+    ],
 ]
 
 
