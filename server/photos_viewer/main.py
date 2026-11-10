@@ -28,6 +28,7 @@ from .library_map import router as library_map_router
 from .library_people import router as library_people_router
 from .library_search import router as library_search_router
 from .library_watch import LibraryChecker
+from .library_zip import router as library_zip_router
 from .session_auth import (
     get_data_dir,
     validate_public_origins_env,
@@ -161,6 +162,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.include_router(library_map_router)
     app.include_router(library_search_router)
     app.include_router(library_assets_router)
+    app.include_router(library_zip_router)
     app.include_router(admin_panel_router)
 
     @app.get("/api/health")

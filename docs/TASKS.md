@@ -482,6 +482,8 @@ Ordered after P1.17b (#121, edited versions), before family launch. Issue: #122.
 - `POST /api/libraries/{library_id}/zip` streams selected originals. Settings cap the total bytes. Progress is visible. HEIC-to-JPEG is an option.
 - Acceptance: over-limit is a 413 with no partial file left in the library package (zip is written to the response or to the data dir). Audit row per zip. Cross-user selection 404s.
 
+Done: `server/photos_viewer/library_zip.py`. `POST /api/libraries/{library_id}/zip` takes `{asset_ids, version, format}`, resolves every id with the single-original route's checks (foreign/unknown/locked-Hidden: 404), sums the file sizes against the `zip_size_limit_bytes` setting (default 2 GiB, already in Settings) and answers 413 before any byte streams. The archive is generated into the response with stdlib `zipfile` (stored, unseekable sink), so no temp file exists and nothing is written to the package or the data dir. One `zip` audit row per request (count, bytes). `format=jpeg` converts HEIC/HEIF stills through the existing `media.get_or_generate_jpeg` (an undecodable file is shipped as-is); other files stay byte-identical. `X-Zip-Total-Bytes` drives the progress bar. Web: desktop Download with 2+ selected and an iPhone select-bar "Zip" button use `zipDownload.ts` (fetch + progress, 413 message) and `ZipStatus` (progress, error, "HEIC as JPEG" checkbox). The zip is assembled as a Blob in the browser, so it is bounded by the size limit and device memory.
+
 ### P3.3 Pre-warm
 
 - Resumable background job per library, pause and resume, progress on the library status card, clear-cache action.

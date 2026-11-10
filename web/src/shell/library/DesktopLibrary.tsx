@@ -1,3 +1,5 @@
+import ZipStatus from "./ZipStatus";
+import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
@@ -71,9 +73,8 @@ function formatDuration(seconds: number | null): string {
   return `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
-// Phase 1 download is one file at a time (CLAUDE.md); a multi-selection
-// just triggers that many browser downloads in sequence instead of a zip
-// (Phase 3). This never touches `/original` on its own -- only an explicit
+// A single selected file downloads directly (a multi-selection goes through
+// the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
 // click does.
 function downloadSelection(libraryId: number, ids: Iterable<string>) {
   for (const id of ids) {
@@ -457,10 +458,13 @@ export default function DesktopLibrary({
     };
   }, [dragActive]);
 
+  const zip = useZipDownload(libraryId);
   const handleDownload = useCallback(() => {
     if (selected.size === 0) return;
-    downloadSelection(libraryId, selected);
-  }, [libraryId, selected]);
+    // One file stays a plain download; several become one streamed zip (P3.2).
+    if (selected.size === 1) downloadSelection(libraryId, selected);
+    else void zip.start([...selected]);
+  }, [libraryId, selected, zip.start]);
 
   // Right-click on a single cell (ios17-viewer.png's Download/Copy Link
   // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
@@ -596,7 +600,7 @@ export default function DesktopLibrary({
           type="button"
           className="toolbar-button"
           onClick={handleDownload}
-          disabled={selected.size === 0}
+          disabled={selected.size === 0 || zip.busy}
           title="Download"
         >
           <Icon name="download" size={16} />
@@ -612,6 +616,9 @@ export default function DesktopLibrary({
           <Icon name="info" size={16} />
           <span className="sr-only">Info</span>
         </button>
+        {(selected.size > 1 || zip.state.phase !== "idle") && (
+          <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+        )}
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}
         </span>

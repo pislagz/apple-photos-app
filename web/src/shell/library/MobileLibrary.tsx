@@ -1,3 +1,5 @@
+import ZipStatus from "./ZipStatus";
+import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
@@ -151,6 +153,8 @@ export default function MobileLibrary({
       setSharing(false);
     }
   }
+
+  const zip = useZipDownload(libraryId);
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -412,6 +416,16 @@ export default function MobileLibrary({
           >
             Share
           </button>
+          <button
+            type="button"
+            onClick={() => void zip.start([...selectedIds])}
+            disabled={selectedIds.size === 0 || zip.busy}
+          >
+            Zip
+          </button>
+          {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
+            <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+          )}
         </div>
       )}
       {openIndex !== null && (

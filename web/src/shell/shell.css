@@ -2509,3 +2509,40 @@ body {
     background: rgba(118, 118, 128, 0.24);
   }
 }
+
+.zip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.zip-status__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.zip-status progress {
+  width: 120px;
+}
+.zip-status__error {
+  color: #d70015;
+}
+.zip-status__option,
+.zip-status [role="status"] {
+  white-space: nowrap;
+}
+/* iPhone select bar: the zip option/progress gets its own row so the
+   count and the Share/Zip buttons never get squeezed (P3.2 review). */
+.mobile-library__select-bar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.mobile-library__select-bar .zip-status {
+  order: 10;
+  flex-basis: 100%;
+  min-width: 0;
+}
+.mobile-library__select-bar .zip-status progress {
+  flex: 1;
+  min-width: 0;
+}
