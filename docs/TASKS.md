@@ -338,6 +338,8 @@ Issue #121: thumbs, the viewer, and downloads show an edited photo's current (ed
 - The scenario in `CLAUDE.md`: user A / library L1, user B / library L2, every library route, thumbs, originals, live video.
 - Also: admin with no self-assignment, disabled user, revoked session.
 - Acceptance: the test is in CI and fails if any of those calls returns a body, a thumb, or a file.
+- Status: **done** (draft PR on `feat/p1.18-access-control-test`).
+- Done: `server/tests/test_access_control.py` -- enumerates every `/api/libraries/{library_id}/...` route from the app (via `session_auth._leaf_routes`, so a new route is covered with no edit) and calls it against the other library with that library's real asset uuids: assets, hidden, summary, asset detail, every thumb size, original (`version` original/edited x `format` native/jpeg, with and without `Range`), and live-photo video. Cases: user A vs L2 and B vs L1 (404), an admin with no self-assignment (404, while `/api/admin/*` still works), a disabled user and a revoked session (401, even on their own library), an anonymous client (401), a foreign asset uuid under the caller's own library id (404), and non-admin 403 on every `/api/admin/*` route. Each response is checked for status and for content: no marker bytes planted in the victim's files, no victim uuid or filename, no image/video content type. Positive controls: every user reads every route of their own library (200, 206 for ranged native originals, hidden unlocked), so the checks cannot pass vacuously; a mutation of the assignment guard makes the test fail. Runs in the normal `pytest`. No access-control leak was found.
 
 ### P1.19 Packaging
 
