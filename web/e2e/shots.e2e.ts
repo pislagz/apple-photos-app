@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type Page, expect, test } from "@playwright/test";
 
 // Dev-only logins printed by scripts/dev_demo.py for the synthetic demo library.
@@ -415,10 +418,10 @@ test.describe("dark mode", () => {
 
 // ---- Decisions 3 --------------------------------------------------------
 
-async function setConsent(page: Page, consent: boolean) {
+async function setConsent(page: Page, consent: boolean, pmtilesPath: string | null = null) {
   const current = await (await page.request.get("/api/admin/settings")).json();
   const response = await page.request.put("/api/admin/settings", {
-    data: { ...current, osm_consent: consent, map_tiles_pmtiles_path: null },
+    data: { ...current, osm_consent: consent, map_tiles_pmtiles_path: pmtilesPath },
   });
   expect(response.ok()).toBe(true);
 }
@@ -643,3 +646,159 @@ for (const content of [1500, 1600, 1700]) {
     await shot(page, `20-days-lead-${content}`, info.project.name);
   });
 }
+
+// ---- Decisions 5, fix run 2 ------------------------------------------------
+
+// The demo admin already answered the question at setup, so the "not answered
+// yet" state is drawn by serving that one status response as undecided.
+const UNDECIDED = {
+  dataset: "cities15000",
+  downloaded: false,
+  size_bytes: 0,
+  source_url: "https://download.geonames.org/export/dump/cities15000.zip",
+  attribution: "Place names from GeoNames (https://www.geonames.org), CC BY 4.0.",
+  license_url: "https://creativecommons.org/licenses/by/4.0/",
+  consent_decided: false,
+  consent: false,
+};
+
+async function mockUndecided(page: Page) {
+  await page.route("**/api/admin/place-names", (route) => route.fulfill({ json: UNDECIDED }));
+}
+
+test("Decisions 5: the notice offers Allow and Not now", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await mockUndecided(page);
+  await page.goto("/admin");
+  const notice = page.getByTestId("opt-in-notice");
+  await expect(notice.getByRole("button", { name: "Allow" })).toBeVisible();
+  await expect(notice.getByRole("button", { name: "Not now" })).toBeVisible();
+  await shot(page, "22-notice-allow-not-now", info.project.name);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Decisions 5: Not now hides the notice and records the answer", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await mockUndecided(page);
+  await page.route("**/api/admin/place-names/consent", (route) =>
+    route.fulfill({ json: { ...UNDECIDED, consent_decided: true } }),
+  );
+  await page.goto("/admin");
+  const request = page.waitForRequest((r) => r.url().endsWith("/api/admin/place-names/consent"));
+  await page.getByRole("button", { name: "Not now" }).click();
+  expect((await request).postDataJSON()).toEqual({ agree: false });
+  await expect(page.getByTestId("opt-in-notice")).toHaveCount(0);
+  await expect(page.getByTestId("place-names-progress")).toHaveCount(0);
+  await shot(page, "23-notice-not-now", info.project.name);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("Decisions 5: Allow starts the place-name download and shows its progress", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await mockUndecided(page);
+  await page.route("**/api/admin/place-names/consent", (route) =>
+    route.fulfill({ json: { ...UNDECIDED, consent_decided: true, consent: true } }),
+  );
+  // The real download would reach geonames.org, which a sandbox cannot; hold it open for the shot.
+  let finish: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (finish = resolve));
+  await page.route("**/api/admin/place-names/download", async (route) => {
+    await held;
+    await route.fulfill({ json: { ...UNDECIDED, consent_decided: true, consent: true, downloaded: true, size_bytes: 2048 } });
+  });
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Allow" }).click();
+  const progress = page.getByTestId("place-names-progress");
+  await expect(progress).toContainText("Downloading place-name data");
+  await expect(page.getByTestId("opt-in-notice")).toHaveCount(0);
+  // The download is held open on purpose, so the page is never "network idle".
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-24-notice-allow-downloading.png` });
+  finish();
+  await expect(progress).toContainText("downloaded");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+async function openMap(page: Page, project: string) {
+  if (project === "desktop") await page.locator("aside.sidebar").getByRole("button", { name: "Map" }).click();
+  else await page.goto("/places");
+  await expect(page.locator(".map-pin").first()).toBeVisible();
+  await page.waitForTimeout(1500); // let the basemap's first requests start and finish
+  await page.waitForLoadState("networkidle");
+}
+
+const TILE_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGO4ce8sAAUVAoRiN5nPAAAAAElFTkSuQmCC",
+  "base64",
+);
+
+test("Decisions 5: the map with consent uses OpenStreetMap tiles, even with a local file set", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  const file = join(mkdtempSync(join(tmpdir(), "pm-")), "stub.pmtiles");
+  writeFileSync(file, Buffer.concat([Buffer.from("PMTiles"), Buffer.alloc(200)]));
+  const osmRequests: string[] = [];
+  const archiveRequests: string[] = [];
+  // The sandbox has no internet; stand in for the tile server (a flat grey tile).
+  await page.route("https://tile.openstreetmap.org/**", (route) => {
+    osmRequests.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: "image/png", body: TILE_PNG });
+  });
+  page.on("request", (r) => {
+    if (r.url().endsWith("/api/map/tiles.pmtiles")) archiveRequests.push(r.url());
+  });
+  await signIn(page, ADMIN);
+  await setConsent(page, true, file);
+  await expect
+    .poll(async () => (await page.request.get("/")).headers()["content-security-policy"] ?? "")
+    .toContain("tile.openstreetmap.org");
+  await page.context().clearCookies();
+  await signIn(page);
+  await openMap(page, info.project.name);
+  expect(osmRequests.length).toBeGreaterThan(0);
+  expect(archiveRequests).toEqual([]);
+  await expect(page.getByRole("link", { name: /OpenStreetMap contributors/ })).toBeVisible();
+  await shot(page, "25-map-with-consent", info.project.name);
+  await page.context().clearCookies();
+  await signIn(page, ADMIN);
+  await setConsent(page, false);
+});
+
+test("Decisions 5: the map without consent reads the local file and never calls OpenStreetMap", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  const file = join(mkdtempSync(join(tmpdir(), "pm-")), "stub.pmtiles");
+  writeFileSync(file, Buffer.concat([Buffer.from("PMTiles"), Buffer.alloc(200)]));
+  const osmRequests: string[] = [];
+  await page.route("https://tile.openstreetmap.org/**", (route) => {
+    osmRequests.push(route.request().url());
+    return route.abort();
+  });
+  const archive = page.waitForRequest((r) => r.url().endsWith("/api/map/tiles.pmtiles"));
+  await signIn(page, ADMIN);
+  await setConsent(page, false, file);
+  await expect
+    .poll(async () => (await page.request.get("/")).headers()["content-security-policy"] ?? "")
+    .not.toContain("tile.openstreetmap.org");
+  await page.context().clearCookies();
+  await signIn(page);
+  await openMap(page, info.project.name);
+  expect((await archive).headers()["range"]).toMatch(/^bytes=/);
+  expect(osmRequests).toEqual([]);
+  await expect(page.getByTestId("map-off-note")).toHaveCount(0);
+  await shot(page, "26-map-without-consent-local-file", info.project.name);
+  await page.context().clearCookies();
+  await signIn(page, ADMIN);
+  await setConsent(page, false);
+});
+
+test("Decisions 5: the map without consent and no file is off", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await setConsent(page, false);
+  await page.context().clearCookies();
+  await signIn(page);
+  await openMap(page, info.project.name);
+  await expect(page.getByTestId("map-off-note")).toBeVisible();
+  await shot(page, "27-map-without-consent-off", info.project.name);
+});

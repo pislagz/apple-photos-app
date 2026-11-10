@@ -83,7 +83,11 @@ def content_security_policy(osm_tiles: bool) -> str:
 
 
 _CSP_CACHE_SECONDS = 5.0
-_SETTINGS_WRITES = ("/api/admin/settings", "/api/setup/admin")
+_SETTINGS_WRITES = (
+    "/api/admin/settings",
+    "/api/admin/place-names/consent",
+    "/api/setup/admin",
+)
 
 
 def _map_is_online(conn: sqlite3.Connection) -> bool:

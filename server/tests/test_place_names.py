@@ -368,6 +368,12 @@ def test_place_name_admin_routes_are_admin_only_audited_and_report_errors(
         assert (
             client.post("/api/admin/place-names/download", json={}).status_code == 403
         )
+        assert (
+            client.put(
+                "/api/admin/place-names/consent", json={"agree": False}
+            ).status_code
+            == 403
+        )
     finally:
         conn.close()
 
@@ -391,7 +397,7 @@ def test_first_run_setup_records_the_single_consent_off_by_default(tmp_path):
             "/api/setup/admin", json={"username": "admin", "password": PASSWORD, **body}
         )
         assert response.status_code == 201
-        assert app_db.get_setting(conn, "map_tiles_mode") == mode
+        assert app_db.effective_map_mode(conn) == mode
         assert app_db.get_setting(conn, "osm_consent") == consent
         audited = conn.execute(
             "SELECT detail FROM audit_log WHERE action = 'osm_consent_agreed'"
@@ -403,13 +409,51 @@ def test_first_run_setup_records_the_single_consent_off_by_default(tmp_path):
 def test_consent_notice_stays_until_the_question_is_answered(tmp_path):
     _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
     try:
-        # An install from before the consent existed: no saved answer.
+        # No saved answer yet.
         conn.execute("DELETE FROM settings WHERE key = 'osm_consent'")
         conn.commit()
         status = client.get("/api/admin/place-names").json()
         assert status["consent_decided"] is False and status["consent"] is False
+        # Saving Settings does not answer the notice...
         _settings(client)
-        assert client.get("/api/admin/place-names").json()["consent_decided"] is True
+        status = client.get("/api/admin/place-names").json()
+        assert status["consent_decided"] is False
+        # ..."Not now" does, and is audited.
+        answered = client.put("/api/admin/place-names/consent", json={"agree": False})
+        assert answered.status_code == 200
+        assert answered.json()["consent_decided"] is True
+        assert answered.json()["consent"] is False
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'osm_consent_not_now'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert client.get("/api/map/config").json()["mode"] == "off"
+    finally:
+        conn.close()
+
+
+def test_notice_allow_agrees_audits_and_enables_the_download(tmp_path, geonames_server):
+    _app, conn, client, _lib, _package = _admin_with_library(tmp_path)
+    try:
+        conn.execute("DELETE FROM settings WHERE key = 'osm_consent'")
+        conn.commit()
+        refused = client.post("/api/admin/place-names/download", json={})
+        assert refused.status_code == 403
+        answered = client.put("/api/admin/place-names/consent", json={"agree": True})
+        assert answered.status_code == 200
+        assert answered.json()["consent"] is True
+        assert client.get("/api/map/config").json()["mode"] == "online"
+        downloaded = client.post("/api/admin/place-names/download", json={})
+        assert downloaded.status_code == 200 and downloaded.json()["downloaded"]
+        actions = [
+            r[0]
+            for r in conn.execute(
+                "SELECT action FROM audit_log WHERE action LIKE 'osm_consent%'"
+            )
+        ]
+        assert actions == ["osm_consent_agreed"]
     finally:
         conn.close()
 
@@ -421,13 +465,11 @@ def test_without_consent_nothing_is_downloaded_looked_up_or_mapped(
     geonames_server["on_get"] = lambda: hits.append(1)
     _app, conn, client, lib, package = _admin_with_library(tmp_path)
     try:
-        # Data on disk and every old switch on, but no consent.
+        # Data on disk, but no consent.
         path = place_names.gazetteer_path(tmp_path / "data")
         path.parent.mkdir(parents=True)
         path.write_text(_dump())
-        app_db.set_setting(conn, "map_tiles_mode", "online")
-        app_db.set_setting(conn, "offline_place_names", "1")
-        assert app_db.get_setting(conn, "osm_consent") == "0"
+        assert not app_db.osm_consent(conn)
 
         refused = client.post("/api/admin/place-names/download", json={})
         assert refused.status_code == 403

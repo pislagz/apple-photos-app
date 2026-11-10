@@ -432,6 +432,15 @@ body:has(.admin-app, .admin-auth) {
   border-radius: 8px;
   background: rgba(10, 132, 255, 0.12);
 }
+.admin-notice p {
+  margin: 0 0 8px;
+}
+.admin-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
 .admin-link {
   padding: 0;
   border: 0;

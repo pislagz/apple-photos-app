@@ -743,7 +743,6 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "thumb_quality": media.DEFAULT_QUALITY,
     "media_cache_size_limit_bytes": media.DEFAULT_CACHE_SIZE_LIMIT_BYTES,
     "zip_size_limit_bytes": 2 * 1024**3,
-    "map_tiles_mode": app_db.DEFAULT_MAP_TILES_MODE,
     "osm_consent": False,
     "map_tiles_pmtiles_path": None,
     "library_check_interval_minutes": library_watch.DEFAULT_CHECK_INTERVAL_MINUTES,
@@ -799,13 +798,13 @@ class SettingsUpdateRequest(BaseModel):
 
 
 def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
-    values: dict[str, int | str | None] = {}
+    values: dict[str, int | str | None] = {
+        "map_tiles_mode": app_db.effective_map_mode(db)
+    }
     for key, default in _SETTINGS_DEFAULTS.items():
         stored = app_db.get_setting(db, key)
         if stored is None:
             values[key] = default
-        elif key == "map_tiles_mode":
-            values[key] = app_db.effective_map_mode(db)
         elif key == "map_tiles_pmtiles_path":
             values[key] = stored or None
         elif key in ("show_library_updated_note", "osm_consent"):
@@ -837,30 +836,41 @@ def write_settings(
     values = payload.model_dump()
     path = (values["map_tiles_pmtiles_path"] or "").strip() or None
     values["map_tiles_pmtiles_path"] = path
-    # Without consent the map is off whatever path is saved; with it, a saved
-    # PMTiles file is used instead of OSM tiles.
-    values["map_tiles_mode"] = (
-        "off" if not payload.osm_consent else "local_file" if path else "online"
-    )
+    # Saving Settings does not answer the notice: the consent row is written
+    # only when the checkbox differs from the current answer (no answer = off).
+    del values["osm_consent"]
     for key, value in values.items():
         if isinstance(value, bool):
             value = int(value)
         app_db.set_setting(db, key, "" if value is None else str(value))
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
     if payload.osm_consent != was_agreed:
-        app_db.write_audit_log(
-            db,
-            "osm_consent_agreed" if payload.osm_consent else "osm_consent_withdrawn",
-            actor=admin["username"],
-            detail="Map & place names",
-        )
-    # The CSP names the OSM host only while the map is on; the security-headers
-    # middleware drops its cached copy after this PUT.
-    if payload.osm_consent != was_agreed:
+        _record_consent(db, admin, payload.osm_consent, "Map & place names (Settings)")
+    return _read_settings(db)
+
+
+def _record_consent(
+    db: sqlite3.Connection,
+    admin: sqlite3.Row,
+    agree: bool,
+    detail: str,
+    *,
+    declined_action: str = "osm_consent_withdrawn",
+) -> None:
+    """Store the answer, audit it, and refill or blank the offline place names.
+    The security-headers middleware drops its cached CSP after this write."""
+    was_agreed = app_db.osm_consent(db)
+    app_db.set_setting(db, app_db.OSM_CONSENT_KEY, "1" if agree else "0")
+    app_db.write_audit_log(
+        db,
+        "osm_consent_agreed" if agree else declined_action,
+        actor=admin["username"],
+        detail=detail,
+    )
+    if agree != was_agreed:
         data_dir = place_names.data_dir_of(db)
         if data_dir is not None:
             place_names.apply_setting(data_dir)
-    return _read_settings(db)
 
 
 # D41 / Decisions 5: the OSM-data consent and the one-time gazetteer download.
@@ -892,6 +902,35 @@ def read_place_names(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> PlaceNamesStatus:
+    return _place_names_status(db)
+
+
+class ConsentAnswer(BaseModel):
+    agree: bool
+
+
+@router.put(
+    "/api/admin/place-names/consent",
+    response_model=PlaceNamesStatus,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def answer_place_names_notice(
+    payload: ConsentAnswer,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> PlaceNamesStatus:
+    """The notice's "Allow" and "Not now" buttons. "Not now" records the
+    answer (audited) so the notice goes away; the consent can still be
+    changed in Settings. The client starts the download after "Allow"."""
+    _record_consent(
+        db,
+        admin,
+        payload.agree,
+        "Map & place names (notice)",
+        declined_action=(
+            "osm_consent_withdrawn" if app_db.osm_consent(db) else "osm_consent_not_now"
+        ),
+    )
     return _place_names_status(db)
 
 

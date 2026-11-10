@@ -324,6 +324,11 @@ export function readPlaceNames(): Promise<PlaceNamesStatus> {
   return request<PlaceNamesStatus>("/api/admin/place-names");
 }
 
+// The notice's "Allow" / "Not now". Saving Settings does not answer it.
+export function answerPlaceNamesNotice(agree: boolean): Promise<PlaceNamesStatus> {
+  return mutate<PlaceNamesStatus>("PUT", "/api/admin/place-names/consent", { agree });
+}
+
 export function downloadPlaceNames(): Promise<PlaceNamesStatus> {
   return mutate<PlaceNamesStatus>("POST", "/api/admin/place-names/download", {});
 }

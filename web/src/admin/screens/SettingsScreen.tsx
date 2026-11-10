@@ -201,10 +201,11 @@ export default function SettingsScreen() {
           <p className="admin-hint">
             Off until you agree. Agreed: the Map view draws OpenStreetMap tiles, which each person's browser fetches from
             tile.openstreetmap.org while a map is open (this server never does), and place names come from a city list you
-            download once below. Not agreed: nothing is downloaded, the map is off and so are offline place names.
+            download once below. Not agreed: nothing is downloaded and offline place names are off; the map is blank
+            unless a local map file below is set, which is read from this server and needs no internet.
           </p>
           <label>
-            Local map file (PMTiles), used instead of the OpenStreetMap tiles when set
+            Local map file (PMTiles): used when you have not agreed above, and as the fallback if the OpenStreetMap tiles cannot be loaded
             <input
               value={settings.map_tiles_pmtiles_path ?? ""}
               onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}

@@ -1162,15 +1162,11 @@ def setup_admin(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
             (payload.username, password_hash),
         )
-        for key, value in (
-            ("map_tiles_mode", "online" if payload.osm_consent else "off"),
+        db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (app_db.OSM_CONSENT_KEY, "1" if payload.osm_consent else "0"),
-        ):
-            db.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, value),
-            )
+        )
     except BaseException:
         db.rollback()
         raise

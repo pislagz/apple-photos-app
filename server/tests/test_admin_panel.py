@@ -609,7 +609,8 @@ def test_settings_default_then_round_trip(tmp_path):
             },
         )
         assert updated.status_code == 200, updated.text
-        assert updated.json()["map_tiles_mode"] == "local_file"
+        # Consent wins: OSM tiles; the file is only the fallback.
+        assert updated.json()["map_tiles_mode"] == "online"
         assert updated.json()["map_tiles_pmtiles_path"] == "/data/world.pmtiles"
         assert updated.json()["thumb_quality"] == 90
 
