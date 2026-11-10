@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findThumb, getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
+import { useFakeLayout } from "../testLayout";
 import { HiddenSession } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 
@@ -226,6 +227,23 @@ describe("HiddenSession lock-on-leave", () => {
     expect(calls).not.toContain("/api/auth/lock-hidden");
   });
 
+  it("a new session in the same tick cancels the previous session's deferred lock (#172)", async () => {
+    const calls = hiddenServer(false);
+    const first = render(
+      <HiddenSession>
+        <p>one</p>
+      </HiddenSession>,
+    );
+    first.unmount();
+    render(
+      <HiddenSession>
+        <p>two</p>
+      </HiddenSession>,
+    );
+    await afterDeferredLock();
+    expect(calls).not.toContain("/api/auth/lock-hidden");
+  });
+
   it("a real unmount still locks", async () => {
     const calls = hiddenServer(false);
     const { unmount } = render(
@@ -373,5 +391,66 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     locked = true;
     fireEvent.error(preview);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+  });
+
+  it("many broken thumbnails share one /hidden probe (#174)", async () => {
+    const fetchMock = mockFetch((url) => (url.startsWith("/api/libraries/1/hidden") ? page1 : jsonResponse({}, 404)));
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    const a1 = await findThumb("a1");
+    const a2 = getThumb("a2");
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.error(a1);
+      fireEvent.error(a2);
+    }
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    await act(async () => {
+      await fetchMock.mock.results[1].value;
+    });
+    // The list load plus a single probe; the rest wait for the next window.
+    expect(fetchMock.mock.calls.length).toBe(2);
+  });
+
+  it("paging: swiping/arrowing the Viewer to the last loaded photo loads the next page (#174)", async () => {
+    installObserver();
+    const urls: string[] = [];
+    mockFetch((url) => {
+      urls.push(url);
+      if (url.startsWith("/api/libraries/1/hidden")) return url.includes("cursor=c1") ? page2 : page1;
+      return jsonResponse({}, 404);
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    fireEvent.click((await findThumb("a1")).closest("button")!);
+    await waitFor(() =>
+      expect(document.querySelector('img[src="/api/libraries/1/thumb/a1?size=preview"]')).not.toBeNull(),
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(urls.some((url) => url.includes("cursor=c1"))).toBe(false);
+    if (variant === "mobile") {
+      const stage = screen.getByTestId("mobile-viewer-stage");
+      fireEvent.touchStart(stage, { touches: [{ clientX: 300, clientY: 200 }] });
+      fireEvent.touchMove(stage, { touches: [{ clientX: 180, clientY: 200 }] });
+      fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 180, clientY: 200 }] });
+    } else {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    }
+    await waitFor(() => expect(urls.some((url) => url.includes("cursor=c1"))).toBe(true));
+    expect(await findThumb("a3")).toBeInTheDocument();
+  });
+});
+
+describe("HiddenView virtualization (#174)", () => {
+  useFakeLayout({ width: 800, height: 600 });
+
+  it("renders only the rows near the viewport of a large album", async () => {
+    const items = Array.from({ length: 2000 }, (_, i) => ({ id: `x${i}`, filename: `${i}.jpg` }));
+    mockFetch(() => ({ items, next_cursor: null }));
+    render(<HiddenView libraryId={1} variant="desktop" onCancel={() => {}} />);
+    await findThumb("x0");
+    const rendered = document.querySelectorAll(".hidden-view__thumb").length;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThan(200);
+    expect(queryThumb("x1999")).not.toBeInTheDocument();
   });
 });

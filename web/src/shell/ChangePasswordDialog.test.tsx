@@ -54,4 +54,15 @@ describe("ChangePasswordDialog (#71)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Current password is incorrect.");
   });
+
+  it("closes on Escape and on a backdrop click, not on a click inside the card (#189)", () => {
+    const onClose = vi.fn();
+    render(<ChangePasswordDialog onClose={onClose} />);
+    fireEvent.mouseDown(screen.getByLabelText("Current password"));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.mouseDown(screen.getByRole("dialog"));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

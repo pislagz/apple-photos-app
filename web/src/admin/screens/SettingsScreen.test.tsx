@@ -81,4 +81,36 @@ describe("SettingsScreen", () => {
       show_library_updated_note: false,
     });
   });
+
+  it("an emptied number field blocks the save instead of saving 0 (#185)", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && (init?.method ?? "GET") === "GET") return SETTINGS;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
+    });
+    render(<SettingsScreen />);
+    const field = await screen.findByLabelText(/Library check interval/);
+    fireEvent.change(field, { target: { value: "" } });
+    expect(field).toHaveValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a number");
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+
+  it("a number typed after emptying the field is saved", async () => {
+    const fetchMock = mockFetch((url, init) => {
+      if (url === "/api/admin/settings" && (init?.method ?? "GET") === "GET") return SETTINGS;
+      if (url === "/api/admin/settings" && init?.method === "PUT") return { ...SETTINGS, library_check_interval_minutes: 30 };
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
+    });
+    render(<SettingsScreen />);
+    const field = await screen.findByLabelText(/Library check interval/);
+    fireEvent.change(field, { target: { value: "" } });
+    fireEvent.change(field, { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await screen.findByText("Settings saved.");
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === "PUT")!;
+    expect(JSON.parse(put[1].body as string).library_check_interval_minutes).toBe(30);
+  });
 });

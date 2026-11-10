@@ -114,7 +114,11 @@ export default function DesktopShell({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+  // Bumped by every sidebar choice so clicking "Library" while already on
+  // Library > All Photos (from a Days double-click) remounts it back to Years (#167).
+  const [selectNonce, setSelectNonce] = useState(0);
   function selectView(next: "library" | "days" | "hidden" | "people" | "map") {
+    setSelectNonce((n) => n + 1);
     setDayStart(null);
     setAlbum(null);
     setSearchText("");
@@ -348,7 +352,7 @@ export default function DesktopShell({
               </div>
             ) : activeLibraryId !== undefined ? (
               <DesktopLibrary
-                key={`${activeLibraryId}-${view}-${album?.id ?? ""}`}
+                key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
                 fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={

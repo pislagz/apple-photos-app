@@ -35,4 +35,21 @@ describe("useDismiss", () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("can dismiss again after onClose when the viewer stays mounted", () => {
+    vi.useFakeTimers();
+    mockMotion(false);
+    const onClose = vi.fn();
+    const { result } = renderHook(() => useDismiss(onClose));
+    act(() => result.current.dismiss());
+    act(() => {
+      vi.advanceTimersByTime(DISMISS_MS);
+    });
+    expect(result.current.closing).toBe(false);
+    act(() => result.current.dismiss());
+    act(() => {
+      vi.advanceTimersByTime(DISMISS_MS);
+    });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
 });

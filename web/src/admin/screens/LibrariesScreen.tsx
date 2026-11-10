@@ -111,88 +111,88 @@ export default function LibrariesScreen() {
       </form>
 
       <div className="admin-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Path</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {libraries.map((library) => {
-            const status = statuses[library.id];
-            return (
-              <tr key={library.id}>
-                <td>{library.display_name}</td>
-                <td>{library.path}</td>
-                <td>
-                  {status ? (
-                    <ul>
-                      <li>{status.asset_count ?? "?"} assets</li>
-                      <li>{status.video_count ?? "?"} videos</li>
-                      <li>{status.last_indexed_at ?? "never indexed"}</li>
-                      {status.last_update && <li>{status.last_update.summary}</li>}
-                      <PrewarmControls key={`${library.id}-${status.prewarm?.state}`} libraryId={library.id} initial={status.prewarm} />
-                      {status.updating && <li>Being updated: {status.updating_reason}</li>}
-                      {status.suggestion && (
-                        <li>
-                          {status.suggestion.message}{" "}
-                          <button
-                            type="button"
-                            onClick={() => setReplacing({ library, path: status.suggestion!.path })}
-                          >
-                            Replace with {status.suggestion.name}
-                          </button>
-                        </li>
-                      )}
-                      {status.warnings.map((warning) => (
-                        <li key={warning.code} role="alert">
-                          {warning.message}
-                        </li>
-                      ))}
-                      {status.runs && status.runs.length > 0 && (
-                        <li>
-                          <details>
-                            <summary>Update history ({Math.min(status.runs.length, 10)})</summary>
-                            <ol aria-label="Update history">
-                              {status.runs.slice(0, 10).map((run) => (
-                                <li key={run.id}>
-                                  {run.started_at} · {run.trigger} · {run.outcome}: {run.summary}
-                                  {run.error ? ` (${run.error})` : ""}
-                                </li>
-                              ))}
-                            </ol>
-                          </details>
-                        </li>
-                      )}
-                    </ul>
-                  ) : (
-                    <button type="button" onClick={() => handleStatus(library)}>
-                      Load status
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Path</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {libraries.map((library) => {
+              const status = statuses[library.id];
+              return (
+                <tr key={library.id}>
+                  <td>{library.display_name}</td>
+                  <td>{library.path}</td>
+                  <td>
+                    {status ? (
+                      <ul>
+                        <li>{status.asset_count ?? "?"} assets</li>
+                        <li>{status.video_count ?? "?"} videos</li>
+                        <li>{status.last_indexed_at ?? "never indexed"}</li>
+                        {status.last_update && <li>{status.last_update.summary}</li>}
+                        <PrewarmControls key={`${library.id}-${status.prewarm?.state}`} libraryId={library.id} initial={status.prewarm} />
+                        {status.updating && <li>Being updated: {status.updating_reason}</li>}
+                        {status.suggestion && (
+                          <li>
+                            {status.suggestion.message}{" "}
+                            <button
+                              type="button"
+                              onClick={() => setReplacing({ library, path: status.suggestion!.path })}
+                            >
+                              Replace with {status.suggestion.name}
+                            </button>
+                          </li>
+                        )}
+                        {status.warnings.map((warning) => (
+                          <li key={warning.code} role="alert">
+                            {warning.message}
+                          </li>
+                        ))}
+                        {status.runs && status.runs.length > 0 && (
+                          <li>
+                            <details>
+                              <summary>Update history ({Math.min(status.runs.length, 10)})</summary>
+                              <ol aria-label="Update history">
+                                {status.runs.slice(0, 10).map((run) => (
+                                  <li key={run.id}>
+                                    {run.started_at} · {run.trigger} · {run.outcome}: {run.summary}
+                                    {run.error ? ` (${run.error})` : ""}
+                                  </li>
+                                ))}
+                              </ol>
+                            </details>
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <button type="button" onClick={() => handleStatus(library)}>
+                        Load status
+                      </button>
+                    )}
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => handleRename(library)}>
+                      Rename
                     </button>
-                  )}
-                </td>
-                <td>
-                  <button type="button" onClick={() => handleRename(library)}>
-                    Rename
-                  </button>
-                  <button type="button" onClick={() => handleReindex(library)}>
-                    Re-index
-                  </button>
-                  <button type="button" onClick={() => setReplacing({ library, path: "" })}>
-                    Replace library file
-                  </button>
-                  <button type="button" onClick={() => handleRemove(library)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                    <button type="button" onClick={() => handleReindex(library)}>
+                      Re-index
+                    </button>
+                    <button type="button" onClick={() => setReplacing({ library, path: "" })}>
+                      Replace library file
+                    </button>
+                    <button type="button" onClick={() => handleRemove(library)}>
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );

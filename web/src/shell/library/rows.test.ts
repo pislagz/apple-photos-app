@@ -33,6 +33,8 @@ describe("verticalTarget (#96)", () => {
   it("reports the top and bottom edges", () => {
     expect(verticalTarget(rows, "m1", -1)).toBeNull();
     expect(verticalTarget(rows, "a2", 1)).toBe("end");
+    expect(verticalTarget(rows, "not-in-model", 1)).toBe("unknown");
+    expect(verticalTarget(rows, "not-in-model", -1)).toBe("unknown");
   });
 });
 

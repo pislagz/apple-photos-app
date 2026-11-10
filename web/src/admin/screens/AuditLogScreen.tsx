@@ -63,30 +63,30 @@ export default function AuditLogScreen() {
       </form>
 
       <div className="admin-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Action</th>
-            <th>Actor</th>
-            <th>User</th>
-            <th>Library</th>
-            <th>Detail</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => (
-            <tr key={entry.id}>
-              <td>{entry.occurred_at}</td>
-              <td>{entry.action}</td>
-              <td>{entry.actor ?? ""}</td>
-              <td>{entry.username ?? ""}</td>
-              <td>{entry.library_display_name ?? ""}</td>
-              <td>{entry.detail ?? ""}</td>
+        <table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Action</th>
+              <th>Actor</th>
+              <th>User</th>
+              <th>Library</th>
+              <th>Detail</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
+              <tr key={entry.id}>
+                <td>{entry.occurred_at}</td>
+                <td>{entry.action}</td>
+                <td>{entry.actor ?? ""}</td>
+                <td>{entry.username ?? ""}</td>
+                <td>{entry.library_display_name ?? ""}</td>
+                <td>{entry.detail ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

@@ -282,3 +282,41 @@ test("phone library scroll container is viewport-bounded and virtualized (#88)",
   expect(mounted, "cells are virtualized").toBeGreaterThan(0);
   expect(mounted, "far fewer cells than photos").toBeLessThan(120);
 });
+
+test("phone Days view has a scrim behind Select (#176)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone only");
+  await signIn(page);
+  await openZoom(page, "Days");
+  await expect(cells(page).first()).toBeVisible();
+  await expect(page.getByTestId("top-bar")).toHaveAttribute("data-scrim", "true");
+  const bg = await page.getByTestId("top-bar").evaluate((el) => getComputedStyle(el).backgroundImage);
+  expect(bg).toContain("linear-gradient");
+  await shot(page, "11-days-scrim", info.project.name);
+});
+
+test("admin Users actions are compact on a phone (#179)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone only");
+  await signIn(page, ADMIN);
+  await page.goto("/admin");
+  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Users" }).click();
+  await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
+  const actions = page.locator(".admin-actions").first();
+  await expect(actions).toBeVisible();
+  const tops = await actions.locator("button").evaluateAll((buttons) =>
+    Array.from(new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))),
+  );
+  expect(tops.length, "four buttons sit in two rows, not a stack").toBe(2);
+  await shot(page, "12-admin-users-actions", info.project.name);
+});
+
+test.describe("dark mode", () => {
+  test.use({ colorScheme: "dark" });
+  test("sidebar toggle hover is visible (#200)", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await signIn(page);
+    const toggle = page.getByRole("button", { name: "Hide sidebar" });
+    await toggle.hover();
+    await expect(toggle).toHaveCSS("background-color", "rgba(255, 255, 255, 0.14)");
+    await shot(page, "13-dark-sidebar-toggle-hover", info.project.name);
+  });
+});

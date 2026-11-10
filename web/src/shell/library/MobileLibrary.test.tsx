@@ -164,6 +164,16 @@ describe("MobileLibrary", () => {
     expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
   });
 
+  it("keeps the scrim behind Select on the Days view too (#176)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Days" }));
+    const bar = await screen.findByTestId("top-bar");
+    expect(bar).toHaveAttribute("data-scrim", "true");
+    expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+  });
+
   it("changes the column count on a pinch gesture", async () => {
     const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
     mockAssets(items);

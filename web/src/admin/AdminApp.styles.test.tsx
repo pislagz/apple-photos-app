@@ -27,6 +27,11 @@ describe("admin styling (#158)", () => {
     expect(css).toMatch(/@media \(max-width: 700px\)/);
   });
 
+  it("the Users actions are a compact 2-column block on a phone (#179)", () => {
+    const phone = css.slice(css.indexOf("@media (max-width: 700px)"));
+    expect(phone).toMatch(/\.admin-actions \{[^}]*grid-template-columns: repeat\(2, max-content\)/);
+  });
+
   it("the sign-in screen carries the admin-auth class", async () => {
     mockFetch(() => jsonResponse({ detail: "not signed in" }, 401));
     render(<AdminApp />);

@@ -4,7 +4,12 @@ export interface ZipProgress {
   received: number;
   // From X-Zip-Total-Bytes (sum of the stored file sizes); null if absent.
   total: number | null;
+  // HEIC->JPEG conversion changes the sizes, so the total is only a guess.
+  approximate?: boolean;
 }
+
+// The server's cap on ids per zip request; more answers 422.
+export const MAX_ZIP_ITEMS = 5000;
 
 export class ZipError extends Error {
   status: number;
@@ -49,15 +54,20 @@ export async function fetchZip(
     } catch {
       // keep statusText
     }
+    if (response.status === 422 && assetIds.length > MAX_ZIP_ITEMS) message = `Select at most ${MAX_ZIP_ITEMS} items`;
     if (response.status === 413) message = `Too large to download as one zip. ${message}`;
     throw new ZipError(response.status, message);
   }
   const header = Number(response.headers.get("X-Zip-Total-Bytes"));
   const total = Number.isFinite(header) && header > 0 ? header : null;
-  onProgress({ received: 0, total });
+  // `received` counts zip bytes (headers included) while `total` sums the
+  // stored file sizes, and JPEG conversion changes them again: both are
+  // approximate, so the UI says so rather than showing an exact bar.
+  const approximate = format === "jpeg";
+  onProgress({ received: 0, total, approximate });
   if (!response.body) {
     const blob = await response.blob();
-    onProgress({ received: blob.size, total });
+    onProgress({ received: blob.size, total, approximate });
     return blob;
   }
   const reader = response.body.getReader();
@@ -68,7 +78,7 @@ export async function fetchZip(
     if (done) break;
     parts.push(value);
     received += value.length;
-    onProgress({ received, total });
+    onProgress({ received, total, approximate });
   }
   return new Blob(parts as BlobPart[], { type: "application/zip" });
 }

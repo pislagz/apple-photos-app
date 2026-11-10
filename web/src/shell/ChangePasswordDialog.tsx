@@ -19,6 +19,17 @@ export default function ChangePasswordDialog({ onClose }: { onClose: () => void 
     inputRef.current?.focus();
   }, []);
 
+  // Escape closes, like the viewers; not while the request is in flight.
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !event.defaultPrevented && !busyRef.current) onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -46,7 +57,15 @@ export default function ChangePasswordDialog({ onClose }: { onClose: () => void 
   }
 
   return (
-    <div className="change-password" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
+    <div
+      className="change-password"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="change-password-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
       <form className="change-password__card" onSubmit={submit}>
         <h2 id="change-password-title">Change password</h2>
         {done ? (

@@ -132,44 +132,46 @@ export default function UsersScreen() {
       </form>
 
       <div className="admin-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Username</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {matrix?.users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.username}</td>
-              <td>
-                <select value={user.role} onChange={(event) => handleRoleChange(user, event.target.value as Role)}>
-                  <option value="user">user</option>
-                  <option value="admin">admin</option>
-                </select>
-              </td>
-              <td>{user.disabled ? "disabled" : "enabled"}</td>
-              <td>
-                <button type="button" onClick={() => handleToggleDisabled(user)}>
-                  {user.disabled ? "Enable" : "Disable"}
-                </button>
-                <button type="button" onClick={() => handleSetPassword(user)}>
-                  Set password
-                </button>
-                <button type="button" onClick={() => handleUnlock(user)}>
-                  Unlock
-                </button>
-                <button type="button" onClick={() => handleDelete(user)}>
-                  Delete
-                </button>
-              </td>
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {matrix?.users.map((user) => (
+              <tr key={user.id}>
+                <td>{user.username}</td>
+                <td>
+                  <select value={user.role} onChange={(event) => handleRoleChange(user, event.target.value as Role)}>
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </td>
+                <td>{user.disabled ? "disabled" : "enabled"}</td>
+                <td>
+                  <div className="admin-actions">
+                    <button type="button" onClick={() => handleToggleDisabled(user)}>
+                      {user.disabled ? "Enable" : "Disable"}
+                    </button>
+                    <button type="button" onClick={() => handleSetPassword(user)}>
+                      Set password
+                    </button>
+                    <button type="button" onClick={() => handleUnlock(user)}>
+                      Unlock
+                    </button>
+                    <button type="button" onClick={() => handleDelete(user)}>
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <h2>Invites</h2>

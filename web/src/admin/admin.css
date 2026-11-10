@@ -259,6 +259,16 @@ body:has(.admin-app, .admin-auth) {
   margin: 0 6px 6px 0;
 }
 
+.admin-main td .admin-actions button {
+  margin: 0;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .admin-main td ul,
 .admin-main section > ul {
   margin: 0;
@@ -321,6 +331,24 @@ body:has(.admin-app, .admin-auth) {
   .admin-auth label > input {
     flex: none;
     width: 100%;
+  }
+
+  /* Users > Actions: a 2x2 block instead of a four-button vertical stack */
+  .admin-actions {
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
+    gap: 4px;
+  }
+
+  .admin-actions button {
+    padding: 3px 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .admin-main td,
+  .admin-main th {
+    padding: 8px 6px;
   }
 
   /* 16px stops iOS zooming into focused fields */

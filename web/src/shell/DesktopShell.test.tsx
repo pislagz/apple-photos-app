@@ -273,11 +273,54 @@ describe("DesktopShell Days double-click (#152)", () => {
     await waitFor(() => expect(screen.queryByRole("tab")).toBeNull());
     expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("clicking Library while on Library > All Photos goes back to Years (#167)", async () => {
+    const items = ["a", "b"].map((id, i) => ({
+      id,
+      filename: `${id}.jpg`,
+      date: `2024-05-${10 - i}T10:00:00`,
+      is_video: false,
+      is_live_photo: false,
+      favorite: false,
+      width: 100,
+      height: 100,
+      duration: null,
+    }));
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
+      if (url.startsWith("/api/libraries/1/summary")) return { total: 2, years: [], months: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Days" }));
+    await screen.findAllByRole("img");
+    fireEvent.doubleClick(container.querySelector('[data-asset-id="b"]') as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true"));
+  });
 });
 
 describe("sidebar section labels (#105)", () => {
   it("uses small grey title case, not uppercase", () => {
     const rule = css.match(/\.sidebar__group summary \{[^}]*\}/)?.[0] ?? "";
     expect(rule).not.toContain("uppercase");
+  });
+});
+
+describe("sidebar toggle hover (#200)", () => {
+  it("uses a theme variable that has a dark-mode value", () => {
+    expect(css).toMatch(/\.sidebar-toggle:hover \{[^}]*var\(--sidebar-toggle-hover\)/);
+    expect(css).toMatch(/prefers-color-scheme: dark\) \{\s*:root \{[^}]*--sidebar-toggle-hover: rgba\(255/);
   });
 });

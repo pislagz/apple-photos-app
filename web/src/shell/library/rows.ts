@@ -96,11 +96,17 @@ export function buildTileRows(buckets: SummaryPeriodBucket[], view: "years" | "m
 // Id of the cell visually above (`-1`) / below (`1`) `fromId`, keeping the
 // column (clamped on a shorter row). `null`: already at the top edge. `"end"`:
 // at the bottom edge, where the caller decides whether to load more (#96).
-export function verticalTarget(rows: LibraryRow[], fromId: string, direction: 1 | -1): string | null | "end" {
+// `"unknown"`: `fromId` is not in the row model (e.g. a header or tile row),
+// so the caller falls back to flat +-columns movement.
+export function verticalTarget(
+  rows: LibraryRow[],
+  fromId: string,
+  direction: 1 | -1,
+): string | null | "end" | "unknown" {
   const rowIndex = rows.findIndex((row) => row.type !== "header" && row.type !== "tile" && row.items.some((i) => i.id === fromId));
-  if (rowIndex === -1) return "end";
+  if (rowIndex === -1) return "unknown";
   const row = rows[rowIndex];
-  if (row.type === "header" || row.type === "tile") return "end";
+  if (row.type === "header" || row.type === "tile") return "unknown";
   const column = row.type === "feature" ? 0 : row.items.findIndex((i) => i.id === fromId);
   for (let i = rowIndex + direction; i >= 0 && i < rows.length; i += direction) {
     const next = rows[i];

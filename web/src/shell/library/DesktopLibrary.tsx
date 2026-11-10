@@ -366,7 +366,7 @@ export default function DesktopLibrary({
         // move through the built row model to the visually adjacent cell
         // instead of +-columns in the flat list (#96).
         const target = verticalTarget(rows, focusedId, event.key === "ArrowDown" ? 1 : -1);
-        if (target && target !== "end") {
+        if (target && target !== "end" && target !== "unknown") {
           selectSingle(target);
           return;
         }
