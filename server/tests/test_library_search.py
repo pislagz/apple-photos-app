@@ -7,7 +7,14 @@ import pathlib
 
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, indexer, libraries, library_search, session_auth
+from photos_viewer import (
+    app_db,
+    indexer,
+    libraries,
+    library_search,
+    search_index,
+    session_auth,
+)
 from photos_viewer.main import create_app
 from tests.fixtures import (
     FixtureAlbum,
@@ -138,6 +145,7 @@ def test_matches_date_place_person_album_and_camera(tmp_path):
             "camera_make = 'Apple', camera_model = 'iPhone 15 Pro' WHERE uuid = ?",
             (_uuid(3),),
         )
+        search_index.rebuild_library(conn, lib)
         conn.commit()
         everyone = {_uuid(n) for n in (1, 2, 3, 5)}
         assert _search(client, lib, "2023") == everyone
@@ -310,6 +318,8 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE library_index_runs DROP COLUMN removed_visible")
         db.execute("ALTER TABLE assets DROP COLUMN original_missing")
         db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
+        db.execute("DROP TRIGGER assets_fts_delete")  # D36
+        db.execute("DROP TABLE assets_fts")
         db.execute(
             "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')"
         )
@@ -354,7 +364,7 @@ def test_search_scan_tokenises_each_distinct_field_value_once():
     library_search._register(db)
     library_search._words.cache_clear()
 
-    where, params = library_search.search_clause(library_search.parse_terms("zurich"))
+    where, params = library_search.scan_clause(library_search.parse_terms("zurich"))
     found = db.execute(f"SELECT COUNT(*) FROM assets WHERE {where}", params).fetchone()[
         0
     ]
@@ -378,6 +388,7 @@ def test_matches_filename_original_filename_title_and_description(tmp_path):
             "title = 'Café hidden', description = 'birthday' WHERE uuid = ?",
             (_uuid(4),),
         )
+        search_index.rebuild_library(conn, lib)
         conn.commit()
         assert _search(client, lib, "a1b2") == {_uuid(3)}  # filename
         assert _search(client, lib, "DSC_Sun") == {_uuid(3)}  # original_filename
@@ -402,8 +413,111 @@ def test_a_term_matching_only_the_filename_finds_the_photo(tmp_path):
             "UPDATE assets SET original_filename = 'Zebrafoto.HEIC' WHERE uuid = ?",
             (_uuid(2),),
         )
+        search_index.rebuild_library(conn, lib)
         conn.commit()
         assert _search(client, lib, "zebrafoto") == {_uuid(2)}
         assert _search(client, lib, "zebrafoto", type="video") == set()
     finally:
         conn.close()
+
+
+def _fts_docs(conn):
+    return {
+        r[0]: (r[1], r[2])
+        for r in conn.execute("SELECT rowid, txt, month FROM assets_fts")
+    }
+
+
+def test_indexer_rows_equal_a_rebuild_from_app_db(tmp_path):
+    """The indexer writes each row from the osxphotos objects; `rebuild_library`
+    derives it from `app.db`. They must agree or the two paths drift."""
+    conn, _client, lib, _ = _setup(tmp_path)
+    try:
+        written = _fts_docs(conn)
+        assert len(written) == 5
+        search_index.rebuild_library(conn, lib)
+        rebuilt = _fts_docs(conn)
+        assert {k: sorted(v[0].split()) for k, v in written.items()} == {
+            k: sorted(v[0].split()) for k, v in rebuilt.items()
+        }
+        assert {k: v[1] for k, v in written.items()} == {
+            k: v[1] for k, v in rebuilt.items()
+        }
+    finally:
+        conn.close()
+
+
+def test_search_uses_the_fts_table_and_deleting_assets_drops_rows(tmp_path):
+    conn, _client, lib, _ = _setup(tmp_path)
+    try:
+        where, params = search_index.search_clause(library_search.parse_terms("dog"))
+        plan = " ".join(
+            r[3]
+            for r in conn.execute(
+                f"EXPLAIN QUERY PLAN SELECT * FROM assets WHERE {where}", params
+            )
+        )
+        assert "assets_fts" in plan and "VIRTUAL TABLE" in plan
+        assert conn.execute("SELECT COUNT(*) FROM assets_fts").fetchone()[0] == 5
+        conn.execute("DELETE FROM libraries WHERE id = ?", (lib,))  # cascades
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM assets_fts").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_fts_and_scan_agree_on_a_set_of_queries(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        queries = [
+            "dog", "DO", "field", "dog beach", "dog snow", "2023", "2023-03",
+            "2023-03-09", "mar", "ma", "marc", "march 2023", "ann", "lee ann",
+            "road", "trip", "img", "IMG_0002", "apple", "iphone", "zzz", "%", "_",
+            "'; DROP TABLE assets; --", "é", "d%",
+        ]  # fmt: skip
+        for q in queries:
+            fast = _search(client, lib, q)
+            conn.execute("UPDATE libraries SET reindex_needed = 1")
+            conn.commit()
+            scanned = _search(client, lib, q)
+            conn.execute("UPDATE libraries SET reindex_needed = 0")
+            conn.commit()
+            assert fast == scanned, q
+    finally:
+        conn.close()
+
+
+def test_month_needs_three_letters_and_filenames_split_on_underscore(tmp_path):
+    conn, client, lib, _ = _setup(tmp_path)
+    try:
+        assert _search(client, lib, "ma") == set()
+        assert len(_search(client, lib, "mar")) == 4  # March 2023, hidden excluded
+        # D64: the number part of IMG_0002 is a word of its own.
+        assert _search(client, lib, "0002") == {_uuid(2)}
+        assert _search(client, lib, "img_00") >= {_uuid(2)}
+    finally:
+        conn.close()
+
+
+def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
+    db = app_db.connect(tmp_path / "data")
+    try:
+        db.execute("DROP TRIGGER assets_fts_delete")
+        db.execute("DROP TABLE assets_fts")
+        db.execute(f"PRAGMA user_version = {len(app_db._MIGRATIONS) - 1}")
+        db.execute(
+            "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')"
+        )
+        db.execute("INSERT INTO libraries (display_name, path) VALUES ('B', 'b')")
+        db.commit()
+        app_db.migrate(db)
+        flags = {
+            r["display_name"]: r["reindex_needed"]
+            for r in db.execute("SELECT * FROM libraries")
+        }
+        assert flags == {"A": 1, "B": 0}
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'assets_fts'"
+        ).fetchone()
+    finally:
+        db.close()

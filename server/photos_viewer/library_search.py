@@ -19,12 +19,12 @@ import calendar
 import functools
 import re
 import sqlite3
-import unicodedata
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from . import library_assets, session_auth
+from . import library_assets, search_index, session_auth
+from .search_index import fold
 
 router = APIRouter()
 
@@ -33,14 +33,6 @@ MAX_TERM_LENGTH = 64
 
 _WORD = re.compile(r"\w+")
 _MONTHS = [calendar.month_name[n].lower() for n in range(1, 13)]
-
-
-def fold(text: str | None) -> str:
-    """Lower-case with accents removed (`Zürich` -> `zurich`)."""
-    if not text:
-        return ""
-    decomposed = unicodedata.normalize("NFKD", text.casefold())
-    return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
 def parse_terms(q: str) -> list[str]:
@@ -78,8 +70,10 @@ def _register(db: sqlite3.Connection) -> None:
     db.create_function("pv_date", 2, _date_match, deterministic=True)
 
 
-def search_clause(terms: list[str]) -> tuple[str, list[object]]:
-    """SQL condition (on `assets`) that every term matches some field."""
+def scan_clause(terms: list[str]) -> tuple[str, list[object]]:
+    """SQL condition (on `assets`) that every term matches some field, by
+    scanning every row. The fallback while a library awaits its one-time
+    re-index (it has no `assets_fts` rows yet); `search_index` is the fast path."""
     parts: list[str] = []
     params: list[object] = []
     for term in terms:
@@ -116,7 +110,11 @@ def search_assets(
     terms = parse_terms(q)
     if not terms:
         return library_assets.AssetListResponse(items=[], next_cursor=None)
-    _register(db)
+    if library["reindex_needed"]:  # no FTS rows yet: D11's one-time re-index
+        _register(db)
+        extra = scan_clause(terms)
+    else:
+        extra = search_index.search_clause(terms)
     return library_assets._list_assets(
         db,
         library["id"],
@@ -126,5 +124,5 @@ def search_assets(
         type_=type_,
         from_=None,
         to=None,
-        extra=search_clause(terms),
+        extra=extra,
     )

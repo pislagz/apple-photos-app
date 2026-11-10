@@ -14,7 +14,7 @@ import socket
 import pytest
 from fastapi.testclient import TestClient
 
-from photos_viewer import app_db, indexer, session_auth
+from photos_viewer import app_db, indexer, search_index, session_auth
 from photos_viewer.main import create_app
 from tests.fixtures import FixtureAsset, _build_asset_image_bytes, build_library
 
@@ -96,6 +96,7 @@ def test_gps_without_place_record_has_no_name_and_a_place_record_is_unchanged(
             "place_address = 'Bahnhofstrasse 1, Zürich, Switzerland' WHERE uuid = ?",
             (_uuid(2),),
         )
+        search_index.rebuild_library(conn, lib)
         conn.commit()
         bare = client.get(f"/api/libraries/{lib}/assets/{_uuid(1)}").json()
         assert (bare["latitude"], bare["longitude"]) == (52.2297, 21.0122)
