@@ -15,7 +15,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
   it("shows the password prompt on hidden_locked and reloads the list after unlock", async () => {
     let hiddenCalls = 0;
     const fetchMock = mockFetch((url) => {
-      if (url === "/api/libraries/1/hidden") {
+      if (url.startsWith("/api/libraries/1/hidden")) {
         hiddenCalls += 1;
         if (hiddenCalls === 1) return jsonResponse(LOCKED, 403);
         return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
@@ -32,7 +32,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
 
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     expect(hiddenCalls).toBe(2);
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/auth/reconfirm-password")).toBe(true);
@@ -58,7 +58,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView re-lock (%s)", (varian
     expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByText("back.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("back.jpg")).toBeInTheDocument();
     expect(hiddenCalls).toBe(2);
   });
 });
@@ -76,7 +76,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
         locked = false;
         return noContentResponse();
       }
-      if (url === "/api/libraries/1/hidden") {
+      if (url.startsWith("/api/libraries/1/hidden")) {
         listCalls += 1;
         if (locked) return jsonResponse(LOCKED, 403);
         return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
@@ -116,7 +116,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load hidden photos.")).not.toBeInTheDocument();
     await unlock();
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
   });
 
   it("locked again between unlock and the reload shows the prompt again, not an error", async () => {
@@ -125,7 +125,7 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     await unlock();
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
     expect(server.listCalls()).toBe(2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -133,13 +133,13 @@ describe.each(["mobile", "desktop"] as const)("HiddenView locked from another ta
   it("a list that was open and unlocked, remounted after the other tab locked, prompts", async () => {
     const server = sessionServer();
     const first = render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
     first.unmount();
     server.lockFromOtherTab();
     render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     await unlock();
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
   });
 });
 
@@ -166,7 +166,7 @@ describe("HiddenSession lock-on-leave", () => {
         locked = true;
         return noContentResponse();
       }
-      if (url === "/api/libraries/1/hidden") {
+      if (url.startsWith("/api/libraries/1/hidden")) {
         if (locked) return jsonResponse(LOCKED, 403);
         return { items: [{ id: "a1", filename: "secret.jpg" }], next_cursor: null };
       }
@@ -187,7 +187,7 @@ describe("HiddenSession lock-on-leave", () => {
     expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
-    expect(await screen.findByText("secret.jpg")).toBeInTheDocument();
+    expect(await screen.findByAltText("secret.jpg")).toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(calls).not.toContain("/api/auth/lock-hidden");
   });
@@ -205,5 +205,124 @@ describe("HiddenSession lock-on-leave", () => {
     expect(calls).not.toContain("/api/auth/lock-hidden");
     unmount();
     await waitFor(() => expect(calls).toContain("/api/auth/lock-hidden"));
+  });
+});
+
+// #156: the unlocked Hidden album is a thumbnail grid that opens the Viewer.
+describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) => {
+  const page1 = { items: [{ id: "a1", filename: "one.jpg" }, { id: "a2", filename: "two.jpg" }], next_cursor: "c1" };
+  const page2 = { items: [{ id: "a3", filename: "three.jpg" }], next_cursor: null };
+  let observerCallback: IntersectionObserverCallback | null = null;
+
+  function installObserver() {
+    observerCallback = null;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          observerCallback = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+  }
+  function scrollToEnd() {
+    observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+  }
+
+  it("renders a thumbnail per hidden item, and opens the viewer on click", async () => {
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/hidden")) return { items: page1.items, next_cursor: null };
+      if (url.startsWith("/api/libraries/1/assets/")) return jsonResponse({ detail: "x" }, 404);
+      return jsonResponse({}, 404);
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    const thumb = await screen.findByAltText("one.jpg");
+    expect(thumb).toHaveAttribute("src", "/api/libraries/1/thumb/a1?size=grid");
+    expect(screen.getByAltText("two.jpg")).toBeInTheDocument();
+    fireEvent.click(thumb.closest("button")!);
+    await waitFor(() =>
+      expect(document.querySelector('img[src="/api/libraries/1/thumb/a1?size=preview"]')).not.toBeNull(),
+    );
+  });
+
+  it("pages with the cursor when the end of the grid is reached", async () => {
+    installObserver();
+    const urls: string[] = [];
+    mockFetch((url) => {
+      urls.push(url);
+      return url.includes("cursor=c1") ? page2 : page1;
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    await screen.findByAltText("one.jpg");
+    scrollToEnd();
+    expect(await screen.findByAltText("three.jpg")).toBeInTheDocument();
+    expect(screen.getByAltText("one.jpg")).toBeInTheDocument();
+    expect(urls.some((url) => url.includes("cursor=c1"))).toBe(true);
+  });
+
+  it("a hidden_locked 403 on load-more shows the prompt, and unlock reloads from the top", async () => {
+    installObserver();
+    let locked = false;
+    mockFetch((url) => {
+      if (url === "/api/auth/reconfirm-password") {
+        locked = false;
+        return noContentResponse();
+      }
+      if (url.includes("cursor=c1")) {
+        locked = true;
+        return jsonResponse(LOCKED, 403);
+      }
+      if (locked) return jsonResponse(LOCKED, 403);
+      return page1;
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    await screen.findByAltText("one.jpg");
+    scrollToEnd();
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+    expect(screen.queryByAltText("one.jpg")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByAltText("one.jpg")).toBeInTheDocument();
+  });
+
+  it("a thumbnail that fails because Hidden re-locked shows the prompt", async () => {
+    let locked = false;
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/hidden")) return locked ? jsonResponse(LOCKED, 403) : page2;
+      return jsonResponse({}, 404);
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    const thumb = await screen.findByAltText("three.jpg");
+    locked = true;
+    fireEvent.error(thumb);
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
+  });
+
+  it("a failed image while still unlocked leaves the grid alone", async () => {
+    const fetchMock = mockFetch((url) => (url.startsWith("/api/libraries/1/hidden") ? page2 : jsonResponse({}, 404)));
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    fireEvent.error(await screen.findByAltText("three.jpg"));
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(2));
+    expect(screen.queryByText("Hidden is locked")).not.toBeInTheDocument();
+  });
+
+  it("a viewer image failing after a re-lock shows the prompt", async () => {
+    let locked = false;
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/hidden")) return locked ? jsonResponse(LOCKED, 403) : page2;
+      return jsonResponse(LOCKED, 403);
+    });
+    render(<HiddenView libraryId={1} variant={variant} onCancel={() => {}} />);
+    fireEvent.click((await screen.findByAltText("three.jpg")).closest("button")!);
+    const preview = await waitFor(() => {
+      const el = document.querySelector('img[src="/api/libraries/1/thumb/a3?size=preview"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    locked = true;
+    fireEvent.error(preview);
+    expect(await screen.findByText("Hidden is locked")).toBeInTheDocument();
   });
 });
