@@ -2866,6 +2866,20 @@ body {
   border: 1px solid var(--ios-separator);
   border-radius: 8px;
 }
+/* A normal checkbox row: box and label on one line, left aligned. */
+.login-screen .login-card .login-options label {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: none;
+}
+.login-screen .login-card .login-options input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  padding: 0;
+}
 .login-hint {
   margin: 2px 0 10px;
   font-size: 12px;

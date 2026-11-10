@@ -474,6 +474,49 @@ test("D41: the viewer title is the date for a photo with GPS but no place name",
   expect(found, "a demo photo with GPS and no place name").toBe(true);
 });
 
+test("D41: offline place name reads City, Country", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page, ADMIN);
+  await setConsent(page, true);
+  // The demo's cities15000.txt is a four-row stand-in; the backfill runs in
+  // the background, so the loop below retries. Then browse as the member.
+  // The page's CSP must allow the tile host before the member's page loads.
+  await expect
+    .poll(async () => (await page.request.get("/")).headers()["content-security-policy"] ?? "")
+    .toContain("tile.openstreetmap.org");
+  await page.context().clearCookies();
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const viewer = page.locator('[data-testid="desktop-viewer"], [data-testid="mobile-viewer"]');
+  let found = false;
+  for (let attempt = 0; attempt < 6 && !found; attempt++) {
+    for (let index = 0; index < 8 && !found; index++) {
+      const cell = cells(page).nth(index);
+      if (info.project.name === "desktop") await cell.dblclick();
+      else await cell.tap();
+      await expect(viewer).toBeVisible();
+      await viewer.getByRole("button", { name: "Info" }).click();
+      const panel = page.locator('[data-testid="viewer-info-panel"], [data-testid="viewer-info-sheet"]');
+      await expect(panel).toBeVisible();
+      await page.waitForTimeout(400);
+      if (/(France|United States|Japan|Australia)/.test(await panel.innerText())) {
+        found = true;
+        expect(await panel.innerText()).not.toMatch(/, (FR|US|JP|AU)\b/);
+        await shot(page, "21-offline-place-name", info.project.name);
+      } else {
+        await page.keyboard.press("Escape");
+        await expect(viewer).toHaveCount(0);
+      }
+    }
+    if (!found) await page.waitForTimeout(1500); // backfill still running
+  }
+  expect(found, "a demo photo with an offline 'City, Country' place name").toBe(true);
+  await page.context().clearCookies();
+  await signIn(page, ADMIN);
+  await setConsent(page, false);
+});
+
 test("D41: the Map view explains that the OpenStreetMap map is off", async ({ page }, info) => {
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page, ADMIN);

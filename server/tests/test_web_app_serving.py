@@ -114,3 +114,10 @@ def test_dist_without_index_html_is_not_mounted(tmp_path, caplog):
     assert client.get("/admin").status_code == 404
     assert client.get("/api/health").status_code == 200
     assert "no index.html" in caplog.text
+
+
+def test_app_shell_must_be_revalidated_because_it_carries_the_csp(tmp_path):
+    client = TestClient(create_app(web_dist_dir=_write_fake_dist(tmp_path)))
+
+    for path in ("/", "/index.html", "/admin"):
+        assert client.get(path).headers["cache-control"] == "no-cache"

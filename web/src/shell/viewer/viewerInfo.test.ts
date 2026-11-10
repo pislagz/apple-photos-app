@@ -27,9 +27,9 @@ describe("place label", () => {
 describe("offline place names (D41)", () => {
   it("uses Photos' names first, then the offline name, then coordinates for the row only", () => {
     const base = { ...none, latitude: 52.2297, longitude: 21.0122 };
-    expect(formatPlaceName({ ...base, place: "Zürich", place_offline: "Warsaw, PL" })).toBe("Zürich");
-    expect(formatPlaceName({ ...base, place_offline: "Warsaw, PL" })).toBe("Warsaw, PL");
-    expect(formatLocationLine({ ...base, place_offline: "Warsaw, PL" })).toBe("Warsaw, PL");
+    expect(formatPlaceName({ ...base, place: "Zürich", place_offline: "Warsaw, Poland" })).toBe("Zürich");
+    expect(formatPlaceName({ ...base, place_offline: "Warsaw, Poland" })).toBe("Warsaw, Poland");
+    expect(formatLocationLine({ ...base, place_offline: "Warsaw, Poland" })).toBe("Warsaw, Poland");
     expect(formatPlaceName(base)).toBe("");
     expect(formatLocationLine(base)).toBe("52.2297° N, 21.0122° E");
   });

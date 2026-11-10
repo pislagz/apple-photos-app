@@ -33,6 +33,7 @@ import zipfile
 from collections.abc import Iterator
 
 from . import app_db
+from .country_names import country_name
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,8 @@ class Gazetteer:
         self._grid: dict[tuple[int, int], list[tuple[float, float, str]]] = {}
         self.size = 0
         for name, country, lat, lon in cities:
-            label = f"{name}, {country}" if country else name
+            full = country_name(country)
+            label = f"{name}, {full}" if full else name
             self._grid.setdefault(self._cell(lat, lon), []).append((lat, lon, label))
             self.size += 1
 
@@ -142,6 +144,30 @@ def load(data_dir: str | pathlib.Path) -> Gazetteer | None:
             gazetteer = Gazetteer(_parse(handle))
         _cache = (path, stat.st_mtime_ns, stat.st_size, gazetteer)
         return gazetteer
+
+
+# Bump when the stored label format changes; startup recomputes older rows.
+LABEL_FORMAT = "2"  # 1 was "City, CC"; 2 is "City, Country name"
+LABEL_FORMAT_KEY = "place_offline_format"
+
+
+def refresh_labels_on_startup(data_dir: str | pathlib.Path) -> None:
+    """Recompute stored offline names written in an older label format."""
+    if not app_db.db_path(data_dir).exists():
+        return
+    conn = app_db.connect(data_dir)
+    try:
+        if app_db.get_setting(conn, LABEL_FORMAT_KEY) == LABEL_FORMAT:
+            return
+        gazetteer = indexing_lookup(conn)
+        if gazetteer is not None:
+            backfill(conn, gazetteer)
+        # Without consent or data the column is empty, so nothing is stale.
+        app_db.set_setting(conn, LABEL_FORMAT_KEY, LABEL_FORMAT)
+    except Exception:
+        logger.warning("place-name label refresh failed", exc_info=True)
+    finally:
+        conn.close()
 
 
 def data_dir_of(db: sqlite3.Connection) -> pathlib.Path | None:
@@ -262,6 +288,7 @@ def apply_setting(data_dir: str | pathlib.Path) -> None:
                     clear(conn)
                 else:
                     backfill(conn, gazetteer)
+                    app_db.set_setting(conn, LABEL_FORMAT_KEY, LABEL_FORMAT)
             except Exception:
                 logger.warning("offline place-name pass failed", exc_info=True)
             finally:

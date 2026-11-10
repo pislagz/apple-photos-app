@@ -87,8 +87,8 @@ def _gazetteer(cities=CITIES) -> place_names.Gazetteer:
 
 def test_nearest_city_within_range_and_none_far_from_any():
     g = _gazetteer()
-    assert g.lookup(52.2297, 21.0122) == "Warsaw, PL"
-    assert g.lookup(48.9, 2.4) == "Paris, FR"
+    assert g.lookup(52.2297, 21.0122) == "Warsaw, Poland"
+    assert g.lookup(48.9, 2.4) == "Paris, France"
     assert g.lookup(0.0, -140.0) is None  # open Pacific
     assert g.lookup(None, 10) is None
     assert g.lookup(999, 0) is None
@@ -97,10 +97,10 @@ def test_nearest_city_within_range_and_none_far_from_any():
 def test_lookup_wraps_the_antimeridian_and_works_near_the_pole():
     g = _gazetteer()
     # A photo just across the date line (179.99W) from Taveuni at 179.98E.
-    assert g.lookup(-16.9, -179.99) == "Taveuni, FJ"
-    assert g.lookup(78.0, 15.0) == "Longyearbyen, SJ"
+    assert g.lookup(-16.9, -179.99) == "Taveuni, Fiji"
+    assert g.lookup(78.0, 15.0) == "Longyearbyen, Svalbard and Jan Mayen"
     # 1 degree of longitude near 64N is ~48 km, so the ring search must widen.
-    assert g.lookup(64.7, 179.0) == "Anadyr, RU"
+    assert g.lookup(64.7, 179.0) == "Anadyr, Russia"
 
 
 def test_grid_lookup_matches_brute_force():
@@ -118,9 +118,7 @@ def test_grid_lookup_matches_brute_force():
                 for n, _c, la, lo in cities
             )
         )
-        expected = (
-            f"{nearest[1]}, XX" if nearest[0] <= place_names._MAX_DISTANCE_KM else None
-        )
+        expected = nearest[1] if nearest[0] <= place_names._MAX_DISTANCE_KM else None
         assert g.lookup(lat, lon) == expected
 
 
@@ -256,11 +254,11 @@ def test_indexing_fills_place_offline_only_when_enabled_and_downloaded(
         assert (
             client.post("/api/admin/place-names/download", json={}).status_code == 200
         )
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
-        assert _detail(client, lib, 2)["place_offline"] == "Paris, FR"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
+        assert _detail(client, lib, 2)["place_offline"] == "Paris, France"
         assert _detail(client, lib, 3)["place_offline"] is None  # no GPS
         indexer.index_library(conn, lib, package, force=True)
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
 
         # Apple's own record stays untouched next to it, and is not overwritten.
         detail = _detail(client, lib, 1)
@@ -279,7 +277,9 @@ def test_apple_place_names_are_never_looked_up_over(tmp_path):
         address_str = None
 
     assert indexer._offline_place(_gazetteer(), Place(), 52.2297, 21.0122) is None
-    assert indexer._offline_place(_gazetteer(), None, 52.2297, 21.0122) == "Warsaw, PL"
+    assert (
+        indexer._offline_place(_gazetteer(), None, 52.2297, 21.0122) == "Warsaw, Poland"
+    )
     assert indexer._offline_place(None, None, 52.2297, 21.0122) is None
 
 
@@ -291,7 +291,7 @@ def test_backfill_skips_assets_that_have_an_apple_name(tmp_path):
         conn.commit()
         place_names.backfill(conn, _gazetteer())
         assert _detail(client, lib, 1)["place_offline"] is None
-        assert _detail(client, lib, 2)["place_offline"] == "Paris, FR"
+        assert _detail(client, lib, 2)["place_offline"] == "Paris, France"
     finally:
         conn.close()
 
@@ -308,7 +308,7 @@ def test_lookup_and_indexing_make_no_connections(tmp_path, monkeypatch):
         path.write_text(_dump())
         _settings(client, osm_consent=True)
         indexer.index_library(conn, lib, package, force=True)
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
         assert attempts == []
     finally:
         conn.close()
@@ -319,7 +319,7 @@ def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_
     try:
         indexer.index_library(conn, lib, package, force=True)
         conn.execute(
-            "UPDATE assets SET place_offline = 'Warsaw, PL' WHERE uuid IN (?, ?)",
+            "UPDATE assets SET place_offline = 'Warsaw, Poland' WHERE uuid IN (?, ?)",
             (_uuid(1), _uuid(2)),
         )
         conn.commit()
@@ -327,7 +327,7 @@ def test_selection_summary_uses_the_offline_name_when_there_is_no_apple_one(tmp_
             f"/api/libraries/{lib}/selection-summary",
             json={"asset_ids": [_uuid(1), _uuid(2)]},
         )
-        assert response.json()["place"] == "Warsaw, PL"
+        assert response.json()["place"] == "Warsaw, Poland"
     finally:
         conn.close()
 
@@ -456,7 +456,7 @@ def test_agreeing_and_withdrawing_are_audited_and_blank_the_names(
         assert (
             client.post("/api/admin/place-names/download", json={}).status_code == 200
         )
-        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, PL"
+        assert _detail(client, lib, 1)["place_offline"] == "Warsaw, Poland"
         _settings(client, osm_consent=False)
         assert _detail(client, lib, 1)["place_offline"] is None
         assert client.get("/api/map/config").json()["mode"] == "off"
@@ -473,3 +473,53 @@ def test_agreeing_and_withdrawing_are_audited_and_blank_the_names(
 
 def test_math_import_is_used():  # keeps the module's haversine honest
     assert math.isclose(place_names._haversine_km(0, 0, 0, 1), 111.19, rel_tol=0.01)
+
+
+def test_label_uses_full_english_country_name_and_keeps_utf8():
+    g = _gazetteer(
+        [
+            ("Kraków", "PL", 50.06143, 19.93658),
+            ("New York City", "US", 40.71427, -74.00597),
+            ("Prague", "CZ", 50.08804, 14.42076),
+            ("Seoul", "KR", 37.566, 126.9784),
+            ("Nowhere", "ZZ", 10.0, 10.0),
+            ("Blank", "", -10.0, -10.0),
+        ]
+    )
+    assert g.lookup(50.06, 19.94) == "Kraków, Poland"
+    assert g.lookup(40.7, -74.0) == "New York City, United States"
+    assert g.lookup(50.09, 14.42) == "Prague, Czechia"
+    assert g.lookup(37.57, 126.98) == "Seoul, South Korea"
+    assert g.lookup(10.0, 10.0) == "Nowhere"
+    assert g.lookup(-10.0, -10.0) == "Blank"
+
+
+def test_startup_recomputes_labels_stored_in_the_old_format(tmp_path):
+    data_dir = tmp_path
+    gaz = place_names.gazetteer_path(data_dir)
+    gaz.parent.mkdir(parents=True)
+    gaz.write_text(_dump(), encoding="utf-8")
+    conn = app_db.connect(data_dir)
+    try:
+        app_db.set_setting(conn, app_db.OSM_CONSENT_KEY, "1")
+        lib = conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('L', '/x')"
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO assets (library_id, uuid, latitude, longitude, place_offline) "
+            "VALUES (?, 'u1', 52.2297, 21.0122, 'Warsaw, PL')",
+            (lib,),
+        )
+        conn.commit()
+    except Exception:
+        conn.close()
+        raise
+    conn.close()
+    place_names.refresh_labels_on_startup(data_dir)
+    conn = app_db.connect(data_dir)
+    try:
+        row = conn.execute("SELECT place_offline FROM assets").fetchone()
+        assert row["place_offline"] == "Warsaw, Poland"
+        assert app_db.get_setting(conn, place_names.LABEL_FORMAT_KEY) == "2"
+    finally:
+        conn.close()

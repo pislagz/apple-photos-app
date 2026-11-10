@@ -427,6 +427,30 @@ def _build_web(force: bool) -> None:
     subprocess.run(["npm", "run", "build"], cwd=WEB_DIR, check=True)
 
 
+# A four-row stand-in for the GeoNames download (the demo never goes online):
+# columns 1 name, 4 latitude, 5 longitude, 8 country code of cities15000.txt.
+_DEMO_CITIES = (
+    ("Paris", 48.85341, 2.3488, "FR"),
+    ("New York City", 40.71427, -74.00597, "US"),
+    ("Tokyo", 35.6895, 139.69171, "JP"),
+    ("Sydney", -33.86785, 151.20732, "AU"),
+)
+
+
+def _write_demo_gazetteer() -> None:
+    path = DATA_DIR / "geonames" / "cities15000.txt"
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for number, (name, lat, lon, country) in enumerate(_DEMO_CITIES, start=1):
+        cols = [""] * 19
+        cols[0], cols[1], cols[2] = str(number), name, name
+        cols[4], cols[5], cols[8] = str(lat), str(lon), country
+        rows.append("\t".join(cols))
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -448,6 +472,7 @@ def main() -> int:
     if not LIBRARY_DIR.exists():
         print("generating the demo library...", flush=True)
         build_demo_library(LIBRARY_DIR)
+    _write_demo_gazetteer()
     _build_web(args.build)
 
     env = {
