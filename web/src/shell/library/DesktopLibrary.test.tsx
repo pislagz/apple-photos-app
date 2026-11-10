@@ -851,3 +851,83 @@ describe("DesktopLibrary person grid text (#193)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this person's photos.");
   });
 });
+
+describe("DesktopLibrary Info panel multi-selection (D21)", () => {
+  const items = [
+    makeItem("a1", "2024-03-09T10:00:00"),
+    makeItem("a2", "2024-03-05T10:00:00", { is_video: true }),
+    makeItem("a3", "2024-03-03T10:00:00"),
+  ];
+
+  function mockWithSummary(summary: object | null) {
+    return mockFetch((url, init) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      if (url === "/api/libraries/1/selection-summary") {
+        if (!summary) return jsonResponse({ detail: "boom" }, 500);
+        return summary;
+      }
+      if (url.startsWith("/api/libraries/1/assets/")) return jsonResponse({ detail: "no" }, 500);
+      throw new Error(`unexpected request: ${url} ${init?.method}`);
+    });
+  }
+
+  it("shows count, photo/video split, date range, size and a shared place for 2+ selected", async () => {
+    const fetchMock = mockWithSummary({
+      count: 3, photos: 2, videos: 1, date_first: "2024-03-03T10:00:00", date_last: "2024-03-09T10:00:00",
+      total_bytes: 3 * 1024 * 1024, place: "Zurich",
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByTestId("library-cell");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+
+    const panel = screen.getByTestId("library-info-panel");
+    await waitFor(() => expect(panel).toHaveTextContent("3 items (2 photos, 1 video)"));
+    expect(panel).toHaveTextContent(/3–9 Mar 2024/);
+    expect(panel).toHaveTextContent("3.0 MB");
+    expect(panel).toHaveTextContent("Zurich");
+    const call = fetchMock.mock.calls.find((c) => c[0] === "/api/libraries/1/selection-summary");
+    expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ asset_ids: expect.arrayContaining(["a1", "a2", "a3"]) });
+    // No per-photo detail request was made for the selection.
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith("/api/libraries/1/assets/"))).toBe(false);
+  });
+
+  it("leaves out the place when the summary has none, and says so when loading fails", async () => {
+    mockWithSummary({
+      count: 3, photos: 3, videos: 0, date_first: "2024-03-03T10:00:00", date_last: "2024-03-03T12:00:00",
+      total_bytes: 2048, place: null,
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByTestId("library-cell");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    const panel = screen.getByTestId("library-info-panel");
+    await waitFor(() => expect(panel).toHaveTextContent("3 photos"));
+    expect(panel).toHaveTextContent("3 Mar 2024");
+    expect(panel).not.toHaveTextContent("Location");
+  });
+
+  it("says it could not load the summary", async () => {
+    mockWithSummary(null);
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByTestId("library-cell");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
+  });
+
+  it("goes back to the single photo's details when the selection shrinks to one", async () => {
+    mockWithSummary({
+      count: 3, photos: 3, videos: 0, date_first: null, date_last: null, total_bytes: 0, place: null,
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    const cells = await screen.findAllByTestId("library-cell");
+    fireEvent.click(screen.getByRole("button", { name: "Info" }));
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("3 photos"));
+    fireEvent.click(cells[0]);
+    await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
+    expect(screen.getByTestId("library-info-panel")).not.toHaveTextContent("3 photos");
+  });
+});

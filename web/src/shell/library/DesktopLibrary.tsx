@@ -21,8 +21,8 @@ import { buildRows, columnOf, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { InfoRows } from "../viewer/InfoRows";
-import { useAssetDetailState } from "../viewer/useAssetDetail";
-import { buildInfoRows } from "../viewer/viewerInfo";
+import { useAssetDetailState, useSelectionSummary } from "../viewer/useAssetDetail";
+import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
 
 const HEADER_ROW_HEIGHT = 28;
 // Desktop toolbar's zoom slider/`+`/`-`: more, smaller columns at the low
@@ -153,7 +153,14 @@ export default function DesktopLibrary({
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
-  const { detail: infoDetail, failed: infoFailed } = useAssetDetailState(libraryId, infoOpen ? focusedId : null);
+  const multiSelected = selected.size >= 2;
+  const { detail: infoDetail, failed: infoFailed } = useAssetDetailState(
+    libraryId,
+    infoOpen && !multiSelected ? focusedId : null,
+  );
+  // D21: two or more selected photos get a summary instead of the last-clicked one.
+  const selectionIds = useMemo(() => (infoOpen && multiSelected ? Array.from(selected) : null), [infoOpen, multiSelected, selected]);
+  const { summary: selectionSummary, failed: selectionFailed } = useSelectionSummary(libraryId, selectionIds);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -789,7 +796,13 @@ export default function DesktopLibrary({
       </div>
       {infoOpen && (
         <aside className="desktop-library__info-panel" data-testid="library-info-panel" aria-label="Info">
-          {infoDetail ? (
+          {multiSelected ? (
+            selectionSummary ? (
+              <InfoRows rows={buildSelectionRows(selectionSummary)} className="desktop-library__info-rows" />
+            ) : (
+              <p className="desktop-library__info-empty">{selectionFailed ? "Couldn't load info." : "Loading…"}</p>
+            )
+          ) : infoDetail ? (
             <InfoRows rows={buildInfoRows(infoDetail, { includeFile: true })} className="desktop-library__info-rows" />
           ) : (
             <p className="desktop-library__info-empty">{!focusedId ? "No Selection" : infoFailed ? "Couldn't load info." : "Loading…"}</p>

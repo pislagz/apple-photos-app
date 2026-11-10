@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type AssetDetailResponse, getAssetDetail } from "../../api";
+import { type AssetDetailResponse, type SelectionSummary, getAssetDetail, getSelectionSummary } from "../../api";
 
 export interface AssetDetailState {
   detail: AssetDetailResponse | null;
@@ -37,4 +37,39 @@ export function useAssetDetailState(libraryId: number, assetId: string | null): 
 
 export function useAssetDetail(libraryId: number, assetId: string | null): AssetDetailResponse | null {
   return useAssetDetailState(libraryId, assetId).detail;
+}
+
+const SUMMARY_DEBOUNCE_MS = 150;
+
+// D21: summary of a multi-selection for the desktop Info panel. Pass `null`
+// ids to stay idle. Debounced so a drag-select or Shift+arrows does not post
+// one request per change.
+export function useSelectionSummary(
+  libraryId: number,
+  assetIds: string[] | null,
+): { summary: SelectionSummary | null; failed: boolean } {
+  const [state, setState] = useState<{ summary: SelectionSummary | null; failed: boolean }>({ summary: null, failed: false });
+  const key = assetIds ? assetIds.join(",") : null;
+
+  useEffect(() => {
+    setState({ summary: null, failed: false });
+    if (key === null) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      getSelectionSummary(libraryId, key.split(",")).then(
+        (summary) => {
+          if (!cancelled) setState({ summary, failed: false });
+        },
+        () => {
+          if (!cancelled) setState({ summary: null, failed: true });
+        },
+      );
+    }, SUMMARY_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [libraryId, key]);
+
+  return state;
 }

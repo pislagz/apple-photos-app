@@ -340,6 +340,21 @@ export function getAssetDetail(libraryId: number, assetId: string): Promise<Asse
   return request<AssetDetailResponse>(`/api/libraries/${libraryId}/assets/${assetId}`);
 }
 
+// D21: desktop Info panel with 2+ photos selected.
+export interface SelectionSummary {
+  count: number;
+  photos: number;
+  videos: number;
+  date_first: string | null;
+  date_last: string | null;
+  total_bytes: number;
+  place: string | null;
+}
+
+export function getSelectionSummary(libraryId: number, assetIds: string[]): Promise<SelectionSummary> {
+  return mutate<SelectionSummary>("POST", `/api/libraries/${libraryId}/selection-summary`, { asset_ids: assetIds });
+}
+
 // P2.3: map clusters. `bbox` is west,south,east,north in degrees.
 export interface MapBounds {
   west: number;

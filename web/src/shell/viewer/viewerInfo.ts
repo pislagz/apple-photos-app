@@ -1,4 +1,4 @@
-import type { AssetDetailResponse } from "../../api";
+import type { AssetDetailResponse, SelectionSummary } from "../../api";
 
 // `date_created` is a naive "YYYY-MM-DDTHH:MM:SS" string (no offset) --
 // parsed as UTC, like grouping.ts's `formatGroupLabel`, so the displayed
@@ -77,5 +77,51 @@ export function buildInfoRows(detail: AssetDetailResponse, options: { includeFil
     const size = formatFileSize(detail.original_filesize);
     if (size) rows.push({ label: "Size", value: size });
   }
+  return rows;
+}
+
+// D21: "3–9 Mar 2024", "28 Feb – 3 Mar 2024", "28 Dec 2023 – 3 Jan 2024".
+// Dates are the stored naive strings read as UTC (see `formatDateLine`).
+export function formatDateRange(first: string | null, last: string | null): string {
+  const parse = (iso: string | null) => {
+    const match = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+    return match ? { year: Number(match[1]), month: Number(match[2]) - 1, day: Number(match[3]) } : null;
+  };
+  const a = parse(first);
+  const b = parse(last);
+  if (!a && !b) return "";
+  const from = a ?? (b as NonNullable<typeof b>);
+  const to = b ?? from;
+  const month = (m: number) => new Date(Date.UTC(2000, m, 1)).toLocaleDateString(undefined, { month: "short", timeZone: "UTC" });
+  if (from.year === to.year && from.month === to.month) {
+    const days = from.day === to.day ? `${from.day}` : `${from.day}–${to.day}`;
+    return `${days} ${month(from.month)} ${from.year}`;
+  }
+  if (from.year === to.year) {
+    return `${from.day} ${month(from.month)} – ${to.day} ${month(to.month)} ${from.year}`;
+  }
+  return `${from.day} ${month(from.month)} ${from.year} – ${to.day} ${month(to.month)} ${to.year}`;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+// Info rows for a multi-selection (desktop panel): item count (split when it
+// mixes photos and videos), date range, total size, and the place only when
+// every selected item shares one.
+export function buildSelectionRows(summary: SelectionSummary): InfoRow[] {
+  const items =
+    summary.photos > 0 && summary.videos > 0
+      ? `${summary.count} items (${plural(summary.photos, "photo", "photos")}, ${plural(summary.videos, "video", "videos")})`
+      : summary.videos > 0
+        ? plural(summary.videos, "video", "videos")
+        : plural(summary.photos, "photo", "photos");
+  const rows: InfoRow[] = [{ label: "Selected", value: items }];
+  const range = formatDateRange(summary.date_first, summary.date_last);
+  if (range) rows.push({ label: "Date", value: range });
+  const size = formatFileSize(summary.total_bytes);
+  if (size) rows.push({ label: "Size", value: size });
+  if (summary.place) rows.push({ label: "Location", value: summary.place });
   return rows;
 }

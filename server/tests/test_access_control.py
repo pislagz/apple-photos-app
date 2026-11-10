@@ -178,6 +178,9 @@ def requests_for(path, method, library):
                 {"json": {"asset_ids": ids, "format": fmt}}
                 for fmt in ("native", "jpeg")
             ]
+        elif path.endswith("/selection-summary"):
+            ids = [a["uuid"] for a in library["assets"].values()]
+            variants = [{"json": {"asset_ids": ids}}]
         elif path.endswith("/updated-note/dismiss"):
             variants = [{"json": {"run_id": 1}}]
         else:
@@ -251,6 +254,7 @@ def test_route_enumeration_covers_the_known_routes(world):
         "/original/{asset_id}",
         "/livephoto/{asset_id}/video",
         "/zip",
+        "/selection-summary",
     ):
         assert LIBRARY_PREFIX + suffix in templates
 
