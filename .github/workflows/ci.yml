@@ -107,6 +107,17 @@ jobs:
           sys.exit(exit_code)
           PY
 
+  packaging:
+    # P1.19: the compose file must stay valid. Nothing is built or run, so no
+    # image is pulled and no library is involved.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml
+        run: docker compose -f deploy/docker-compose.yml config --quiet
+      - name: Validate the launchd plist
+        run: python3 -c "import plistlib,sys; plistlib.load(open('deploy/com.photosviewer.plist','rb'))"
+
   web:
     runs-on: ubuntu-latest
     steps:
