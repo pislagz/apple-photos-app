@@ -446,18 +446,32 @@ test("D41: the viewer title is the date for a photo with GPS but no place name",
   test.skip(info.project.name === "small", "desktop and iPhone only");
   await signIn(page);
   await openZoom(page, "All Photos");
-  const first = cells(page).first();
-  await expect(first).toBeVisible();
-  if (info.project.name === "desktop") await first.dblclick();
-  else await first.tap();
-  const title = page.locator(".desktop-viewer__title-primary, .mobile-viewer__title-primary").first();
-  await expect(title).toBeVisible();
-  // The demo photos have coordinates and no saved place: the title is a date, never coordinates.
-  await expect(title).not.toContainText("°");
-  await page.getByRole("button", { name: "Info" }).first().click();
-  await expect(page.locator('[data-testid="viewer-info-panel"], [data-testid="viewer-info-sheet"]')).toContainText("°");
-  await page.waitForTimeout(500);
-  await shot(page, "15-viewer-title-no-place", info.project.name);
+  await expect(cells(page).first()).toBeVisible();
+  const viewer = page.locator('[data-testid="desktop-viewer"], [data-testid="mobile-viewer"]');
+  // The demo photos have coordinates and no saved place; find one (some have no GPS).
+  let found = false;
+  for (let index = 0; index < 8 && !found; index++) {
+    const cell = cells(page).nth(index);
+    if (info.project.name === "desktop") await cell.dblclick();
+    else await cell.tap();
+    await expect(viewer).toBeVisible();
+    await viewer.getByRole("button", { name: "Info" }).click();
+    const panel = page.locator('[data-testid="viewer-info-panel"], [data-testid="viewer-info-sheet"]');
+    await expect(panel).toBeVisible();
+    await page.waitForTimeout(400);
+    if ((await panel.innerText()).includes("°")) {
+      found = true;
+      const title = page.locator(".desktop-viewer__title-primary, .mobile-viewer__title-primary").first();
+      // A date, never the coordinates (they are in the Location row below).
+      await expect(title).not.toContainText("°");
+      await expect(title).toContainText(/\d{4}/);
+      await shot(page, "15-viewer-title-no-place", info.project.name);
+    } else {
+      await page.keyboard.press("Escape");
+      await expect(viewer).toHaveCount(0);
+    }
+  }
+  expect(found, "a demo photo with GPS and no place name").toBe(true);
 });
 
 test("D41: the Map view explains that the OpenStreetMap map is off", async ({ page }, info) => {
