@@ -70,6 +70,16 @@ Admin panel → Libraries → Add. Enter the path to the `.photoslibrary` (on th
 
 Admin panel → Users to create accounts, then the access matrix to tick which user sees which library. Unassigned libraries return 404 to that user. An admin sees a library's photos only after assigning it to themselves.
 
+## Replacing a library (quarterly drops)
+
+The server checks every registered library with `stat()` calls only (default every 15 minutes, admin setting `library_check_interval_minutes`, `0` = off). A changed copy is indexed automatically once it has stayed unchanged for `library_stable_minutes` (default 10) and passes the readiness checks (non-empty `Photos.sqlite`, `PRAGMA quick_check`, supported version, `originals/` present, a sample of up to 200 photos has files). Until then, and while the package is missing, the library's users see **Being updated**; nothing in the index, albums, sharing or settings is deleted. "Index now" (re-index) skips the wait.
+
+Recommended workflow: quit Photos on the Mac, copy to `Alice.photoslibrary.incoming` (any name not ending in `.photoslibrary`), then delete the old package and rename the copy. The stability window protects anyone who does not.
+
+If the new copy has a different name or folder, use **Replace library file** (`POST /api/admin/libraries/{id}/replace`): a preview reports overlap and whether the library identity matches, and confirming keeps the library id, name and assignments.
+
+If "Optimize Mac Storage" was on for the copied library, originals are missing; the status page warns when 5% or more are, and downloads fall back to the derivative.
+
 ## Install the PWA
 
 On iPhone, open the Serve URL in Safari → Share → Add to Home Screen. It opens full-screen with a 30-day sign-in. On desktop, use the browser directly.

@@ -50,7 +50,7 @@ from argon2.low_level import Type
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Request, Response
 from pydantic import BaseModel, BeforeValidator, Field
 
-from . import app_db
+from . import app_db, library_watch
 
 logger = logging.getLogger(__name__)
 
@@ -868,6 +868,11 @@ def require_library_assignment(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
+    # P1.22: a missing, copying or not-yet-valid package is "Being updated".
+    # Checked after the assignment join so a foreign library still 404s.
+    updating, reason = library_watch.public_availability(row)
+    if updating:
+        raise HTTPException(status_code=503, detail={"code": "library_updating", "message": reason})
     return row
 
 

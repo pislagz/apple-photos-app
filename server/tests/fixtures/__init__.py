@@ -58,7 +58,7 @@ _MODEL_VERSION = 13537
 _ROOT_FOLDER_KIND = 3999
 
 _SCHEMA = """
-CREATE TABLE Z_METADATA (Z_VERSION, Z_PLIST);
+CREATE TABLE Z_METADATA (Z_VERSION, Z_PLIST, Z_UUID);
 
 CREATE TABLE ZGENERICALBUM (
     Z_PK, ZUUID, ZTITLE, ZCLOUDLOCALSTATE, ZCLOUDOWNERFIRSTNAME,
@@ -251,6 +251,7 @@ def build_library(
     people: Sequence[FixturePerson] = (),
     package_name: str = "Synthetic.photoslibrary",
     wal_favorite_pk: int | None = None,
+    store_uuid: str = "FIXTURE-STORE-UUID",
 ) -> pathlib.Path:
     """Create a `.photoslibrary`-shaped directory holding `assets` under
     `dest_dir` and return its path. Asset `i` gets `Z_PK` i+1. With
@@ -266,8 +267,8 @@ def build_library(
         conn.executescript(_SCHEMA)
         plist_bytes = plistlib.dumps({"PLModelVersion": _MODEL_VERSION})
         conn.execute(
-            "INSERT INTO Z_METADATA (Z_VERSION, Z_PLIST) VALUES (?, ?)",
-            (1, plist_bytes),
+            "INSERT INTO Z_METADATA (Z_VERSION, Z_PLIST, Z_UUID) VALUES (?, ?, ?)",
+            (1, plist_bytes, store_uuid),
         )
         conn.execute(
             """

@@ -90,6 +90,9 @@ class OpenLibrary:
     db: PhotosDB
     library_path: pathlib.Path
     open_mode: Literal["copy", "ro"]
+    # The sqlite file `db` actually reads: the temp copy, or (only when the
+    # copy failed) the in-package file. Readiness checks run on this path.
+    sqlite_path: pathlib.Path | None = None
     _tempdir: str | None = dataclasses.field(default=None, repr=False)
 
     def close(self) -> None:
@@ -170,6 +173,7 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
             tempdir = None
         db = PhotosDB(dbfile=str(sqlite_path), library_path=str(package_path))
         open_mode = "ro"
+        opened_sqlite = sqlite_path
     else:
         try:
             db = PhotosDB(dbfile=str(copy_path), library_path=str(package_path))
@@ -177,6 +181,7 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
             shutil.rmtree(tempdir, ignore_errors=True)
             raise
         open_mode = "copy"
+        opened_sqlite = copy_path
 
     try:
         check_supported_version(db.photos_version)
@@ -184,4 +189,6 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
         if tempdir is not None:
             shutil.rmtree(tempdir, ignore_errors=True)
         raise
-    return OpenLibrary(db=db, library_path=package_path, open_mode=open_mode, _tempdir=tempdir)
+    return OpenLibrary(
+        db=db, library_path=package_path, open_mode=open_mode, sqlite_path=opened_sqlite, _tempdir=tempdir
+    )

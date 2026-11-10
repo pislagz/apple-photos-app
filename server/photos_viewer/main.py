@@ -20,6 +20,7 @@ from .admin_panel import router as admin_panel_router
 from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
 from .library_assets import router as library_assets_router
+from .library_watch import LibraryChecker
 from .session_auth import (
     get_data_dir,
     validate_public_origins_env,
@@ -136,6 +137,20 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
             reset_stale_indexing_state(conn)
         finally:
             conn.close()
+
+    @app.on_event("startup")
+    def _start_library_checker() -> None:
+        # Stat-only polling for replaced/copying libraries (P1.22). Resolves
+        # the data dir on every pass so it follows `app.db` appearing later.
+        checker = LibraryChecker(lambda: app.dependency_overrides.get(get_data_dir, get_data_dir)())
+        app.state.library_checker = checker
+        checker.start()
+
+    @app.on_event("shutdown")
+    def _stop_library_checker() -> None:
+        checker = getattr(app.state, "library_checker", None)
+        if checker is not None:
+            checker.stop()
 
     return app
 

@@ -6,6 +6,7 @@ import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryPlaceholder from "./LibraryPlaceholder";
+import LibraryUpdating from "./LibraryUpdating";
 import LibrarySwitcher from "./LibrarySwitcher";
 import type { LayoutOverride } from "./useLayout";
 
@@ -62,6 +63,7 @@ export default function DesktopShell({
   }
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
+  const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
   return (
     <div className="shell shell--desktop">
       <aside className="sidebar">
@@ -174,7 +176,9 @@ export default function DesktopShell({
           </HiddenSession>
         ) : (
           <main className="shell__content">
-            {activeLibraryId !== undefined ? (
+            {activeLibrary?.updating ? (
+              <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
+            ) : activeLibraryId !== undefined ? (
               <DesktopLibrary
                 key={`${activeLibraryId}-${view}`}
                 fixedView={view === "days" ? "days" : undefined}
