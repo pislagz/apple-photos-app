@@ -293,6 +293,49 @@ describe("MobileLibrary", () => {
     expect(screen.queryByAltText("recent.jpg")).toBeNull();
   });
 
+  it("re-selecting All Photos after jumping to an older month clears the anchor and loads the newest photos (#146)", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    const fetchMock = mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    fireEvent.click(await screen.findByText("January 2022"));
+    await waitFor(() => expect(screen.getByAltText("jan22-0.jpg")).toBeInTheDocument());
+    expect(screen.queryByAltText("recent.jpg")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+
+    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+    const lastAssetsUrl = String(
+      fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/assets?")).at(-1),
+    );
+    expect(new URLSearchParams(lastAssetsUrl.split("?")[1]).get("to")).toBeNull();
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(0);
+  });
+
+  it("bumping resetSignal (Library tab re-tap) drops the anchor and returns to the newest photos (#146)", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+
+    const { rerender } = render(<MobileLibrary libraryId={1} resetSignal={0} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    fireEvent.click(await screen.findByText("January 2022"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.queryByAltText("recent.jpg")).toBeNull());
+
+    rerender(<MobileLibrary libraryId={1} resetSignal={1} />);
+
+    await waitFor(() => expect(screen.getByAltText("recent.jpg")).toBeInTheDocument());
+  });
+
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {

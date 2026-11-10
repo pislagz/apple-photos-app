@@ -48,6 +48,8 @@ export default function MobileShell({
   // `/hidden`), not just on mount -- Apple re-asks every time you open
   // Hidden. #130: the ask is the account password.
   const [hiddenConfirmed, setHiddenConfirmed] = useState(false);
+  // #146: re-tapping the active Library tab sends the grid back to the newest photos.
+  const [libraryResetSignal, setLibraryResetSignal] = useState(0);
 
   useEffect(() => {
     function onPopState() {
@@ -142,6 +144,7 @@ export default function MobileShell({
             <MobileLibrary
               key={activeLibraryId}
               libraryId={activeLibraryId}
+              resetSignal={libraryResetSignal}
               initialAssetId={deepLinkAssetId}
               onInitialAssetOpened={onDeepLinkConsumed}
             />
@@ -158,7 +161,10 @@ export default function MobileShell({
             type="button"
             className="tab-bar__item"
             aria-current={route.tab === tab.key ? "page" : undefined}
-            onClick={() => navigate(mobileRoutePath({ tab: tab.key } as MobileRoute))}
+            onClick={() => {
+              if (tab.key === "library" && route.tab === "library") setLibraryResetSignal((n) => n + 1);
+              navigate(mobileRoutePath({ tab: tab.key } as MobileRoute));
+            }}
           >
             <Icon name={tab.icon} className="tab-bar__icon" />
             <span className="tab-bar__label">{tab.label}</span>
