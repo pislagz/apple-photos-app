@@ -1171,3 +1171,52 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+// #208 tile overlays and selection. Light and dark; desktop mixed selection
+// (a video and a favourite), the densest zoom, and the iPhone grid and
+// selection mode.
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`tile overlays (${scheme})`, () => {
+    test.use({ colorScheme: scheme });
+
+    test("desktop mixed selection and dense zoom (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "desktop", "desktop only");
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      const tag = `208-${scheme}`;
+      const pick = async (selector: string) => {
+        const cell = page.locator(`[data-testid="library-cell"]:has(${selector})`).first();
+        await cell.scrollIntoViewIfNeeded();
+        await cell.click({ modifiers: ["Control"] });
+      };
+      await pick(".desktop-library__duration");
+      await pick(".desktop-library__heart");
+      await page.locator('[data-testid="library-cell"]').nth(2).click({ modifiers: ["Control"] });
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(300);
+      await shot(page, `${tag}-desktop-selection`, info.project.name);
+      await page.keyboard.press("Escape");
+
+      await page.getByLabel("Zoom").fill("0");
+      await page.waitForTimeout(800);
+      await shot(page, `${tag}-desktop-dense`, info.project.name);
+    });
+
+    test("iPhone grid and selection mode (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "iphone", "iPhone only");
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      await shot(page, `208-${scheme}-iphone-grid`, info.project.name);
+      await page.getByRole("button", { name: "Select", exact: true }).click();
+      await cells(page).nth(0).click();
+      await cells(page).nth(2).click();
+      await cells(page).nth(3).click();
+      await page.waitForTimeout(300);
+      await shot(page, `208-${scheme}-iphone-selection`, info.project.name);
+    });
+  });
+}
