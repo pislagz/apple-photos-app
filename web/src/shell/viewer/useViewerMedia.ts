@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AssetListItem } from "../../api";
+import { ORIGINAL_DWELL_MS } from "./gestures";
 import { livePhotoVideoUrl, originalJpegFallbackUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
 
 // The acceptance rule in one place: every viewer surface renders the
@@ -74,11 +75,15 @@ export function useViewerMedia(
   // otherwise it requests `version=original` first and `version=edited`
   // moments later once the detail arrives -- a real flash of the unedited
   // photo. Wait for both the preview `onLoad` and a resolved `hasEdited`.
+  //
+  // #214: and only after the photo has stayed settled for ORIGINAL_DWELL_MS.
+  // Paging changes `item.id`, which clears the timer and resets
+  // `previewLoaded`, so fast paging never starts a full-size download.
   useEffect(() => {
-    if (previewLoaded && hasEdited !== undefined && !isDataSaverOn()) {
-      setWantsOriginal(true);
-    }
-  }, [previewLoaded, hasEdited]);
+    if (!previewLoaded || hasEdited === undefined || isDataSaverOn()) return;
+    const timer = window.setTimeout(() => setWantsOriginal(true), ORIGINAL_DWELL_MS);
+    return () => window.clearTimeout(timer);
+  }, [previewLoaded, hasEdited, item?.id]);
 
   // Apple Photos always shows the edited render (P1.17b): zoom and video
   // playback ask for `version=edited` whenever the asset has one, same as

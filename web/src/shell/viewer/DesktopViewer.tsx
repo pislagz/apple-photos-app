@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
@@ -9,7 +9,9 @@ import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
-import { useDismiss } from "./useDismiss";
+import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { ViewerStill } from "./ViewerStill";
+import * as g from "./gestures";
 import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
 import { viewerKeyAction } from "./viewerKeys";
 
@@ -20,8 +22,6 @@ export interface ViewerProps {
   onIndexChange: (index: number) => void;
   onClose: () => void;
 }
-
-const ZOOM_SCALE = 2.5;
 
 // P1.16 desktop Viewer: filmstrip, double-click/wheel zoom with drag-to-pan,
 // arrow keys and Esc, and a right-hand info panel (file name + size on top
@@ -35,9 +35,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
   const [infoOpen, setInfoOpen] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [view, setView] = useState<g.View>(g.FIT);
+  const [animating, setAnimating] = useState(false);
+  const scale = view.scale;
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // D59: the grid behind is inert while the Viewer is open, and focus goes
@@ -46,8 +50,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
 
   useEffect(() => {
-    setScale(1);
-    setPan({ x: 0, y: 0 });
+    setView(g.FIT);
+    setAnimating(false);
   }, [item?.id]);
 
   // Window-level, not the root div's onKeyDown: clicking the video play
@@ -75,20 +79,57 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     if (scale > 1.01) media.requestOriginal();
   }, [scale, media]);
 
-  function toggleZoom() {
-    setScale((value) => (value > 1 ? 1 : ZOOM_SCALE));
-    setPan({ x: 0, y: 0 });
+  // Stage geometry (the still is centred in the stage and fills it, drawn
+  // object-fit: contain), falling back to the window where layout is absent.
+  function geometry() {
+    const rect = stageRef.current?.getBoundingClientRect();
+    const box = { w: rect?.width || window.innerWidth, h: rect?.height || window.innerHeight };
+    const centre = { x: (rect?.left ?? 0) + box.w / 2, y: (rect?.top ?? 0) + box.h / 2 };
+    const fit = g.fitSize({ w: item?.width ?? 0, h: item?.height ?? 0 }, box);
+    return { box, centre, fit };
   }
+
+  function toggleZoom(event: MouseEvent) {
+    const { box, centre, fit } = geometry();
+    setAnimating(!prefersReducedMotion());
+    setView((value) => g.toggleZoom(value, { x: event.clientX - centre.x, y: event.clientY - centre.y }, fit, box));
+  }
+
+  // Trackpad pinch arrives as ctrl+wheel. Added natively (not onWheel)
+  // because React's wheel listener is passive and cannot stop the browser
+  // zooming the whole page.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    function onWheel(event: WheelEvent) {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const { box, centre, fit } = geometry();
+      const current = viewRef.current;
+      const focal = { x: event.clientX - centre.x, y: event.clientY - centre.y };
+      setAnimating(false);
+      const next = g.zoomView(current, g.wheelScale(current.scale, event.deltaY), focal, fit, box);
+      setView(next.scale <= g.ZOOM_MIN ? g.FIT : next);
+    }
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  });
 
   function onMediaMouseDown(event: MouseEvent) {
     if (scale <= 1) return;
-    dragRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y };
+    setAnimating(false);
+    dragRef.current = { startX: event.clientX, startY: event.clientY, panX: view.x, panY: view.y };
   }
 
   function onMediaMouseMove(event: MouseEvent) {
     const drag = dragRef.current;
     if (!drag) return;
-    setPan({ x: drag.panX + (event.clientX - drag.startX), y: drag.panY + (event.clientY - drag.startY) });
+    const { box, fit } = geometry();
+    const pan = g.clampPan(
+      { x: drag.panX + (event.clientX - drag.startX), y: drag.panY + (event.clientY - drag.startY) },
+      g.panBounds(viewRef.current.scale, fit, box),
+    );
+    setView({ scale: viewRef.current.scale, ...pan });
   }
 
   function endDrag() {
@@ -111,7 +152,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
-  const mediaTransform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
+  const mediaTransform: CSSProperties = {
+    transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+    transition: animating ? `transform ${g.ZOOM_ANIM_MS}ms ease-out` : undefined,
+    cursor: scale > 1 ? "grab" : "zoom-in",
+  };
+  const isFull = media.showingOriginal || media.wantsOriginal;
+  const alt = assetAlt({ ...item, title: detail?.title });
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const dateLine = detail ? formatDateLine(detail.date_created) : "";
@@ -172,6 +219,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
         <div
           className="desktop-viewer__stage"
           data-testid="desktop-viewer-stage"
+          ref={stageRef}
           onMouseMove={onMediaMouseMove}
           onMouseUp={endDrag}
           onMouseLeave={endDrag}
@@ -202,11 +250,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                   data-testid="viewer-live-video"
                 />
               ) : (
-                <img
-                  className="desktop-viewer__media"
-                  src={stillSrc}
-                  alt={assetAlt({ ...item, title: detail?.title })}
-                  style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
+                <ViewerStill
+                  imgClassName="desktop-viewer__media"
+                  stillSrc={stillSrc}
+                  previewSrc={media.previewSrc}
+                  isFull={isFull}
+                  alt={alt}
+                  transform={mediaTransform}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
                   onLoad={media.onPreviewLoaded}
@@ -216,11 +266,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
             </div>
           ) : (
-            <img
-              className="desktop-viewer__media"
-              src={stillSrc}
-              alt={assetAlt({ ...item, title: detail?.title })}
-              style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
+            <ViewerStill
+              imgClassName="desktop-viewer__media"
+              stillSrc={stillSrc}
+              previewSrc={media.previewSrc}
+              isFull={isFull}
+              alt={alt}
+              transform={mediaTransform}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}
               onLoad={media.onPreviewLoaded}

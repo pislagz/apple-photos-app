@@ -1127,3 +1127,163 @@ for (const scheme of ["light", "dark"] as const) {
     await snap("viewer");
   });
 }
+
+// #214 viewer gestures. The iPhone cases hold a real touch (CDP
+// Input.dispatchTouchEvent) so the shot shows the viewer mid-gesture.
+test.describe("viewer gestures (#214)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      // Opens the first still photo (a video has no zoomable still).
+      async function openViewer(page: Page, kind: string) {
+        await signIn(page);
+        await openZoom(page, "All Photos");
+        for (let nth = 1; nth < 9; nth++) {
+          const cell = cells(page).nth(nth);
+          await expect(cell).toBeVisible();
+          if (kind === "desktop") await cell.dblclick();
+          else await cell.tap();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(800);
+          if ((await page.locator(".viewer-still").count()) > 0) return;
+          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.waitForTimeout(400);
+        }
+        throw new Error("no still photo in the first cells");
+      }
+
+      test(`iPhone: mid page drag, mid dismiss drag, zoomed 2.5x (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "iphone", "iPhone only");
+        await openViewer(page, "iphone");
+        const cdp = await page.context().newCDPSession(page);
+        const touch = (type: string, points: { x: number; y: number }[]) =>
+          cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+
+        // Mid page drag: finger 150 px left, both neighbours' edges visible.
+        await touch("touchStart", [{ x: 300, y: 400 }]);
+        for (const x of [280, 240, 200, 150]) {
+          await touch("touchMove", [{ x, y: 400 }]);
+          await page.waitForTimeout(30);
+        }
+        await shot(page, `20-gesture-page-drag-${scheme}`, info.project.name);
+        await touch("touchMove", [{ x: 300, y: 400 }]);
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+
+        // Mid dismiss drag: 160 px down, photo shrunk, background half faded.
+        await touch("touchStart", [{ x: 195, y: 300 }]);
+        for (const y of [320, 360, 400, 460]) {
+          await touch("touchMove", [{ x: 195, y: y }]);
+          await page.waitForTimeout(30);
+        }
+        await shot(page, `21-gesture-dismiss-drag-${scheme}`, info.project.name);
+        await touch("touchMove", [{ x: 195, y: 300 }]);
+        await page.waitForTimeout(400);
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+        await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+
+        // Double tap: 2.5x centred on the tap point.
+        for (let i = 0; i < 2; i++) {
+          await touch("touchStart", [{ x: 150, y: 350 }]);
+          await touch("touchEnd", []);
+          await page.waitForTimeout(60);
+        }
+        await page.waitForTimeout(600);
+        await expect(page.locator(".viewer-still")).toHaveCSS("transform", /matrix\(2\.5/);
+        await shot(page, `22-gesture-zoomed-2.5x-${scheme}`, info.project.name);
+
+        // Pinch out past the limit settles at 6x.
+        await touch("touchStart", [
+          { x: 175, y: 400 },
+          { x: 215, y: 400 },
+        ]);
+        for (const d of [30, 80, 140, 190]) {
+          await touch("touchMove", [
+            { x: 195 - d, y: 400 },
+            { x: 195 + d, y: 400 },
+          ]);
+        }
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+        await expect(page.locator(".viewer-still")).toHaveCSS("transform", /matrix\(6,/);
+      });
+
+      test(`desktop: zoomed viewer (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await openViewer(page, "desktop");
+        const still = page.locator(".viewer-still");
+        const box = (await still.boundingBox())!;
+        await page.mouse.dblclick(box.x + box.width * 0.35, box.y + box.height * 0.4);
+        await page.waitForTimeout(500);
+        await expect(still).toHaveCSS("transform", /matrix\(2\.5/);
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2 - 60, { steps: 6 });
+        await page.mouse.up();
+        await shot(page, `23-gesture-zoomed-${scheme}`, info.project.name);
+      });
+    });
+  }
+
+  // Short iPhone recording of page, dismiss and zoom (Playwright video).
+  test("iPhone screen recording", async ({ browser, baseURL }, info) => {
+    test.skip(info.project.name !== "iphone" || !process.env.VIDEO_DIR, "iPhone only, needs VIDEO_DIR");
+    const context = await browser.newContext({
+      baseURL,
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 1,
+      recordVideo: { dir: process.env.VIDEO_DIR!, size: { width: 390, height: 844 } },
+    });
+    const page = await context.newPage();
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    for (let nth = 1; nth < 9; nth++) {
+      await cells(page).nth(nth).tap();
+      await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+      await page.waitForTimeout(500);
+      if ((await page.locator(".viewer-still").count()) > 0) break;
+      await page.getByRole("button", { name: "Close" }).first().click();
+      await page.waitForTimeout(400);
+    }
+    await page.waitForTimeout(800);
+    const cdp = await context.newCDPSession(page);
+    const touch = (type: string, points: { x: number; y: number }[]) =>
+      cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const swipe = async (from: [number, number], to: [number, number], steps: number, holdMs = 0) => {
+      await touch("touchStart", [{ x: from[0], y: from[1] }]);
+      for (let i = 1; i <= steps; i++) {
+        await touch("touchMove", [{ x: from[0] + ((to[0] - from[0]) * i) / steps, y: from[1] + ((to[1] - from[1]) * i) / steps }]);
+        await page.waitForTimeout(16);
+      }
+      await page.waitForTimeout(holdMs);
+      await touch("touchEnd", []);
+    };
+    await swipe([320, 400], [60, 400], 14); // page
+    await page.waitForTimeout(700);
+    await swipe([60, 400], [330, 400], 14); // page back
+    await page.waitForTimeout(700);
+    await swipe([195, 300], [195, 420], 12, 600); // dismiss drag, short: springs back
+    await page.waitForTimeout(700);
+    for (let i = 0; i < 2; i++) {
+      await touch("touchStart", [{ x: 150, y: 350 }]);
+      await touch("touchEnd", []);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(900);
+    await swipe([250, 420], [120, 330], 10); // pan
+    await page.waitForTimeout(600);
+    for (let i = 0; i < 2; i++) {
+      await touch("touchStart", [{ x: 150, y: 350 }]);
+      await touch("touchEnd", []);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(700);
+    await swipe([195, 300], [195, 560], 12); // dismiss
+    await page.waitForTimeout(600);
+    await context.close();
+  });
+});
