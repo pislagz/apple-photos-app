@@ -148,15 +148,8 @@ export function AlbumPhotos({
 }) {
   return (
     <div className="mobile-screen">
-      <header className="mobile-screen__header">
-        <button type="button" className="mobile-screen__back" onClick={onBack}>
-          <Icon name="chevron" className="mobile-screen__back-icon" />
-          {backLabel}
-        </button>
-        <h1 className="mobile-screen__title">{title}</h1>
-      </header>
       <div className="mobile-screen__album-grid">
-        <MobileLibrary key={albumId} libraryId={libraryId} album={albumId} />
+        <MobileLibrary key={albumId} libraryId={libraryId} album={albumId} nav={{ title, backLabel, onBack }} />
       </div>
     </div>
   );

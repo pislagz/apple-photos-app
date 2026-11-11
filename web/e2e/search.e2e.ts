@@ -8,7 +8,7 @@ async function signIn(page: Page) {
   await page.goto("/");
   await page.getByLabel("Username").fill(ADMIN.username);
   await page.getByLabel("Password").fill(ADMIN.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Username")).toHaveCount(0);
 }
 
@@ -27,12 +27,12 @@ test("search by label shows results in the grid and opens the viewer", async ({ 
   // Wait for the settled query: the route (phone) or the results heading (desktop).
   if (mobile) await expect(page).toHaveURL(/\/search\/dog$/);
   else await expect(page.getByRole("heading", { name: /Results for .dog./ })).toBeVisible();
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="library-cell"] img, img.mobile-library__cell').first()).toBeVisible();
   await page.screenshot({ path: `e2e/screenshots/${info.project.name}-search-results.png` });
 
   // Case-insensitive, and a second term narrows (AND).
   await field.fill("DOG beach");
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="library-cell"] img, img.mobile-library__cell').first()).toBeVisible();
   const me = await (await page.request.get("/api/me")).json();
   const lib = me.libraries[0].id;
   const total = async (q: string) =>
@@ -45,7 +45,7 @@ test("search by label shows results in the grid and opens the viewer", async ({ 
   expect(await total("")).toBe(0);
   await field.fill("sports field");
   if (!mobile) await expect(page.getByRole("heading", { name: /Results for .sports field./ })).toBeVisible();
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="library-cell"] img, img.mobile-library__cell').first()).toBeVisible();
 
   // Nothing matches.
   await field.fill("zzzz");
@@ -58,7 +58,7 @@ test("search by label shows results in the grid and opens the viewer", async ({ 
     await expect(page).toHaveURL(/\/search\/dog$/);
     await page.reload();
     await expect(page.getByRole("searchbox", { name: "Search photos" })).toHaveValue("dog");
-    await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid="library-cell"] img, img.mobile-library__cell').first()).toBeVisible();
   } else {
     await field.fill("dog");
     await page.locator('[data-testid="library-cell"]').first().dblclick();
