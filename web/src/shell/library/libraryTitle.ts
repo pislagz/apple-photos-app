@@ -46,6 +46,16 @@ export function desktopTitle(view: ViewKey, visibleDates: string[]): string {
   return newest === oldest ? newest : `${oldest} – ${newest}`;
 }
 
+// #261: the blur and tint behind the date title fade in over the first
+// TITLE_SCRIM_FADE_PX of scroll instead of being there from the start.
+// 0 at the top, 1 once scrolled past it; set as `--title-scrim`.
+export const TITLE_SCRIM_FADE_PX = 48;
+
+export function titleScrimProgress(scrollOffset: number): number {
+  if (!(scrollOffset > 0)) return 0;
+  return Math.round(Math.min(1, scrollOffset / TITLE_SCRIM_FADE_PX) * 100) / 100;
+}
+
 // iPhone All Photos has pinch columns 2..7. Up to PHONE_DAY_COLUMNS the
 // subtitle names the day; one step coarser it names the month; the coarsest
 // level swaps the large title for a year pill.

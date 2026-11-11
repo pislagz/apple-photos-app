@@ -19,7 +19,7 @@ import {
   gridRowHeight,
 } from "./gridMetrics";
 import DateTitle from "./DateTitle";
-import { desktopTitle } from "./libraryTitle";
+import { desktopTitle, titleScrimProgress } from "./libraryTitle";
 import { buildRows, columnOf, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -694,7 +694,11 @@ export default function DesktopLibrary({
         {/* #157: Days labels each card with its own day (feature caption);
             the loaded-library range would sit on top of the first card. */}
         {dateRangeLabel && view !== "days" && (
-          <div className="desktop-library__date-range" data-hidden={headerInBand || undefined}>
+          <div
+            className="desktop-library__date-range"
+            data-hidden={headerInBand || undefined}
+            style={{ "--title-scrim": titleScrimProgress(scrollOffset) } as CSSProperties}
+          >
             <div className="desktop-library__title-scrim" aria-hidden="true" />
             <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
           </div>
