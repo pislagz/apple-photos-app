@@ -30,33 +30,53 @@ const viewer = (page: Page) => page.locator(".desktop-viewer, .mobile-viewer");
 // and the natural orientation.
 const still = (page: Page) =>
   page.evaluate(() => {
-    const img = (document.querySelector(".mobile-viewer__page--current .viewer-still__main") ??
-      document.querySelector(".viewer-still__main")) as HTMLImageElement | null;
-    if (!img || !img.naturalWidth) return null;
+    // The main layer may still be loading the converted original; the
+    // preview under it has the same box, so measure whichever has pixels.
+    const scope = document.querySelector(".mobile-viewer__page--current") ?? document;
+    const img = [...scope.querySelectorAll<HTMLImageElement>(".viewer-still > img")].find((layer) => layer.naturalWidth > 0);
+    if (!img) return null;
     const r = img.getBoundingClientRect();
     const s = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
     const w = img.naturalWidth * s;
     const h = img.naturalHeight * s;
-    const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec((img.parentElement as HTMLElement).style.transform);
+    // DOMMatrix, not a regex: pan offsets can be printed as 1.4e-14px.
+    const m = new DOMMatrixReadOnly((img.parentElement as HTMLElement).style.transform || "none");
     return {
       rect: { x: r.x + (r.width - w) / 2, y: r.y + (r.height - h) / 2, w, h },
-      x: Number(m?.[1] ?? 0),
-      y: Number(m?.[2] ?? 0),
-      scale: Number(m?.[3] ?? 1),
+      x: m.e,
+      y: m.f,
+      scale: Math.round(m.a * 1000) / 1000,
       landscape: img.naturalWidth > img.naturalHeight,
       vw: window.innerWidth,
       vh: window.innerHeight,
     };
   });
 
-async function openCell(page: Page, n: number, mobile: boolean) {
+// Opens cell n; false when it is not a still photo (video, Live Photo).
+async function openCell(page: Page, n: number, mobile: boolean): Promise<boolean> {
   const cell = page.locator('[data-testid="library-cell"], .mobile-library__cell').nth(n);
   if (mobile) await cell.tap();
   else await cell.dblclick();
   await expect(viewer(page)).toBeVisible();
-  await expect.poll(async () => (await still(page))?.rect.w ?? 0).toBeGreaterThan(0);
-  await page.waitForTimeout(400); // the open zoom
+  const isStill = await page
+    .locator(".viewer-still")
+    .first()
+    .waitFor({ timeout: 3000 })
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!isStill || (await page.locator(".desktop-viewer__media-wrap, .mobile-viewer__media-wrap").count())) return false;
+  await expect.poll(async () => (await still(page))?.rect.w ?? 0, { timeout: 15_000 }).toBeGreaterThan(0);
+  // The open zoom from the tile (#220) marks the root with data-zoom until it
+  // has finished; gestures and measurements before that see a moving photo.
+  await expect(viewer(page)).not.toHaveAttribute("data-zoom", /.*/);
+  await page.waitForTimeout(150);
+  return true;
 }
+
+const currentIndex = (page: Page) =>
+  page.locator('[data-testid="viewer-filmstrip"] [aria-current="true"]').getAttribute("data-index");
 
 async function close(page: Page) {
   await page.keyboard.press("Escape");
@@ -94,10 +114,13 @@ test("photos open fitted, zoom out stops at fit, zoomed pan is clamped in both a
   await openAllPhotos(page);
   const seen = new Set<string>();
   for (let n = 0; n < 24 && seen.size < 2; n++) {
-    await openCell(page, n, mobile);
+    if (!(await openCell(page, n, mobile))) {
+      await close(page);
+      continue;
+    }
     const fit = (await still(page))!;
     const kind = fit.landscape ? "landscape" : "portrait";
-    if (seen.has(kind)) {
+    if (fit.rect.w === fit.rect.h || seen.has(kind)) {
       await close(page);
       continue;
     }
@@ -129,12 +152,17 @@ test("photos open fitted, zoom out stops at fit, zoomed pan is clamped in both a
     await page.waitForTimeout(400);
     expect((await still(page))!.scale).toBe(1);
 
-    // Zoom in, pan diagonally: both axes move.
-    if (t) await t.doubleTap(centre);
-    else await page.mouse.dblclick(...centre);
-    await page.waitForTimeout(400);
+    // Zoom in, pan diagonally: both axes move. One retry: a CDP double tap
+    // can straddle the 300 ms window on a slow run.
+    const tries: string[] = [];
+    for (let attempt = 0; attempt < 2 && (await still(page))!.scale <= 1; attempt++) {
+      if (t) await t.doubleTap(centre);
+      else await page.mouse.dblclick(...centre);
+      await page.waitForTimeout(400);
+      tries.push(JSON.stringify({ n, centre, ...(await still(page)) }));
+    }
     const zoomed = (await still(page))!;
-    expect(zoomed.scale).toBeGreaterThan(2);
+    expect(zoomed.scale, `double tap/click to zoom: ${tries.join(" | ")}`).toBeGreaterThan(2);
     const dragBy = async (dx: number, dy: number) => {
       const to: [number, number] = [Math.min(Math.max(centre[0] + dx, 1), fit.vw - 1), Math.min(Math.max(centre[1] + dy, 1), fit.vh - 1)];
       if (t) await t.swipe(centre, to);
@@ -162,9 +190,11 @@ test("photos open fitted, zoom out stops at fit, zoomed pan is clamped in both a
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-267-zoomed-edge-${kind}.png` });
 
     // Back to fit, then drag / swipe down closes.
-    if (t) await t.doubleTap(centre);
-    else await page.mouse.dblclick(...centre);
-    await page.waitForTimeout(400);
+    for (let attempt = 0; attempt < 2 && (await still(page))!.scale > 1; attempt++) {
+      if (t) await t.doubleTap(centre);
+      else await page.mouse.dblclick(...centre);
+      await page.waitForTimeout(400);
+    }
     expect((await still(page))!.scale).toBe(1);
     if (t) await t.swipe(centre, [centre[0], centre[1] + 300]);
     else {
@@ -208,9 +238,12 @@ test("desktop: at fit a horizontal drag pages to the next and previous photo", a
   test.skip(info.project.name !== "desktop", "mouse drag is the desktop layout; touch paging is covered in MobileViewer tests");
   await signIn(page);
   await openAllPhotos(page);
-  await openCell(page, 1, false);
-  const src = async () => /\/(?:thumb|original)\/([^/?]+)/.exec((await page.locator(".viewer-still__main").getAttribute("src")) ?? "")?.[1];
+  // Its neighbours in the demo library are stills too, so the drag back
+  // starts on a photo, not on a video's play button.
+  expect(await openCell(page, 3, false)).toBe(true);
+  const src = () => currentIndex(page);
   const first = await src();
+  expect(first).toBe("3");
   const box = (await page.getByTestId("desktop-viewer-stage").boundingBox())!;
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
