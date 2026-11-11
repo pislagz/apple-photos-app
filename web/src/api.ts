@@ -167,6 +167,8 @@ export interface AssetListItem {
   width: number | null;
   height: number | null;
   duration: number | null;
+  // #254: the original is HEIC/HEIF. Absent from older servers.
+  is_heic?: boolean;
 }
 
 export interface AssetListResponse {
