@@ -309,24 +309,109 @@ body {
   cursor: pointer;
 }
 
-.mobile-library__cell-wrap {
+.mobile-library__cell-wrap,
+.mobile-library__row-feature {
   position: relative;
 }
 
-.mobile-library__select-badge {
+/* #208 overlays shared by both layouts. Local motion constants (120 ms
+   dim/check fade) until the #206 motion tokens land. */
+.mobile-library__heart,
+.mobile-library__duration,
+.desktop-library__heart,
+.desktop-library__duration {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-white);
-  background: var(--scrim-badge);
+  bottom: 4px;
+  color: var(--color-white);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  line-height: 1;
+  text-shadow: var(--text-shadow-tile);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.mobile-library__select-badge[data-selected="true"] {
+.mobile-library__heart,
+.desktop-library__heart {
+  left: 5px;
+  display: flex;
+  filter: var(--filter-tile-shadow);
+}
+
+.mobile-library__duration,
+.desktop-library__duration {
+  right: 5px;
+}
+
+/* A selected video's duration steps left of the check badge (22 px + 5 px
+   inset + 4 px gap) so the two never overlap. */
+.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration,
+.desktop-library__cell[data-selected="true"] .desktop-library__duration {
+  right: 31px;
+}
+
+/* Selected: a 25 % white dim plus a 22 px accent check, bottom-right. */
+.mobile-library__cell-wrap::after,
+.mobile-library__row-feature::after,
+.desktop-library__cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tile-dim);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.mobile-library__cell-wrap[data-selected="true"]::after,
+.mobile-library__row-feature[data-selected="true"]::after,
+.desktop-library__cell[data-selected="true"]::after {
+  opacity: 1;
+}
+
+.desktop-library__cell[data-flash="true"]::after {
+  background: var(--tile-flash);
+  opacity: 1;
+  transition: none;
+}
+
+.mobile-library__check,
+.desktop-library__check {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  color: var(--color-white);
+  border: 1.5px solid var(--color-white);
   background: var(--accent);
-  border-color: var(--accent);
+  box-shadow: var(--shadow-check);
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.mobile-library__check svg,
+.desktop-library__check svg {
+  display: block;
+  margin: -1.5px;
+}
+
+.mobile-library__check[data-selected="true"],
+.desktop-library__check[data-selected="true"] {
+  opacity: 1;
+}
+
+/* iPhone selection mode: an empty outlined circle on every tile that fills
+   when selected. */
+.mobile-library__check[data-selected="false"] {
+  opacity: 1;
+  background: var(--scrim-badge);
+  color: transparent;
 }
 
 /* Bottom action bar for multi-select, replacing the tab bar's role while
@@ -1124,40 +1209,10 @@ body {
   cursor: default;
 }
 
-.desktop-library__cell[data-selected="true"] {
-  box-shadow: 0 0 0 3px var(--accent);
-}
-
 .desktop-library__thumb {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.desktop-library__heart,
-.desktop-library__duration {
-  position: absolute;
-  opacity: 0;
-  color: var(--color-white);
-  font-size: var(--font-size-caption);
-  text-shadow: var(--text-shadow-overlay);
-  transition: opacity 0.1s ease;
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-library__cell:hover .desktop-library__heart,
-.desktop-library__cell:hover .desktop-library__duration {
-  opacity: 1;
-}
-
-.desktop-library__heart {
-  top: 4px;
-  left: 4px;
-}
-
-.desktop-library__duration {
-  bottom: 4px;
-  right: 4px;
 }
 
 /* Days hero (#127): the same one-photo-per-day row the phone uses, with the
@@ -2484,6 +2539,7 @@ body {
 
 /* Clipped or edge-to-edge containers: draw the ring inside. */
 .desktop-library__grid:focus-visible,
+.desktop-library__cell:focus-visible,
 .desktop-viewer:focus-visible,
 .sidebar__item:focus-visible,
 .tab-bar__item:focus-visible,

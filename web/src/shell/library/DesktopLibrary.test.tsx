@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { jsonResponse, mockFetch } from "../../testHelpers";
@@ -99,6 +99,42 @@ describe("DesktopLibrary", () => {
 
     expect(screen.getByLabelText("Favorite")).toBeInTheDocument();
     expect(screen.getByText("2:05")).toBeInTheDocument();
+  });
+
+  it("selected tile gets a check badge and a click flash, with no ring (#208)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00", { favorite: true }), makeItem("a2", "2024-05-09T10:00:00")]);
+      const { container } = render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const [first, second] = cells(container);
+      expect(first.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "false");
+
+      fireEvent.click(first);
+      expect(first).toHaveAttribute("data-selected", "true");
+      expect(first).toHaveAttribute("data-flash", "true");
+      expect(first.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "true");
+      expect(second.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "false");
+
+      act(() => {
+        vi.advanceTimersByTime(160);
+      });
+      expect(first).not.toHaveAttribute("data-flash");
+      expect(first).toHaveAttribute("data-selected", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the keyboard-focused cell selected and focusable (#208)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const [cell] = cells(container);
+    fireEvent.click(cell);
+    cell.focus();
+    expect(document.activeElement).toBe(cell);
+    expect(cell).toHaveAttribute("data-selected", "true");
   });
 
   it("zoom slider changes the requested thumb size between grid and grid2x", async () => {

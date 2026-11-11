@@ -469,6 +469,27 @@ describe("MobileLibrary", () => {
     expect(share.mock.calls[0][0].files).toHaveLength(2);
   });
 
+  it("shows heart and duration always, and empty badges that fill when selected in Select mode (#208)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), favorite: true },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_video: true, duration: 7 },
+    ];
+    mockLibraryFetch(items);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    expect(screen.getByLabelText("Favorite")).toBeInTheDocument();
+    expect(screen.getByText("0:07")).toBeInTheDocument();
+    expect(container.querySelector(".mobile-library__check")).toBeNull();
+
+    fireEvent.click(screen.getByText("Select"));
+    const badges = () => [...container.querySelectorAll(".mobile-library__check")].map((b) => b.getAttribute("data-selected"));
+    expect(badges()).toEqual(["false", "false"]);
+    fireEvent.click(images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLElement);
+    expect(badges()).toEqual(["true", "false"]);
+    expect(container.querySelector('.mobile-library__cell-wrap[data-selected="true"]')).not.toBeNull();
+  });
+
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockAssets(items);
