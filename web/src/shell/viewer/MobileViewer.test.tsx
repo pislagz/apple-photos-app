@@ -477,7 +477,8 @@ describe("MobileViewer", () => {
     const title = document.querySelector(".mobile-viewer__title-primary");
     expect(title?.textContent).toMatch(/2024/);
     expect(title?.textContent).not.toContain("52.2297");
-    expect(document.querySelector(".mobile-viewer__title-secondary")).toBeNull();
+    // Line 2 is the time only: no place name, and never the coordinates.
+    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("10:00 AM");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -698,5 +699,169 @@ describe("MobileViewer info sheet styling (#112)", () => {
     expect(rule).not.toMatch(/rgba/);
     const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
     expect(tokens).toMatch(/--surface-dark:\s*#[0-9a-f]{6}\s*;/i);
+  });
+});
+
+describe("MobileViewer chrome (#211, #111, #131)", () => {
+  const noop = () => {};
+  const tapAt = (stage: HTMLElement, x = 200, y = 300, target: HTMLElement = stage) => {
+    fireEvent.touchStart(target, { touches: [{ clientX: x, clientY: y }] });
+    fireEvent.touchEnd(target, { touches: [], changedTouches: [{ clientX: x, clientY: y }] });
+  };
+  const root = () => screen.getByTestId("mobile-viewer");
+  const setup = (overrides: Partial<AssetListItem> = {}, detail: Partial<AssetDetailResponse> = {}) => {
+    mockDetail({ a1: makeDetail("a1", detail) });
+    render(<MobileViewer libraryId={1} items={[makeItem("a1", overrides)]} index={0} onIndexChange={noop} onClose={noop} />);
+    return screen.getByTestId("mobile-viewer-stage");
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  it("a single tap toggles all the chrome, after the double-tap window", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    expect(root().className).not.toContain("is-chrome-hidden");
+    tapAt(stage);
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(299));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(1));
+    expect(root().className).toContain("is-chrome-hidden");
+    tapAt(stage);
+    act(() => void vi.advanceTimersByTime(300));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a double tap zooms and does not toggle the chrome", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ width: 4000, height: 3000 });
+    tapAt(stage);
+    tapAt(stage);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    expect(document.querySelector<HTMLElement>(".viewer-still")?.style.transform).toContain("scale(2.5)");
+  });
+
+  it("a drag, a swipe up and a pinch do not toggle the chrome", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    drag(stage, [200, 300], [200, 360], 100);
+    drag(stage, [200, 600], [200, 400], 500);
+    drag(stage, [300, 300], [150, 300], 100);
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 300 }, { clientX: 200, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [] });
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a tap that turns into a drag inside the double-tap window cancels the toggle", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    tapAt(stage, 200, 300);
+    drag(stage, [400, 300], [250, 300], 100);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a tap on a control inside the stage (the video Play button) does not toggle", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ is_video: true }, { is_video: true });
+    tapAt(stage, 200, 300, screen.getByLabelText("Play video"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("hides the bars 2.5 s after video playback starts and brings them back on pause or tap", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ is_video: true }, { is_video: true });
+    fireEvent.click(screen.getByLabelText("Play video"));
+    const video = screen.getByTestId("viewer-video");
+    fireEvent.play(video);
+    act(() => void vi.advanceTimersByTime(2499));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(1));
+    expect(root().className).toContain("is-chrome-hidden");
+    // A tap on the video brings them back (and the timer starts over).
+    tapAt(stage, 200, 300, video);
+    act(() => void vi.advanceTimersByTime(300));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(2500));
+    expect(root().className).toContain("is-chrome-hidden");
+    fireEvent.pause(video);
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("never auto-hides for a still", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    setup();
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("two-line title: relative day, then time and place", async () => {
+    const day = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T14:07:00`;
+    setup({}, { date_created: today, place_address: null, place: "Kraków" });
+    await waitFor(() => expect(document.querySelector(".mobile-viewer__title-primary")?.textContent).toBe("Today"));
+    const second = document.querySelector(".mobile-viewer__title-secondary")?.textContent ?? "";
+    expect(second).toMatch(/2:07/);
+    expect(second).toMatch(/ \u00b7 Kraków$/);
+  });
+
+  it("every icon button is at least 44 x 44, and the bar buttons 44 x 52 (shell.css)", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const block = (selector: string) => {
+      const start = css.indexOf(`\n${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return css.slice(start, css.indexOf("}", start));
+    };
+    const size = (b: string) => [/width:\s*(\d+)px/.exec(b)?.[1], /height:\s*(\d+)px/.exec(b)?.[1]].map(Number);
+    expect(size(block(".mobile-viewer__icon-button"))).toEqual([44, 44]);
+    expect(size(block(".mobile-viewer__status"))).toEqual([44, 52]);
+    const grouped = css.slice(css.indexOf(".mobile-viewer__icon-button--bar,"), css.indexOf(".mobile-viewer__status {"));
+    expect(size(grouped)).toEqual([44, 52]);
+  });
+
+  it("the bar has fixed slots in the order Share, Favorite, Download Original, Info", async () => {
+    setup({ favorite: true }, { has_edited: true });
+    const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
+    await screen.findByLabelText("Download Original");
+    expect(row.children).toHaveLength(4);
+    expect([...row.children].map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Share",
+      "Favorite",
+      "Download Original",
+      "Info",
+    ]);
+  });
+
+  it("keeps the empty slots when the favourite and the original download are absent", () => {
+    setup();
+    const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
+    expect(row.children).toHaveLength(4);
+    expect(row.querySelectorAll(".mobile-viewer__slot")).toHaveLength(2);
+  });
+
+  it("the favourite heart is a status, not a button", () => {
+    setup({ favorite: true });
+    const heart = screen.getByLabelText("Favorite");
+    expect(heart.tagName).not.toBe("BUTTON");
+    expect(heart.getAttribute("role")).toBe("img");
+    expect(heart.closest("button")).toBeNull();
+    expect(heart.hasAttribute("tabindex")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = css.slice(css.indexOf(".mobile-viewer__status {"), css.indexOf("}", css.indexOf(".mobile-viewer__status {")));
+    expect(rule).toContain("pointer-events: none");
+    expect(rule).toContain("cursor: default");
+  });
+
+  it("the filmstrip sits directly above the bottom toolbar, inside one blurred bar", () => {
+    setup();
+    const bar = document.querySelector(".mobile-viewer__bottombar") as HTMLElement;
+    expect([...bar.children].map((c) => c.className.split(" ")[0])).toEqual(["mobile-viewer__filmstrip", "mobile-viewer__icon-row"]);
   });
 });

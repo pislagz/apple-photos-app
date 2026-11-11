@@ -12,7 +12,9 @@ import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
-import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { formatViewerTitle } from "./viewerTitle";
+import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
 
 export interface ViewerProps {
@@ -35,6 +37,9 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
   const [infoOpen, setInfoOpen] = useState(false);
+  // Playing video: the top bar fades after 2.5 s without pointer movement.
+  const [videoRunning, setVideoRunning] = useState(false);
+  const chrome = useChromeVisibility(media.isVideo && media.videoPlaying && videoRunning);
   const [view, setView] = useState<g.View>(g.FIT);
   const [animating, setAnimating] = useState(false);
   const scale = view.scale;
@@ -52,6 +57,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   useEffect(() => {
     setView(g.FIT);
     setAnimating(false);
+    setVideoRunning(false);
   }, [item?.id]);
 
   // Window-level, not the root div's onKeyDown: clicking the video play
@@ -161,12 +167,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const alt = assetAlt({ ...item, title: detail?.title });
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
-  const dateLine = detail ? formatDateLine(detail.date_created) : "";
-  const placeLine = detail ? formatPlaceName(detail) : "";
-  // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
-  // no place falls back to the date as the sole title.
-  const titleLine = placeLine || dateLine;
-  const subtitleLine = placeLine ? dateLine : "";
+  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
 
   return (
     <div
@@ -174,15 +175,16 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       data-testid="desktop-viewer"
       ref={rootRef}
       tabIndex={-1}
+      onMouseMove={chrome.reveal}
     >
       <div className="desktop-viewer__main">
-        <div className="desktop-viewer__topbar">
+        <div className={`desktop-viewer__topbar${chrome.hidden ? " is-chrome-hidden" : ""}`}>
           <button type="button" className="toolbar-button" onClick={onClose} aria-label="Close">
             <Icon name="close" size={16} />
           </button>
           <div className="desktop-viewer__title">
-            {titleLine && <span className="desktop-viewer__title-primary">{titleLine}</span>}
-            {subtitleLine && <span className="desktop-viewer__title-secondary">{subtitleLine}</span>}
+            {title.primary && <span className="desktop-viewer__title-primary">{title.primary}</span>}
+            {title.secondary && <span className="desktop-viewer__title-secondary">{title.secondary}</span>}
           </div>
           <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
             <Icon name="link" size={16} />
@@ -226,7 +228,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
         >
           {media.isVideo ? (
             media.videoPlaying ? (
-              <video className="desktop-viewer__media" src={media.originalSrc} controls autoPlay data-testid="viewer-video" />
+              <video className="desktop-viewer__media" src={media.originalSrc} controls
+                autoPlay
+                onPlay={() => setVideoRunning(true)}
+                onPause={() => setVideoRunning(false)}
+                onEnded={() => setVideoRunning(false)}
+                data-testid="viewer-video"
+              />
             ) : (
               <button type="button" className="desktop-viewer__play-button" onClick={() => media.startVideo()} aria-label="Play video">
                 <img className="desktop-viewer__media" src={media.previewSrc} alt={assetAlt({ ...item, title: detail?.title })} />

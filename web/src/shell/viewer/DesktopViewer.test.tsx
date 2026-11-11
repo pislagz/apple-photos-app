@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -252,7 +254,8 @@ describe("DesktopViewer", () => {
     const title = document.querySelector(".desktop-viewer__title-primary");
     expect(title?.textContent).toMatch(/2024/);
     expect(title?.textContent).not.toContain("52.2297");
-    expect(document.querySelector(".desktop-viewer__title-secondary")).toBeNull();
+    // Line 2 is the time only: no place name, and never the coordinates.
+    expect(document.querySelector(".desktop-viewer__title-secondary")?.textContent).toBe("10:00 AM");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -483,5 +486,39 @@ describe("DesktopViewer", () => {
     expect(x).toBeCloseTo(-(fit * 2.5 - window.innerWidth) / 2);
     fireEvent.doubleClick(still);
     expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+});
+
+describe("DesktopViewer chrome (#211)", () => {
+  it("fades the top bar 2.5 s after the last pointer move while a video plays, and shows it on move", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockDetail({ v1: makeDetail("v1", { is_video: true }) });
+    render(
+      <DesktopViewer libraryId={1} items={[makeItem("v1", { is_video: true })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const bar = () => document.querySelector(".desktop-viewer__topbar") as HTMLElement;
+    fireEvent.click(screen.getByLabelText("Play video"));
+    fireEvent.play(screen.getByTestId("viewer-video"));
+    act(() => void vi.advanceTimersByTime(2000));
+    fireEvent.mouseMove(screen.getByTestId("desktop-viewer"));
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(500));
+    expect(bar().className).toContain("is-chrome-hidden");
+    fireEvent.mouseMove(screen.getByTestId("desktop-viewer"));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    fireEvent.pause(screen.getByTestId("viewer-video"));
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    vi.useRealTimers();
+  });
+
+  it("the top bar is a 44 px blurred material with the title centred in two lines", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const start = css.indexOf("\n.desktop-viewer__topbar {");
+    const rule = css.slice(start, css.indexOf("}", start));
+    expect(rule).toContain("height: 44px");
+    expect(rule).toContain("backdrop-filter: blur(20px)");
+    expect(rule).toContain("var(--material-viewer-bar)");
   });
 });

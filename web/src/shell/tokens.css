@@ -124,6 +124,8 @@
   /* Materials: translucent bars, sidebar, menus. */
   --material-bar: rgba(249, 249, 249, 0.86);
   --material-bar-strong: rgba(249, 249, 249, 0.92);
+  /* The desktop viewer is dark in both appearances; so is its bar. */
+  --material-viewer-bar: rgba(28, 28, 30, 0.72);
   --material-sidebar: rgba(246, 246, 246, 0.82);
   --material-toolbar: rgba(246, 246, 246, 0.92);
   --material-popover: rgba(255, 255, 255, 0.95);

@@ -1518,17 +1518,59 @@ body {
 /* #214: while a swipe-down dismiss drag runs, the chrome fades with the
    background (--viewer-chrome-alpha is set inline from the drag distance). */
 .mobile-viewer__topbar,
-.mobile-viewer__filmstrip,
-.mobile-viewer__icon-row {
+.mobile-viewer__bottombar {
   opacity: var(--viewer-chrome-alpha, 1);
 }
 
+/* #211: a single tap hides all chrome with a 200 ms ease-in-out fade and the
+   stage goes to pure black over the same time. 200 ms is a local constant
+   (CHROME_FADE_MS in useChromeVisibility.ts) until the #206 motion tokens
+   land. visibility drops after the fade so hidden controls cannot be tapped
+   or focused. */
+.mobile-viewer {
+  transition: background-color 200ms ease-in-out;
+}
+
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 0s;
+}
+
+.mobile-viewer.is-chrome-hidden {
+  background-color: var(--color-black);
+}
+
+.mobile-viewer.is-chrome-hidden .mobile-viewer__topbar,
+.mobile-viewer.is-chrome-hidden .mobile-viewer__bottombar {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 200ms;
+}
+
+/* Blurred bar material; the safe-area insets keep the controls off the notch,
+   the Dynamic Island and the home indicator. */
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  background: var(--material-bar);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
 
 .mobile-viewer__topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-10) var(--space-12);
+  padding: max(var(--space-8), env(safe-area-inset-top)) max(var(--space-8), env(safe-area-inset-right)) var(--space-8)
+    max(var(--space-8), env(safe-area-inset-left));
+}
+
+.mobile-viewer__bottombar {
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .mobile-viewer__title {
@@ -1542,7 +1584,7 @@ body {
 }
 
 .mobile-viewer__title-primary {
-  font-size: var(--font-size-subhead);
+  font-size: var(--font-size-body-lg);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
   overflow: hidden;
@@ -1551,8 +1593,8 @@ body {
 }
 
 .mobile-viewer__title-secondary {
-  font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  font-size: var(--font-size-caption);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1560,8 +1602,10 @@ body {
 }
 
 .mobile-viewer__icon-button {
-  width: 36px;
-  height: 36px;
+  /* 44 x 44 minimum touch target. */
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1575,9 +1619,16 @@ body {
 /* #131: read-only status (the library is view-only), not a tappable control:
    no pointer cursor, no button chrome. #190: a solid secondary-label tint
    (not an opacity fade) so the heart keeps its contrast on light chrome. */
+.mobile-viewer__icon-button--bar,
+.mobile-viewer__status,
+.mobile-viewer__slot {
+  width: 44px;
+  height: 52px;
+}
+
 .mobile-viewer__status {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1711,11 +1762,18 @@ body {
   color: var(--color-on-dark-play);
 }
 
+/* Fixed slots (share, favourite, download original, info): a missing control
+   leaves its slot empty instead of moving the others. */
 .mobile-viewer__icon-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  justify-content: space-between;
   align-items: center;
-  justify-content: space-around;
-  padding: var(--space-8) var(--space-24);
+  padding: 0 var(--space-24);
+}
+
+.mobile-viewer__icon-row > * {
+  justify-self: center;
 }
 
 .mobile-viewer__filmstrip {
@@ -1814,7 +1872,25 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-10) var(--space-14);
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 var(--space-14);
+  background: var(--material-viewer-bar);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  /* 200 ms is local until the #206 motion tokens land. */
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 0s;
+}
+
+/* Video playback: fades after 2.5 s without pointer movement (#211). */
+.desktop-viewer__topbar.is-chrome-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 200ms;
 }
 
 /* Sequoia's viewer title: date/place centered in the top bar, like the
@@ -1840,7 +1916,7 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
