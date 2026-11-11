@@ -176,6 +176,9 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
   await page.getByRole("button", { name: "Account menu" }).click();
   const popover = page.locator(".account-menu__popover");
   await expect(popover).toBeVisible();
+  // Points inside the control must all be the arrow. A rounded corner's point
+  // can land on the bar behind it (`auto`, also drawn as the arrow); those
+  // only must never be the hand.
   const cursorsAcross = async (selector: string) =>
     page.locator(selector).evaluateAll((elements) => {
       const seen = new Set<string>();
@@ -184,7 +187,10 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
         for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) {
           for (const fy of [0.1, 0.5, 0.9]) {
             const hit = document.elementFromPoint(rect.left + rect.width * fx, rect.top + rect.height * fy);
-            if (hit) seen.add(getComputedStyle(hit).cursor);
+            if (!hit) continue;
+            const cursor = getComputedStyle(hit).cursor;
+            if (element.contains(hit)) seen.add(cursor);
+            else if (cursor === "pointer") seen.add(`pointer outside ${element.className}`);
           }
         }
       }
