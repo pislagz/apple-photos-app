@@ -456,4 +456,32 @@ describe("DesktopViewer", () => {
     await waitFor(() => expect(media().src).toContain("/original/a1"));
     expect(media().src).toContain("version=edited");
   });
+
+  it("zooms with ctrl+wheel (clamped to 6x), double-click goes to 2.5x, and drag pans within bounds", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={[makeItem("a1", { width: 1000, height: 1000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+
+    // A plain wheel scrolls/does nothing; only ctrl+wheel (trackpad pinch) zooms.
+    fireEvent.wheel(stage, { deltaY: -50 });
+    expect(still.style.transform).toContain("scale(1)");
+    fireEvent.wheel(stage, { deltaY: -10_000, ctrlKey: true });
+    expect(still.style.transform).toContain("scale(6)");
+    fireEvent.wheel(stage, { deltaY: 10_000, ctrlKey: true });
+    expect(still.style.transform).toContain("scale(1)");
+
+    fireEvent.doubleClick(still);
+    expect(still.style.transform).toContain("scale(2.5)");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(stage, { clientX: -9000, clientY: 400 });
+    fireEvent.mouseUp(stage);
+    const x = Number(/translate\((-?[\d.]+)px/.exec(still.style.transform)?.[1]);
+    const fit = Math.min(window.innerWidth, window.innerHeight); // square photo, no layout in jsdom
+    expect(x).toBeCloseTo(-(fit * 2.5 - window.innerWidth) / 2);
+    fireEvent.doubleClick(still);
+    expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
 });

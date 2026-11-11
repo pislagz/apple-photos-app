@@ -1515,6 +1515,14 @@ body {
   color: var(--color-label);
 }
 
+/* #214: while a swipe-down dismiss drag runs, the chrome fades with the
+   background (--viewer-chrome-alpha is set inline from the drag distance). */
+.mobile-viewer__topbar,
+.mobile-viewer__filmstrip,
+.mobile-viewer__icon-row {
+  opacity: var(--viewer-chrome-alpha, 1);
+}
+
 
 .mobile-viewer__topbar {
   display: flex;
@@ -1593,6 +1601,61 @@ body {
   touch-action: none;
 }
 
+/* #214 three-page strip: previous | current | next with a 16 px gap, moved
+   by the finger. The current page is first in the DOM, `order` lays it out
+   in the middle; the strip's own translateX (inline) recentres it. */
+.mobile-viewer__strip {
+  display: flex;
+  gap: 16px; /* = PAGE_GAP_PX in gestures.ts */
+  width: 100%;
+  height: 100%;
+  flex: 0 0 auto;
+  will-change: transform;
+}
+
+.mobile-viewer__page {
+  flex: 0 0 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-viewer__page--prev {
+  order: 0;
+}
+
+.mobile-viewer__page--current {
+  order: 1;
+}
+
+.mobile-viewer__page--next {
+  order: 2;
+}
+
+/* The still and, while the original loads, the preview beneath it. */
+.viewer-still {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.viewer-still > img {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+.viewer-still__main {
+  position: relative;
+  z-index: 1;
+}
+
 .mobile-viewer__original-badge {
   position: absolute;
   top: 10px;
@@ -1618,6 +1681,8 @@ body {
 
 .mobile-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1691,6 +1756,13 @@ body {
   background: var(--surface-dark);
   border-radius: var(--radius-14) var(--radius-14) 0 0;
   padding: var(--space-16);
+  animation: viewer-sheet-up 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes viewer-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
 }
 
 .mobile-viewer__info-sheet-close {
@@ -1804,6 +1876,8 @@ body {
 
 .desktop-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
