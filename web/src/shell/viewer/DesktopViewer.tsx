@@ -43,7 +43,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const { closing, dismiss } = useDismiss(onCloseNow, zoomOut);
   const onClose = useCallback(() => dismiss(), [dismiss]);
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
+  const [scrubbing, setScrubbing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
+  const scrubVideo = useCallback((fraction: number) => {
+    const video = videoRef.current;
+    if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
+  }, []);
 
   const [infoOpen, setInfoOpen] = useState(false);
   // Playing video: the top bar fades after 2.5 s without pointer movement.
@@ -252,6 +258,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                 onPlay={() => setVideoRunning(true)}
                 onPause={() => setVideoRunning(false)}
                 onEnded={() => setVideoRunning(false)}
+                ref={videoRef}
                 data-testid="viewer-video"
               />
             ) : (
@@ -314,7 +321,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           index={index}
           onSelect={onIndexChange}
           className="desktop-viewer__filmstrip"
-          itemSize={52}
+          onScrubbingChange={setScrubbing}
+          onVideoScrub={scrubVideo}
         />
       </div>
       {infoOpen && (

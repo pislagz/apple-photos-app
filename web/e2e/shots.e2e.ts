@@ -1426,3 +1426,66 @@ test.describe("viewer zoom from and to the tile (#220)", () => {
     });
   }
 });
+
+// #221 centred scrubber. FILMSTRIP_TAG=before|after names the files so the
+// same cases run against the base build and this one. The strip is dragged
+// with the mouse on both projects (pointer events), which is what the
+// component listens to.
+const FILMSTRIP_TAG = process.env.FILMSTRIP_TAG ?? "after";
+
+test.describe("filmstrip scrubber shots (#221)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`viewer strip at rest, mid-drag and on a video (${scheme})`, async ({ page }, info) => {
+      test.skip(info.project.name === "small", "desktop and iPhone only");
+      await page.emulateMedia({ colorScheme: scheme });
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      const first = cells(page).nth(3);
+      await expect(first).toBeVisible();
+      if (info.project.name === "desktop") await first.dblclick();
+      else await first.tap();
+      await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+      await page.waitForTimeout(900);
+      const strip = page.getByTestId("viewer-filmstrip");
+      await expect(strip).toBeVisible();
+      const name = (n: string) => `${SHOTS}/${info.project.name}-${n}-${FILMSTRIP_TAG}-${scheme}.png`;
+      await page.waitForLoadState("networkidle");
+      await page.screenshot({ path: name("40-filmstrip-rest") });
+
+      const box = (await strip.boundingBox())!;
+      const y = box.y + box.height / 2;
+      const cx = box.x + box.width / 2;
+      if (FILMSTRIP_TAG === "after") {
+        expect(box.height, "strip is 30 px tall").toBe(30);
+        await page.mouse.move(cx, y);
+        await page.mouse.down();
+        await page.mouse.move(cx - 60, y, { steps: 6 });
+        await page.mouse.move(cx - 140, y, { steps: 6 });
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: name("41-filmstrip-mid-drag") });
+        await page.mouse.up();
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: name("42-filmstrip-after-drag") });
+      }
+
+      // Find a video: slits within reach first, then drag towards later items.
+      let video = page.locator('[data-testid="viewer-filmstrip"] button[data-video]').first();
+      for (let i = 0; i < 8 && FILMSTRIP_TAG === "after" && (await video.count()) === 0; i++) {
+        await page.mouse.move(cx + 150, y);
+        await page.mouse.down();
+        await page.mouse.move(cx - 150, y, { steps: 10 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        video = page.locator('[data-testid="viewer-filmstrip"] button[data-video]').first();
+      }
+      if (FILMSTRIP_TAG === "after" && (await video.count()) > 0) {
+        await video.click();
+        await page.waitForTimeout(700);
+        await page.waitForLoadState("networkidle");
+        await page.screenshot({ path: name("43-filmstrip-video") });
+      }
+      // Some synthetic demo assets answer GET /assets/{id} with a 500.
+      consoleErrors = consoleErrors.filter((m) => !/status of 500|status of 404|status of 416/.test(m));
+    });
+  }
+});

@@ -116,6 +116,11 @@
   --color-warn-text-on-dark: #ffe2b0;
   --color-warn-bg-on-dark: rgba(30, 20, 0, 0.82);
   --color-filmstrip-bg: rgba(0, 0, 0, 0.3);
+  /* #221 scrubber: slit placeholder (light/dark pair for the blurred phone bar),
+     the same on the always-dark desktop strip, and the playhead's glow. */
+  --color-slit-bg: rgba(0, 0, 0, 0.1);
+  --color-slit-bg-on-dark: rgba(255, 255, 255, 0.13);
+  --shadow-playhead: 0 0 4px rgba(0, 0, 0, 0.45);
 
   /* The map tiles are light in both appearances, so their attribution is too. */
   --color-attribution-bg: rgba(255, 255, 255, 0.8);
@@ -163,6 +168,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --color-slit-bg: rgba(255, 255, 255, 0.13);
     --color-bg: #000;
     --color-bg-window: #1e1e1e;
     --color-bg-grouped: #000;

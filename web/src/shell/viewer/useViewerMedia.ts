@@ -53,6 +53,9 @@ export function useViewerMedia(
   // Referenced original outside the package: never request /original, the
   // preview thumb (from the package) stays on screen.
   originalBlocked = false,
+  // #221: the filmstrip is being dragged; the full-quality follow-up waits
+  // for release (the preview alone is shown while scrubbing).
+  deferHeavy = false,
 ): ViewerMedia {
   const [wantsOriginal, setWantsOriginal] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
@@ -80,10 +83,10 @@ export function useViewerMedia(
   // Paging changes `item.id`, which clears the timer and resets
   // `previewLoaded`, so fast paging never starts a full-size download.
   useEffect(() => {
-    if (!previewLoaded || hasEdited === undefined || isDataSaverOn()) return;
+    if (!previewLoaded || hasEdited === undefined || deferHeavy || isDataSaverOn()) return;
     const timer = window.setTimeout(() => setWantsOriginal(true), ORIGINAL_DWELL_MS);
     return () => window.clearTimeout(timer);
-  }, [previewLoaded, hasEdited, item?.id]);
+  }, [previewLoaded, hasEdited, item?.id, deferHeavy]);
 
   // Apple Photos always shows the edited render (P1.17b): zoom and video
   // playback ask for `version=edited` whenever the asset has one, same as
