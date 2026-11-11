@@ -29,9 +29,14 @@ export function useDismiss<From = undefined>(
   zoomOutRef.current = zoomOut;
 
   const alive = useRef(true);
+  const zoomRef = useRef<ZoomOut | null>(null);
   useEffect(
     () => () => {
       alive.current = false;
+      // Unmounted mid-zoom (Back, route change): finish() will bail, so give
+      // the tile back and clear the zoom marker here.
+      zoomRef.current?.cancel();
+      zoomRef.current = null;
       if (timer.current !== null) window.clearTimeout(timer.current);
     },
     [],
@@ -46,10 +51,12 @@ export function useDismiss<From = undefined>(
     const zoom = zoomOutRef.current?.(from);
     if (zoom) {
       closingRef.current = true;
+      zoomRef.current = zoom;
       const finish = () => {
         if (!alive.current) return;
         onCloseRef.current();
         zoom.cancel();
+        zoomRef.current = null;
         closingRef.current = false;
       };
       zoom.finished.then(finish, finish);

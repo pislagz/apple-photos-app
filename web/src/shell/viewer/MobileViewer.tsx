@@ -96,7 +96,10 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   // D59: the library behind is inert while the Viewer is open; focus goes back
   // to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
-  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  const shownId = useRef(item?.id);
+  shownId.current = item?.id;
+  // The tile the close zoom lands on; the opener's if that one is gone.
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(shownId.current) ?? thumbnailFor(openedFromId.current) });
   // D23/D59: the Info sheet covers the toolbar and filmstrip, so while it is
   // open only the sheet is reachable; closing it puts focus back on Info.
   useFocusScope(sheetRef, {

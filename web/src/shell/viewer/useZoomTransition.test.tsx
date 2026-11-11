@@ -164,3 +164,29 @@ describe("close", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("unmount mid-zoom", () => {
+  it("restores the tile and clears the marker when unmounted during the close zoom", async () => {
+    const tile = addTile("a", rect(20, 40, 100, 100));
+    const { getByTestId, unmount } = render(<Harness id="a" />);
+    // Let the open zoom settle first, so the tile's own style is back to normal.
+    await act(async () => finish());
+    const root = getByTestId("root");
+    act(() => dismiss());
+    expect(tile.style.visibility).toBe("hidden");
+    expect(root.dataset.zoom).toBe("1");
+    unmount();
+    expect(tile.style.visibility).toBe("");
+    expect(root.dataset.zoom).toBeUndefined();
+    await act(async () => finish());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("restores the tile when unmounted during the open zoom", () => {
+    const tile = addTile("a", rect(20, 40, 100, 100));
+    const { unmount } = render(<Harness id="a" />);
+    expect(tile.style.visibility).toBe("hidden");
+    unmount();
+    expect(tile.style.visibility).toBe("");
+  });
+});

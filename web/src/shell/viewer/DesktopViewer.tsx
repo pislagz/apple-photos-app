@@ -59,7 +59,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   // D59: the grid behind is inert while the Viewer is open, and focus goes
   // back to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
-  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  const shownId = useRef(item?.id);
+  shownId.current = item?.id;
+  // The tile the close zoom lands on; the opener's if that one is gone.
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(shownId.current) ?? thumbnailFor(openedFromId.current) });
 
   const revealRef = useRef(revealItem);
   revealRef.current = revealItem;
