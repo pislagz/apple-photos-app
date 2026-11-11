@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AssetListItem } from "../../api";
@@ -57,5 +59,20 @@ describe("CheckBadge", () => {
     expect(container.querySelector(".x__check")).toHaveAttribute("data-selected", "false");
     rerender(<CheckBadge prefix="x" selected />);
     expect(container.querySelector(".x__check")).toHaveAttribute("data-selected", "true");
+  });
+
+  // #258: Photos' badge is an accent circle with a white ring and a white
+  // check, not a plain accent dot.
+  it("draws a white check in an accent circle with a white ring", () => {
+    const { container } = render(<CheckBadge prefix="x" selected />);
+    const path = container.querySelector(".x__check svg path");
+    expect(path).toHaveAttribute("stroke", "currentColor");
+    expect(path).toHaveAttribute("fill", "none");
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = /\.mobile-library__check,\s*\.desktop-library__check \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toContain("color: var(--color-white)");
+    expect(rule).toMatch(/border: 1\.5px solid var\(--color-white\)/);
+    expect(rule).toContain("background: var(--accent)");
+    expect(css).not.toContain("mobile-library__select-badge");
   });
 });
