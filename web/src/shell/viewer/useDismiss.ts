@@ -1,3 +1,4 @@
+import type { ZoomOut } from "./useZoomTransition";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export const DISMISS_MS = 180;
@@ -10,24 +11,48 @@ export function prefersReducedMotion(): boolean {
 
 // Viewer dismiss: play the CSS exit (`.is-closing`) and call onClose when it
 // ends. With reduced motion set there is no exit, so onClose runs right away.
-export function useDismiss(onClose: () => void): { closing: boolean; dismiss: () => void } {
+//
+// #220: `zoomOut` (when given) is tried first. It zooms the photo back into its
+// tile and returns a handle to wait on, or null when there is no tile to land
+// on; null falls through to the fade above. `from` is whatever the caller
+// passes to dismiss (the swipe-down's last frame).
+export function useDismiss<From = undefined>(
+  onClose: () => void,
+  zoomOut?: (from?: From) => ZoomOut | null,
+): { closing: boolean; dismiss: (from?: From) => void } {
   const [closing, setClosing] = useState(false);
   const timer = useRef<number | null>(null);
   const closingRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const zoomOutRef = useRef(zoomOut);
+  zoomOutRef.current = zoomOut;
 
+  const alive = useRef(true);
   useEffect(
     () => () => {
+      alive.current = false;
       if (timer.current !== null) window.clearTimeout(timer.current);
     },
     [],
   );
 
-  const dismiss = useCallback(() => {
+  const dismiss = useCallback((from?: From) => {
     if (closingRef.current) return;
     if (prefersReducedMotion()) {
       onCloseRef.current();
+      return;
+    }
+    const zoom = zoomOutRef.current?.(from);
+    if (zoom) {
+      closingRef.current = true;
+      const finish = () => {
+        if (!alive.current) return;
+        onCloseRef.current();
+        zoom.cancel();
+        closingRef.current = false;
+      };
+      zoom.finished.then(finish, finish);
       return;
     }
     closingRef.current = true;
