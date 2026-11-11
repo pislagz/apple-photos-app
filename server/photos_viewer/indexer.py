@@ -18,6 +18,7 @@ import logging
 import os
 import pathlib
 import sqlite3
+import threading
 
 from . import libraries, media, place_names, search_index
 
@@ -141,6 +142,29 @@ def _now_iso() -> str:
     )
 
 
+# #252: assets walked / total for each library being indexed right now, read by
+# the admin status route on other threads. In memory only: a restart ends the
+# walk anyway, and `reset_stale_indexing_state` clears the stored state.
+_progress: dict[int, tuple[int, int]] = {}
+_progress_lock = threading.Lock()
+PROGRESS_EVERY = 100
+
+
+def index_progress(library_id: int) -> tuple[int, int] | None:
+    with _progress_lock:
+        return _progress.get(library_id)
+
+
+def _set_progress(library_id: int, walked: int, total: int) -> None:
+    with _progress_lock:
+        _progress[library_id] = (walked, total)
+
+
+def _clear_progress(library_id: int) -> None:
+    with _progress_lock:
+        _progress.pop(library_id, None)
+
+
 def index_library(
     db: sqlite3.Connection,
     library_id: int,
@@ -180,6 +204,7 @@ def index_library(
             db, library_id, opened, signature, trigger, started_at
         )
     finally:
+        _clear_progress(library_id)
         opened.close()
     _purge_cache(db, library_id, purge, cache_dir)
     if changed:
@@ -491,7 +516,11 @@ def _write_index(
     gazetteer = place_names.indexing_lookup(db)
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
-        for walked, photo in enumerate(photosdb.photos(), start=1):
+        photos = photosdb.photos()
+        _set_progress(library_id, 0, len(photos))
+        for walked, photo in enumerate(photos, start=1):
+            if walked % PROGRESS_EVERY == 0:
+                _set_progress(library_id, walked, len(photos))
             if batch_size is not None and walked % batch_size == 0:
                 db.commit()
                 db.execute("BEGIN IMMEDIATE")

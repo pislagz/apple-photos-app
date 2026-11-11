@@ -234,6 +234,11 @@ def _suggest_replacements(
     ]
 
 
+class IndexProgress(BaseModel):
+    done: int
+    total: int
+
+
 class LibraryStatusResponse(BaseModel):
     id: int
     display_name: str
@@ -245,6 +250,8 @@ class LibraryStatusResponse(BaseModel):
     last_indexed_at: str | None = None
     index_state: str | None = None
     index_error: str | None = None
+    # #252: while a walk runs, assets walked so far and the library's total.
+    index_progress: IndexProgress | None = None
     prewarm_progress: float | None = None
     prewarm: library_prewarm.PrewarmStatus | None = None
     warnings: list[LibraryWarning]
@@ -474,6 +481,15 @@ def _index_counts(
     }
 
 
+def _index_progress(row: sqlite3.Row) -> IndexProgress | None:
+    if row["index_state"] != "indexing":
+        return None
+    progress = indexer.index_progress(row["id"])
+    if progress is None:
+        return None
+    return IndexProgress(done=progress[0], total=progress[1])
+
+
 def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResponse:
     path = pathlib.Path(row["path"])
     _maybe_reindex(db, row)
@@ -508,6 +524,7 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
         last_indexed_at=row["last_indexed_at"],
         index_state=row["index_state"],
         index_error=row["index_error"],
+        index_progress=_index_progress(row),
         prewarm_progress=library_prewarm.progress(prewarm),
         prewarm=prewarm,
         warnings=warnings,
