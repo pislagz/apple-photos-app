@@ -1456,7 +1456,7 @@ test.describe("filmstrip scrubber shots (#221)", () => {
       const y = box.y + box.height / 2;
       const cx = box.x + box.width / 2;
       if (FILMSTRIP_TAG === "after") {
-        expect(box.height, "strip is 30 px tall").toBe(30);
+        expect(await strip.evaluate((el) => getComputedStyle(el).height), "strip is 30 px tall").toBe("30px");
         await page.mouse.move(cx, y);
         await page.mouse.down();
         await page.mouse.move(cx - 60, y, { steps: 6 });
