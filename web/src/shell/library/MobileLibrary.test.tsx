@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
@@ -486,9 +488,9 @@ describe("MobileLibrary", () => {
     fireEvent.click(a1Image);
     fireEvent.click(a2Image);
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
-    expect(screen.getByText("2 Selected")).toBeInTheDocument();
+    expect(screen.getByText("2 Photos Selected")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
     expect(canShare).toHaveBeenCalledTimes(1);
     expect(share.mock.calls[0][0].files).toHaveLength(2);
@@ -514,6 +516,55 @@ describe("MobileLibrary", () => {
 
     fireEvent.click(image("a2"));
     expect(screen.getByLabelText("HEIC as JPEG")).toBeInTheDocument();
+  });
+
+  it("lays the select bar out like Photos: Share left, count centred, Download right (#259)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
+      { ...makeItem("v1", "2024-05-09T10:00:00"), is_video: true },
+    ];
+    mockAssets(items);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    const bar = screen.getByTestId("select-bar");
+    const row = bar.querySelector(".mobile-library__select-row")!;
+    const [share, count, download] = [...row.children];
+    expect(share).toBe(screen.getByRole("button", { name: "Share" }));
+    expect(count).toHaveTextContent("Select Items");
+    expect(download).toBe(screen.getByRole("button", { name: "Download" }));
+    expect(screen.queryByRole("button", { name: "Zip" })).toBeNull();
+    expect(share).toBeDisabled();
+    expect(download).toBeDisabled();
+
+    fireEvent.click(image("a1"));
+    expect(count).toHaveTextContent("1 Photo Selected");
+    expect(bar).toHaveTextContent("Downloads as a ZIP file.");
+    // The HEIC option is a whole-row switch, not a small checkbox.
+    const option = screen.getByRole("switch", { name: "HEIC as JPEG" });
+    expect(option.closest("label")).toHaveClass("zip-status__option--row");
+
+    fireEvent.click(image("v1"));
+    expect(count).toHaveTextContent("2 Items Selected");
+    expect(bar).toHaveTextContent("Downloads together as one ZIP file.");
+    expect(share).toBeEnabled();
+    expect(download).toBeEnabled();
+  });
+
+  it("gives every select bar control a 44pt target (#259)", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = (selector: string) => {
+      const match = css.match(new RegExp(`${selector.replace(/[.[\]"]/g, "\\$&")} \\{([^}]*)\\}`));
+      return match?.[1] ?? "";
+    };
+    expect(rule(".mobile-library__select-row")).toMatch(/min-height: 49px/);
+    expect(rule(".mobile-library__bar-button")).toMatch(/min-width: 44px/);
+    expect(rule(".mobile-library__bar-button")).toMatch(/min-height: 44px/);
+    expect(rule(".zip-status__option--row")).toMatch(/min-height: 44px/);
   });
 
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
@@ -549,7 +600,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(a1Image);
     fireEvent.click(a2Image);
 
-    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
     clickSpy.mockRestore();
   });

@@ -6,26 +6,39 @@ export default function ZipStatus({
   jpeg,
   onJpegChange,
   showHeicOption = true,
+  variant = "inline",
 }: {
   state: ZipState;
   jpeg: boolean;
   onJpegChange: (value: boolean) => void;
   // #254: only when the selection contains a HEIC/HEIF photo.
   showHeicOption?: boolean;
+  // "row": the iPhone select bar's full-width settings row with a switch (#259).
+  variant?: "inline" | "row";
 }) {
+  const input = (
+    <input
+      type="checkbox"
+      role={variant === "row" ? "switch" : undefined}
+      checked={jpeg}
+      disabled={state.phase === "downloading"}
+      onChange={(event) => onJpegChange(event.target.checked)}
+    />
+  );
   return (
-    <span className="zip-status" data-testid="zip-status">
-      {showHeicOption && (
-        <label className="zip-status__option">
-          <input
-            type="checkbox"
-            checked={jpeg}
-            disabled={state.phase === "downloading"}
-            onChange={(event) => onJpegChange(event.target.checked)}
-          />
-          HEIC as JPEG
-        </label>
-      )}
+    <span className={variant === "row" ? "zip-status zip-status--row" : "zip-status"} data-testid="zip-status">
+      {showHeicOption &&
+        (variant === "row" ? (
+          <label className="zip-status__option zip-status__option--row">
+            <span className="zip-status__option-text">HEIC as JPEG</span>
+            {input}
+          </label>
+        ) : (
+          <label className="zip-status__option">
+            {input}
+            HEIC as JPEG
+          </label>
+        ))}
       {state.phase === "downloading" &&
         (state.progress.total && !state.progress.totalUnknown ? (
           <progress
