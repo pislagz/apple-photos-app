@@ -1777,29 +1777,8 @@ body {
 }
 
 .mobile-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-6) var(--space-8) var(--space-10);
-}
-
-.mobile-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.mobile-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-}
-
-.mobile-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  --filmstrip-slit-bg: var(--color-slit-bg);
+  margin: var(--space-6) 0 var(--space-10);
 }
 
 .mobile-viewer__info-sheet {
@@ -1971,30 +1950,11 @@ body {
 }
 
 .desktop-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-8) var(--space-14);
+  --filmstrip-slit-bg: var(--color-slit-bg-on-dark);
+  --filmstrip-playhead: var(--color-white);
+  padding: var(--space-8) 0;
+  box-sizing: content-box;
   background: var(--color-filmstrip-bg);
-}
-
-.desktop-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.desktop-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--color-white);
-}
-
-.desktop-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .desktop-viewer__info-panel {
@@ -2632,6 +2592,87 @@ body {
 .mobile-viewer :focus-visible {
   outline-color: var(--color-focus-viewer);
 }
+
+/* #221 centred scrubber. Cells are placed by transform from the strip's
+   centre (filmstripGeometry.ts); 250 ms ease-out is the snap/expand time from
+   the issue, a local constant until the #206 motion tokens land. No transition
+   while a finger or mouse is dragging so the strip tracks it one-to-one. */
+.mobile-viewer__filmstrip,
+.desktop-viewer__filmstrip {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.mobile-viewer__filmstrip[data-dragging="true"],
+.desktop-viewer__filmstrip[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.mobile-viewer__filmstrip__track,
+.desktop-viewer__filmstrip__track {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+}
+
+.mobile-viewer__filmstrip__item,
+.desktop-viewer__filmstrip__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border: none;
+  padding: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--filmstrip-slit-bg);
+  cursor: inherit;
+  transition:
+    transform 250ms ease-out,
+    width 250ms ease-out;
+}
+
+[data-dragging="true"] > * > .mobile-viewer__filmstrip__item,
+[data-dragging="true"] > * > .desktop-viewer__filmstrip__item {
+  transition: none;
+}
+
+.mobile-viewer__filmstrip__item img,
+.desktop-viewer__filmstrip__item img,
+.mobile-viewer__filmstrip__frames,
+.desktop-viewer__filmstrip__frames {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Video cell: the thumbnail repeated side by side as frames. */
+.mobile-viewer__filmstrip__frames,
+.desktop-viewer__filmstrip__frames {
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+}
+
+.mobile-viewer__filmstrip__playhead,
+.desktop-viewer__filmstrip__playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 1.5px;
+  background: var(--filmstrip-playhead, var(--color-white));
+  box-shadow: var(--shadow-playhead);
+  pointer-events: none;
+}
+
 
 /* Clipped or edge-to-edge containers: draw the ring inside. */
 .desktop-library__grid:focus-visible,
