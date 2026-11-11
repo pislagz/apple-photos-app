@@ -1135,15 +1135,22 @@ test.describe("viewer gestures (#214)", () => {
     test.describe(scheme, () => {
       test.use({ colorScheme: scheme });
 
-      async function openViewer(page: Page, kind: string, nth = 2) {
+      // Opens the first still photo (a video has no zoomable still).
+      async function openViewer(page: Page, kind: string) {
         await signIn(page);
         await openZoom(page, "All Photos");
-        const cell = cells(page).nth(nth);
-        await expect(cell).toBeVisible();
-        if (kind === "desktop") await cell.dblclick();
-        else await cell.tap();
-        await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
-        await page.waitForTimeout(800);
+        for (let nth = 1; nth < 9; nth++) {
+          const cell = cells(page).nth(nth);
+          await expect(cell).toBeVisible();
+          if (kind === "desktop") await cell.dblclick();
+          else await cell.tap();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(800);
+          if ((await page.locator(".viewer-still").count()) > 0) return;
+          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.waitForTimeout(400);
+        }
+        throw new Error("no still photo in the first cells");
       }
 
       test(`iPhone: mid page drag, mid dismiss drag, zoomed 2.5x (${scheme})`, async ({ page }, info) => {
@@ -1234,8 +1241,14 @@ test.describe("viewer gestures (#214)", () => {
     const page = await context.newPage();
     await signIn(page);
     await openZoom(page, "All Photos");
-    await cells(page).nth(2).tap();
-    await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+    for (let nth = 1; nth < 9; nth++) {
+      await cells(page).nth(nth).tap();
+      await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+      await page.waitForTimeout(500);
+      if ((await page.locator(".viewer-still").count()) > 0) break;
+      await page.getByRole("button", { name: "Close" }).first().click();
+      await page.waitForTimeout(400);
+    }
     await page.waitForTimeout(800);
     const cdp = await context.newCDPSession(page);
     const touch = (type: string, points: { x: number; y: number }[]) =>
