@@ -213,7 +213,7 @@ test("desktop cursor: arrow at fit, open hand when zoomed, closed hand while hel
   test.skip(info.project.name !== "desktop", "pointer cursors are the desktop layout");
   await signIn(page);
   await openAllPhotos(page);
-  await openCell(page, 0, false);
+  expect(await openCell(page, 0, false)).toBe(true);
   const box = (await page.getByTestId("desktop-viewer-stage").boundingBox())!;
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;
