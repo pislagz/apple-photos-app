@@ -218,6 +218,59 @@ def test_list_assets_filters_by_type(tmp_path):
         conn.close()
 
 
+def test_list_assets_flags_heic_originals_by_uti_then_extension(tmp_path):
+    """#254: the web shows "HEIC as JPEG" only when a selected item is HEIC."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(
+            conn,
+            library_id,
+            "heic-by-uti",
+            filename="IMG_1.JPG",
+            uti="public.jpeg",
+            uti_original="public.heic",
+            date_created="2024-01-05T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "jpeg-by-uti",
+            filename="IMG_2.HEIC",
+            uti="public.jpeg",
+            uti_original="public.jpeg",
+            date_created="2024-01-04T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "heif-by-name",
+            filename="IMG_3.HEIF",
+            date_created="2024-01-03T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "png-by-name",
+            filename="IMG_4.png",
+            date_created="2024-01-02T00:00:00",
+        )
+        _login(client, "alice")
+
+        items = client.get(f"/api/libraries/{library_id}/assets").json()["items"]
+
+        assert {item["id"]: item["is_heic"] for item in items} == {
+            "heic-by-uti": True,
+            "jpeg-by-uti": False,
+            "heif-by-name": True,
+            "png-by-name": False,
+        }
+    finally:
+        conn.close()
+
+
 def test_list_assets_unknown_album_is_404(tmp_path):
     """An album id that is not this library's 404s (it does not return an empty page)."""
     conn, client = _client(tmp_path)

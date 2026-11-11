@@ -5,22 +5,27 @@ export default function ZipStatus({
   state,
   jpeg,
   onJpegChange,
+  showHeicOption = true,
 }: {
   state: ZipState;
   jpeg: boolean;
   onJpegChange: (value: boolean) => void;
+  // #254: only when the selection contains a HEIC/HEIF photo.
+  showHeicOption?: boolean;
 }) {
   return (
     <span className="zip-status" data-testid="zip-status">
-      <label className="zip-status__option">
-        <input
-          type="checkbox"
-          checked={jpeg}
-          disabled={state.phase === "downloading"}
-          onChange={(event) => onJpegChange(event.target.checked)}
-        />
-        HEIC as JPEG
-      </label>
+      {showHeicOption && (
+        <label className="zip-status__option">
+          <input
+            type="checkbox"
+            checked={jpeg}
+            disabled={state.phase === "downloading"}
+            onChange={(event) => onJpegChange(event.target.checked)}
+          />
+          HEIC as JPEG
+        </label>
+      )}
       {state.phase === "downloading" &&
         (state.progress.total && !state.progress.totalUnknown ? (
           <progress
