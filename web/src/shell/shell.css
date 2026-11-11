@@ -2734,6 +2734,12 @@ body {
   animation: viewer-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* #220: the zoom from / to the tile (useZoomTransition) replaces the fade. */
+.mobile-viewer[data-zoom],
+.desktop-viewer[data-zoom] {
+  animation: none;
+}
+
 .mobile-viewer.is-closing,
 .desktop-viewer.is-closing {
   animation: viewer-out 0.18s ease-in forwards;

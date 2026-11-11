@@ -1336,3 +1336,93 @@ test.describe("viewer chrome (#211)", () => {
     });
   }
 });
+
+// #220 open/close zoom. Mid-animation frames: the Web Animations the zoom
+// creates are paused at creation (and the old CSS fade is frozen with a style
+// override, so the same spec also shoots the base for "before" pictures), then
+// scrubbed to a fixed point. ZOOM_TAG names the files ("before" / "after").
+test.describe("viewer zoom from and to the tile (#220)", () => {
+  const tag = process.env.ZOOM_TAG ?? "after";
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      // The freeze style below is injected, which the app's CSP (rightly) blocks.
+      test.use({ colorScheme: scheme, bypassCSP: true });
+
+      async function freeze(page: Page) {
+        await page.addInitScript(() => {
+          const w = window as unknown as { __anims: Animation[] };
+          w.__anims = [];
+          const original = Element.prototype.animate;
+          Element.prototype.animate = function (this: Element, ...args: Parameters<typeof original>) {
+            const animation = original.apply(this, args);
+            animation.pause();
+            w.__anims.push(animation);
+            return animation;
+          };
+          const style = document.createElement("style");
+          style.textContent =
+            ".mobile-viewer,.desktop-viewer{animation-play-state:paused !important;animation-delay:-0.1s !important}" +
+            ".mobile-viewer.is-closing,.desktop-viewer.is-closing{animation-delay:-0.09s !important}";
+          document.addEventListener("DOMContentLoaded", () => document.head.append(style));
+        });
+      }
+
+      async function scrub(page: Page, fraction: number) {
+        return page.evaluate((f) => {
+          const anims = (window as unknown as { __anims: Animation[] }).__anims;
+          for (const a of anims) {
+            const timing = a.effect!.getTiming();
+            a.currentTime = (timing.duration as number) * f;
+          }
+          return anims.length;
+        }, fraction);
+      }
+
+      async function release(page: Page) {
+        await page.evaluate(() => {
+          const w = window as unknown as { __anims: Animation[] };
+          for (const a of w.__anims) a.finish();
+          w.__anims = [];
+        });
+      }
+
+      for (const kind of ["iphone", "desktop"] as const) {
+        test(`${kind}: open and close mid-frames (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== kind, `${kind} only`);
+          await freeze(page);
+          await signIn(page);
+          await openZoom(page, "All Photos");
+          await expect(cells(page).nth(2)).toBeVisible();
+          await page.waitForLoadState("networkidle");
+          const cell = cells(page).nth(2);
+          if (kind === "desktop") await cell.dblclick();
+          else await cell.tap();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(300);
+          const created = await scrub(page, 0.45);
+          if (tag === "after") expect(created, "zoom animations").toBeGreaterThan(0);
+          await shot(page, `30-zoom-open-mid-${tag}-${scheme}`, info.project.name);
+          await release(page);
+          await page.waitForTimeout(600);
+
+          if (kind === "desktop") {
+            // Close after paging: it must land in the tile of the new item.
+            await page.keyboard.press("ArrowRight");
+            await page.keyboard.press("ArrowRight");
+            await page.waitForTimeout(500);
+          }
+          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.waitForTimeout(100);
+          await scrub(page, 0.5);
+          await shot(page, `31-zoom-close-mid-${tag}-${scheme}`, info.project.name);
+          await scrub(page, 0.85);
+          await shot(page, `32-zoom-close-late-${tag}-${scheme}`, info.project.name);
+          // Some synthetic demo assets answer GET /assets/{id} with a 500 (a
+          // server-side serialisation error on the demo data, unrelated to the
+          // zoom); paging onto one must not fail this picture test.
+          consoleErrors = consoleErrors.filter((m) => !/status of 500/.test(m));
+        });
+      }
+    });
+  }
+});

@@ -1,4 +1,4 @@
-import { type CSSProperties, type TouchEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
@@ -10,6 +10,8 @@ import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { useZoomTransition } from "./useZoomTransition";
+import { type ZoomFrame, dragFrame } from "./zoomTransition";
 import { ViewerStill } from "./ViewerStill";
 import { previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
@@ -24,6 +26,9 @@ export interface ViewerProps {
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  // #220: scroll the grid behind so this item's tile is on screen; called as
+  // paging moves on, so the close zoom has a tile to land on.
+  revealItem?: (id: string) => void;
 }
 
 const LONG_PRESS_MS = 450;
@@ -63,9 +68,15 @@ interface Gesture {
 // `items` is that view's own array, so a hidden asset from Library (P1.13)
 // can never appear here), swipe down to dismiss, pinch/double-tap zoom,
 // bottom filmstrip, and an info sheet instead of a permanent panel.
-export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow }: ViewerProps) {
-  const { closing, dismiss: onClose } = useDismiss(onCloseNow);
+export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
+  // #220: zoom back into the current item's tile; a swipe-down hands over its
+  // last frame so the close continues from where the finger left the photo.
+  const { zoomOut } = useZoomTransition({ rootRef, stageRef, item });
+  const { closing, dismiss } = useDismiss<ZoomFrame>(onCloseNow, zoomOut);
+  const onClose = useCallback(() => dismiss(), [dismiss]);
   const detail = useAssetDetail(libraryId, item?.id ?? null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
@@ -81,13 +92,14 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   // True while a release (settle, spring-back, tap zoom) animates.
   const [animating, setAnimating] = useState(false);
   const scale = view.scale;
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   // D59: the library behind is inert while the Viewer is open; focus goes back
   // to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
-  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  const shownId = useRef(item?.id);
+  shownId.current = item?.id;
+  // The tile the close zoom lands on; the opener's if that one is gone.
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(shownId.current) ?? thumbnailFor(openedFromId.current) });
   // D23/D59: the Info sheet covers the toolbar and filmstrip, so while it is
   // open only the sheet is reachable; closing it puts focus back on Info.
   useFocusScope(sheetRef, {
@@ -131,6 +143,15 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       longPressTimer.current = null;
     }
   }
+
+  const revealRef = useRef(revealItem);
+  revealRef.current = revealItem;
+  const firstItem = useRef(true);
+  useEffect(() => {
+    if (!item?.id) return;
+    if (firstItem.current) firstItem.current = false;
+    else revealRef.current?.(item.id);
+  }, [item?.id]);
 
   useEffect(() => {
     setView(g.FIT);
@@ -355,7 +376,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       }
     } else if (mode === "dismiss") {
       if (g.shouldDismiss(state.dy, velocity.y)) {
-        onClose();
+        dismiss(dragFrame(drag, g.dismissLook(drag.y).scale));
       } else {
         animate(() => setDrag({ x: 0, y: 0 }));
       }

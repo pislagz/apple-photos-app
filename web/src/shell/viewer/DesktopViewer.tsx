@@ -1,4 +1,4 @@
-import { type CSSProperties, type MouseEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
@@ -10,6 +10,7 @@ import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { useZoomTransition } from "./useZoomTransition";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
 import { buildInfoRows, formatPlaceName } from "./viewerInfo";
@@ -23,6 +24,9 @@ export interface ViewerProps {
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  // #220: scroll the grid behind so this item's tile is on screen; called as
+  // paging moves on, so the close zoom has a tile to land on.
+  revealItem?: (id: string) => void;
 }
 
 // P1.16 desktop Viewer: filmstrip, double-click/wheel zoom with drag-to-pan,
@@ -30,9 +34,14 @@ export interface ViewerProps {
 // of the fields the mobile sheet shows). `items` is the Library view's own
 // array -- Esc/arrows only ever move within it, so a hidden asset (P1.13)
 // stays unreachable here exactly like it is from the grid.
-export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow }: ViewerProps) {
-  const { closing, dismiss: onClose } = useDismiss(onCloseNow);
+export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
+  // #220: zoom from / back into the tile of the item being shown.
+  const { zoomOut } = useZoomTransition({ rootRef, stageRef, item });
+  const { closing, dismiss } = useDismiss(onCloseNow, zoomOut);
+  const onClose = useCallback(() => dismiss(), [dismiss]);
   const detail = useAssetDetail(libraryId, item?.id ?? null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
@@ -44,15 +53,25 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const [animating, setAnimating] = useState(false);
   const scale = view.scale;
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
-  const rootRef = useRef<HTMLDivElement | null>(null);
 
   // D59: the grid behind is inert while the Viewer is open, and focus goes
   // back to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
-  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  const shownId = useRef(item?.id);
+  shownId.current = item?.id;
+  // The tile the close zoom lands on; the opener's if that one is gone.
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(shownId.current) ?? thumbnailFor(openedFromId.current) });
+
+  const revealRef = useRef(revealItem);
+  revealRef.current = revealItem;
+  const firstItem = useRef(true);
+  useEffect(() => {
+    if (!item?.id) return;
+    if (firstItem.current) firstItem.current = false;
+    else revealRef.current?.(item.id);
+  }, [item?.id]);
 
   useEffect(() => {
     setView(g.FIT);
