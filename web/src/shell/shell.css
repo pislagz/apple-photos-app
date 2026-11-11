@@ -4,6 +4,24 @@
   box-sizing: border-box;
 }
 
+/* #255: like Photos, the arrow stays the arrow over buttons, menu items, rows
+   and tiles -- including their padding and gaps, so it never flickers to the
+   hand. Only links in running text keep the browser's hand. */
+button,
+summary,
+label,
+select,
+input[type="checkbox"],
+input[type="radio"],
+[role="button"],
+[role="menuitem"],
+[role="menuitemradio"],
+[role="option"],
+[role="tab"],
+.account-menu a {
+  cursor: default;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -138,7 +156,7 @@ body {
   font-weight: var(--font-weight-medium);
   padding: var(--space-6) var(--space-12);
   border-radius: var(--radius-13);
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   flex: 0 0 auto;
 }
@@ -237,7 +255,7 @@ body {
   border: none;
   background: transparent;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-library__tile-image {
@@ -306,7 +324,7 @@ body {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-library__cell-wrap {
@@ -361,7 +379,7 @@ body {
   color: var(--accent);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-library__select-bar button:disabled {
@@ -392,7 +410,7 @@ body {
   background: transparent;
   color: var(--color-label-tab);
   padding: var(--space-2) 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .tab-bar__item[aria-current="page"] {
@@ -445,7 +463,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-screen__back-icon {
@@ -512,7 +530,7 @@ body {
   font-size: var(--font-size-body-lg);
   color: var(--color-label);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .more-screen__group li:last-child .more-screen__item {
@@ -598,7 +616,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .hidden-unlock__submit {
@@ -768,7 +786,7 @@ body {
   padding: var(--space-12);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-  cursor: pointer;
+  cursor: default;
 }
 
 .login-card__passkey {
@@ -779,7 +797,7 @@ body {
   border: none;
   padding: var(--space-10);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -865,7 +883,7 @@ body {
   color: var(--color-label);
   padding: var(--space-5) var(--space-8);
   border-radius: var(--radius-small);
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__icon {
@@ -981,7 +999,7 @@ body {
   font-size: var(--font-size-caption);
   padding: var(--space-4) var(--space-12);
   border-radius: var(--radius-xs-2);
-  cursor: pointer;
+  cursor: default;
 }
 
 .segmented-control__item[aria-selected="true"] {
@@ -1004,7 +1022,7 @@ body {
   background: transparent;
   border-radius: var(--radius-small);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 .toolbar-button:hover:not(:disabled) {
@@ -1225,7 +1243,7 @@ body {
   border: 0;
   overflow: hidden;
   background: var(--color-placeholder);
-  cursor: pointer;
+  cursor: default;
 }
 
 .hidden-view__thumb {
@@ -1277,7 +1295,7 @@ body {
   border-radius: var(--radius-small);
   font-size: var(--font-size-subhead);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 .desktop-library__context-menu button:hover {
@@ -1314,7 +1332,7 @@ body {
   border-radius: var(--radius-small);
   font-size: var(--font-size-subhead);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 .desktop-library__filter-menu button:hover {
@@ -1353,7 +1371,7 @@ body {
   border: none;
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+  cursor: default;
   padding: 0;
   font-size: var(--font-size-caption);
   text-align: left;
@@ -1396,7 +1414,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 .account-menu__trigger-icon {
@@ -1449,7 +1467,7 @@ body {
   background: transparent;
   border-radius: var(--radius-small);
   padding: var(--space-5) var(--space-6);
-  cursor: pointer;
+  cursor: default;
   color: var(--color-label);
 }
 
@@ -1560,7 +1578,7 @@ body {
   border: none;
   background: transparent;
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 
@@ -1638,7 +1656,7 @@ body {
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-viewer__play-icon {
@@ -1665,7 +1683,7 @@ body {
   border: none;
   padding: 0;
   opacity: 0.6;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-viewer__filmstrip__item[data-selected="true"] {
@@ -1700,7 +1718,7 @@ body {
   border: none;
   background: transparent;
   color: var(--color-white);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-viewer__info-rows__row {
@@ -1817,7 +1835,7 @@ body {
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .desktop-viewer__filmstrip {
@@ -1833,7 +1851,7 @@ body {
   border: none;
   padding: 0;
   opacity: 0.6;
-  cursor: pointer;
+  cursor: default;
 }
 
 .desktop-viewer__filmstrip__item[data-selected="true"] {
@@ -1934,7 +1952,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .passkeys__list {
@@ -1970,7 +1988,7 @@ body {
   background: transparent;
   color: var(--color-danger);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
 }
 
 .passkeys__add {
@@ -1984,7 +2002,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .change-password__submit {
@@ -2010,12 +2028,12 @@ body {
   color: var(--accent);
   font-size: var(--font-size-caption);
   padding: 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__folder > summary {
   list-style: none;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__folder > summary::-webkit-details-marker {
@@ -2063,7 +2081,7 @@ body {
   font-size: var(--font-size-body-lg);
   color: var(--color-label);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .albums-list li:last-child .albums-list__item {
@@ -2133,7 +2151,7 @@ body {
   padding: 0;
   font: inherit;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .people-face {
@@ -2283,7 +2301,7 @@ body {
   border-radius: var(--radius-10);
   background: var(--color-placeholder-map);
   box-shadow: var(--shadow-pin);
-  cursor: pointer;
+  cursor: default;
 }
 
 .map-pin img {
@@ -2386,7 +2404,7 @@ body {
   color: var(--color-white);
   font-size: var(--font-size-subhead);
   line-height: 18px;
-  cursor: pointer;
+  cursor: default;
 }
 
 .search-box--desktop {
@@ -2513,7 +2531,7 @@ body {
   border-radius: var(--radius-small);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar-toggle:hover {
@@ -2658,7 +2676,7 @@ body {
   border-radius: 50%;
   background: transparent;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 /* D5: Info panel / sheet note for an asset with no full-size original. */
@@ -2775,7 +2793,7 @@ body {
   color: inherit;
   font: italic var(--font-weight-semibold) var(--font-size-micro) / 1 serif;
   opacity: 0.65;
-  cursor: pointer;
+  cursor: default;
 }
 .place-hint__button:hover,
 .place-hint__button:focus-visible {

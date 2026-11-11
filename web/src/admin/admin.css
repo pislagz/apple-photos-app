@@ -46,7 +46,7 @@ body:has(.admin-app, .admin-auth) {
   color: var(--color-label);
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .admin-nav button[aria-current="true"] {
@@ -186,7 +186,7 @@ body:has(.admin-app, .admin-auth) {
   background: var(--color-fill-subtle);
   color: var(--accent);
   font: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 .admin-main form > button[type="submit"],
@@ -415,6 +415,6 @@ body:has(.admin-app, .admin-auth) {
   background: none;
   color: inherit;
   text-decoration: underline;
-  cursor: pointer;
+  cursor: default;
   font: inherit;
 }

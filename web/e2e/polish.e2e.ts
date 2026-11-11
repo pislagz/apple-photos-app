@@ -167,3 +167,31 @@ test("compact view switch follows the container width, not the viewport", async 
   expect(await onOneLine()).toBe(true);
   expect(await page.evaluate(() => window.innerWidth)).toBe(info.project.name === "small" ? 320 : 390);
 });
+
+// #255: one cursor across a whole menu row -- padding, label and the gap to
+// the next item -- so it never flickers between the hand and the arrow.
+test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "hover cursors are a desktop concern");
+  await signIn(page);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const popover = page.locator(".account-menu__popover");
+  await expect(popover).toBeVisible();
+  const cursorsAcross = async (selector: string) =>
+    page.locator(selector).evaluateAll((elements) => {
+      const seen = new Set<string>();
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect();
+        for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) {
+          for (const fy of [0.1, 0.5, 0.9]) {
+            const hit = document.elementFromPoint(rect.left + rect.width * fx, rect.top + rect.height * fy);
+            if (hit) seen.add(getComputedStyle(hit).cursor);
+          }
+        }
+      }
+      return [...seen];
+    });
+  expect(await cursorsAcross(".account-menu__popover :is(a, button)")).toEqual(["default"]);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(popover).toHaveCount(0);
+  expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
+});
