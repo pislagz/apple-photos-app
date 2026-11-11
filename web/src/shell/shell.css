@@ -344,6 +344,13 @@ body {
   right: 5px;
 }
 
+/* A selected video's duration steps left of the check badge (22 px + 5 px
+   inset + 4 px gap) so the two never overlap. */
+.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration,
+.desktop-library__cell[data-selected="true"] .desktop-library__duration {
+  right: 31px;
+}
+
 /* Selected: a 25 % white dim plus a 22 px accent check, bottom-right. */
 .mobile-library__cell-wrap::after,
 .mobile-library__row-feature::after,
