@@ -16,6 +16,8 @@ import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
 import { usePinchColumns } from "./usePinchColumns";
+import FadeImage from "./FadeImage";
+import { useSlidingPill } from "./useSlidingPill";
 
 const HEADER_ROW_HEIGHT = 32;
 const DEFAULT_COLUMNS = 4;
@@ -95,6 +97,7 @@ export default function MobileLibrary({
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
+  const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState(false);
 
@@ -268,7 +271,7 @@ export default function MobileLibrary({
         </div>
       )}
       {!selectMode && !album && (
-        <div className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
+        <div ref={segmentRef} className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
           {VIEWS.map((item) => (
             <button
               key={item.key}
@@ -350,7 +353,7 @@ export default function MobileLibrary({
                 const hero = row.items[0];
                 return (
                   <div key={row.key} style={style} className="mobile-library__row-feature">
-                    <img
+                    <FadeImage
                       src={`/api/libraries/${libraryId}/thumb/${hero.id}?size=grid2x`}
                       alt={assetAlt(hero)}
                       loading="lazy"
@@ -376,7 +379,7 @@ export default function MobileLibrary({
                       className="mobile-library__cell-wrap"
                       style={{ width: cellSize, height: cellSize }}
                     >
-                      <img
+                      <FadeImage
                         src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
                         alt={assetAlt(item)}
                         data-asset-id={item.id}

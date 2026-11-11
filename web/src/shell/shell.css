@@ -141,6 +141,9 @@ body {
   cursor: pointer;
   white-space: nowrap;
   flex: 0 0 auto;
+  position: relative;
+  z-index: 1;
+  transition: color var(--dur-slide) var(--ease-slide);
 }
 
 /* Narrow container (320px phones, or any narrower host): tighten so all four
@@ -156,6 +159,12 @@ body {
   background: var(--material-pill-selected);
   color: var(--color-black);
   font-weight: var(--font-weight-bold);
+  box-shadow: var(--shadow-pill-selected);
+}
+
+.mobile-library__view-switch[data-pill]::before {
+  background: var(--material-pill-selected);
+  border-radius: var(--radius-13);
   box-shadow: var(--shadow-pill-selected);
 }
 
@@ -322,6 +331,9 @@ body {
   border-radius: 50%;
   border: 1.5px solid var(--color-white);
   background: var(--scrim-badge);
+  transition:
+    background-color var(--dur-select) var(--ease-select),
+    border-color var(--dur-select) var(--ease-select);
 }
 
 .mobile-library__select-badge[data-selected="true"] {
@@ -804,10 +816,10 @@ body {
   overflow-x: hidden;
   overflow-y: auto;
   transition:
-    flex-basis 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-    width 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-    padding 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.2s ease;
+    flex-basis var(--dur-zoom) var(--ease-zoom),
+    width var(--dur-zoom) var(--ease-zoom),
+    padding var(--dur-zoom) var(--ease-zoom),
+    opacity var(--dur-chrome) var(--ease-chrome);
   background: var(--material-sidebar);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -968,6 +980,7 @@ body {
 }
 
 .segmented-control {
+  position: relative;
   display: flex;
   background: var(--color-hover);
   border-radius: var(--radius-small-2);
@@ -982,12 +995,48 @@ body {
   padding: var(--space-4) var(--space-12);
   border-radius: var(--radius-xs-2);
   cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .segmented-control__item[aria-selected="true"] {
   background: var(--color-segment-selected);
   font-weight: var(--font-weight-semibold);
   box-shadow: var(--shadow-segment);
+}
+
+/* #206 sliding pill. useSlidingPill measures the selected item and sets
+   --pill-x/-y/-w/-h on the container; once it has (data-pill), the pill is a
+   pseudo-element under the items that slides with transform only, and the
+   selected item drops its own background. Without a measurement (first paint,
+   no layout) the item paints its own background as before. */
+.segmented-control[data-pill]::before,
+.mobile-library__view-switch[data-pill]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--pill-w);
+  height: var(--pill-h);
+  transform: translate(var(--pill-x), var(--pill-y));
+  pointer-events: none;
+}
+
+.segmented-control[data-pill="ready"]::before,
+.mobile-library__view-switch[data-pill="ready"]::before {
+  transition: transform var(--dur-slide) var(--ease-slide);
+}
+
+.segmented-control[data-pill]::before {
+  background: var(--color-segment-selected);
+  border-radius: var(--radius-xs-2);
+  box-shadow: var(--shadow-segment);
+}
+
+.segmented-control[data-pill] .segmented-control__item[aria-selected="true"],
+.mobile-library__view-switch[data-pill] .mobile-library__view-switch-item[aria-selected="true"] {
+  background: transparent;
+  box-shadow: none;
 }
 
 .desktop-library__view-switch-item[aria-selected="true"] {
@@ -1040,6 +1089,7 @@ body {
   border-left: 1px solid var(--color-hairline);
   padding: var(--space-16);
   overflow-y: auto;
+  animation: panel-in var(--dur-slide) var(--ease-slide);
 }
 
 .desktop-library__info-empty {
@@ -1124,6 +1174,12 @@ body {
   cursor: default;
 }
 
+.desktop-library__cell {
+  /* A transparent ring at rest so selecting only changes its colour (#206). */
+  box-shadow: 0 0 0 3px transparent;
+  transition: box-shadow var(--dur-select) var(--ease-select);
+}
+
 .desktop-library__cell[data-selected="true"] {
   border-radius: var(--radius-small);
   box-shadow: 0 0 0 3px var(--accent);
@@ -1142,7 +1198,7 @@ body {
   color: var(--color-white);
   font-size: var(--font-size-caption);
   text-shadow: var(--text-shadow-overlay);
-  transition: opacity 0.1s ease;
+  transition: opacity var(--dur-tint) var(--ease-tint);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1267,6 +1323,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--shadow-menu);
+  animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
 .desktop-library__context-menu button {
@@ -1302,6 +1359,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   box-shadow: var(--shadow-menu);
+  animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
 .desktop-library__filter-menu button {
@@ -1691,6 +1749,7 @@ body {
   background: var(--surface-dark);
   border-radius: var(--radius-14) var(--radius-14) 0 0;
   padding: var(--space-16);
+  animation: sheet-in var(--dur-slide) var(--ease-slide);
 }
 
 .mobile-viewer__info-sheet-close {
@@ -1854,6 +1913,7 @@ body {
   color: var(--color-label);
   padding: var(--space-16);
   overflow-y: auto;
+  animation: panel-in var(--dur-slide) var(--ease-slide);
 }
 
 .desktop-viewer__info-rows__row {
@@ -2035,7 +2095,7 @@ body {
 
 .sidebar__disclosure {
   color: var(--color-label-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-tint) var(--ease-tint);
 }
 
 .sidebar__folder[open] > summary > .sidebar__disclosure {
@@ -2526,7 +2586,7 @@ body {
 
 .shell--desktop .toolbar,
 .shell--desktop .desktop-library__toolbar {
-  transition: padding-left 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: padding-left var(--dur-zoom) var(--ease-zoom);
 }
 
 .shell--sidebar-collapsed .sidebar {
@@ -2547,12 +2607,12 @@ body {
 /* Tab bar: the selected tab tints and its glyph settles in; presses dip. */
 .tab-bar__item {
   transition:
-    color 0.2s ease,
-    transform 0.12s ease;
+    color var(--dur-tint) var(--ease-tint),
+    transform var(--dur-press) var(--ease-press);
 }
 
 .tab-bar__icon {
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform var(--dur-zoom) var(--ease-spring);
 }
 
 .tab-bar__item[aria-current="page"] .tab-bar__icon {
@@ -2568,37 +2628,89 @@ body {
 @keyframes viewer-in {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(var(--scale-viewer));
   }
 }
 
 @keyframes viewer-out {
   to {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(var(--scale-viewer));
   }
+}
+
+/* #206 enter animations for things that mount (CSS only, no exit): menus fade
+   and drop in by --shift-menu, the phone info sheet slides up, the desktop info
+   panels slide in from the right. Reduced motion zeroes the shifts. */
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--shift-menu)));
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--shift-panel));
+  }
+}
+
+/* Viewer bars show and hide with opacity. Nothing in the viewer hides them
+   yet; a later chrome change (#211) sets data-chrome="hidden" on the viewer. */
+.mobile-viewer__topbar,
+.mobile-viewer__filmstrip,
+.desktop-viewer__filmstrip {
+  transition: opacity var(--dur-chrome) var(--ease-chrome);
+}
+
+[data-chrome="hidden"] .mobile-viewer__topbar,
+[data-chrome="hidden"] .mobile-viewer__filmstrip,
+[data-chrome="hidden"] .desktop-viewer__filmstrip {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Thumbnail placeholder to image (FadeImage sets data-loaded). */
+.fade-image {
+  transition: opacity var(--dur-image-fade) var(--ease-image-fade);
+}
+
+.fade-image[data-loaded="false"] {
+  opacity: 0;
 }
 
 .mobile-viewer,
 .desktop-viewer {
-  animation: viewer-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: viewer-in var(--dur-fade-open) var(--ease-fade-open);
 }
 
 .mobile-viewer.is-closing,
 .desktop-viewer.is-closing {
-  animation: viewer-out 0.18s ease-in forwards;
+  animation: viewer-out var(--dur-fade-open) var(--ease-fade-open) forwards;
   pointer-events: none;
 }
 
+/* The tokens (tokens.css) zero durations and travel distances; this blanket
+   rule also catches anything that does not use a token. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    /* motion-allow: reduced-motion safety net */
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    animation-delay: 0s !important;
+    animation-delay: 0s !important; /* motion-allow: safety net */
+    /* motion-allow: reduced-motion safety net */
     transition-duration: 0.001ms !important;
-    transition-delay: 0s !important;
+    transition-delay: 0s !important; /* motion-allow: safety net */
     scroll-behavior: auto !important;
   }
 
