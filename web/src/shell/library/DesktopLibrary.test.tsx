@@ -285,6 +285,86 @@ describe("DesktopLibrary", () => {
     };
   }
 
+  describe("double-click reliability (#265)", () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00"), makeItem("a3", "2024-05-08T10:00:00")];
+    function mockWithDetail() {
+      mockFetch((url) => {
+        if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+        const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+        if (match) return mockDetail(match[1]);
+        throw new Error(`unexpected request: ${url}`);
+      });
+    }
+
+    async function renderAllPhotos() {
+      mockWithDetail();
+      const view = render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+      await screen.findAllByRole("img");
+      return view;
+    }
+
+    it("opens an unselected photo on the first double-click, even before the browser's dblclick", async () => {
+      const { container } = await renderAllPhotos();
+      const target = cells(container)[2];
+      fireEvent.click(target, { detail: 1 });
+      fireEvent.click(target, { detail: 2 });
+      const viewer = await screen.findByTestId("desktop-viewer");
+      expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a3");
+    });
+
+    it("opens the first photo when a re-layout moved another tile under the same spot", async () => {
+      const { container } = await renderAllPhotos();
+      fireEvent.click(cells(container)[0], { clientX: 40, clientY: 40 });
+      fireEvent.click(cells(container)[1], { clientX: 42, clientY: 41 });
+      const viewer = await screen.findByTestId("desktop-viewer");
+      expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a1");
+    });
+
+    it("two clicks on different tiles far apart only select", async () => {
+      const { container } = await renderAllPhotos();
+      fireEvent.click(cells(container)[0], { clientX: 10, clientY: 10 });
+      fireEvent.click(cells(container)[2], { clientX: 300, clientY: 10 });
+      expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+      expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
+    });
+
+    it("the browser's dblclick after our own detection does not open twice", async () => {
+      const { container } = await renderAllPhotos();
+      const target = cells(container)[1];
+      fireEvent.click(target);
+      fireEvent.click(target);
+      await screen.findByTestId("desktop-viewer");
+      fireEvent.click(screen.getByLabelText("Close"));
+      fireEvent.doubleClick(target);
+      expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    });
+
+    it("selecting a tile keeps every tile and image element (no remount, no re-decode)", async () => {
+      const { container } = await renderAllPhotos();
+      const before = cells(container).map((cell) => [cell, cell.querySelector("img")]);
+      fireEvent.click(cells(container)[1]);
+      expect(cells(container)[1]).toHaveAttribute("data-selected", "true");
+      const after = cells(container).map((cell) => [cell, cell.querySelector("img")]);
+      after.forEach(([cell, img], i) => {
+        expect(cell).toBe(before[i][0]);
+        expect(img).toBe(before[i][1]);
+      });
+    });
+
+    it("a click doesn't scroll the grid to the clicked tile", async () => {
+      const { container } = await renderAllPhotos();
+      const grid = screen.getByTestId("desktop-library-grid");
+      const scrollTo = vi.fn();
+      grid.scrollTo = scrollTo as unknown as typeof grid.scrollTo;
+      const before = grid.scrollTop;
+      fireEvent.click(cells(container)[2]);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(grid.scrollTop).toBe(before);
+    });
+  });
+
   it("opens the Viewer on a double-click in All Photos, at the clicked item's position, and closing it restores the grid", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
