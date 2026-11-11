@@ -132,6 +132,8 @@ test("photos open fitted, zoom out stops at fit, zoomed pan is clamped in both a
     expect(fit.rect.y).toBeGreaterThanOrEqual(-1);
     expect(fit.rect.x + fit.rect.w).toBeLessThanOrEqual(fit.vw + 1);
     expect(fit.rect.y + fit.rect.h).toBeLessThanOrEqual(fit.vh + 1);
+    const fitStage = (await page.locator('[data-testid$="-viewer-stage"]').boundingBox())!;
+    expect(Math.min(Math.abs(fit.rect.w - fitStage.width), Math.abs(fit.rect.h - fitStage.height))).toBeLessThanOrEqual(1);
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-267-fit-${kind}.png` });
 
     const centre: [number, number] = [fit.rect.x + fit.rect.w / 2, fit.rect.y + fit.rect.h / 2];
