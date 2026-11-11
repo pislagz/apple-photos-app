@@ -1081,7 +1081,6 @@ body {
   overscroll-behavior: contain;
   position: relative;
   background: var(--color-bg-window);
-  padding: 0 1px;
 }
 
 /* Date-range large title overlaid on the grid's first row, like
@@ -1113,6 +1112,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 var(--space-8);
+  padding-bottom: var(--space-8);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-subhead);
 }
@@ -1120,12 +1120,11 @@ body {
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-tile);
   cursor: default;
 }
 
 .desktop-library__cell[data-selected="true"] {
-  border-radius: var(--radius-small);
   box-shadow: 0 0 0 3px var(--accent);
 }
 

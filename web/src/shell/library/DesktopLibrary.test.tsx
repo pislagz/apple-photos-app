@@ -6,7 +6,8 @@ import DesktopLibrary from "./DesktopLibrary";
 import { useFakeLayout } from "../../testLayout";
 
 // Virtualized grids need a sized viewport; jsdom has none (#88).
-useFakeLayout();
+// 912 px at the default 150 px edge (2 px gap) is exactly 6 columns, which these key-move tests assume.
+useFakeLayout({ width: 912 });
 
 function makeItem(id: string, date: string, overrides: Partial<AssetListItem> = {}): AssetListItem {
   return {
@@ -109,7 +110,7 @@ describe("DesktopLibrary", () => {
     expect(img.getAttribute("src")).toContain("size=grid");
     expect(img.getAttribute("src")).not.toContain("size=grid2x");
 
-    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "4" } });
     await waitFor(() => expect(img.getAttribute("src")).toContain("size=grid2x"));
   });
 
@@ -225,6 +226,34 @@ describe("DesktopLibrary", () => {
       },
       SLOW_WAIT,
     );
+  });
+
+  it("keeps the item at the viewport centre at the centre after a zoom change (#207)", async () => {
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    // Fake layout: 600 px viewport, so centre = scrollTop + 300. Put the
+    // centre inside the row holding p20 (6 columns, ~152 px rows).
+    const rowOf = (id: string) => {
+      const row = (container.querySelector(`[data-asset-id="${id}"]`) as HTMLElement).parentElement as HTMLElement;
+      const top = Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1]);
+      return { top, bottom: top + parseFloat(row.style.height) };
+    };
+    const before = rowOf("p20");
+    grid.scrollTop = (before.top + before.bottom) / 2 - 300;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p20"]')).not.toBeNull());
+
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "3" } });
+    await waitFor(() => {
+      const row = rowOf("p20");
+      const centre = grid.scrollTop + 300;
+      expect(row.top).toBeLessThanOrEqual(centre);
+      expect(row.bottom).toBeGreaterThan(centre);
+    });
   });
 
   it("keeps a hidden asset out of the grid, cmd-A selection, and the count", async () => {

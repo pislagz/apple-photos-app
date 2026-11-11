@@ -1127,3 +1127,47 @@ for (const scheme of ["light", "dark"] as const) {
     await snap("viewer");
   });
 }
+
+// #207: the desktop grid at every zoom stop, light and dark, plus the narrow and
+// wide windows at the default zoom. With the edge-length stops (max 4) the last
+// tile must end flush with the grid's right edge.
+for (const scheme of ["light", "dark"] as const) {
+  test(`desktop grid zoom stops and widths, ${scheme} (#207)`, async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    const slider = page.locator('input[type="range"][aria-label="Zoom"]');
+    const setZoom = async (value: number) => {
+      await slider.evaluate((el, v) => {
+        const input = el as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        setter.call(input, String(v));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+      await page.waitForTimeout(400);
+    };
+    const max = Number(await slider.getAttribute("max"));
+    for (let stop = 0; stop <= max; stop++) {
+      await setZoom(stop);
+      if (max === 4) {
+        const flush = await page.evaluate(() => {
+          const grid = document.querySelector('[data-testid="desktop-library-grid"]') as HTMLElement;
+          const right = grid.getBoundingClientRect().left + grid.clientWidth;
+          const rows = [...grid.querySelectorAll(".desktop-library__row-grid")];
+          const edges = rows.map((row) => Math.max(...[...row.children].map((c) => c.getBoundingClientRect().right)));
+          return { right, maxEdge: Math.max(...edges) };
+        });
+        expect(Math.abs(flush.maxEdge - flush.right), `stop ${stop} right edge`).toBeLessThan(0.51);
+      }
+      await shot(page, `20-desktop-grid-${scheme}-zoom${stop}`, info.project.name);
+    }
+    await setZoom(2);
+    for (const width of [1024, 1920]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(500);
+      await shot(page, `21-desktop-grid-${scheme}-w${width}`, info.project.name);
+    }
+  });
+}
