@@ -62,6 +62,7 @@ export default function MobileLibrary({
     album ?? null,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
+  const libraryEmpty = summary !== null && summary.years.length === 0;
   const pinchAnchor = useRef<PinchAnchor | null>(null);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
@@ -275,6 +276,8 @@ export default function MobileLibrary({
               type="button"
               role="tab"
               aria-selected={view === item.key}
+              // #263: nothing to group into years or months yet.
+              disabled={libraryEmpty && (item.key === "years" || item.key === "months")}
               className="mobile-library__view-switch-item"
               onClick={() => {
                 // A direct tab tap is not a drill-down (`openTile` below) --

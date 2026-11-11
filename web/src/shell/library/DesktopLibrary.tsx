@@ -152,6 +152,7 @@ export default function DesktopLibrary({
   const pendingDownRef = useRef<{ id: string; column: number; count: number } | null>(null);
 
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
+  const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
@@ -613,6 +614,8 @@ export default function DesktopLibrary({
               type="button"
               role="tab"
               aria-selected={view === item.key}
+              // #263: nothing to group into years or months yet.
+              disabled={libraryEmpty && (item.key === "years" || item.key === "months")}
               className="segmented-control__item"
               onClick={() => setView(item.key)}
             >

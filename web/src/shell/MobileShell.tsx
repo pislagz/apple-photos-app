@@ -5,7 +5,6 @@ import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
-import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
 import PeopleScreen from "./people/PeopleScreen";
 import PlacesScreen from "./map/PlacesScreen";
@@ -16,6 +15,7 @@ import MoreScreen from "./more/MoreScreen";
 import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } from "./route";
 import SearchScreen from "./search/SearchScreen";
 import TabPlaceholderScreen from "./TabPlaceholderScreen";
+import WelcomeScreen from "./WelcomeScreen";
 import type { LayoutOverride } from "./useLayout";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 
@@ -80,11 +80,16 @@ export default function MobileShell({
     setRoute(parseMobileRoute(path));
   }
 
+  const unavailable =
+    activeLibraryId === undefined
+      ? "Nothing here yet. Photos appear once a library has been added."
+      : "Back once the library has finished updating.";
+
   function renderContent() {
     if (route.tab === "library") return null;
     if (route.tab === "albums") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <TabPlaceholderScreen title="Albums" />;
+        return <TabPlaceholderScreen title="Albums" message={unavailable} />;
       }
       return (
         <AlbumsTab
@@ -98,7 +103,7 @@ export default function MobileShell({
     }
     if (route.tab === "search") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <TabPlaceholderScreen title="Search" />;
+        return <TabPlaceholderScreen title="Search" message={unavailable} />;
       }
       return (
         <SearchScreen
@@ -123,7 +128,7 @@ export default function MobileShell({
     }
     if (route.screen === "people") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
+        return <MorePlaceholderScreen title="People & Pets" message={unavailable} onBack={() => navigate("/more")} />;
       }
       return (
         <PeopleScreen
@@ -136,7 +141,7 @@ export default function MobileShell({
     }
     if (route.screen === "places") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;
+        return <MorePlaceholderScreen title="Places" message={unavailable} onBack={() => navigate("/more")} />;
       }
       return <PlacesScreen key={activeLibraryId} libraryId={activeLibraryId} bbox={route.bbox} onNavigate={navigate} />;
     }
@@ -154,7 +159,14 @@ export default function MobileShell({
           />
         );
       }
-      return <MorePlaceholderScreen title={title} onBack={() => navigate("/more")} />;
+      const known = MEDIA_TYPES.some((t) => t.slug === route.mediaType);
+      return (
+        <MorePlaceholderScreen
+          title={title}
+          message={known ? unavailable : "This list doesn't exist."}
+          onBack={() => navigate("/more")}
+        />
+      );
     }
     // route.screen === "hidden"
     if (!hiddenConfirmed) {
@@ -223,7 +235,7 @@ export default function MobileShell({
               />
             </LibraryNoteFrame>
           ) : (
-            <LibraryPlaceholder />
+            <WelcomeScreen isAdmin={me.role === "admin"} />
           )}
         </div>
         {route.tab !== "library" && renderContent()}

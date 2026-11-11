@@ -324,3 +324,29 @@ describe("sidebar toggle hover (#200)", () => {
     expect(tokens).toMatch(/prefers-color-scheme: dark\) \{\s*:root \{[^}]*--sidebar-toggle-hover: rgba\(255/);
   });
 });
+
+describe("DesktopShell with no library (#263)", () => {
+  const noLibrary = (role: "admin" | "user"): MeResponse => ({ ...ME_RESPONSE, role, libraries: [] });
+  const props = {
+    onActiveLibraryChange: () => {},
+    layoutOverride: "auto" as const,
+    onLayoutOverrideChange: () => {},
+    onLogout: () => {},
+  };
+
+  it("welcomes an admin with a way to add a library, and no developer text", () => {
+    mockFetch(() => []);
+    render(<DesktopShell me={noLibrary("admin")} {...props} />);
+    expect(screen.getByRole("heading", { name: "Welcome to Photos" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a Library" })).toHaveAttribute("href", "/admin");
+    expect(document.body.textContent).not.toMatch(/later phase/i);
+  });
+
+  it("tells a user to ask their admin, without a stray Library caption", () => {
+    mockFetch(() => []);
+    render(<DesktopShell me={noLibrary("user")} {...props} />);
+    expect(screen.getByText(/Ask your admin/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add a Library" })).toBeNull();
+    expect(screen.queryByLabelText("Library switcher")).toBeNull();
+  });
+});
