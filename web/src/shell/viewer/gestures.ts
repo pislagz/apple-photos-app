@@ -194,6 +194,27 @@ export function settleView(view: View, fit: Size, box: Size): View {
   return { scale, ...clampPan(view, panBounds(scale, fit, box)) };
 }
 
+// #267 desktop mouse drag at fit: the photo follows the mouse along the
+// locked axis (down only, for dismiss) and on release pages or closes.
+export const MOUSE_PAGE_DRAG_PX = 80;
+
+export function fitDragView(delta: { dx: number; dy: number }): View {
+  const axis = lockAxis(delta.dx, delta.dy);
+  if (axis === "horizontal") return { scale: 1, x: delta.dx, y: 0 };
+  if (axis === "vertical" && delta.dy > 0) return { scale: dismissLook(delta.dy).scale, x: 0, y: delta.dy };
+  return FIT;
+}
+
+export function fitDragOutcome(delta: { dx: number; dy: number }, box: Size): "prev" | "next" | "close" | null {
+  const axis = lockAxis(delta.dx, delta.dy);
+  if (axis === "horizontal") {
+    if (Math.abs(delta.dx) < Math.min(MOUSE_PAGE_DRAG_PX, box.w * PAGE_COMMIT_FRACTION)) return null;
+    return delta.dx > 0 ? "prev" : "next";
+  }
+  if (axis === "vertical" && delta.dy > DISMISS_DISTANCE_PX) return "close";
+  return null;
+}
+
 // Wheel zoom: ctrl+wheel deltaY (trackpad pinch) to a scale factor.
 export function wheelScale(scale: number, deltaY: number): number {
   return clampZoom(scale * Math.exp(-deltaY * 0.01));

@@ -118,6 +118,27 @@ describe("zoom", () => {
   });
 });
 
+describe("desktop mouse drag at fit (#267)", () => {
+  const box = { w: 1440, h: 856 };
+  it("follows the locked axis, and only downwards for dismiss", () => {
+    expect(g.fitDragView({ dx: 3, dy: 2 })).toEqual(g.FIT);
+    expect(g.fitDragView({ dx: -120, dy: 10 })).toEqual({ scale: 1, x: -120, y: 0 });
+    expect(g.fitDragView({ dx: 5, dy: 150 })).toEqual({ scale: g.dismissLook(150).scale, x: 0, y: 150 });
+    expect(g.fitDragView({ dx: 5, dy: -150 })).toEqual(g.FIT);
+  });
+  it("pages past 80 px, closes past 100 px down, otherwise snaps back", () => {
+    expect(g.fitDragOutcome({ dx: -81, dy: 0 }, box)).toBe("next");
+    expect(g.fitDragOutcome({ dx: 81, dy: 0 }, box)).toBe("prev");
+    expect(g.fitDragOutcome({ dx: 79, dy: 0 }, box)).toBeNull();
+    expect(g.fitDragOutcome({ dx: 0, dy: 101 }, box)).toBe("close");
+    expect(g.fitDragOutcome({ dx: 0, dy: 99 }, box)).toBeNull();
+    expect(g.fitDragOutcome({ dx: 0, dy: -300 }, box)).toBeNull();
+  });
+  it("on a narrow window pages past a quarter of the width", () => {
+    expect(g.fitDragOutcome({ dx: -60, dy: 0 }, { w: 200, h: 400 })).toBe("next");
+  });
+});
+
 describe("constants from #214", () => {
   it("match the issue", () => {
     expect(g.ORIGINAL_DWELL_MS).toBe(350);

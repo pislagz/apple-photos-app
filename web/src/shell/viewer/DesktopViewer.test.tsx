@@ -489,6 +489,71 @@ describe("DesktopViewer", () => {
   });
 });
 
+describe("DesktopViewer fit, zoom and pan (#267)", () => {
+  const items = [makeItem("a1", { width: 4000, height: 3000 }), makeItem("a2"), makeItem("a3")];
+  function setup(index = 1) {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2"), a3: makeDetail("a3") });
+    const onIndexChange = vi.fn();
+    const onClose = vi.fn();
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} />,
+    );
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    return { still, onIndexChange, onClose };
+  }
+  function drag(still: HTMLElement, from: [number, number], to: [number, number]) {
+    fireEvent.mouseDown(still, { clientX: from[0], clientY: from[1] });
+    fireEvent.mouseMove(window, { clientX: (from[0] + to[0]) / 2, clientY: (from[1] + to[1]) / 2 });
+    fireEvent.mouseMove(window, { clientX: to[0], clientY: to[1] });
+    fireEvent.mouseUp(window, { clientX: to[0], clientY: to[1] });
+  }
+
+  it("lays the still out in a 0-min grid track so it cannot outgrow the stage", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = /\.viewer-still \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toContain("grid-template: minmax(0, 1fr) / minmax(0, 1fr)");
+    expect(rule).toContain("min-height: 0");
+  });
+
+  it("at fit, a horizontal drag pages and a drag down closes", () => {
+    const { still, onIndexChange, onClose } = setup();
+    drag(still, [500, 400], [300, 410]);
+    expect(onIndexChange).toHaveBeenLastCalledWith(2);
+    drag(still, [300, 400], [500, 390]);
+    expect(onIndexChange).toHaveBeenLastCalledWith(0);
+    drag(still, [500, 300], [505, 500]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("at fit, a short drag or a drag up snaps back without paging or closing", () => {
+    const { still, onIndexChange, onClose } = setup();
+    drag(still, [500, 400], [460, 400]);
+    drag(still, [500, 400], [500, 200]);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("follows the drag on the window, so panning past the stage still reaches the edge in both axes", () => {
+    const { still, onIndexChange } = setup(0);
+    fireEvent.doubleClick(still, { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+    expect(still.style.transform).toContain("scale(2.5)");
+    drag(still, [500, 400], [9000, 9000]);
+    const [x, y] = (/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(still.style.transform) ?? []).slice(1).map(Number);
+    // jsdom has no layout, so the stage is the window.
+    const { innerWidth: W, innerHeight: H } = window;
+    const ratio = Math.min(W / 4000, H / 3000);
+    const bound = { x: Math.max(0, (4000 * ratio * 2.5 - W) / 2), y: Math.max(0, (3000 * ratio * 2.5 - H) / 2) };
+    expect(bound.x).toBeGreaterThan(0);
+    expect(bound.y).toBeGreaterThan(0);
+    expect(x).toBeCloseTo(bound.x);
+    expect(y).toBeCloseTo(bound.y);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    drag(still, [500, 400], [-9000, -9000]);
+    expect(still.style.transform).toBe(`translate(${-bound.x}px, ${-bound.y}px) scale(2.5)`);
+  });
+});
+
 describe("DesktopViewer chrome (#211)", () => {
   it("fades the top bar 2.5 s after the last pointer move while a video plays, and shows it on move", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
