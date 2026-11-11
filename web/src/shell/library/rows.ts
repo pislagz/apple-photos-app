@@ -53,13 +53,14 @@ function gridRows(items: AssetListItem[], columns: number, label: string, keyPre
 }
 
 export function buildRows(items: AssetListItem[], view: ViewKey, columns: number): PagedRow[] {
-  if (view === "all") {
-    // Uniform square grid, no inline headers -- the pinned header still
-    // tracks a day-level label per row for the topmost-visible lookup.
+  if (view === "all" || view === "years") {
+    // Uniform square grid, no inline headers -- the overlaid title (#209)
+    // already names the period, so a year row header would sit under it. The
+    // label per row is the day (All Photos) or the year (Years).
     const rows: GridRow[] = [];
     for (let i = 0; i < items.length; i += columns) {
       const slice = items.slice(i, i + columns);
-      const label = formatGroupLabel(slice[0]?.date ? slice[0].date.slice(0, 10) : "", "days");
+      const label = formatGroupLabel(slice[0]?.date ? slice[0].date.slice(0, 10) : "", view === "years" ? "years" : "days");
       rows.push({ type: "grid", key: `all-${i}`, label, items: slice });
     }
     return rows;

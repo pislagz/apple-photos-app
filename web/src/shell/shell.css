@@ -95,20 +95,118 @@ body {
   padding: calc(env(safe-area-inset-top, 0px) + var(--space-10)) 56px 28px var(--space-16);
 }
 
-.mobile-library__top-bar[data-scrim="true"] {
-  background: linear-gradient(to bottom, var(--scrim-medium) 0%, var(--scrim-clear) 100%);
+/* #209 scrim: a blur that is fully strong over the top 45 % and fades to clear
+   at the bottom, plus a black 0.5 -> 0 gradient for bright photos. Both are
+   pseudo-elements behind the content and take no pointer events. */
+.mobile-library__top-bar[data-scrim="true"]::before,
+.mobile-library__top-bar[data-scrim="true"]::after,
+.desktop-library__title-scrim::before,
+.desktop-library__title-scrim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 
-.mobile-library__pinned-header {
+.mobile-library__top-bar[data-scrim="true"]::before,
+.desktop-library__title-scrim::before {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
+}
+
+.mobile-library__top-bar[data-scrim="true"]::after,
+.desktop-library__title-scrim::after {
+  background: linear-gradient(to bottom, var(--scrim-title) 0%, var(--scrim-clear) 100%);
+}
+
+/* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
+   in data-prev, fades out over it. 150 ms is --motion-fast once #206 lands. */
+.date-title__text {
+  animation: date-title-in 150ms ease-out;
+}
+
+[data-prev]::after {
+  content: attr(data-prev);
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: date-title-out 150ms ease-out forwards;
+}
+
+@keyframes date-title-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes date-title-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .date-title__text,
+  [data-prev]::after {
+    animation: none;
+  }
+}
+
+/* iPhone title: 34 px large title with a 17 px subtitle 2 px below that
+   carries the zoom-dependent date (#209). */
+.mobile-library__title-block {
   flex: 1 1 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--color-white);
+  pointer-events: none;
+}
+
+.mobile-library__large-title {
+  font-size: var(--font-size-title-large);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+  letter-spacing: -0.3px;
+}
+
+.mobile-library__subtitle {
+  position: relative;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-height: 1.2em;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Coarsest levels: the label alone, in a translucent pill. */
+.mobile-library__pill {
+  position: relative;
+  margin-left: calc(14px - var(--space-16));
+  padding: 6px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--material-pill);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--color-label-pill);
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
-  color: var(--color-white);
   letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+
+.mobile-library__pill[data-prev]::after {
+  left: 16px;
+  top: 6px;
 }
 
 .mobile-library__view-switch {
@@ -296,6 +394,7 @@ body {
    floats at the top-right. */
 .mobile-library__select-button {
   flex: 0 0 auto;
+  align-self: flex-start;
   margin-left: auto;
   min-height: 32px;
   padding: 0 var(--space-4);
@@ -1095,26 +1194,51 @@ body {
   height: 0;
   z-index: 1;
   pointer-events: none;
+  transition: opacity 150ms ease-out;
 }
 
-/* Sticky, so the title stays on the top edge while the grid scrolls (#118);
-   the zero-height wrapper keeps it out of the row layout. */
-.desktop-library__date-range > span {
+/* A month header sits where the title would be: the title and its scrim step
+   aside instead of drawing over it (#209). */
+.desktop-library__date-range[data-hidden="true"] {
+  opacity: 0;
+}
+
+/* Scrim and title are siblings inside the zero-height sticky wrapper (#118). */
+.desktop-library__title-scrim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 76px;
+  pointer-events: none;
+}
+
+.desktop-library__title {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
-  padding: var(--space-14) var(--space-10) 36px;
-  background: linear-gradient(to bottom, var(--scrim-soft) 0%, var(--scrim-clear) 100%);
+  padding: var(--space-14) var(--space-10) 0;
   font-size: var(--font-size-title-3);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
   letter-spacing: -0.2px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
+.desktop-library__title[data-prev]::after {
+  left: var(--space-10);
+  top: var(--space-14);
+}
+
+/* Month section headers: 40 px rows, 15 px / 700 (#209). */
 .desktop-library__row-header {
   display: flex;
   align-items: center;
-  padding: 0 var(--space-8);
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-subhead);
+  padding: 0 var(--space-10);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
 }
 
 .desktop-library__cell {
