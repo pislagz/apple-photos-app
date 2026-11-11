@@ -1287,3 +1287,52 @@ test.describe("viewer gestures (#214)", () => {
     await context.close();
   });
 });
+
+// #211 viewer chrome. CHROME_BEFORE=1 only takes the "visible" shots, so the
+// same cases can photograph a base without tap-to-toggle.
+test.describe("viewer chrome (#211)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      test(`chrome visible and hidden (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name === "small", "desktop and iPhone only");
+        const phone = info.project.name === "iphone";
+        await signIn(page);
+        await openZoom(page, "All Photos");
+        for (let nth = 1; nth < 9; nth++) {
+          const cell = cells(page).nth(nth);
+          await expect(cell).toBeVisible();
+          if (phone) await cell.tap();
+          else await cell.dblclick();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(800);
+          if ((await page.locator(".viewer-still").count()) > 0) break;
+          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.waitForTimeout(400);
+        }
+        await expect(page.locator(".viewer-still")).toHaveCount(1);
+        await shot(page, `30-chrome-visible-${scheme}`, info.project.name);
+        if (!phone || process.env.CHROME_BEFORE) return;
+
+        const root = page.locator('[data-testid="mobile-viewer"]');
+        await page.touchscreen.tap(195, 420);
+        await page.waitForTimeout(700);
+        await expect(root).toHaveClass(/is-chrome-hidden/);
+        await expect(root).toHaveCSS("background-color", "rgb(0, 0, 0)");
+        await expect(page.locator(".mobile-viewer__topbar")).toHaveCSS("opacity", "0");
+        await shot(page, `31-chrome-hidden-${scheme}`, info.project.name);
+        await page.touchscreen.tap(195, 420);
+        await page.waitForTimeout(700);
+        await expect(root).not.toHaveClass(/is-chrome-hidden/);
+        await expect(page.locator(".mobile-viewer__topbar")).toHaveCSS("opacity", "1");
+        // Hit areas as laid out, not just as written in the CSS.
+        for (const button of await page.locator(".mobile-viewer__topbar button, .mobile-viewer__icon-row button").all()) {
+          const box = (await button.boundingBox())!;
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+      });
+    });
+  }
+});

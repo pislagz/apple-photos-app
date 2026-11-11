@@ -14,7 +14,9 @@ import { ViewerStill } from "./ViewerStill";
 import { previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
 import { viewerKeyAction } from "./viewerKeys";
-import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { formatViewerTitle } from "./viewerTitle";
+import { useChromeVisibility } from "./useChromeVisibility";
 
 export interface ViewerProps {
   libraryId: number;
@@ -25,6 +27,8 @@ export interface ViewerProps {
 }
 
 const LONG_PRESS_MS = 450;
+// A tap is a touch that never locked an axis and moved less than this.
+const TAP_SLOP_PX = 10;
 
 interface TouchPoint {
   clientX: number;
@@ -50,6 +54,8 @@ interface Gesture {
   lastTapY: number;
   dx: number;
   dy: number;
+  // The press-and-hold fired, so its release is not a tap.
+  longPressed: boolean;
 }
 
 // P1.16 mobile Viewer (ios17-viewer.png): full-bleed stage, swipe
@@ -64,6 +70,10 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
 
   const [infoOpen, setInfoOpen] = useState(false);
+  // Playing video hides the chrome after 2.5 s; pause (or a tap) brings it back.
+  const [videoRunning, setVideoRunning] = useState(false);
+  const chrome = useChromeVisibility(media.isVideo && media.videoPlaying && videoRunning);
+  const chromeHidden = chrome.hidden && !infoOpen;
   const [view, setView] = useState<g.View>(g.FIT);
   // Finger offset of the three-page strip, and of a dismiss drag.
   const [pageDx, setPageDx] = useState(0);
@@ -98,10 +108,22 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     lastTapY: 0,
     dx: 0,
     dy: 0,
+    longPressed: false,
   });
+  // Single tap toggles the chrome, but only once no second tap can follow
+  // (#214 double-tap zoom): the toggle waits DOUBLE_TAP_MS and a double tap,
+  // a pinch or a new drag cancels it.
+  const tapTimer = useRef<number | null>(null);
   const committing = useRef(false);
   const settleTimer = useRef<number | null>(null);
   const longPressTimer = useRef<number | null>(null);
+
+  function clearTapTimer() {
+    if (tapTimer.current !== null) {
+      window.clearTimeout(tapTimer.current);
+      tapTimer.current = null;
+    }
+  }
 
   function clearLongPress() {
     if (longPressTimer.current !== null) {
@@ -116,12 +138,15 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     setPageDx(0);
     setAnimating(false);
     setInfoOpen(false);
+    setVideoRunning(false);
     clearLongPress();
+    clearTapTimer();
   }, [item?.id]);
 
   useEffect(
     () => () => {
       if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
+      if (tapTimer.current !== null) window.clearTimeout(tapTimer.current);
     },
     [],
   );
@@ -170,7 +195,9 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     const state = gesture.current;
     const { centre } = stageBox();
     setAnimating(false);
+    state.longPressed = false;
     if (event.touches.length === 2) {
+      clearTapTimer();
       state.mode = "pinch";
       state.pinchD0 = distance(event.touches[0], event.touches[1]);
       state.pinchMid0 = midpoint(event.touches[0], event.touches[1], centre);
@@ -193,6 +220,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       animate(() => setView((value) => g.toggleZoom(value, rel(touch, centre), fitOf(box), box)));
       state.lastTapTime = 0;
       state.mode = "none";
+      clearTapTimer();
     } else {
       state.lastTapTime = now;
       state.lastTapX = touch.clientX;
@@ -202,6 +230,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       // touchstart/move/end so a swipe or double-tap never triggers it.
       if (detail?.has_edited) {
         longPressTimer.current = window.setTimeout(() => {
+          state.longPressed = true;
           media.startShowOriginal();
         }, LONG_PRESS_MS);
       }
@@ -239,6 +268,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       const axis = g.lockAxis(dx, dy);
       if (!axis) return;
       state.mode = axis === "horizontal" ? "page" : dy > 0 ? "dismiss" : "swipeup";
+      clearTapTimer();
     }
     if (state.mode === "page") {
       setPageDx(g.pagingOffset(dx, index > 0, index < items.length - 1, box.w));
@@ -293,6 +323,24 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     const { box } = stageBox();
     const mode = state.mode;
     state.mode = "none";
+    // A tap: no axis lock (or a pan that barely moved), no press-and-hold,
+    // not on a control. Buttons handle themselves; the video element is
+    // fine (a tap there brings the chrome back).
+    const target = event.target as HTMLElement | null;
+    const onControl = target?.closest?.("button, a, input") != null;
+    if (
+      (mode === "undecided" || mode === "pan") &&
+      Math.hypot(state.dx, state.dy) < TAP_SLOP_PX &&
+      !state.longPressed &&
+      !onControl
+    ) {
+      clearTapTimer();
+      tapTimer.current = window.setTimeout(() => {
+        tapTimer.current = null;
+        chrome.toggle();
+      }, g.DOUBLE_TAP_MS);
+      return;
+    }
     if (mode === "pinch") {
       animate(() => setView((value) => g.settleView(value, fitOf(box), box)));
       return;
@@ -363,27 +411,23 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     : undefined;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
-  const dateLine = detail ? formatDateLine(detail.date_created) : "";
-  const placeLine = detail ? formatPlaceName(detail) : "";
-  // ios17-viewer.png: place is the bold title, date is the subtitle below
-  // it. When a photo has no place, the date becomes the title on its own.
-  const titleLine = placeLine || dateLine;
-  const subtitleLine = placeLine ? dateLine : "";
+  // #211: line 1 relative day, line 2 "time . place"; Info keeps the full date.
+  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
 
   return (
     <div
-      className={`mobile-viewer${closing ? " is-closing" : ""}`}
+      className={`mobile-viewer${closing ? " is-closing" : ""}${chromeHidden ? " is-chrome-hidden" : ""}`}
       data-testid="mobile-viewer"
       ref={rootRef}
       tabIndex={-1}
       style={rootStyle}>
       <div className="mobile-viewer__topbar">
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
-          <Icon name="chevron" size={20} className="mobile-viewer__back-chevron" />
+          <Icon name="chevron" size={19} className="mobile-viewer__back-chevron" />
         </button>
         <div className="mobile-viewer__title">
-          {titleLine && <div className="mobile-viewer__title-primary">{titleLine}</div>}
-          {subtitleLine && <div className="mobile-viewer__title-secondary">{subtitleLine}</div>}
+          {title.primary && <div className="mobile-viewer__title-primary">{title.primary}</div>}
+          {title.secondary && <div className="mobile-viewer__title-secondary">{title.secondary}</div>}
         </div>
         <button type="button" className="mobile-viewer__icon-button" aria-label="More">
           <Icon name="more" size={18} />
@@ -407,6 +451,9 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               src={media.originalSrc}
               controls
               autoPlay
+              onPlay={() => setVideoRunning(true)}
+              onPause={() => setVideoRunning(false)}
+              onEnded={() => setVideoRunning(false)}
               data-testid="viewer-video"
             />
           ) : (
@@ -478,35 +525,43 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         )}
         <OriginalOutsideNote outside={detail?.original_outside_library} className="viewer-outside-banner" />
       </div>
-      <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" itemSize={44} />
-      <div className="mobile-viewer__icon-row">
-        {item.favorite && (
-          <span className="mobile-viewer__status" role="img" aria-label="Favorite">
-            <Icon name="favorite" size={20} filled />
-          </span>
-        )}
-        {detail?.has_edited && (
+      <div className="mobile-viewer__bottombar">
+        <Filmstrip libraryId={libraryId} items={items} index={index} onSelect={onIndexChange} className="mobile-viewer__filmstrip" itemSize={44} />
+        {/* Four fixed slots so a missing control never shifts the others. */}
+        <div className="mobile-viewer__icon-row">
+          <button type="button" className="mobile-viewer__icon-button mobile-viewer__icon-button--bar" onClick={handleShare} aria-label="Share">
+            <Icon name="share" size={20} />
+          </button>
+          {/* #131: read-only status (the library is view-only), not a button. */}
+          {item.favorite ? (
+            <span className="mobile-viewer__status" role="img" aria-label="Favorite">
+              <Icon name="favorite" size={20} filled />
+            </span>
+          ) : (
+            <span className="mobile-viewer__slot" aria-hidden />
+          )}
+          {detail?.has_edited ? (
+            <button
+              type="button"
+              className="mobile-viewer__icon-button mobile-viewer__icon-button--bar"
+              onClick={handleDownloadOriginal}
+              aria-label="Download Original"
+            >
+              <Icon name="document" size={20} />
+            </button>
+          ) : (
+            <span className="mobile-viewer__slot" aria-hidden />
+          )}
           <button
             type="button"
-            className="mobile-viewer__icon-button"
-            onClick={handleDownloadOriginal}
-            aria-label="Download Original"
+            className="mobile-viewer__icon-button mobile-viewer__icon-button--bar"
+            aria-pressed={infoOpen}
+            onClick={() => setInfoOpen((value) => !value)}
+            aria-label="Info"
           >
-            <Icon name="document" size={20} />
+            <Icon name="info" size={20} filled={infoOpen} />
           </button>
-        )}
-        <button type="button" className="mobile-viewer__icon-button" onClick={handleShare} aria-label="Share">
-          <Icon name="share" size={20} />
-        </button>
-        <button
-          type="button"
-          className="mobile-viewer__icon-button"
-          aria-pressed={infoOpen}
-          onClick={() => setInfoOpen((value) => !value)}
-          aria-label="Info"
-        >
-          <Icon name="info" size={20} filled={infoOpen} />
-        </button>
+        </div>
       </div>
       {infoOpen && (
         <div className="mobile-viewer__info-sheet" data-testid="viewer-info-sheet" ref={sheetRef}>
