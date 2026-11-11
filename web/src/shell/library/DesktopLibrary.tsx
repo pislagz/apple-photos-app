@@ -603,6 +603,17 @@ export default function DesktopLibrary({
             value={zoomIndex}
             onChange={(event) => setZoomIndex(Number(event.target.value))}
           />
+          {/* #264: belongs with the size slider -- both change how tiles look. */}
+          <button
+            type="button"
+            className="toolbar-button"
+            aria-label="Show Whole Photos"
+            aria-pressed={!squareMode}
+            onClick={() => setSquareMode((value) => !value)}
+            title={squareMode ? "Show Whole Photos" : "Show Square Tiles"}
+          >
+            <Icon name="aspect" size={16} filled={!squareMode} />
+          </button>
         </div>
         <div className="desktop-library__spacer" />
         {fixedView === undefined && (
@@ -628,11 +639,11 @@ export default function DesktopLibrary({
             aria-haspopup="menu"
             aria-expanded={filterMenuOpen}
             aria-pressed={filter !== "all"}
+            aria-label="Filter By"
             title="Filter By"
             onClick={() => setFilterMenuOpen((value) => !value)}
           >
             <Icon name="filter" size={16} filled={filter !== "all"} />
-            <span className="sr-only">Filter By</span>
           </button>
           {filterMenuOpen && (
             <div className="desktop-library__filter-menu" role="menu" aria-label="Filter By">
@@ -651,16 +662,6 @@ export default function DesktopLibrary({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="toolbar-button"
-          aria-pressed={!squareMode}
-          onClick={() => setSquareMode((value) => !value)}
-          title={squareMode ? "Square" : "Aspect"}
-        >
-          <Icon name="rotate" size={16} />
-          <span className="sr-only">{squareMode ? "Square" : "Aspect"}</span>
-        </button>
         <button
           type="button"
           className="toolbar-button"

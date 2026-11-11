@@ -575,6 +575,33 @@ describe("DesktopLibrary", () => {
     expect(screen.queryByTestId("context-menu")).toBeNull();
   });
 
+  describe("toolbar icons and placement (#264)", () => {
+    it("puts the whole-photos toggle right next to the size slider, with a tooltip and label", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+
+      const slider = screen.getByRole("slider", { name: "Zoom" });
+      const toggle = screen.getByRole("button", { name: "Show Whole Photos" });
+      expect(slider.nextElementSibling).toBe(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(toggle).toHaveAttribute("title", "Show Whole Photos");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(toggle).toHaveAttribute("title", "Show Square Tiles");
+    });
+
+    it("labels the Filter By button and gives it a tooltip", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const filter = screen.getByRole("button", { name: "Filter By" });
+      expect(filter).toHaveAttribute("aria-label", "Filter By");
+      expect(filter).toHaveAttribute("title", "Filter By");
+    });
+  });
+
   describe("Filter By menu", () => {
     function assetCalls(fetchMock: ReturnType<typeof vi.fn>): URLSearchParams[] {
       return fetchMock.mock.calls
