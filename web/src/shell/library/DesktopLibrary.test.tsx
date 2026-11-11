@@ -68,7 +68,7 @@ describe("DesktopLibrary", () => {
     }
   });
 
-  it("switches between Years, Months, and All Photos (no Days tab) with date headers", async () => {
+  it("switches between Years, Months, and All Photos (no Days tab); only Months keeps inline headers (#209)", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
     mockAssets(items);
 
@@ -77,7 +77,8 @@ describe("DesktopLibrary", () => {
 
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("tab", { name: "Days" })).toBeNull();
-    expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0);
+    await waitFor(() => expect(screen.getByTestId("desktop-library-title")).toHaveTextContent("2024"));
 
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0));
@@ -400,7 +401,7 @@ describe("DesktopLibrary", () => {
 
   it("keeps the date-range title in All Photos", async () => {
     mockAssets([makeItem("a", "2025-09-19T10:00:00"), makeItem("b", "2023-09-05T10:00:00")]);
-    const { container } = render(<DesktopLibrary libraryId={1} />);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByRole("img");
     expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–");
   });
