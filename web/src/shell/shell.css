@@ -117,6 +117,37 @@ body {
   background: linear-gradient(to bottom, var(--scrim-medium) 0%, var(--scrim-clear) 100%);
 }
 
+/* A pushed grid (album, media type, person, place, #260): same box and first
+   row as above, so Select lands where it does in the Library, but on the
+   grouped background with the title on its own line below. */
+.mobile-library__top-bar--nav {
+  position: relative;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  row-gap: 0;
+  pointer-events: auto;
+  padding-bottom: var(--space-8);
+  background: var(--color-bg-grouped);
+}
+
+.mobile-library__top-bar--nav .mobile-library__select-button {
+  color: var(--accent);
+}
+
+.mobile-library__back {
+  min-height: 32px;
+  margin: 0 0 0 -4px;
+  padding: 0;
+}
+
+.mobile-library__nav-title {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mobile-library__pinned-header {
   flex: 1 1 0;
   min-width: 0;
@@ -319,6 +350,9 @@ body {
    floats at the top-right. */
 .mobile-library__select-button {
   flex: 0 0 auto;
+  /* Top of the first row, not centred on it: the row's other item (date
+     title or back button) differs in height between grids (#260). */
+  align-self: flex-start;
   margin-left: auto;
   min-height: 32px;
   padding: 0 var(--space-4);
