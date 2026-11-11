@@ -516,7 +516,7 @@ def _write_index(
     gazetteer = place_names.indexing_lookup(db)
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
-        photos = photosdb.photos()
+        photos = list(photosdb.photos())
         _set_progress(library_id, 0, len(photos))
         for walked, photo in enumerate(photos, start=1):
             if walked % PROGRESS_EVERY == 0:
