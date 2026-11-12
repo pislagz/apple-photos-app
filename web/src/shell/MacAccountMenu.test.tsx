@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
 import MacAccountMenu from "./MacAccountMenu";
@@ -105,5 +106,55 @@ describe("MacAccountMenu (#292)", () => {
     fireEvent.click(trigger());
     fireEvent.click(screen.getByRole("menuitem", { name: "Log Out" }));
     expect(props.onLogout).toHaveBeenCalled();
+  });
+
+  describe("hover intent", () => {
+    afterEach(() => vi.useRealTimers());
+
+    const hover = (name: string, x = 0, y = 0) =>
+      fireEvent.mouseMove(screen.getByRole("menuitem", { name }), { clientX: x, clientY: y });
+
+    it("opens a submenu after a short delay and keeps it open", () => {
+      vi.useFakeTimers();
+      setup();
+      fireEvent.click(trigger());
+      hover("Layout", 10, 10);
+      expect(screen.queryByRole("menu", { name: "Layout" })).not.toBeInTheDocument();
+      act(() => void vi.advanceTimersByTime(200));
+      const sub = screen.getByRole("menu", { name: "Layout" });
+      // Pointer enters the submenu, then rests there: it stays open.
+      fireEvent.mouseEnter(sub);
+      act(() => void vi.advanceTimersByTime(2000));
+      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+    });
+
+    it("closes the submenu when the pointer moves to a plain item", () => {
+      vi.useFakeTimers();
+      setup();
+      fireEvent.click(trigger());
+      hover("Layout", 10, 10);
+      act(() => void vi.advanceTimersByTime(200));
+      hover("Log Out", 10, 200);
+      act(() => void vi.advanceTimersByTime(10));
+      expect(screen.queryByRole("menu", { name: "Layout" })).not.toBeInTheDocument();
+    });
+
+    it("keeps the submenu through a grace period on a diagonal move, then switches", () => {
+      vi.useFakeTimers();
+      setup();
+      fireEvent.click(trigger());
+      hover("Layout", 10, 10);
+      act(() => void vi.advanceTimersByTime(200));
+      // jsdom has no layout: give the submenu a real rectangle to aim at.
+      const sub = screen.getByRole("menu", { name: "Layout" });
+      sub.getBoundingClientRect = () => ({ left: 100, right: 300, top: 0, bottom: 200, width: 200, height: 200, x: 100, y: 0, toJSON() {} });
+      hover("Layout", 10, 10);
+      hover("Passkeys…", 40, 20); // heading toward the submenu: inside the triangle
+      act(() => void vi.advanceTimersByTime(100));
+      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+      fireEvent.mouseEnter(sub); // arrives in time
+      act(() => void vi.advanceTimersByTime(1000));
+      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+    });
   });
 });

@@ -1478,25 +1478,30 @@ body {
   border-top: none;
   padding: 0;
   position: relative;
+  box-sizing: border-box;
 }
 
-.account-menu__row-trigger {
+/* .account-menu button (0,1,1) would zero this padding, so the selector is
+   qualified to out-rank it. The sidebar already insets 8px, so the row's
+   highlight lines up with the sidebar items above. */
+.account-menu--row .account-menu__row-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   border-radius: var(--radius-small);
   padding: var(--space-5) var(--space-8);
-  cursor: pointer;
   color: var(--color-label);
   font-size: var(--font-size-subhead);
   text-align: left;
 }
 
-.account-menu__row-trigger:hover,
-.account-menu__row-trigger[aria-expanded="true"] {
+.account-menu--row .account-menu__row-trigger:hover,
+.account-menu--row .account-menu__row-trigger[aria-expanded="true"] {
   background: var(--color-hover);
 }
 
@@ -1548,6 +1553,16 @@ body {
   position: absolute;
   left: calc(100% + 2px);
   top: -5px;
+}
+
+/* Invisible bridge over the 2px gap so the pointer never leaves the wrapper. */
+.mac-menu--sub::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 0;
+  bottom: 0;
+  width: 4px;
 }
 
 .mac-menu__sub-wrap {

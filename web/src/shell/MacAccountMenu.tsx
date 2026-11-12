@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { LibrarySummary, MeResponse } from "../api";
 import ChangePasswordDialog from "./ChangePasswordDialog";
@@ -19,6 +19,24 @@ function ownItems(menu: HTMLElement): HTMLElement[] {
   return Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')).filter(
     (el) => el.closest('[role="menu"]') === menu,
   );
+}
+
+const OPEN_DELAY_MS = 150;
+const SWITCH_GRACE_MS = 300;
+
+type Point = { x: number; y: number };
+
+// Is p inside triangle abc? Used as the "safe triangle" from the pointer to the
+// near edge of an open submenu, so a diagonal move toward it is not read as
+// leaving the parent item.
+function inTriangle(p: Point, a: Point, b: Point, c: Point): boolean {
+  const side = (u: Point, v: Point, w: Point) => (u.x - w.x) * (v.y - w.y) - (v.x - w.x) * (u.y - w.y);
+  const d1 = side(p, a, b);
+  const d2 = side(p, b, c);
+  const d3 = side(p, c, a);
+  const neg = d1 < 0 || d2 < 0 || d3 < 0;
+  const pos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(neg && pos);
 }
 
 function Check({ on }: { on: boolean }) {
@@ -57,12 +75,26 @@ export default function MacAccountMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const focusFirstOf = useRef<HTMLElement | null>(null);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  const hoveredItem = useRef<Element | null>(null);
+  const anchor = useRef<Point | null>(null);
+  const subRef = useRef<SubmenuKey | null>(null);
+  subRef.current = sub;
+
+  const clearHoverTimer = useCallback(() => {
+    window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = undefined;
+  }, []);
+
+  useEffect(() => clearHoverTimer, [clearHoverTimer]);
 
   const close = useCallback((returnFocus: boolean) => {
+    clearHoverTimer();
+    hoveredItem.current = null;
     setOpen(false);
     setSub(null);
     if (returnFocus) triggerRef.current?.focus();
-  }, []);
+  }, [clearHoverTimer]);
 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
@@ -98,6 +130,51 @@ export default function MacAccountMenu({
   const openSub = (key: SubmenuKey, focus: boolean, wrap: HTMLElement | null) => {
     setSub(key);
     if (focus) focusFirstOf.current = wrap;
+  };
+
+  // Hover intent for root-level items. Entering a submenu parent opens it after
+  // a short delay; leaving it toward the open submenu (inside the safe triangle)
+  // keeps it open for a grace period instead of switching at once.
+  const onRootMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const root = event.currentTarget;
+    const point = { x: event.clientX, y: event.clientY };
+    const el = (event.target as HTMLElement).closest<HTMLElement>('[role^="menuitem"]');
+    const own = el && el.closest('[role="menu"]') === root ? el : null;
+    if (!own) {
+      // Over padding or a separator: not a hover on any item; submenu pointer
+      // travel is handled by the submenu's own mouseenter.
+      if (!(event.target as HTMLElement).closest('[data-submenu]')) anchor.current = point;
+      return;
+    }
+    if (hoveredItem.current === own) {
+      anchor.current = point;
+      return;
+    }
+    const previous = anchor.current;
+    hoveredItem.current = own;
+    anchor.current = point;
+    const key = (own.dataset.opens as SubmenuKey | undefined) ?? null;
+    if (key === subRef.current) {
+      clearHoverTimer();
+      return;
+    }
+    clearHoverTimer();
+    const submenu = subRef.current
+      ? root.querySelector<HTMLElement>(`[data-submenu="${subRef.current}"]`)
+      : null;
+    let delay = key ? OPEN_DELAY_MS : 0;
+    if (submenu && previous) {
+      const rect = submenu.getBoundingClientRect();
+      const towardsSub = inTriangle(
+        point,
+        previous,
+        { x: rect.left, y: rect.top },
+        { x: rect.left, y: rect.bottom },
+      );
+      if (towardsSub) delay = SWITCH_GRACE_MS;
+    }
+    if (!subRef.current && !key) return;
+    hoverTimer.current = window.setTimeout(() => setSub(key), delay);
   };
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -163,8 +240,6 @@ export default function MacAccountMenu({
     <div
       role="none"
       className="mac-menu__sub-wrap"
-      onMouseEnter={() => setSub(key)}
-      onMouseLeave={() => setSub((current) => (current === key ? null : current))}
     >
       <button
         type="button"
@@ -183,7 +258,18 @@ export default function MacAccountMenu({
         </span>
       </button>
       {sub === key && (
-        <div role="menu" aria-label={label} data-submenu={key} className="mac-menu mac-menu--sub" onKeyDown={onMenuKeyDown}>
+        <div
+          role="menu"
+          aria-label={label}
+          data-submenu={key}
+          className="mac-menu mac-menu--sub"
+          onKeyDown={onMenuKeyDown}
+          onMouseEnter={() => {
+            // The pointer made it into the submenu: cancel any pending switch.
+            clearHoverTimer();
+            hoveredItem.current = null;
+          }}
+        >
           {children}
         </div>
       )}
@@ -237,6 +323,7 @@ export default function MacAccountMenu({
             className="mac-menu mac-menu--root"
             style={{ left: pos.left, bottom: pos.bottom }}
             onKeyDown={onMenuKeyDown}
+            onMouseMove={onRootMouseMove}
           >
             {me.role === "admin" && item("Admin…", act(() => window.location.assign("/admin")))}
             {showLibraries &&
