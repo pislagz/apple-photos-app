@@ -1,3 +1,4 @@
+import { CheckBadge, TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { selectionHasHeic, useZipDownload } from "./zipDownload";
@@ -11,12 +12,17 @@ import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from ".
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import {
-  computeCellSize,
+  columnsForEdge,
+  columnWidths,
+  DEFAULT_ZOOM_INDEX,
+  gapForEdge,
   featureHeight,
   featureRowHeight,
   featureWidth,
-  GRID_GAP,
   gridRowHeight,
+  squareEdge,
+  thumbSizeFor,
+  ZOOM_EDGES,
 } from "./gridMetrics";
 import { buildRows, columnOf, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
@@ -25,20 +31,8 @@ import { InfoRows } from "../viewer/InfoRows";
 import { useAssetDetailState, useSelectionSummary } from "../viewer/useAssetDetail";
 import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
 
-const HEADER_ROW_HEIGHT = 28;
-// Desktop toolbar's zoom slider/`+`/`-`: more, smaller columns at the low
-// end (`grid` thumbs), fewer, larger columns at the high end (`grid2x`), per
-// docs/TASKS.md P1.15 ("Zoom changes the thumb size requested").
-const ZOOM_STEPS: { columns: number; thumbSize: "grid" | "grid2x" }[] = [
-  { columns: 10, thumbSize: "grid" },
-  { columns: 8, thumbSize: "grid" },
-  { columns: 6, thumbSize: "grid" },
-  { columns: 4, thumbSize: "grid2x" },
-  { columns: 3, thumbSize: "grid2x" },
-  { columns: 2, thumbSize: "grid2x" },
-];
-const DEFAULT_ZOOM_INDEX = 2;
-const MAX_ZOOM_INDEX = ZOOM_STEPS.length - 1;
+const HEADER_ROW_HEIGHT = 40;
+const MAX_ZOOM_INDEX = ZOOM_EDGES.length - 1;
 const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
   { key: "all", label: "All Items" },
   { key: "favorites", label: "Favorites" },
@@ -72,13 +66,8 @@ function shortDate(iso: string): string {
   });
 }
 
-function formatDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) return "";
-  const total = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${minutes}:${String(secs).padStart(2, "0")}`;
-}
+// #208: click flash length. Local constant until the #206 motion tokens land.
+const FLASH_MS = 150;
 
 // A single selected file downloads directly (a multi-selection goes through
 // the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
@@ -110,6 +99,8 @@ const GridCell = memo(function GridCell({
   thumbSize,
   squareMode,
   selected,
+  flash,
+  tileWidth,
   height,
   featureLabel,
   onCellClick,
@@ -123,6 +114,8 @@ const GridCell = memo(function GridCell({
   thumbSize: string;
   squareMode: boolean;
   selected: boolean;
+  flash: boolean;
+  tileWidth: number;
   height: number;
   featureLabel: string | null;
   onCellClick: (event: React.MouseEvent, item: AssetListItem, index: number) => void;
@@ -139,6 +132,7 @@ const GridCell = memo(function GridCell({
       tabIndex={-1}
       data-testid="library-cell"
       data-selected={selected}
+      data-flash={flash ? "true" : undefined}
       className="desktop-library__cell"
       style={{ height }}
       onClick={(event) => onCellClick(event, item, index)}
@@ -154,12 +148,8 @@ const GridCell = memo(function GridCell({
         style={{ objectFit: squareMode ? "cover" : "contain" }}
       />
       {featureLabel !== null && <div className="desktop-library__feature-caption">{featureLabel}</div>}
-      {item.favorite && (
-        <span className="desktop-library__heart" aria-label="Favorite">
-          ♥
-        </span>
-      )}
-      {item.is_video && <span className="desktop-library__duration">{formatDuration(item.duration)}</span>}
+      <TileOverlays item={item} tileWidth={tileWidth} prefix="desktop-library" />
+      <CheckBadge prefix="desktop-library" selected={selected} />
     </div>
   );
 });
@@ -239,7 +229,8 @@ export default function DesktopLibrary({
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const measure = () => setContainerWidth(element.getBoundingClientRect().width);
+    // clientWidth excludes a classic scrollbar, so the last column ends flush with the visible edge.
+    const measure = () => setContainerWidth(element.clientWidth || element.getBoundingClientRect().width);
     measure();
     if (typeof ResizeObserver !== "undefined") {
       const observer = new ResizeObserver(measure);
@@ -250,10 +241,15 @@ export default function DesktopLibrary({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  const columns = ZOOM_STEPS[zoomIndex].columns;
-  const thumbSize = ZOOM_STEPS[zoomIndex].thumbSize;
+  const edge = ZOOM_EDGES[zoomIndex];
+  const gap = gapForEdge(edge);
+  const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const thumbSize = thumbSizeFor(edge, dpr);
+  const columns = columnsForEdge(containerWidth, edge, gap);
   const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
-  const cellSize = computeCellSize(containerWidth, columns);
+  const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
+  const cellSize = squareEdge(containerWidth, columns, gap, dpr);
+  const tileWidth = widths.length ? Math.min(...widths) : cellSize;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -262,8 +258,8 @@ export default function DesktopLibrary({
       rows[index].type === "header"
         ? HEADER_ROW_HEIGHT
         : rows[index].type === "feature"
-          ? featureRowHeight(containerWidth, cellSize)
-          : gridRowHeight(cellSize),
+          ? featureRowHeight(containerWidth, cellSize, gap)
+          : gridRowHeight(cellSize, gap),
     overscan: 6,
   });
 
@@ -273,6 +269,35 @@ export default function DesktopLibrary({
   useLayoutEffect(() => {
     rowVirtualizer.measure();
   }, [rowVirtualizer, containerWidth, columns]);
+
+  // Zoom anchor (#207): remember the item at the viewport's vertical centre
+  // before a zoom change and scroll it back to the centre once the new rows exist.
+  const zoomAnchorRef = useRef<string | null>(null);
+  const changeZoom = useCallback(
+    (next: number) => {
+      if (next === zoomIndex) return;
+      const scroller = scrollRef.current;
+      const centre = (scroller?.scrollTop ?? 0) + (scroller?.clientHeight ?? 0) / 2;
+      const centred = rowVirtualizer.getVirtualItems().find((v) => v.start <= centre && centre < v.end);
+      let anchor: { items: { id: string }[] } | undefined;
+      for (let i = centred?.index ?? -1; i >= 0 && i < rows.length && !anchor; i++) {
+        const row = rows[i];
+        if (row.type !== "header") anchor = row;
+      }
+      const mid = anchor?.items[Math.floor(anchor.items.length / 2)];
+      zoomAnchorRef.current = mid?.id ?? null;
+      setZoomIndex(next);
+    },
+    [zoomIndex, rowVirtualizer, rows],
+  );
+  useLayoutEffect(() => {
+    const id = zoomAnchorRef.current;
+    if (!id) return;
+    zoomAnchorRef.current = null;
+    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === id));
+    if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoomIndex]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -367,6 +392,10 @@ export default function DesktopLibrary({
     }
   }, [rows, loading, done, loadMore, selectSingle]);
 
+  // #208 click flash: a 35 % white overlay for FLASH_MS on the activated tile.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
@@ -419,6 +448,9 @@ export default function DesktopLibrary({
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
       if (suppressClickRef.current) return;
+      setFlashId(item.id);
+      window.clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => setFlashId(null), FLASH_MS);
       const plain = !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
       const now = performance.now();
       const last = lastClickRef.current;
@@ -484,12 +516,12 @@ export default function DesktopLibrary({
       }
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
-        setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1));
+        changeZoom(Math.min(MAX_ZOOM_INDEX, zoomIndex + 1));
         return;
       }
       if (event.key === "-" || event.key === "_") {
         event.preventDefault();
-        setZoomIndex((previous) => Math.max(0, previous - 1));
+        changeZoom(Math.max(0, zoomIndex - 1));
         return;
       }
       if (event.key === " " || event.key === "Enter") {
@@ -552,7 +584,7 @@ export default function DesktopLibrary({
       }
       selectSingle(items[nextIndex].id);
     },
-    [items, rows, columns, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
+    [items, rows, columns, zoomIndex, changeZoom, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
   );
 
   const setCellRef = useCallback((id: string, element: HTMLElement | null) => {
@@ -707,7 +739,7 @@ export default function DesktopLibrary({
             min={0}
             max={MAX_ZOOM_INDEX}
             value={zoomIndex}
-            onChange={(event) => setZoomIndex(Number(event.target.value))}
+            onChange={(event) => changeZoom(Number(event.target.value))}
           />
           {/* #264: belongs with the size slider -- both change how tiles look. */}
           <button
@@ -852,10 +884,10 @@ export default function DesktopLibrary({
                   style={{
                     ...style,
                     display: "grid",
-                    gap: GRID_GAP,
+                    gap,
                     alignContent: "start",
                     gridTemplateColumns:
-                      row.type === "feature" ? `${featureWidth(containerWidth, cellSize)}px` : `repeat(${columns}, 1fr)`,
+                      row.type === "feature" ? `${featureWidth(containerWidth, cellSize, gap)}px` : widths.length ? widths.map((w) => `${w}px`).join(" ") : `repeat(${columns}, 1fr)`,
                     justifyContent: row.type === "feature" ? "center" : undefined,
                   }}
                   className="desktop-library__row-grid"
@@ -869,7 +901,9 @@ export default function DesktopLibrary({
                       thumbSize={thumbSize}
                       squareMode={squareMode}
                       selected={selected.has(item.id)}
-                      height={row.type === "feature" ? featureHeight(containerWidth, cellSize) : cellSize}
+                      flash={flashId === item.id}
+                      tileWidth={tileWidth}
+                      height={row.type === "feature" ? featureHeight(containerWidth, cellSize, gap) : cellSize}
                       featureLabel={row.type === "feature" ? row.label : null}
                       onCellClick={handleCellClick}
                       onCellDoubleClick={handleCellDoubleClick}

@@ -5,7 +5,8 @@ import { mockFetch } from "../../testHelpers";
 import { useFakeLayout } from "../../testLayout";
 import DesktopLibrary from "./DesktopLibrary";
 
-useFakeLayout();
+// 912 px at the default 150 px edge (2 px gap) is exactly 6 columns, which these key-move tests assume.
+useFakeLayout({ width: 912 });
 
 function item(id: string, date: string): AssetListItem {
   return { id, filename: `${id}.jpg`, date, is_video: false, is_live_photo: false, favorite: false, width: 100, height: 100, duration: null };

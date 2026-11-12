@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  columnsForEdge,
+  columnWidths,
   computeCellSize,
+  DEFAULT_ZOOM_INDEX,
+  gapForEdge,
+  squareEdge,
+  thumbSizeFor,
+  ZOOM_EDGES,
   FEATURE_ASPECT,
   FEATURE_COLUMNS,
   FEATURE_MAX_WIDTH,
@@ -10,6 +17,60 @@ import {
   GRID_GAP,
   gridRowHeight,
 } from "./gridMetrics";
+
+describe("edge-length zoom (#207)", () => {
+  it("has five stops with 150 px as the default", () => {
+    expect([...ZOOM_EDGES]).toEqual([72, 104, 150, 210, 300]);
+    expect(ZOOM_EDGES[DEFAULT_ZOOM_INDEX]).toBe(150);
+  });
+
+  it("uses a 2 px gap, 1 px at the smallest edge", () => {
+    expect(gapForEdge(72)).toBe(1);
+    for (const edge of [104, 150, 210, 300]) expect(gapForEdge(edge)).toBe(2);
+  });
+
+  it("fills the width flush right with no gutter at 1024, 1280, 1440 and 1920", () => {
+    for (const width of [1024, 1280, 1440, 1920]) {
+      for (const edge of ZOOM_EDGES) {
+        for (const dpr of [1, 2]) {
+          const gap = gapForEdge(edge);
+          const columns = columnsForEdge(width, edge, gap);
+          const widths = columnWidths(width, columns, gap, dpr);
+          expect(widths).toHaveLength(columns);
+          const total = widths.reduce((a, b) => a + b, 0) + (columns - 1) * gap;
+          expect(total).toBeCloseTo(width, 6);
+          // Tile edges sit on whole device pixels and stay within a device pixel of the target.
+          for (const w of widths) {
+            expect(Math.abs(w * dpr - Math.round(w * dpr))).toBeLessThan(1e-6);
+            expect(w).toBeGreaterThanOrEqual(edge - gap - 1 / dpr);
+            expect(w).toBeLessThan(edge + gap + 1 + 1 / dpr + edge / columns);
+          }
+          expect(squareEdge(width, columns, gap, dpr)).toBeLessThanOrEqual(Math.max(...widths));
+        }
+      }
+    }
+  });
+
+  it("gives about nine columns at 150 px in a 1440 window minus the sidebar", () => {
+    expect(columnsForEdge(1220, 150)).toBe(8);
+    expect(columnsForEdge(1440, 150)).toBe(9);
+    expect(columnsForEdge(1024, 72)).toBe(14);
+    expect(columnsForEdge(1920, 300)).toBe(6);
+  });
+
+  it("never returns zero columns", () => {
+    expect(columnsForEdge(100, 300)).toBe(1);
+    expect(columnsForEdge(0, 150)).toBeGreaterThan(0);
+  });
+
+  it("asks for the small thumb up to 150 px and the 2x thumb above, or on dense screens", () => {
+    expect(thumbSizeFor(72)).toBe("grid");
+    expect(thumbSizeFor(150, 2)).toBe("grid");
+    expect(thumbSizeFor(150, 3)).toBe("grid2x");
+    expect(thumbSizeFor(210)).toBe("grid2x");
+    expect(thumbSizeFor(300, 2)).toBe("grid2x");
+  });
+});
 
 describe("gridMetrics", () => {
   it("cells plus gaps exactly fill the container width", () => {
