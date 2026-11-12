@@ -16,6 +16,7 @@ import base64
 import mimetypes
 import os
 import pathlib
+import re
 import sqlite3
 from typing import Literal
 
@@ -48,13 +49,54 @@ _LOCAL_DAY_SQL = "COALESCE(date_created_local_day, substr(date_created, 1, 10))"
 
 def _escape_content_disposition_filename(filename: str) -> str:
     """RFC 6266 quoted-string escaping for a `Content-Disposition` header
-    built by hand (`FileResponse`'s own `filename=` escapes safely on its
-    own and isn't touched here). Without this, a filename containing a
-    `"` or a CR/LF -- both of which osxphotos will happily report, since a
-    `.photoslibrary` filename is whatever the OS let the user name it --
-    could break out of the quoted string or inject a header."""
+    built by hand. Without this, a filename containing a `"` or a CR/LF --
+    both of which osxphotos will happily report, since a `.photoslibrary`
+    filename is whatever the OS let the user name it -- could break out of
+    the quoted string or inject a header."""
     sanitized = filename.replace("\r", "").replace("\n", "")
     return sanitized.replace("\\", "\\\\").replace('"', '\\"')
+
+
+_CONTROL_OR_SEPARATOR = re.compile(r"[\x00-\x1f\x7f/\\]")
+_TRAILING_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,5}$")
+
+
+def download_name(
+    asset: sqlite3.Row, file_path: pathlib.Path, suffix: str | None = None
+) -> str:
+    """The name a user knows (`original_filename`, e.g. IMG_1234.HEIC), not
+    Photos' internal stored name (a UUID). The stem comes from the original
+    name (then `filename`, then the path); the extension is that of the file
+    actually sent -- `suffix` overrides it for a HEIC->JPEG conversion -- so an
+    edited JPEG of a HEIC original is not mislabelled."""
+    raw = asset["original_filename"] or asset["filename"] or file_path.name
+    stem = _TRAILING_EXTENSION.sub("", _CONTROL_OR_SEPARATOR.sub("_", raw)).strip()
+    stem = stem.lstrip(".") or _TRAILING_EXTENSION.sub("", file_path.name) or "download"
+    ext = file_path.suffix if suffix is None else suffix
+    return f"{stem}{ext}"
+
+
+def _percent_encode(value: str) -> str:
+    # Local RFC 5987 encoder: this module must not import urllib (a test
+    # keeps network-capable modules out of the library code paths).
+    unreserved = set(
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+    return "".join(
+        chr(b) if b in unreserved else f"%{b:02X}" for b in value.encode("utf-8")
+    )
+
+
+def content_disposition(name: str) -> str:
+    """`attachment` header with an escaped ASCII fallback plus `filename*`
+    (RFC 5987/6266) so non-ASCII names survive."""
+    ascii_name = name.encode("ascii", "replace").decode().replace("?", "_")
+    header = (
+        f'attachment; filename="{_escape_content_disposition_filename(ascii_name)}"'
+    )
+    if ascii_name != name:
+        header += f"; filename*=UTF-8''{_percent_encode(name)}"
+    return header
 
 
 def _media_settings(db: sqlite3.Connection) -> tuple[dict[str, int], int, int]:
@@ -221,6 +263,7 @@ def write_layout_override(
 class AssetListItem(BaseModel):
     id: str
     filename: str | None
+    original_filename: str | None
     date: str | None
     is_video: bool
     is_live_photo: bool
@@ -254,6 +297,7 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
     return AssetListItem(
         id=row["uuid"],
         filename=row["filename"],
+        original_filename=row["original_filename"],
         date=row["date_created"],
         is_video=bool(row["is_video"]),
         is_live_photo=bool(row["is_live_photo"]),
@@ -879,9 +923,7 @@ def asset_original(
         except media.MediaBackendError as exc:
             # Same convention as the thumb route: the asset exists, no backend can decode it.
             raise HTTPException(status_code=415, detail=str(exc)) from exc
-        filename = _escape_content_disposition_filename(
-            file_path.with_suffix(".jpg").name
-        )
+        disposition = content_disposition(download_name(asset, file_path, ".jpg"))
         # `?download=1` is the explicit marker a Download/share action sends;
         # a bare viewer zoom or HEIC->JPEG fallback hits this same route
         # without it and must never write an audit row.
@@ -898,7 +940,7 @@ def asset_original(
             content=data,
             media_type="image/jpeg",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Disposition": disposition,
                 **fallback_headers,
                 **_media_cache_headers(asset),
             },
@@ -919,8 +961,11 @@ def asset_original(
     return FileResponse(
         file_path,
         media_type=media_type or "application/octet-stream",
-        filename=file_path.name,
-        headers={**fallback_headers, **_media_cache_headers(asset)},
+        headers={
+            "Content-Disposition": content_disposition(download_name(asset, file_path)),
+            **fallback_headers,
+            **_media_cache_headers(asset),
+        },
     )
 
 
@@ -942,6 +987,8 @@ def asset_live_photo_video(
     return FileResponse(
         file_path,
         media_type=media_type or "video/quicktime",
-        filename=file_path.name,
-        headers=_media_cache_headers(asset),
+        headers={
+            "Content-Disposition": content_disposition(download_name(asset, file_path)),
+            **_media_cache_headers(asset),
+        },
     )

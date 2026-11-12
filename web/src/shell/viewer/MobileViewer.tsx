@@ -166,7 +166,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
 
   function handleShare() {
     if (detail?.original_outside_library) return;
-    void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename }]);
+    void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename, original_filename: item.original_filename }]);
   }
 
   function handleDownloadOriginal() {

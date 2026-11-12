@@ -152,7 +152,7 @@ export default function MobileLibrary({
     try {
       await shareOrDownloadAssets(
         libraryId,
-        toShare.map((item) => ({ id: item.id, filename: item.filename })),
+        toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })),
       );
     } finally {
       setSharing(false);
