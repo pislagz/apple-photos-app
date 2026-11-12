@@ -90,6 +90,22 @@ describe("Viewer focus (D59)", () => {
     expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a2"]'));
   });
 
+  it("desktop: after paging, focus returns to the tile of the item shown at close", async () => {
+    const items = [item("a1", "2024-05-10T10:00:00"), item("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      return new Response("{}", { status: 404 });
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    const cells = await screen.findAllByTestId("library-cell");
+    fireEvent.doubleClick(cells.find((cell) => cell.getAttribute("data-asset-id") === "a2") as HTMLElement);
+    await screen.findByTestId("desktop-viewer");
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+    expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a1"]'));
+  });
+
   it("phone: the Info sheet makes everything it covers unfocusable and returns focus to Info", async () => {
     mockFetch(() => new Response("{}", { status: 404 }));
     render(<MobileViewer libraryId={1} items={[item("a1", "2024-05-10T10:00:00")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);

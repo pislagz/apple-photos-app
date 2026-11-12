@@ -454,6 +454,10 @@ export default function MobileLibrary({
           index={openIndex}
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
+          revealItem={(id) => {
+            const row = findRowIndexByAsset(rows, id);
+            if (row !== -1) rowVirtualizer.scrollToIndex(row, { align: "auto" });
+          }}
         />
       )}
     </div>
