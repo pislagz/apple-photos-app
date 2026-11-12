@@ -1,5 +1,5 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl, originalUrl } from "./mediaUrls";
+import { assetPageUrl, originalJpegFallbackUrl, originalUrl } from "./mediaUrls";
 
 // Phase 1 download is one file at a time (CLAUDE.md), original or edited
 // (P1.17) -- whichever is "the" photo as the library shows it. A single
@@ -35,6 +35,21 @@ export async function resolveVersion(libraryId: number, assetId: string): Promis
 export async function downloadAsset(libraryId: number, assetId: string): Promise<void> {
   const version = await resolveVersion(libraryId, assetId);
   downloadVersion(libraryId, assetId, version);
+}
+
+// Select-bar Download with exactly one item: the plain file under its own
+// name, or its JPEG rendition when "HEIC as JPEG" is on.
+export async function downloadSingleAsset(
+  libraryId: number,
+  assetId: string,
+  options: { asJpeg?: boolean } = {},
+): Promise<void> {
+  const version = await resolveVersion(libraryId, assetId);
+  triggerDownload(
+    options.asJpeg
+      ? originalJpegFallbackUrl(libraryId, assetId, version, true)
+      : originalUrl(libraryId, assetId, version, true),
+  );
 }
 
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {

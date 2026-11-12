@@ -8,7 +8,7 @@ import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, u
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages } from "./albumText";
-import { shareOrDownloadAssets } from "../viewer/download";
+import { downloadSingleAsset, shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows, buildTileRows, type LibraryRow } from "./rows";
@@ -160,6 +160,17 @@ export default function MobileLibrary({
 
   const zip = useZipDownload(libraryId);
   const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
+
+  // One selected item downloads as the plain file; 2+ keep the archive flow.
+  async function handleDownloadSelection() {
+    const ids = [...selectedIds];
+    if (ids.length !== 1) {
+      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
+      return;
+    }
+    const item = items.find((candidate) => candidate.id === ids[0]);
+    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+  }
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -433,7 +444,7 @@ export default function MobileLibrary({
               type="button"
               className="mobile-library__bar-button mobile-library__bar-button--end"
               aria-label="Download"
-              onClick={() => void zip.start([...selectedIds], { forceNative: !selectionHasHeicPhoto })}
+              onClick={() => void handleDownloadSelection()}
               disabled={selectedIds.size === 0 || zip.busy}
             >
               <Icon name="download" />
@@ -441,7 +452,7 @@ export default function MobileLibrary({
           </div>
           {selectedIds.size > 0 && zip.state.phase === "idle" && (
             <p className="mobile-library__select-caption">
-              {selectedIds.size === 1 ? "Downloads as a ZIP file." : "Downloads together as one ZIP file."}
+              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items together."}
             </p>
           )}
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (

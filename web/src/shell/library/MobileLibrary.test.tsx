@@ -518,16 +518,48 @@ describe("MobileLibrary", () => {
 
     fireEvent.click(image("a1"));
     expect(count).toHaveTextContent("1 Photo Selected");
-    expect(bar).toHaveTextContent("Downloads as a ZIP file.");
+    expect(bar).toHaveTextContent("Downloads the original file.");
     // The HEIC option is a whole-row switch, not a small checkbox.
     const option = screen.getByRole("switch", { name: "HEIC as JPEG" });
     expect(option.closest("label")).toHaveClass("zip-status__option--row");
 
     fireEvent.click(image("v1"));
     expect(count).toHaveTextContent("2 Items Selected");
-    expect(bar).toHaveTextContent("Downloads together as one ZIP file.");
+    expect(bar).toHaveTextContent("Downloads all selected items together.");
+    expect(bar.textContent).not.toMatch(/zip/i);
     expect(share).toBeEnabled();
     expect(download).toBeEnabled();
+  });
+
+  it("downloads a single selected item as the plain file, not an archive (#259)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: false },
+    ];
+    const fetchMock = mockAssets(items);
+    const hrefs: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      hrefs.push(this.getAttribute("href") ?? "");
+    });
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    fireEvent.click(image("a1"));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(hrefs).toEqual(["/api/libraries/1/original/a1?download=1"]));
+
+    fireEvent.click(screen.getByRole("switch", { name: "HEIC as JPEG" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(hrefs).toHaveLength(2));
+    expect(hrefs[1]).toBe("/api/libraries/1/original/a1?format=jpeg&download=1");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("/zip"))).toBe(false);
+    click.mockRestore();
   });
 
   it("gives every select bar control a 44pt target (#259)", () => {

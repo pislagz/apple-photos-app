@@ -378,7 +378,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-headline);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-library__bar-button svg {
@@ -2513,7 +2513,7 @@ body {
   background: var(--color-fill-subtle);
   font-size: var(--font-size-headline);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 .zip-status__option--row input[role="switch"] {
   appearance: none;
@@ -2526,7 +2526,7 @@ body {
   background:
     radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
     var(--color-fill-strong);
-  cursor: pointer;
+  cursor: default;
   transition: background 0.2s;
 }
 .zip-status__option--row input[role="switch"]:checked {

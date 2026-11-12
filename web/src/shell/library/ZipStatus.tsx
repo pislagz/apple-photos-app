@@ -42,12 +42,12 @@ export default function ZipStatus({
       {state.phase === "downloading" &&
         (state.progress.total && !state.progress.totalUnknown ? (
           <progress
-            aria-label="Zip download progress"
+            aria-label="Download progress"
             value={Math.min(state.progress.received, state.progress.total)}
             max={state.progress.total}
           />
         ) : (
-          <progress aria-label="Zip download progress" />
+          <progress aria-label="Download progress" />
         ))}
       {state.phase === "downloading" && (
         <span role="status">
@@ -56,7 +56,7 @@ export default function ZipStatus({
         </span>
       )}
       {state.phase === "started" && (
-        <span role="status" title="The zip is saved by your browser; it appears in its downloads when finished.">
+        <span role="status" title="The download is saved by your browser; it appears in its downloads when finished.">
           Download started
         </span>
       )}
