@@ -821,9 +821,15 @@ def _origin_matches_host_header(origin: _Origin, request: Request) -> bool:
     by a page on another site, so a cross-site page never matches (its Origin
     names its own host, not ours). This is what lets
     http://192.168.1.20:8000 or http://homeserver.local:8000 sign in with no
-    configured origin list, and tolerates a TLS-terminating proxy that doesn't
-    forward the scheme. Scheme is deliberately not compared."""
+    configured origin list. The scheme must equal the scheme the request
+    actually arrived with (`request.url.scheme`, which uvicorn corrects only
+    for trusted proxies): a same-host Origin with the other scheme is
+    rejected, and an untrusted peer's `X-Forwarded-Proto` never counts. A
+    TLS-terminating proxy that doesn't forward the scheme needs
+    `PHOTOS_VIEWER_PUBLIC_ORIGINS`."""
     scheme, hostname, port = origin
+    if scheme != request.url.scheme.lower():
+        return False
     host_header = request.headers.get("host", "").strip().lower()
     if not host_header:
         return False

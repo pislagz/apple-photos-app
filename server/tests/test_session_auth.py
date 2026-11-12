@@ -2524,6 +2524,25 @@ def test_cross_site_origin_is_rejected_even_over_plain_http(tmp_path, monkeypatc
         conn.close()
 
 
+def test_lan_origin_with_a_different_scheme_than_the_request_is_rejected(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", raising=False)
+    conn, c = _lan_client(tmp_path, host="192.168.1.20:8000")
+    try:
+        _setup_admin(c)
+        assert _login(c, Origin="https://192.168.1.20:8000").status_code == 403
+        assert (
+            _login(
+                c, Origin="https://192.168.1.20:8000", **{"X-Forwarded-Proto": "https"}
+            ).status_code
+            == 403
+        )
+        assert _login(c, Origin="http://192.168.1.20:8000").status_code == 200
+    finally:
+        conn.close()
+
+
 def test_configured_public_origin_is_still_accepted(tmp_path, monkeypatch):
     monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://myhost.tailxyz.ts.net")
     conn, c = _lan_client(tmp_path, host="127.0.0.1:8000", peer="127.0.0.1")
