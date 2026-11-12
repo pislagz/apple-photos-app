@@ -1389,3 +1389,68 @@ test("date title and scrim are click-through, with no overlapping text (#209)", 
     }
   }
 });
+
+// #208 tile overlays and selection. Light and dark; desktop mixed selection
+// (a video and a favourite), the densest zoom, and the iPhone grid and
+// selection mode.
+// The demo has no ffmpeg here, so its videos carry no duration; give them one
+// in the list response so the duration overlay can be seen.
+async function fakeVideoDurations(page: Page) {
+  await page.route(/\/api\/libraries\/\d+\/assets\?/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const item of body.items ?? []) if (item.is_video) item.duration = 65 + (item.id.length % 7) * 11;
+    await route.fulfill({ response, json: body });
+  });
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`tile overlays (${scheme})`, () => {
+    test.use({ colorScheme: scheme });
+
+    test("desktop mixed selection and dense zoom (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "desktop", "desktop only");
+      await fakeVideoDurations(page);
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      const tag = `208-${scheme}`;
+      // The demo has a video every 53rd asset: scroll to the first one and
+      // select it plus its neighbours (some of which are favourites).
+      const video = page.locator('[data-testid="library-cell"]:has(.desktop-library__duration)').first();
+      await video.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      const visible = page.locator('[data-testid="library-cell"]');
+      const videoIndex = await visible.evaluateAll((els) => els.findIndex((el) => el.querySelector(".desktop-library__duration")));
+      for (const offset of [-9, -1, 0, 2, 9]) {
+        const cell = visible.nth(videoIndex + offset);
+        if (await cell.count()) await cell.click({ modifiers: ["Control"] });
+      }
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(300);
+      await shot(page, `${tag}-desktop-selection`, info.project.name);
+      await page.keyboard.press("Escape");
+
+      await page.getByRole("slider", { name: "Zoom" }).fill("0");
+      await page.waitForTimeout(800);
+      await shot(page, `${tag}-desktop-dense`, info.project.name);
+    });
+
+    test("iPhone grid and selection mode (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "iphone", "iPhone only");
+      await fakeVideoDurations(page);
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      await shot(page, `208-${scheme}-iphone-grid`, info.project.name);
+      await page.getByRole("button", { name: "Select", exact: true }).click();
+      await cells(page).nth(0).click();
+      await cells(page).nth(2).click();
+      await cells(page).nth(3).click();
+      await page.waitForTimeout(300);
+      await shot(page, `208-${scheme}-iphone-selection`, info.project.name);
+    });
+  });
+}

@@ -1,3 +1,4 @@
+import { TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
@@ -55,13 +56,8 @@ const LOAD_MORE_ROW_MARGIN = 3;
 // a plain click on a cell still just selects it (#97).
 const DRAG_THRESHOLD_PX = 4;
 
-function formatDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) return "";
-  const total = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${minutes}:${String(secs).padStart(2, "0")}`;
-}
+// #208: click flash length.
+const FLASH_MS = 150;
 
 // A single selected file downloads directly (a multi-selection goes through
 // the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
@@ -179,6 +175,7 @@ export default function DesktopLibrary({
   const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
   const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
   const cellSize = squareEdge(containerWidth, columns, gap, dpr);
+  const tileWidth = widths.length ? Math.min(...widths) : cellSize;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -315,9 +312,16 @@ export default function DesktopLibrary({
     }
   }, [rows, loading, done, loadMore, selectSingle]);
 
+  // #208 click flash: a 35 % white overlay for FLASH_MS on the activated tile.
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const flashTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
       if (suppressClickRef.current) return;
+      setFlashId(item.id);
+      window.clearTimeout(flashTimer.current);
+      flashTimer.current = window.setTimeout(() => setFlashId(null), FLASH_MS);
       if (event.shiftKey && anchorIdRef.current) {
         const anchorIndex = items.findIndex((candidate) => candidate.id === anchorIdRef.current);
         if (anchorIndex !== -1) {
@@ -717,6 +721,9 @@ export default function DesktopLibrary({
         ref={scrollRef}
         className="desktop-library__grid"
         data-testid="desktop-library-grid"
+        role="listbox"
+        aria-label="Photos"
+        aria-multiselectable="true"
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
         onMouseDown={handleGridMouseDown}
@@ -781,7 +788,10 @@ export default function DesktopLibrary({
                         // Focus lands here when the Viewer closes (D59); arrow keys bubble to the grid.
                         tabIndex={-1}
                         data-testid="library-cell"
+                        role="option"
+                        aria-selected={selected.has(item.id)}
                         data-selected={selected.has(item.id)}
+                        data-flash={flashId === item.id ? "true" : undefined}
                         className="desktop-library__cell"
                         style={{ height: row.type === "feature" ? featureHeight(containerWidth, cellSize, gap) : cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}
@@ -797,14 +807,7 @@ export default function DesktopLibrary({
                           style={{ objectFit: squareMode ? "cover" : "contain" }}
                         />
                         {row.type === "feature" && <div className="desktop-library__feature-caption">{row.label}</div>}
-                        {item.favorite && (
-                          <span className="desktop-library__heart" aria-label="Favorite">
-                            ♥
-                          </span>
-                        )}
-                        {item.is_video && (
-                          <span className="desktop-library__duration">{formatDuration(item.duration)}</span>
-                        )}
+                        <TileOverlays item={item} tileWidth={tileWidth} prefix="desktop-library" />
                       </div>
                     );
                   })}

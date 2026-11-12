@@ -1,4 +1,5 @@
 import HeicFallbackModal from "./HeicFallbackModal";
+import { CheckBadge, TileOverlays } from "./TileOverlays";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -363,7 +364,7 @@ export default function MobileLibrary({
               if (row.type === "feature") {
                 const hero = row.items[0];
                 return (
-                  <div key={row.key} style={style} className="mobile-library__row-feature">
+                  <div key={row.key} style={style} className="mobile-library__row-feature" data-selected={selectMode ? selectedIds.has(hero.id) : undefined}>
                     <FadeImage
                       src={`/api/libraries/${libraryId}/thumb/${hero.id}?size=grid2x`}
                       alt={assetAlt(hero)}
@@ -372,13 +373,7 @@ export default function MobileLibrary({
                       onClick={() => openItem(hero)}
                     />
                     <div className="mobile-library__feature-caption">{row.label}</div>
-                    {selectMode && (
-                      <span
-                        className="mobile-library__select-badge"
-                        data-selected={selectedIds.has(hero.id)}
-                        aria-label={selectedIds.has(hero.id) ? "Selected" : "Select"}
-                      />
-                    )}
+                    {selectMode && <CheckBadge prefix="mobile-library" selected={selectedIds.has(hero.id)} />}
                   </div>
                 );
               }
@@ -388,6 +383,7 @@ export default function MobileLibrary({
                     <div
                       key={item.id}
                       className="mobile-library__cell-wrap"
+                      data-selected={selectedIds.has(item.id)}
                       style={{ width: cellSize, height: cellSize }}
                     >
                       <FadeImage
@@ -400,13 +396,8 @@ export default function MobileLibrary({
                         style={{ width: cellSize, height: cellSize }}
                         onClick={() => openItem(item)}
                       />
-                      {selectMode && (
-                        <span
-                          className="mobile-library__select-badge"
-                          data-selected={selectedIds.has(item.id)}
-                          aria-label={selectedIds.has(item.id) ? "Selected" : "Select"}
-                        />
-                      )}
+                      <TileOverlays item={item} tileWidth={cellSize} prefix="mobile-library" />
+                      {selectMode && <CheckBadge prefix="mobile-library" selected={selectedIds.has(item.id)} />}
                     </div>
                   ))}
                 </div>
