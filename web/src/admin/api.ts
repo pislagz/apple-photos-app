@@ -29,6 +29,10 @@ export interface LibraryStatusResponse {
   people_count: number | null;
   total_size_bytes: number | null;
   last_indexed_at: string | null;
+  index_state?: string | null;
+  index_error?: string | null;
+  // #252: while a walk runs, assets walked so far and the library's total.
+  index_progress?: { done: number; total: number } | null;
   prewarm_progress: number | null;
   prewarm?: PrewarmStatus | null;
   warnings: LibraryWarning[];

@@ -69,7 +69,6 @@ describe("Libraries: run history and suggestion", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<LibrariesScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load status" }));
 
     expect(await screen.findByText("Updated 3 Nov 14:20: 12 added, 3 removed, 1 changed")).toBeInTheDocument();
     const history = screen.getByRole("list", { name: "Update history" });
@@ -92,7 +91,6 @@ describe("Libraries: run history and suggestion", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<LibrariesScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load status" }));
     fireEvent.click(await screen.findByRole("button", { name: "Replace with Family 2026.photoslibrary" }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -187,6 +185,7 @@ describe("Replace library file dialog", () => {
   it("shows the server's refusal and keeps the dialog open", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/libraries/1/status") return STATUS;
       if (url === "/api/admin/libraries/1/replace") {
         return new Response(JSON.stringify({ detail: "this path is already registered as another library" }), {
           status: 409,
