@@ -54,11 +54,12 @@ def test_compose_hardening_and_egress():
     assert svc["environment"]["OSXPHOTOS_NO_VERSION_CHECK"] == "1"
 
 
-def test_forwarder_publishes_on_loopback_only_and_is_the_trusted_peer():
+def test_forwarder_publishes_on_the_lan_and_is_the_trusted_peer():
     compose = _compose()
     fwd = compose["services"]["forward"]
     viewer = compose["services"]["viewer"]
-    assert all(str(p).startswith("127.0.0.1:") for p in fwd["ports"])
+    # Home-network default (#266): published on the LAN, not loopback only.
+    assert all(str(p).startswith("0.0.0.0:8000:") for p in fwd["ports"])
     assert fwd["read_only"] is True
     assert fwd["cap_drop"] == ["ALL"]
     assert fwd["user"].split(":")[0] != "0"
