@@ -180,4 +180,65 @@ describe("AdminApp", () => {
     expect(await screen.findByTestId("map-place-names")).toBeInTheDocument();
     window.history.replaceState({}, "", "/");
   });
+
+  describe("leaving Admin (#253)", () => {
+    function adminFetch() {
+      mockFetch((url) => {
+        if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
+        if (url === "/api/admin/libraries") return [];
+        if (url === "/api/admin/place-names") return { consent_decided: true };
+        return [];
+      });
+    }
+
+    function stubAssign() {
+      const assign = vi.fn();
+      vi.stubGlobal("location", { ...window.location, assign, hash: "", pathname: "/admin" });
+      return assign;
+    }
+
+    it("shows a Photos back link to the library in the sidebar", async () => {
+      adminFetch();
+      render(<AdminApp />);
+      await screen.findByRole("heading", { name: "Libraries" });
+      const nav = screen.getByRole("navigation", { name: "Admin sections" });
+      const back = within(nav).getByRole("link", { name: "Photos" });
+      expect(back).toHaveAttribute("href", "/");
+    });
+
+    it("offers the way back on the not-an-admin screen too", async () => {
+      mockFetch((url) => {
+        if (url === "/api/me") return { username: "bob", role: "user", libraries: [] };
+        throw new Error(`unexpected request: ${url}`);
+      });
+      render(<AdminApp />);
+      expect(await screen.findByRole("link", { name: "Photos" })).toHaveAttribute("href", "/");
+    });
+
+    it("Esc returns to the library", async () => {
+      adminFetch();
+      const assign = stubAssign();
+      render(<AdminApp />);
+      await screen.findByRole("heading", { name: "Libraries" });
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(assign).toHaveBeenCalledWith("/");
+    });
+
+    it("Esc in a text field or with a dialog open stays in Admin", async () => {
+      adminFetch();
+      const assign = stubAssign();
+      render(<AdminApp />);
+      await screen.findByRole("heading", { name: "Libraries" });
+      const field = document.createElement("input");
+      document.body.appendChild(field);
+      fireEvent.keyDown(field, { key: "Escape" });
+      field.remove();
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      document.body.appendChild(dialog);
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      dialog.remove();
+      expect(assign).not.toHaveBeenCalled();
+    });
+  });
 });

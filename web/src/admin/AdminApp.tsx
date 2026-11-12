@@ -10,6 +10,7 @@ import {
   type PlaceNamesStatus,
   readPlaceNames,
 } from "./api";
+import { Icon } from "../shell/icons";
 import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
 import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
@@ -28,6 +29,30 @@ const SCREENS: { key: Screen; label: string }[] = [
   { key: "audit-log", label: "Audit log" },
   { key: "settings", label: "Settings" },
 ];
+
+const PHOTOS_HREF = "/";
+
+function BackToPhotos() {
+  return (
+    <a className="admin-back" href={PHOTOS_HREF} data-testid="admin-back">
+      <Icon name="chevron" size={14} className="admin-back__chevron" />
+      Photos
+    </a>
+  );
+}
+
+// Esc leaves Admin unless something else should take it: an open dialog, or a
+// field being typed in (Esc there would throw away what was typed).
+function shouldLeaveOnEscape(event: KeyboardEvent): boolean {
+  if (event.key !== "Escape" || event.defaultPrevented) return false;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
+  if (document.querySelector('dialog[open], [role="dialog"], [role="alertdialog"]')) return false;
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) {
+    return false;
+  }
+  return true;
+}
 
 export default function AdminApp() {
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -54,6 +79,18 @@ export default function AdminApp() {
   }, []);
 
   const isAdmin = me?.role === "admin";
+
+  useEffect(() => {
+    if (!checkedSession || me === null) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (!shouldLeaveOnEscape(event)) return;
+      event.preventDefault();
+      window.location.assign(PHOTOS_HREF);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [checkedSession, me]);
+
   useEffect(() => {
     if (!isAdmin) return;
     readPlaceNames()
@@ -131,6 +168,7 @@ export default function AdminApp() {
     return (
       <main className="admin-auth">
         <p role="alert">This account is not an admin.</p>
+        <BackToPhotos />
       </main>
     );
   }
@@ -138,6 +176,10 @@ export default function AdminApp() {
   return (
     <div className="admin-app">
       <nav className="admin-nav" aria-label="Admin sections">
+        <div className="admin-nav__header">
+          <BackToPhotos />
+          <span className="admin-nav__title">Admin</span>
+        </div>
         <ul>
           {SCREENS.map((entry) => (
             <li key={entry.key}>
