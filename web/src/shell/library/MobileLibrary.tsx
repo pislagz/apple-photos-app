@@ -15,6 +15,8 @@ import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
+import DateTitle from "./DateTitle";
+import { phoneTitle } from "./libraryTitle";
 import { usePinchColumns } from "./usePinchColumns";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
@@ -207,7 +209,9 @@ export default function MobileLibrary({
   // topmost row actually scrolled to, found by scroll offset instead.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const topmostRow = virtualRows.find((row) => row.start + row.size > scrollOffset) ?? virtualRows[0];
-  const pinnedLabel = topmostRow ? rows[topmostRow.index]?.label ?? "" : "";
+  const topRow = topmostRow ? rows[topmostRow.index] : undefined;
+  const topDate = topRow && (topRow.type === "grid" || topRow.type === "feature") ? topRow.items[0]?.date : undefined;
+  const { subtitle: pinnedSubtitle, pill: pinnedPill } = phoneTitle(columns, topDate || undefined);
 
   useEffect(() => {
     // Years/Months never page -- `/summary` already carries every bucket.
@@ -255,8 +259,15 @@ export default function MobileLibrary({
         // always on: Days has the white Select over a bright hero photo too (#176).
         <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
           {view === "all" && (
-            <div className="mobile-library__pinned-header" data-testid="pinned-header">
-              {pinnedLabel}
+            <div className="mobile-library__title-block">
+              {pinnedPill ? (
+                <DateTitle text={pinnedPill} className="mobile-library__pill" testId="pinned-header" />
+              ) : (
+                <>
+                  <div className="mobile-library__large-title">Library</div>
+                  <DateTitle text={pinnedSubtitle} className="mobile-library__subtitle" testId="pinned-header" />
+                </>
+              )}
             </div>
           )}
           {!isTileView && (

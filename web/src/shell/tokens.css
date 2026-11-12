@@ -161,6 +161,7 @@
 
   /* Scrims over photos (the text on them is always white). */
   --scrim-clear: rgba(0, 0, 0, 0);
+  --scrim-title: rgba(0, 0, 0, 0.5);
   --scrim-soft: rgba(0, 0, 0, 0.45);
   --scrim-medium: rgba(0, 0, 0, 0.55);
   --scrim-strong: rgba(0, 0, 0, 0.6);
