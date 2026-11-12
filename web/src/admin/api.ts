@@ -286,6 +286,7 @@ export interface SettingsResponse {
   session_lifetime_desktop_seconds: number;
   session_lifetime_pwa_seconds: number;
   session_lifetime_remember_me_seconds: number;
+  keep_signed_in_mode: "default_on" | "default_off" | "disabled";
   thumb_size_grid: number;
   thumb_size_grid2x: number;
   thumb_size_preview: number;

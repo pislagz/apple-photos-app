@@ -89,8 +89,12 @@ export function getMe(): Promise<MeResponse> {
   return request<MeResponse>("/api/me");
 }
 
+export type KeepSignedInMode = "default_on" | "default_off" | "disabled";
+
 export interface SetupStatusResponse {
   needs_setup: boolean;
+  // Admin setting: is "Keep me signed in" ticked by default, unticked, or not offered.
+  keep_signed_in?: KeepSignedInMode;
 }
 
 // Lets the shell show "Create admin account" instead of "Sign in" before

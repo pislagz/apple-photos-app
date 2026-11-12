@@ -68,7 +68,22 @@ _COOKIE_SECURE_ENV = "PHOTOS_VIEWER_COOKIE_SECURE"
 
 _DEFAULT_DESKTOP_LIFETIME_SECONDS = 12 * 3600
 _DEFAULT_PWA_LIFETIME_SECONDS = 30 * 24 * 3600
-_DEFAULT_REMEMBER_ME_LIFETIME_SECONDS = 180 * 24 * 3600
+# "Keep me signed in": a persistent cookie that lasts until sign-out in
+# practice. 400 days is the longest Max-Age browsers honour, and the session
+# row expires then too; sign-out and admin session revoke still end it at once.
+_DEFAULT_REMEMBER_ME_LIFETIME_SECONDS = 400 * 24 * 3600
+
+# Admin setting for the sign-in checkbox: ticked by default, unticked by
+# default, or not offered (every sign-in is then a browser-session cookie).
+KEEP_SIGNED_IN_SETTING = "keep_signed_in_mode"
+KEEP_SIGNED_IN_MODES = ("default_on", "default_off", "disabled")
+DEFAULT_KEEP_SIGNED_IN_MODE = "default_on"
+
+
+def keep_signed_in_mode(conn: sqlite3.Connection) -> str:
+    stored = app_db.get_setting(conn, KEEP_SIGNED_IN_SETTING)
+    return stored if stored in KEEP_SIGNED_IN_MODES else DEFAULT_KEEP_SIGNED_IN_MODE
+
 
 # A session is considered idle-refreshed at most once a minute, so a user
 # scrolling the grid doesn't turn every request into a write.
@@ -400,13 +415,17 @@ def start_session(
 ) -> None:
     """Create a session and set its cookie. The one place the cookie flags
     live, so password and passkey sign-in (P3.1) can never drift apart."""
+    # The admin can turn the option off; a client that still sends it is ignored.
+    remember_me = remember_me and keep_signed_in_mode(conn) != "disabled"
     raw_token, max_age = create_session(
         conn, user_id, client=client, remember_me=remember_me
     )
     response.set_cookie(
         key=COOKIE_NAME,
         value=raw_token,
-        max_age=max_age,
+        # No Max-Age without "keep me signed in": a browser-session cookie.
+        # The server-side expiry (the client's normal lifetime) still applies.
+        max_age=max_age if remember_me else None,
         httponly=True,
         secure=_cookie_secure(),
         samesite="strict",
@@ -1116,6 +1135,7 @@ class AuthUserResponse(BaseModel):
 
 class SetupStatusResponse(BaseModel):
     needs_setup: bool
+    keep_signed_in: Literal["default_on", "default_off", "disabled"] = "default_on"
 
 
 @router.get(
@@ -1127,7 +1147,9 @@ def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusRespons
     """Whether `POST /api/setup/admin` is still open, so the web app can show
     "Create admin account" instead of "Sign in" before any user row exists."""
     (existing_users,) = db.execute("SELECT COUNT(*) FROM users").fetchone()
-    return SetupStatusResponse(needs_setup=existing_users == 0)
+    return SetupStatusResponse(
+        needs_setup=existing_users == 0, keep_signed_in=keep_signed_in_mode(db)
+    )
 
 
 @router.post(
