@@ -7,6 +7,7 @@ const SETTINGS = {
   session_lifetime_desktop_seconds: 3600,
   session_lifetime_pwa_seconds: 7200,
   session_lifetime_remember_me_seconds: 2592000,
+  keep_signed_in_mode: "default_on" as "default_on" | "default_off" | "disabled",
   thumb_size_grid: 256,
   thumb_size_grid2x: 512,
   thumb_size_preview: 1024,

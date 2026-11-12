@@ -171,7 +171,10 @@ def test_setup_status_reports_needs_setup_before_any_admin_exists(client):
     response = client.get("/api/setup/status")
 
     assert response.status_code == 200
-    assert response.json() == {"needs_setup": True}
+    assert response.json() == {
+        "needs_setup": True,
+        "keep_signed_in": "default_on",
+    }
 
 
 def test_setup_status_reports_no_setup_needed_once_an_admin_exists(client):
@@ -181,7 +184,10 @@ def test_setup_status_reports_no_setup_needed_once_an_admin_exists(client):
 
     response = client.get("/api/setup/status")
 
-    assert response.json() == {"needs_setup": False}
+    assert response.json() == {
+        "needs_setup": False,
+        "keep_signed_in": "default_on",
+    }
 
 
 def test_concurrent_first_run_setup_creates_exactly_one_admin(tmp_path):
@@ -668,7 +674,7 @@ def test_remember_me_requests_a_longer_cookie_lifetime(client):
             key, _, value = part.strip().partition("=")
             if key.lower() == "max-age":
                 return int(value)
-        raise AssertionError("no Max-Age in Set-Cookie")
+        return 0  # session cookie: no Max-Age
 
     assert max_age(long) > max_age(short)
 
@@ -2588,3 +2594,48 @@ def test_direct_lan_clients_are_locked_out_per_address_and_ignore_spoofed_header
         )
     finally:
         conn.close()
+
+
+def _cookie_attrs(response) -> dict[str, str]:
+    parts = [p.strip() for p in response.headers["set-cookie"].split(";")]
+    return {k.lower(): v for k, _, v in (p.partition("=") for p in parts)}
+
+
+def _login_json(client, **extra):
+    return client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD, **extra},
+    )
+
+
+def test_keep_signed_in_cookie_variants(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    kept = _cookie_attrs(_login_json(client, remember_me=True))
+    session_only = _cookie_attrs(_login_json(client, remember_me=False))
+
+    assert int(kept["max-age"]) == session_auth._DEFAULT_REMEMBER_ME_LIFETIME_SECONDS
+    assert "max-age" not in session_only and "expires" not in session_only
+    for attrs in (kept, session_only):
+        assert "httponly" in attrs and "secure" in attrs
+        assert attrs["samesite"].lower() == "strict"
+
+
+def test_keep_signed_in_setting_default_and_status(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    assert client.get("/api/setup/status").json()["keep_signed_in"] == "default_on"
+
+
+def test_keep_signed_in_disabled_ignores_the_client_flag(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    conn = client.app.dependency_overrides[session_auth.get_db]()
+    app_db.set_setting(conn, session_auth.KEEP_SIGNED_IN_SETTING, "disabled")
+
+    assert client.get("/api/setup/status").json()["keep_signed_in"] == "disabled"
+    attrs = _cookie_attrs(_login_json(client, remember_me=True))
+    assert "max-age" not in attrs

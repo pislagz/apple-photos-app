@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { passkeyConnectionNote, passkeysSupported } from "../passkeys";
+import type { KeepSignedInMode } from "../api";
 import type { Layout } from "./useLayout";
 
 export type LoginErrorKind = "lockout" | "invalid" | "generic";
@@ -19,21 +20,30 @@ function errorText(error: LoginError): string {
 export default function LoginScreen({
   layout,
   error,
+  keepSignedIn = "default_on",
   onSubmit,
   onPasskey,
 }: {
   layout: Layout;
   error: LoginError | null;
-  onSubmit: (username: string, password: string) => void;
+  keepSignedIn?: KeepSignedInMode;
+  onSubmit: (username: string, password: string, rememberMe: boolean) => void;
   // Shown only when the browser has WebAuthn; sign-in needs no username.
-  onPasskey?: () => void;
+  onPasskey?: (rememberMe: boolean) => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const offered = keepSignedIn !== "disabled";
+  const [keep, setKeep] = useState(keepSignedIn === "default_on");
+  // The admin setting arrives after the first render; follow it until the user touches the box.
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (!touched) setKeep(keepSignedIn === "default_on");
+  }, [keepSignedIn, touched]);
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    onSubmit(username, password);
+    onSubmit(username, password, offered && keep);
   }
 
   return (
@@ -59,13 +69,26 @@ export default function LoginScreen({
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
+          {offered && (
+            <label className="login-card__keep">
+              <input
+                type="checkbox"
+                checked={keep}
+                onChange={(event) => {
+                  setTouched(true);
+                  setKeep(event.target.checked);
+                }}
+              />
+              Keep me signed in
+            </label>
+          )}
           <button type="submit">Sign in</button>
         </form>
         {onPasskey && passkeyConnectionNote() && (
           <p className="login-card__passkey-note">{passkeyConnectionNote()}</p>
         )}
         {onPasskey && !passkeyConnectionNote() && passkeysSupported() && (
-          <button type="button" className="login-card__passkey" onClick={onPasskey}>
+          <button type="button" className="login-card__passkey" onClick={() => onPasskey(offered && keep)}>
             Sign in with a passkey
           </button>
         )}

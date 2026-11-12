@@ -590,6 +590,7 @@ def test_settings_default_then_round_trip(tmp_path):
         assert defaults.status_code == 200
         assert defaults.json()["map_tiles_mode"] == "off"  # D41: opt-in
         assert defaults.json()["osm_consent"] is False
+        assert defaults.json()["keep_signed_in_mode"] == "default_on"
         assert defaults.json()["map_tiles_pmtiles_path"] is None
 
         updated = client.put(
@@ -598,6 +599,7 @@ def test_settings_default_then_round_trip(tmp_path):
                 "session_lifetime_desktop_seconds": 3600,
                 "session_lifetime_pwa_seconds": 7200,
                 "session_lifetime_remember_me_seconds": 86400,
+                "keep_signed_in_mode": "default_off",
                 "thumb_size_grid": 320,
                 "thumb_size_grid2x": 640,
                 "thumb_size_preview": 1800,
@@ -613,6 +615,7 @@ def test_settings_default_then_round_trip(tmp_path):
         assert updated.json()["map_tiles_mode"] == "online"
         assert updated.json()["map_tiles_pmtiles_path"] == "/data/world.pmtiles"
         assert updated.json()["thumb_quality"] == 90
+        assert updated.json()["keep_signed_in_mode"] == "default_off"
 
         reread = client.get("/api/admin/settings")
         assert reread.json() == updated.json()

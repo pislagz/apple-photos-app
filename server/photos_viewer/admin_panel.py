@@ -738,6 +738,7 @@ _SETTINGS_DEFAULTS: dict[str, int | str | None] = {
     "session_lifetime_desktop_seconds": session_auth._DEFAULT_DESKTOP_LIFETIME_SECONDS,
     "session_lifetime_pwa_seconds": session_auth._DEFAULT_PWA_LIFETIME_SECONDS,
     "session_lifetime_remember_me_seconds": session_auth._DEFAULT_REMEMBER_ME_LIFETIME_SECONDS,
+    session_auth.KEEP_SIGNED_IN_SETTING: session_auth.DEFAULT_KEEP_SIGNED_IN_MODE,
     "thumb_size_grid": media.SIZES["grid"],
     "thumb_size_grid2x": media.SIZES["grid2x"],
     "thumb_size_preview": media.SIZES["preview"],
@@ -756,6 +757,7 @@ class SettingsResponse(BaseModel):
     session_lifetime_desktop_seconds: int
     session_lifetime_pwa_seconds: int
     session_lifetime_remember_me_seconds: int
+    keep_signed_in_mode: Literal["default_on", "default_off", "disabled"]
     thumb_size_grid: int
     thumb_size_grid2x: int
     thumb_size_preview: int
@@ -774,6 +776,7 @@ class SettingsUpdateRequest(BaseModel):
     session_lifetime_desktop_seconds: int = Field(ge=60)
     session_lifetime_pwa_seconds: int = Field(ge=60)
     session_lifetime_remember_me_seconds: int = Field(ge=60)
+    keep_signed_in_mode: Literal["default_on", "default_off", "disabled"] = "default_on"
     thumb_size_grid: int = Field(ge=32, le=4096)
     thumb_size_grid2x: int = Field(ge=32, le=4096)
     thumb_size_preview: int = Field(ge=32, le=8192)
@@ -808,6 +811,8 @@ def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
             values[key] = default
         elif key == "map_tiles_pmtiles_path":
             values[key] = stored or None
+        elif key == session_auth.KEEP_SIGNED_IN_SETTING:
+            values[key] = session_auth.keep_signed_in_mode(db)
         elif key in ("show_library_updated_note", "osm_consent"):
             values[key] = stored in ("1", "True", "true")
         else:
