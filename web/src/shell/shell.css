@@ -1935,6 +1935,13 @@ body {
   object-fit: contain;
 }
 
+/* #257: a pan or fit drag follows the mouse over the bars and filmstrip too;
+   keep the closed hand there instead of whatever they would show. */
+.desktop-viewer.is-dragging,
+.desktop-viewer.is-dragging * {
+  cursor: grabbing;
+}
+
 .desktop-viewer__media-wrap {
   position: relative;
   width: 100%;

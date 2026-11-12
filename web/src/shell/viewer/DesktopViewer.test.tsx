@@ -554,6 +554,48 @@ describe("DesktopViewer fit, zoom and pan (#267)", () => {
   });
 });
 
+describe("DesktopViewer cursor (#257)", () => {
+  function setup() {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={[makeItem("a1", { width: 4000, height: 3000 }), makeItem("a2")]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    return { still, root: screen.getByTestId("desktop-viewer") };
+  }
+
+  it("is the plain arrow at fit, never the zoom cursor", () => {
+    const { still } = setup();
+    expect(still.style.cursor).toBe("default");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("default"); // a click or double-click does not flash the hand
+    fireEvent.mouseMove(window, { clientX: 400, clientY: 400 });
+    expect(still.style.cursor).toBe("grabbing"); // dragging to page
+    fireEvent.mouseUp(window, { clientX: 400, clientY: 400 });
+    expect(still.style.cursor).toBe("default");
+  });
+
+  it("is an open hand when zoomed and a closed hand while the button is held, everywhere in the viewer", () => {
+    const { still, root } = setup();
+    fireEvent.doubleClick(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("grab");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("grabbing");
+    expect(root.className).toContain("is-dragging");
+    fireEvent.mouseMove(window, { clientX: 450, clientY: 380 });
+    expect(still.style.cursor).toBe("grabbing");
+    fireEvent.mouseUp(window);
+    expect(still.style.cursor).toBe("grab");
+    expect(root.className).not.toContain("is-dragging");
+  });
+
+  it("keeps the closed hand over the bars and filmstrip while dragging", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    expect(css).toMatch(/\.desktop-viewer\.is-dragging,\s*\.desktop-viewer\.is-dragging \* \{\s*cursor: grabbing;/);
+    expect(readFileSync(join(__dirname, "DesktopViewer.tsx"), "utf-8")).not.toContain("zoom-in");
+  });
+});
+
 describe("DesktopViewer chrome (#211)", () => {
   it("fades the top bar 2.5 s after the last pointer move while a video plays, and shows it on move", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });

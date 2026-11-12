@@ -211,6 +211,31 @@ test("photos open fitted, zoom out stops at fit, zoomed pan is clamped in both a
   expect([...seen].sort()).toEqual(["landscape", "portrait"]);
 });
 
+test("desktop cursor: arrow at fit, open hand when zoomed, closed hand while held, even over the bars (#257)", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "pointer cursors are the desktop layout");
+  await signIn(page);
+  await openAllPhotos(page);
+  expect(await openCell(page, 0, false)).toBe(true);
+  const box = (await page.getByTestId("desktop-viewer-stage").boundingBox())!;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const cursorAt = (x: number, y: number) =>
+    page.evaluate(([px, py]) => getComputedStyle(document.elementFromPoint(px, py)!).cursor, [x, y]);
+  expect(await cursorAt(cx, cy)).toBe("default");
+  await page.mouse.dblclick(cx, cy);
+  await page.waitForTimeout(400);
+  await page.mouse.move(cx, cy);
+  expect(await cursorAt(cx, cy)).toBe("grab");
+  await page.mouse.down();
+  expect(await cursorAt(cx, cy)).toBe("grabbing");
+  await page.mouse.move(cx, 20, { steps: 5 });
+  expect(await cursorAt(cx, 20)).toBe("grabbing");
+  await page.mouse.up();
+  expect(await cursorAt(cx, cy)).toBe("grab");
+  await page.screenshot({ path: `${SHOTS}/${info.project.name}-257-grab.png` });
+  await close(page);
+});
+
 test("desktop: at fit a horizontal drag pages to the next and previous photo", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "mouse drag is the desktop layout; touch paging is covered in MobileViewer tests");
   await signIn(page);

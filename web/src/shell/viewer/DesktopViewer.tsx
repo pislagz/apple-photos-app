@@ -149,6 +149,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   // #267: the drag follows the mouse on the window, so leaving the stage
   // mid-drag still pans (clamped at the edge) instead of freezing the photo.
   const endDragRef = useRef<(() => void) | null>(null);
+  const [dragging, setDragging] = useState(false);
   useEffect(() => () => endDragRef.current?.(), []);
 
   function onMediaMouseDown(event: MouseEvent) {
@@ -159,11 +160,15 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     const atFit = scale <= 1;
     dragRef.current = { startX: event.clientX, startY: event.clientY, panX: view.x, panY: view.y };
     let last = { dx: 0, dy: 0 };
+    // At fit the hand only closes once the mouse moves, so a click or a
+    // double-click to zoom never flashes it.
+    if (!atFit) setDragging(true);
     const onMove = (move: globalThis.MouseEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
       last = { dx: move.clientX - drag.startX, dy: move.clientY - drag.startY };
       if (atFit) {
+        if (g.lockAxis(last.dx, last.dy)) setDragging(true);
         setView(g.fitDragView(last));
         return;
       }
@@ -182,6 +187,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       }
       dragRef.current = null;
       endDragRef.current = null;
+      setDragging(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", end);
       window.removeEventListener("blur", end);
@@ -211,7 +217,9 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const mediaTransform: CSSProperties = {
     transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
     transition: animating ? `transform ${g.ZOOM_ANIM_MS}ms ease-out` : undefined,
-    cursor: scale > 1 ? "grab" : "zoom-in",
+    // #257: open hand when there is something to pan, closed while the button
+    // is held, the plain arrow at fit (no click-to-zoom, only double-click).
+    cursor: dragging ? "grabbing" : scale > 1 ? "grab" : "default",
   };
   const isFull = media.showingOriginal || media.wantsOriginal;
   const alt = assetAlt({ ...item, title: detail?.title });
@@ -221,7 +229,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
 
   return (
     <div
-      className={`desktop-viewer${closing ? " is-closing" : ""}`}
+      className={`desktop-viewer${closing ? " is-closing" : ""}${dragging ? " is-dragging" : ""}`}
       data-testid="desktop-viewer"
       ref={rootRef}
       tabIndex={-1}
