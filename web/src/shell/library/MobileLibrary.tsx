@@ -17,7 +17,7 @@ import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
 import DateTitle from "./DateTitle";
-import { phoneTitle } from "./libraryTitle";
+import { phoneTitle, titleScrimProgress } from "./libraryTitle";
 import { usePinchColumns } from "./usePinchColumns";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
@@ -258,7 +258,13 @@ export default function MobileLibrary({
         // One flex row so the title can never sit under Select: the title
         // shrinks and ellipsizes, Select keeps its natural width. The scrim is
         // always on: Days has the white Select over a bright hero photo too (#176).
-        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
+        // In All Photos it fades in with the first bit of scroll (#261).
+        <div
+          className="mobile-library__top-bar"
+          data-testid="top-bar"
+          data-scrim="true"
+          style={{ "--title-scrim": view === "all" ? titleScrimProgress(scrollOffset) : 1 } as CSSProperties}
+        >
           {view === "all" && (
             <div className="mobile-library__title-block">
               {pinnedPill ? (

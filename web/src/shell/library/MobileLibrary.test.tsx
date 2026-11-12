@@ -172,7 +172,24 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
     const bar = await screen.findByTestId("top-bar");
     expect(bar).toHaveAttribute("data-scrim", "true");
+    expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"); // full scrim over the hero photo
     expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+  });
+
+  it("fades the title scrim in over the first 48 px of All Photos scroll (#261)", async () => {
+    mockAssets(Array.from({ length: 40 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(28 - (i % 28)).padStart(2, "0")}T10:00:00`)));
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const bar = await screen.findByTestId("top-bar");
+    expect(bar.style.getPropertyValue("--title-scrim")).toBe("0");
+    const scrollEl = screen.getByTestId("library-scroll");
+    scrollEl.scrollTop = 24;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0.5"));
+    scrollEl.scrollTop = 400;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"));
   });
 
   it("changes the column count on a pinch gesture", async () => {

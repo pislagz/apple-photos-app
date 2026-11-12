@@ -109,17 +109,37 @@ body {
   pointer-events: none;
 }
 
+/* #261: a light blur that fades in over the first 48 px of scroll
+   (--title-scrim 0 -> 1, set inline from the scroll offset). The tint keeps
+   40 % at the top so the white title stays legible on bright photos, and
+   reaches full strength with the blur. Scroll-linked, so no transition. */
 .mobile-library__top-bar[data-scrim="true"]::before,
 .desktop-library__title-scrim::before {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
+  opacity: var(--title-scrim, 1);
 }
 
 .mobile-library__top-bar[data-scrim="true"]::after,
 .desktop-library__title-scrim::after {
   background: linear-gradient(to bottom, var(--scrim-title) 0%, var(--scrim-clear) 100%);
+  opacity: calc(0.4 + 0.6 * var(--title-scrim, 1));
+}
+
+/* Reduce Transparency: no blur at all; the tint alone, at full strength. */
+@media (prefers-reduced-transparency: reduce) {
+  .mobile-library__top-bar[data-scrim="true"]::before,
+  .desktop-library__title-scrim::before {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .mobile-library__top-bar[data-scrim="true"]::after,
+  .desktop-library__title-scrim::after {
+    opacity: 1;
+  }
 }
 
 /* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
