@@ -1,14 +1,15 @@
 import HeicFallbackModal from "./HeicFallbackModal";
 import { CheckBadge, TileOverlays } from "./TileOverlays";
 import ZipStatus from "./ZipStatus";
+import { Icon } from "../icons";
+import { selectionCountLabel } from "./selectionText";
 import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { Icon } from "../icons";
 import { albumMessages } from "./albumText";
-import { shareOrDownloadAssets } from "../viewer/download";
+import { downloadSingleAsset, shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows, buildTileRows, type LibraryRow } from "./rows";
@@ -165,6 +166,17 @@ export default function MobileLibrary({
 
   const zip = useZipDownload(libraryId);
   const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
+
+  // One selected item downloads as the plain file; 2+ keep the archive flow.
+  async function handleDownloadSelection() {
+    const ids = [...selectedIds];
+    if (ids.length !== 1) {
+      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
+      return;
+    }
+    const item = items.find((candidate) => candidate.id === ids[0]);
+    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+  }
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -423,37 +435,51 @@ export default function MobileLibrary({
         )}
       </div>
       {selectMode && (
+        // Laid out like Photos' select toolbar (#259): Share at the left, the
+        // count in the middle, the action at the right, 44pt targets.
         <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-summary">
-            <span className="mobile-library__select-count">
-              {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+          <div className="mobile-library__select-row">
+            <button
+              type="button"
+              className="mobile-library__bar-button"
+              aria-label="Share"
+              onClick={handleShareSelection}
+              disabled={selectedIds.size === 0 || sharing}
+            >
+              <Icon name="share" />
+            </button>
+            <span className="mobile-library__select-summary">
+              <span className="mobile-library__select-count" aria-live="polite">
+                {selectionCountLabel(items, selectedIds)}
+              </span>
+              {selectedIds.size > 0 && (
+                <button type="button" aria-label="Deselect all" title="Deselect" onClick={() => setSelectedIds(new Set())}>
+                  <Icon name="close" size={14} />
+                </button>
+              )}
             </span>
-            {selectedIds.size > 0 && (
-              <button type="button" aria-label="Deselect all" title="Deselect" onClick={() => setSelectedIds(new Set())}>
-                <Icon name="close" size={14} />
-              </button>
-            )}
-          </span>
-          <button
-            type="button"
-            onClick={handleShareSelection}
-            disabled={selectedIds.size === 0 || sharing}
-          >
-            Share
-          </button>
-          <button
-            type="button"
-            onClick={() => void zip.start([...selectedIds], { forceNative: !selectionHasHeicPhoto })}
-            disabled={selectedIds.size === 0 || zip.busy}
-          >
-            Zip
-          </button>
+            <button
+              type="button"
+              className="mobile-library__bar-button mobile-library__bar-button--end"
+              aria-label="Download"
+              onClick={() => void handleDownloadSelection()}
+              disabled={selectedIds.size === 0 || zip.busy}
+            >
+              <Icon name="download" />
+            </button>
+          </div>
+          {selectedIds.size > 0 && zip.state.phase === "idle" && (
+            <p className="mobile-library__select-caption">
+              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
+            </p>
+          )}
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
             <ZipStatus
               state={zip.state}
               jpeg={zip.jpeg}
               onJpegChange={zip.setJpeg}
               showHeicOption={selectionHasHeicPhoto}
+              variant="row"
             />
           )}
         </div>

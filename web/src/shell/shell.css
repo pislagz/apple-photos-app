@@ -555,9 +555,8 @@ body {
   bottom: 0;
   z-index: 3;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-10) var(--space-16) calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
+  flex-direction: column;
+  padding: var(--space-4) var(--space-8) calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
   background: var(--material-bar-strong);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -567,29 +566,79 @@ body {
 .mobile-library__select-summary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-4);
   min-width: 0;
 }
 
-.mobile-library__select-count {
-  white-space: nowrap;
-  font-size: var(--font-size-subhead);
-  color: var(--color-label);
-  font-variant-numeric: tabular-nums;
-}
-
-.mobile-library__select-bar button {
+.mobile-library__select-summary button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 44px;
   border: none;
   background: transparent;
-  color: var(--accent);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-secondary, var(--accent));
   cursor: pointer;
 }
 
-.mobile-library__select-bar button:disabled {
+/* Photos' toolbar row: 49pt tall, the count centred between equal-width
+   ends so it stays centred whatever the buttons' widths (#259). */
+.mobile-library__select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 49px;
+}
+
+.mobile-library__select-count {
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.mobile-library__bar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-8);
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-headline);
+  cursor: default;
+}
+
+.mobile-library__bar-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mobile-library__bar-button:first-child {
+  justify-self: start;
+}
+
+.mobile-library__bar-button--end {
+  justify-self: end;
+}
+
+.mobile-library__bar-button:disabled {
   color: var(--color-label-tertiary);
   cursor: default;
+}
+
+.mobile-library__select-caption {
+  margin: 0 var(--space-8) var(--space-4);
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  text-align: center;
 }
 
 
@@ -2898,20 +2947,61 @@ body {
 .zip-status [role="status"] {
   white-space: nowrap;
 }
-/* iPhone select bar: the zip option/progress gets its own row so the
-   count and the Share/Zip buttons never get squeezed (P3.2 review). */
-.mobile-library__select-bar {
-  flex-wrap: wrap;
-  row-gap: var(--space-6);
+/* iPhone select bar: the HEIC option and the progress line sit on their own
+   full-width rows under the toolbar row, so nothing gets squeezed and the
+   option is a whole-row tap target with a switch, like a Settings row (#259). */
+.zip-status--row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  font-size: var(--font-size-subhead);
 }
-.mobile-library__select-bar .zip-status {
-  order: 10;
-  flex-basis: 100%;
-  min-width: 0;
+.zip-status--row:empty {
+  display: none;
 }
-.mobile-library__select-bar .zip-status progress {
-  flex: 1;
-  min-width: 0;
+.zip-status--row > [role="status"],
+.zip-status--row > [role="alert"] {
+  text-align: center;
+}
+.zip-status--row progress {
+  width: 100%;
+}
+.zip-status__option--row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  min-height: 44px;
+  padding: 0 var(--space-12);
+  border-radius: var(--radius-10);
+  background: var(--color-fill-subtle);
+  font-size: var(--font-size-headline);
+  color: var(--color-label);
+  cursor: default;
+}
+.zip-status__option--row input[role="switch"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 51px;
+  height: 31px;
+  margin: 0;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
+    var(--color-fill-strong);
+  cursor: default;
+  transition: background 0.2s;
+}
+.zip-status__option--row input[role="switch"]:checked {
+  background:
+    radial-gradient(circle at calc(100% - 15.5px) 50%, var(--color-white) 0 13.5px, transparent 14px),
+    var(--accent);
+}
+.zip-status__option--row input[role="switch"]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 
