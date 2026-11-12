@@ -49,3 +49,59 @@ test("select bar: Share left, count centred, Download right, 44pt targets", asyn
     expect(box.width).toBeGreaterThan(viewport.width * 0.8);
   }
 });
+
+// #281 F12: the grid's bottom padding follows the bar's full height, so the
+// last row is never covered when scrolled to the very bottom.
+test("select bar never covers the last row", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone layout only");
+  await signIn(page);
+  await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  const cells = page.locator("img.mobile-library__cell");
+  await cells.nth(0).click();
+  await cells.nth(1).click();
+  const bar = page.getByTestId("select-bar");
+  const scroll = page.getByTestId("library-scroll");
+  // Page in the whole demo library: scroll until we rest at the end and the
+  // height stops growing.
+  let previous = -1;
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(300);
+    const state = await scroll.evaluate((el) => {
+      el.scrollTo(0, el.scrollHeight);
+      return { height: el.scrollHeight, atEnd: el.scrollTop + el.clientHeight >= el.scrollHeight - 1 };
+    });
+    if (state.atEnd && state.height === previous) break;
+    previous = state.height;
+  }
+  const barBox = (await bar.boundingBox())!;
+  const padding = await scroll.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(padding).toBeGreaterThanOrEqual(barBox.height - 1);
+  const lowest = await scroll.evaluate((el) =>
+    Math.max(...Array.from(el.querySelectorAll("img.mobile-library__cell")).map((i) => i.getBoundingClientRect().bottom)),
+  );
+  expect(lowest).toBeLessThanOrEqual(barBox.y + 1);
+});
+
+// #281 F15: Share hands every selected photo to one share sheet.
+test("select bar Share passes all selected photos to one share()", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone layout only");
+  await page.addInitScript(() => {
+    const w = window as unknown as { __shared: number[] };
+    w.__shared = [];
+    Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+    Object.defineProperty(navigator, "share", {
+      value: async (data: { files: File[] }) => {
+        w.__shared.push(data.files.length);
+      },
+      configurable: true,
+    });
+  });
+  await signIn(page);
+  await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  const cells = page.locator("img.mobile-library__cell");
+  for (const i of [0, 1, 2]) await cells.nth(i).click();
+  await page.getByRole("button", { name: "Share" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __shared: number[] }).__shared)).toEqual([3]);
+});

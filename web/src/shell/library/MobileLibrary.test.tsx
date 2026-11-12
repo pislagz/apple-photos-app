@@ -142,7 +142,7 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("May 10, 2024"));
 
     const scrollEl = screen.getByTestId("library-scroll");
-    // One grid row (cellSize 200px with the mocked 800px-wide container / 4
+    // One grid row (cellSize 199.25px with the mocked 800px-wide container / 4
     // columns) comfortably clears the first row (may-1, may-2, apr-0, apr-1).
     scrollEl.scrollTop = 220;
     fireEvent.scroll(scrollEl);
@@ -188,7 +188,7 @@ describe("MobileLibrary", () => {
 
     const scrollEl = screen.getByTestId("library-scroll");
     const initialWidth = (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
-    expect(initialWidth).toBe("200px"); // 800px container / 4 default columns
+    expect(initialWidth).toBe("199.25px"); // (800px - 3 gaps of 1px) / 4 default columns
 
     // Pinch in (fingers moving together): zoom out to more, smaller columns.
     fireEvent.touchStart(scrollEl, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 200, clientY: 0 }] });
@@ -526,7 +526,6 @@ describe("MobileLibrary", () => {
     fireEvent.click(image("v1"));
     expect(count).toHaveTextContent("2 Items Selected");
     expect(bar).toHaveTextContent("Downloads all selected items in a ZIP file.");
-    expect(bar.textContent).not.toMatch(/zip/i);
     expect(share).toBeEnabled();
     expect(download).toBeEnabled();
   });
