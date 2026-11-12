@@ -61,9 +61,6 @@ function shortDate(iso: string): string {
   });
 }
 
-// #208: click flash length. Local constant until the #206 motion tokens land.
-const FLASH_MS = 150;
-
 // A single selected file downloads directly (a multi-selection goes through
 // the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
 // click does.
@@ -315,16 +312,9 @@ export default function DesktopLibrary({
     }
   }, [rows, loading, done, loadMore, selectSingle]);
 
-  // #208 click flash: a 35 % white overlay for FLASH_MS on the activated tile.
-  const [flashId, setFlashId] = useState<string | null>(null);
-  const flashTimer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(flashTimer.current), []);
   const handleCellClick = useCallback(
     (event: React.MouseEvent, item: AssetListItem, index: number) => {
       if (suppressClickRef.current) return;
-      setFlashId(item.id);
-      window.clearTimeout(flashTimer.current);
-      flashTimer.current = window.setTimeout(() => setFlashId(null), FLASH_MS);
       if (event.shiftKey && anchorIdRef.current) {
         const anchorIndex = items.findIndex((candidate) => candidate.id === anchorIdRef.current);
         if (anchorIndex !== -1) {
@@ -793,7 +783,6 @@ export default function DesktopLibrary({
                         role="option"
                         aria-selected={selected.has(item.id)}
                         data-selected={selected.has(item.id)}
-                        data-flash={flashId === item.id ? "true" : undefined}
                         className="desktop-library__cell"
                         style={{ height: row.type === "feature" ? featureHeight(containerWidth, cellSize, gap) : cellSize }}
                         onClick={(event) => handleCellClick(event, item, index)}

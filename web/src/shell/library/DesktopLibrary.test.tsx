@@ -101,7 +101,7 @@ describe("DesktopLibrary", () => {
     expect(screen.getByText("2:05")).toBeInTheDocument();
   });
 
-  it("selected tile has no check badge, exposes aria-selected, and flashes on click (#208)", async () => {
+  it("selected tile has no check badge, exposes aria-selected, and never flashes on click (F2)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       mockAssets([makeItem("a1", "2024-05-10T10:00:00", { favorite: true }), makeItem("a2", "2024-05-09T10:00:00")]);
@@ -113,7 +113,7 @@ describe("DesktopLibrary", () => {
 
       fireEvent.click(first);
       expect(first).toHaveAttribute("data-selected", "true");
-      expect(first).toHaveAttribute("data-flash", "true");
+      expect(first).not.toHaveAttribute("data-flash");
       expect(first).toHaveAttribute("aria-selected", "true");
       expect(second).toHaveAttribute("aria-selected", "false");
       expect(container.querySelector(".desktop-library__check")).toBeNull();
@@ -121,7 +121,6 @@ describe("DesktopLibrary", () => {
       act(() => {
         vi.advanceTimersByTime(160);
       });
-      expect(first).not.toHaveAttribute("data-flash");
       expect(first).toHaveAttribute("data-selected", "true");
     } finally {
       vi.useRealTimers();

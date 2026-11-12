@@ -144,3 +144,36 @@ describe("gridMetrics", () => {
     }
   });
 });
+
+// F6: model of the resize loop. Column count depends on the measured width;
+// row count (hence content height) depends on columns; a classic scrollbar
+// eats SCROLLBAR px only while content overflows. With the gutter reserved,
+// the width is constant, so every step settles in one
+// pass. (The real loop is checked in the browser by e2e/fixes-fa.e2e.ts.)
+describe("zoom steps are stable against the scrollbar (F6)", () => {
+  const SCROLLBAR = 15;
+  const VIEWPORT_H = 900;
+  const PHOTOS = 400;
+
+  function settle(outerWidth: number, edge: number, reserveGutter: boolean): number[] {
+    const gap = gapForEdge(edge);
+    let width = outerWidth;
+    const seen: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const columns = columnsForEdge(width, edge, gap);
+      const cell = squareEdge(width, columns, gap);
+      const height = Math.ceil(PHOTOS / columns) * gridRowHeight(cell, gap);
+      seen.push(columns);
+      width = reserveGutter || height > VIEWPORT_H ? outerWidth - SCROLLBAR : outerWidth;
+    }
+    return seen;
+  }
+
+  it("with a reserved gutter every width and zoom step settles", () => {
+    for (let w = 600; w <= 1600; w++) {
+      for (const edge of ZOOM_EDGES) {
+        expect(new Set(settle(w, edge, true).slice(-4)).size).toBe(1);
+      }
+    }
+  });
+});
