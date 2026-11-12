@@ -2892,3 +2892,60 @@ body {
   text-align: center;
   color: var(--color-label-secondary);
 }
+
+/* #263: centred empty grid, like Photos. */
+.library-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  min-height: 60dvh;
+  padding: var(--space-24);
+  text-align: center;
+}
+
+.library-empty__icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-8);
+  color: var(--color-label-tertiary);
+}
+
+.library-empty__title {
+  margin: 0;
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label);
+}
+
+.library-empty__text {
+  max-width: 34ch;
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-label-secondary);
+}
+
+.library-empty__link {
+  margin-top: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  font-size: var(--font-size-body);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.library-empty__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (min-width: 700px) {
+  .library-empty__icon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .library-empty__title {
+    font-size: var(--font-size-title-2);
+  }
+}

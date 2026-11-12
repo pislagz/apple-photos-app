@@ -230,6 +230,7 @@ export default function MobileShell({
                 key={activeLibraryId}
                 libraryId={activeLibraryId}
                 resetSignal={libraryResetSignal}
+                isAdmin={me.role === "admin"}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
               />

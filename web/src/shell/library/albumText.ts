@@ -27,3 +27,9 @@ export function albumMessages(album: string | undefined | null): { error: string
   }
   return { error: "Couldn't load this album.", empty: "No photos in this album." };
 }
+
+// The whole-library empty state also explains itself (#263).
+export const LIBRARY_EMPTY_TEXT = "Photos added to this library will appear here.";
+export function isWholeLibraryEmpty(album: string | undefined | null): boolean {
+  return albumMessages(album).empty === "No Photos or Videos";
+}

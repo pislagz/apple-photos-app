@@ -5,7 +5,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages } from "./albumText";
+import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
@@ -105,8 +106,10 @@ export default function DesktopLibrary({
   initialView,
   initialScrollAssetId,
   album,
+  isAdmin = false,
 }: {
   libraryId: number;
+  isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Sidebar-driven view (Days, #127): pins the view and hides the
@@ -715,7 +718,11 @@ export default function DesktopLibrary({
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <p className="desktop-library__empty">{albumMessages(album).empty}</p>
+          <LibraryEmptyState
+            title={albumMessages(album).empty}
+            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+            adminLink={isWholeLibraryEmpty(album) && isAdmin}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

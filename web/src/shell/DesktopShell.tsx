@@ -401,6 +401,7 @@ export default function DesktopShell({
               <DesktopLibrary
                 key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
+                isAdmin={me.role === "admin"}
                 fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={
                   view === "days"

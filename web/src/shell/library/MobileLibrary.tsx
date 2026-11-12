@@ -5,7 +5,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages } from "./albumText";
+import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import LibraryEmptyState from "./LibraryEmptyState";
 import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -37,8 +38,10 @@ export default function MobileLibrary({
   onInitialAssetOpened,
   resetSignal = 0,
   album,
+  isAdmin = false,
 }: {
   libraryId: number;
+  isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Bumped by the shell when the already-active Library tab is tapped again.
@@ -312,7 +315,11 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <p className="mobile-library__empty">{albumMessages(album).empty}</p>
+          <LibraryEmptyState
+            title={albumMessages(album).empty}
+            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+            adminLink={isWholeLibraryEmpty(album) && isAdmin}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
