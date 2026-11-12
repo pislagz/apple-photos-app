@@ -22,7 +22,10 @@ RUN useradd --system --uid 10001 --create-home --home-dir /home/viewer viewer \
 WORKDIR /app
 COPY server/ /app/server/
 # Editable: keeps photos_viewer at /app/server/, so main.py finds /app/web/dist.
-RUN pip install --no-cache-dir -e /app/server
+# The pip bundled with the base image can't parse some kernel version strings
+# (OrbStack's "7.2.12-orbstack-...") and aborts; a current pip can.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e /app/server
 COPY --from=web /src/web/dist /app/web/dist
 
 ENV PHOTOS_VIEWER_DATA_DIR=/data \
