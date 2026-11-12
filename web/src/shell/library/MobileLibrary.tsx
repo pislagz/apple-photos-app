@@ -1,12 +1,14 @@
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
+import { Icon } from "../icons";
+import { selectionCountLabel } from "./selectionText";
 import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages } from "./albumText";
-import { shareOrDownloadAssets } from "../viewer/download";
+import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows, buildTileRows, type LibraryRow } from "./rows";
@@ -19,6 +21,8 @@ import { usePinchColumns } from "./usePinchColumns";
 
 const HEADER_ROW_HEIGHT = 32;
 const DEFAULT_COLUMNS = 4;
+// Must equal --grid-gap-dense in tokens.css.
+const MOBILE_GRID_GAP = 1;
 // Years/Months tiles are full-width cards, sized off the container alone --
 // independent of pinch-zoom's `columns`, which only ever applies to Days
 // and All Photos.
@@ -72,7 +76,7 @@ export default function MobileLibrary({
     const viewportY = midpoint.clientY - rect.top;
     const y = element.scrollTop + viewportY;
     const row = rowVirtualizer.getVirtualItems().find((r) => r.start <= y && y < r.start + r.size);
-    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize);
+    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize + MOBILE_GRID_GAP);
     if (row && assetId) pinchAnchor.current = { assetId, rowFraction: (y - row.start) / row.size, viewportY };
   });
   // #146: back to the newest photos -- drop the Month -> Days anchor and
@@ -97,8 +101,14 @@ export default function MobileLibrary({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState(false);
+  // Files already fetched for a share the browser blocked (expired tap); the
+  // next Share tap hands them to the share sheet with no await in between.
+  const [readyFiles, setReadyFiles] = useState<File[] | null>(null);
+  const selectBarRef = useRef<HTMLDivElement | null>(null);
+  const [selectBarHeight, setSelectBarHeight] = useState(0);
 
   const toggleSelected = useCallback((id: string) => {
+    setReadyFiles(null);
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -110,6 +120,7 @@ export default function MobileLibrary({
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
+    setReadyFiles(null);
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
@@ -143,14 +154,20 @@ export default function MobileLibrary({
   );
 
   async function handleShareSelection() {
+    if (readyFiles) {
+      const outcome = await shareReadyFiles(readyFiles).catch(() => null);
+      setReadyFiles(outcome?.status === "ready" ? outcome.files : null);
+      return;
+    }
     const toShare = items.filter((item) => selectedIds.has(item.id));
     if (toShare.length === 0) return;
     setSharing(true);
     try {
-      await shareOrDownloadAssets(
+      const outcome = await shareOrDownloadAssets(
         libraryId,
         toShare.map((item) => ({ id: item.id, filename: item.filename })),
       );
+      setReadyFiles(outcome.status === "ready" ? outcome.files : null);
     } finally {
       setSharing(false);
     }
@@ -158,6 +175,33 @@ export default function MobileLibrary({
 
   const zip = useZipDownload(libraryId);
   const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
+
+  // One selected item downloads as the plain file; 2+ keep the archive flow.
+  async function handleDownloadSelection() {
+    const ids = [...selectedIds];
+    if (ids.length !== 1) {
+      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
+      return;
+    }
+    const item = items.find((candidate) => candidate.id === ids[0]);
+    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+  }
+
+  // The bar's height changes with its caption, progress line and HEIC row, so
+  // the grid's bottom padding follows the measured height (#281 F12).
+  useLayoutEffect(() => {
+    const bar = selectBarRef.current;
+    if (!selectMode || !bar) {
+      setSelectBarHeight(0);
+      return;
+    }
+    const measure = () => setSelectBarHeight(Math.ceil(bar.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [selectMode]);
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -184,7 +228,10 @@ export default function MobileLibrary({
     if (view === "months") return summary ? buildTileRows(summary.months, "months") : [];
     return buildRows(items, view, columns);
   }, [view, summary, items, columns]);
-  const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
+  // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
+  // what is left of the width; dividing the full width overflowed the
+  // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
+  const cellSize = containerWidth > 0 ? (containerWidth - (columns - 1) * MOBILE_GRID_GAP) / columns : 0;
   const tileHeight = containerWidth > 0 ? containerWidth * TILE_ASPECT_RATIO : 0;
 
   const rowVirtualizer = useVirtualizer({
@@ -295,7 +342,10 @@ export default function MobileLibrary({
         ref={scrollRef}
         className="mobile-library__scroll"
         data-testid="library-scroll"
-        style={{ touchAction: "pan-y" }}
+        style={{
+          touchAction: "pan-y",
+          ...(selectBarHeight > 0 ? { paddingBottom: selectBarHeight } : {}),
+        }}
         {...touchHandlers}
       >
         {showSummaryError || showAssetsError ? (
@@ -411,30 +461,49 @@ export default function MobileLibrary({
         )}
       </div>
       {selectMode && (
-        <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-count">
-            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
-          </span>
-          <button
-            type="button"
-            onClick={handleShareSelection}
-            disabled={selectedIds.size === 0 || sharing}
-          >
-            Share
-          </button>
-          <button
-            type="button"
-            onClick={() => void zip.start([...selectedIds], { forceNative: !selectionHasHeicPhoto })}
-            disabled={selectedIds.size === 0 || zip.busy}
-          >
-            Zip
-          </button>
+        // Laid out like Photos' select toolbar (#259): Share at the left, the
+        // count in the middle, the action at the right, 44pt targets.
+        <div ref={selectBarRef} className="mobile-library__select-bar" data-testid="select-bar">
+          <div className="mobile-library__select-row">
+            <button
+              type="button"
+              className="mobile-library__bar-button"
+              aria-label="Share"
+              onClick={handleShareSelection}
+              disabled={selectedIds.size === 0 || sharing}
+            >
+              <Icon name="share" />
+            </button>
+            <span className="mobile-library__select-count" aria-live="polite">
+              {selectionCountLabel(items, selectedIds)}
+            </span>
+            <button
+              type="button"
+              className="mobile-library__bar-button mobile-library__bar-button--end"
+              aria-label="Download"
+              onClick={() => void handleDownloadSelection()}
+              disabled={selectedIds.size === 0 || zip.busy}
+            >
+              <Icon name="download" />
+            </button>
+          </div>
+          {selectedIds.size > 0 && zip.state.phase === "idle" && (
+            <p className="mobile-library__select-caption">
+              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
+            </p>
+          )}
+          {readyFiles && (
+            <p className="mobile-library__select-caption" role="status">
+              Ready to share. Tap Share again.
+            </p>
+          )}
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
             <ZipStatus
               state={zip.state}
               jpeg={zip.jpeg}
               onJpegChange={zip.setJpeg}
               showHeicOption={selectionHasHeicPhoto}
+              variant="row"
             />
           )}
         </div>
