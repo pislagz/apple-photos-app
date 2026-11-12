@@ -525,7 +525,7 @@ describe("MobileLibrary", () => {
 
     fireEvent.click(image("v1"));
     expect(count).toHaveTextContent("2 Items Selected");
-    expect(bar).toHaveTextContent("Downloads all selected items together.");
+    expect(bar).toHaveTextContent("Downloads all selected items in a ZIP file.");
     expect(bar.textContent).not.toMatch(/zip/i);
     expect(share).toBeEnabled();
     expect(download).toBeEnabled();

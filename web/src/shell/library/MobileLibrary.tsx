@@ -452,7 +452,7 @@ export default function MobileLibrary({
           </div>
           {selectedIds.size > 0 && zip.state.phase === "idle" && (
             <p className="mobile-library__select-caption">
-              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items together."}
+              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
             </p>
           )}
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
