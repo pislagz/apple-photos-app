@@ -508,6 +508,21 @@ describe("MobileLibrary", () => {
     expect(container.querySelector('.mobile-library__cell-wrap[data-selected="true"]')).not.toBeNull();
   });
 
+  it("the Deselect button clears the selection but stays in Select mode", async () => {
+    mockLibraryFetch([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+    fireEvent.click(images[0]);
+    expect(screen.getByText("1 Selected")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+    expect(screen.getByText("Select Items")).toBeInTheDocument();
+    expect(screen.getByTestId("select-bar")).toBeInTheDocument();
+  });
+
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockAssets(items);

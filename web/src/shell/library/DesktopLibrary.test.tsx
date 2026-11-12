@@ -180,6 +180,51 @@ describe("DesktopLibrary", () => {
     expect(screen.getByTestId("selection-count")).toHaveTextContent("");
   });
 
+  it("clicking empty grid space deselects; clicking a tile or a modifier-click does not", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.click(cells(container)[1], { metaKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    fireEvent.click(grid, { metaKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    fireEvent.click(grid);
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(cells(container)[0]).toHaveAttribute("data-selected", "false");
+  });
+
+  it("Escape anywhere deselects, but not while the context menu is open", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.contextMenu(cells(container)[0]);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+  });
+
+  it("the Deselect button clears the selection and disappears", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.click(cells(container)[1], { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+  });
+
   it("moves focus/selection with arrow keys and zooms with +", async () => {
     const items = Array.from({ length: 4 }, (_, i) =>
       makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`),

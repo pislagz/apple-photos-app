@@ -6,6 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
+import { Icon } from "../icons";
 import { albumMessages } from "./albumText";
 import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
@@ -422,8 +423,15 @@ export default function MobileLibrary({
       </div>
       {selectMode && (
         <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-count">
-            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+          <span className="mobile-library__select-summary">
+            <span className="mobile-library__select-count">
+              {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+            </span>
+            {selectedIds.size > 0 && (
+              <button type="button" aria-label="Deselect all" title="Deselect" onClick={() => setSelectedIds(new Set())}>
+                <Icon name="close" size={14} />
+              </button>
+            )}
           </span>
           <button
             type="button"

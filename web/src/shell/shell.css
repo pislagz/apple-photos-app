@@ -564,7 +564,15 @@ body {
   border-top: 1px solid var(--color-bar-line);
 }
 
+.mobile-library__select-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .mobile-library__select-count {
+  white-space: nowrap;
   font-size: var(--font-size-subhead);
   color: var(--color-label);
   font-variant-numeric: tabular-nums;
