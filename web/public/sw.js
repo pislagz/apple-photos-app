@@ -8,7 +8,7 @@
 // prefetch `tile.openstreetmap.org` (or any other cross-origin host) -- OSM
 // tile retention is the browser's own HTTP cache, bounded by the tile
 // server's `Cache-Control`, nothing more.
-const CACHE_NAME = "photos-viewer-shell-v2";
+const CACHE_NAME = "photos-viewer-shell-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
