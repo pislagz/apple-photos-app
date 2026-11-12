@@ -544,7 +544,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByText("Select"));
     expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
     fireEvent.click(images[0]);
-    expect(screen.getByText("1 Selected")).toBeInTheDocument();
+    expect(screen.getByText("1 Photo Selected")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
     expect(screen.getByText("Select Items")).toBeInTheDocument();
     expect(screen.getByTestId("select-bar")).toBeInTheDocument();
@@ -605,7 +605,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(image("v1"));
     expect(count).toHaveTextContent("2 Items Selected");
     expect(bar).toHaveTextContent("Downloads all selected items in a ZIP file.");
-    expect(bar.textContent).not.toMatch(/zip/i);
+    expect(screen.queryByRole("button", { name: /zip/i })).toBeNull();
     expect(share).toBeEnabled();
     expect(download).toBeEnabled();
   });

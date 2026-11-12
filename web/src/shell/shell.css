@@ -163,7 +163,7 @@ body {
 /* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
    in data-prev, fades out over it. 150 ms is --motion-fast once #206 lands. */
 .date-title__text {
-  animation: date-title-in 150ms ease-out;
+  animation: date-title-in var(--dur-tint) var(--ease-tint);
 }
 
 [data-prev]::after {
@@ -173,7 +173,7 @@ body {
   top: 0;
   pointer-events: none;
   white-space: nowrap;
-  animation: date-title-out 150ms ease-out forwards;
+  animation: date-title-out var(--dur-tint) var(--ease-tint) forwards;
 }
 
 @keyframes date-title-in {
@@ -544,7 +544,7 @@ body {
   inset: 0;
   background: var(--tile-dim);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-select) var(--ease-select);
   pointer-events: none;
 }
 
@@ -580,7 +580,7 @@ body {
   box-shadow: var(--shadow-check);
   z-index: 1;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-select) var(--ease-select);
   pointer-events: none;
 }
 
@@ -1470,7 +1470,7 @@ body {
   height: 0;
   z-index: 1;
   pointer-events: none;
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--dur-tint) var(--ease-tint);
 }
 
 /* A month header sits where the title would be: the title and its scrim step
@@ -1970,14 +1970,14 @@ body {
    land. visibility drops after the fade so hidden controls cannot be tapped
    or focused. */
 .mobile-viewer {
-  transition: background-color 200ms ease-in-out;
+  transition: background-color var(--dur-chrome) var(--ease-chrome);
 }
 
 .mobile-viewer__topbar,
 .mobile-viewer__bottombar {
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 0s;
+    opacity var(--dur-chrome) var(--ease-chrome),
+    visibility var(--dur-chrome) step-start;
 }
 
 .mobile-viewer.is-chrome-hidden {
@@ -1990,8 +1990,8 @@ body {
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 200ms;
+    opacity var(--dur-chrome) var(--ease-chrome),
+    visibility var(--dur-chrome) step-end;
 }
 
 /* Blurred bar material; the safe-area insets keep the controls off the notch,
@@ -2302,8 +2302,8 @@ body {
   backdrop-filter: blur(20px);
   /* 200 ms is local until the #206 motion tokens land. */
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 0s;
+    opacity var(--dur-chrome) var(--ease-chrome),
+    visibility var(--dur-chrome) step-start;
 }
 
 /* Video playback: fades after 2.5 s without pointer movement (#211). */
@@ -2311,8 +2311,8 @@ body {
   opacity: 0;
   visibility: hidden;
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 200ms;
+    opacity var(--dur-chrome) var(--ease-chrome),
+    visibility var(--dur-chrome) step-end;
 }
 
 /* Sequoia's viewer title: date/place centered in the top bar, like the
@@ -3011,7 +3011,7 @@ body {
     padding: 0;
     cursor: default;
     color: transparent;
-    transition: width 0.2s ease;
+    transition: width var(--dur-chrome) var(--ease-chrome);
   }
 
   .search-box--desktop .search-box__input::placeholder {
@@ -3123,7 +3123,7 @@ body {
     radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
     var(--color-fill-strong);
   cursor: default;
-  transition: background 0.2s;
+  transition: background var(--dur-chrome);
 }
 .zip-status__option--row input[role="switch"]:checked {
   background:
@@ -3197,8 +3197,8 @@ body {
   background: var(--filmstrip-slit-bg);
   cursor: inherit;
   transition:
-    transform 250ms ease-out,
-    width 250ms ease-out;
+    transform var(--dur-slide) var(--ease-slide),
+    width var(--dur-slide) var(--ease-slide);
 }
 
 [data-dragging="true"] > * > .mobile-viewer__filmstrip__item,
