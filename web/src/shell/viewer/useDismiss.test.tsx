@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DISMISS_MS, useDismiss } from "./useDismiss";
 
@@ -51,5 +52,14 @@ describe("useDismiss", () => {
       vi.advanceTimersByTime(DISMISS_MS);
     });
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("finishes a zoom-out close under StrictMode's mount, unmount, mount (#267)", async () => {
+    mockMotion(false);
+    const onClose = vi.fn();
+    const zoomOut = () => ({ finished: Promise.resolve(), cancel: () => {} });
+    const { result } = renderHook(() => useDismiss(onClose, zoomOut), { wrapper: StrictMode });
+    await act(async () => result.current.dismiss());
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -146,25 +146,50 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     return () => stage.removeEventListener("wheel", onWheel);
   });
 
+  // #267: the drag follows the mouse on the window, so leaving the stage
+  // mid-drag still pans (clamped at the edge) instead of freezing the photo.
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
+
   function onMediaMouseDown(event: MouseEvent) {
-    if (scale <= 1) return;
+    if (event.button !== 0) return;
+    event.preventDefault();
     setAnimating(false);
+    endDragRef.current?.();
+    const atFit = scale <= 1;
     dragRef.current = { startX: event.clientX, startY: event.clientY, panX: view.x, panY: view.y };
-  }
-
-  function onMediaMouseMove(event: MouseEvent) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const { box, fit } = geometry();
-    const pan = g.clampPan(
-      { x: drag.panX + (event.clientX - drag.startX), y: drag.panY + (event.clientY - drag.startY) },
-      g.panBounds(viewRef.current.scale, fit, box),
-    );
-    setView({ scale: viewRef.current.scale, ...pan });
-  }
-
-  function endDrag() {
-    dragRef.current = null;
+    let last = { dx: 0, dy: 0 };
+    const onMove = (move: globalThis.MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      last = { dx: move.clientX - drag.startX, dy: move.clientY - drag.startY };
+      if (atFit) {
+        setView(g.fitDragView(last));
+        return;
+      }
+      const { box, fit } = geometry();
+      const pan = g.clampPan({ x: drag.panX + last.dx, y: drag.panY + last.dy }, g.panBounds(viewRef.current.scale, fit, box));
+      setView({ scale: viewRef.current.scale, ...pan });
+    };
+    const end = (up?: globalThis.MouseEvent | FocusEvent) => {
+      if (atFit && (last.dx !== 0 || last.dy !== 0)) {
+        const outcome = up?.type === "mouseup" ? g.fitDragOutcome(last, geometry().box) : null;
+        setAnimating(!prefersReducedMotion() && outcome !== "close");
+        setView(g.FIT);
+        if (outcome === "prev" && index > 0) onIndexChange(index - 1);
+        else if (outcome === "next" && index < items.length - 1) onIndexChange(index + 1);
+        else if (outcome === "close") onClose();
+      }
+      dragRef.current = null;
+      endDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", end);
+      window.removeEventListener("blur", end);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", end);
+    window.addEventListener("blur", end);
+    endDragRef.current = end;
   }
 
   function handleDownload() {
@@ -247,9 +272,6 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           className="desktop-viewer__stage"
           data-testid="desktop-viewer-stage"
           ref={stageRef}
-          onMouseMove={onMediaMouseMove}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
         >
           {media.isVideo ? (
             media.videoPlaying ? (

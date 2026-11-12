@@ -30,17 +30,19 @@ export function useDismiss<From = undefined>(
 
   const alive = useRef(true);
   const zoomRef = useRef<ZoomOut | null>(null);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // StrictMode mounts, cleans up and mounts again; without this the second
+    // mount stays "dead" and every zoom-out close bails in finish().
+    alive.current = true;
+    return () => {
       alive.current = false;
       // Unmounted mid-zoom (Back, route change): finish() will bail, so give
       // the tile back and clear the zoom marker here.
       zoomRef.current?.cancel();
       zoomRef.current = null;
       if (timer.current !== null) window.clearTimeout(timer.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   const dismiss = useCallback((from?: From) => {
     if (closingRef.current) return;
