@@ -20,7 +20,6 @@ const CHROME_SELECTOR = [
   ".mobile-viewer__topbar",
   ".mobile-viewer__bottombar",
   ".desktop-viewer__topbar",
-  ".desktop-viewer__filmstrip",
   ".desktop-viewer__info-panel",
 ].join(", ");
 

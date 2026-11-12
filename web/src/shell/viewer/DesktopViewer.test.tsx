@@ -631,10 +631,18 @@ describe("DesktopViewer cursor (#257)", () => {
     expect(root.className).not.toContain("is-dragging");
   });
 
-  it("keeps the closed hand over the bars and filmstrip while dragging", () => {
+  it("keeps the closed hand over the bars while dragging", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     expect(css).toMatch(/\.desktop-viewer\.is-dragging,\s*\.desktop-viewer\.is-dragging \* \{\s*cursor: grabbing;/);
     expect(readFileSync(join(__dirname, "DesktopViewer.tsx"), "utf-8")).not.toContain("zoom-in");
+  });
+});
+
+describe("DesktopViewer filmstrip (F14)", () => {
+  it("has no filmstrip, as in macOS Photos", () => {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    render(<DesktopViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    expect(screen.queryByTestId("viewer-filmstrip")).toBeNull();
   });
 });
 

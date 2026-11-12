@@ -218,17 +218,27 @@ describe("MobileViewer", () => {
     expect(onIndexChange).toHaveBeenCalledWith(0);
   });
 
-  it("does not page on a short, slow drag (under 25 % and 0.5 px/ms) and settles back", () => {
+  it("does not page on a short, slow drag (under 15 % and 0.25 px/ms) and settles back", () => {
     const onIndexChange = vi.fn();
     mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
     render(
       <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
     );
-    drag(screen.getByTestId("mobile-viewer-stage"), [600, 200], [400, 200], 1000);
+    drag(screen.getByTestId("mobile-viewer-stage"), [600, 200], [500, 200], 1000);
     expect(onIndexChange).not.toHaveBeenCalled();
   });
 
-  it("pages on a short fast flick (above 0.5 px/ms)", () => {
+  it("commits a flick over 0.25 px/ms and a 15 % drag, like iOS Photos", () => {
+    const onIndexChange = vi.fn();
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    render(
+      <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+    );
+    drag(screen.getByTestId("mobile-viewer-stage"), [400, 200], [240, 200], 1000); // 160 px = 15.6 %, slow
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+  });
+
+  it("pages on a short fast flick (above 0.25 px/ms)", () => {
     const onIndexChange = vi.fn();
     mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
     render(
@@ -238,7 +248,7 @@ describe("MobileViewer", () => {
     expect(onIndexChange).toHaveBeenCalledWith(1);
   });
 
-  it("moves the strip with the finger, rubber-bands at the ends and settles with the 300 ms ease", () => {
+  it("moves the strip with the finger, rubber-bands at the ends and settles with the 220 ms ease", () => {
     stubMatchMedia(false);
     vi.useFakeTimers();
     try {
@@ -262,12 +272,12 @@ describe("MobileViewer", () => {
       fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 200 }] });
       fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 200 }] });
 
-      // Committed: animates to one page + gap over 300 ms, then swaps the item.
-      expect(strip.style.transition).toContain("300ms cubic-bezier(0.22, 1, 0.36, 1)");
+      // Committed: animates to one page + gap over 220 ms, then swaps the item.
+      expect(strip.style.transition).toContain("220ms cubic-bezier(0.25, 0.8, 0.3, 1)");
       expect(strip.style.transform).toContain(`+ -${1024 + 16}px`);
       expect(onIndexChange).not.toHaveBeenCalled();
       act(() => {
-        vi.advanceTimersByTime(300);
+        vi.advanceTimersByTime(220);
       });
       expect(onIndexChange).toHaveBeenCalledWith(1);
     } finally {

@@ -17,8 +17,8 @@ export interface Sample extends Point {
 // Thresholds from #214.
 export const AXIS_LOCK_PX = 8;
 export const PAGE_GAP_PX = 16;
-export const PAGE_COMMIT_FRACTION = 0.25;
-export const PAGE_COMMIT_VELOCITY = 0.5; // px/ms
+export const PAGE_COMMIT_FRACTION = 0.15;
+export const PAGE_COMMIT_VELOCITY = 0.25; // px/ms
 export const DISMISS_DISTANCE_PX = 100;
 export const DISMISS_VELOCITY = 0.6; // px/ms
 export const DISMISS_FADE_PX = 300; // background reaches 0 here
@@ -36,8 +36,8 @@ const VELOCITY_WINDOW_MS = 100;
 
 // Motion. Local constants until the #206 motion tokens land on main; switch
 // these to the tokens then.
-export const PAGE_SETTLE_MS = 300;
-export const PAGE_SETTLE_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+export const PAGE_SETTLE_MS = 220;
+export const PAGE_SETTLE_EASE = "cubic-bezier(0.25, 0.8, 0.3, 1)";
 export const SPRING_BACK_MS = 250;
 export const ZOOM_ANIM_MS = 250;
 export const ORIGINAL_FADE_MS = 200;
@@ -63,7 +63,7 @@ export function pagingOffset(dx: number, hasPrev: boolean, hasNext: boolean, wid
 
 export type PageDecision = "prev" | "next" | "stay";
 
-// Commit past 25 % of the width or faster than 0.5 px/ms. Positive dx or
+// Commit past 15 % of the width or faster than 0.25 px/ms (a short flick). Positive dx or
 // velocity is a drag to the right, which shows the previous item.
 export function pageDecision(
   dx: number,

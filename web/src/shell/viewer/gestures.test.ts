@@ -3,14 +3,14 @@ import * as g from "./gestures";
 
 describe("paging", () => {
   const W = 400;
-  it("commits past 25 % of the width, not before", () => {
-    expect(g.pageDecision(-101, 0, W, true, true)).toBe("next");
-    expect(g.pageDecision(-99, 0, W, true, true)).toBe("stay");
-    expect(g.pageDecision(101, 0, W, true, true)).toBe("prev");
+  it("commits past 15 % of the width, not before", () => {
+    expect(g.pageDecision(-61, 0, W, true, true)).toBe("next");
+    expect(g.pageDecision(-59, 0, W, true, true)).toBe("stay");
+    expect(g.pageDecision(61, 0, W, true, true)).toBe("prev");
   });
-  it("commits on velocity above 0.5 px/ms, not at or below it", () => {
-    expect(g.pageDecision(-30, -0.51, W, true, true)).toBe("next");
-    expect(g.pageDecision(-30, -0.5, W, true, true)).toBe("stay");
+  it("commits on velocity above 0.25 px/ms, not at or below it", () => {
+    expect(g.pageDecision(-30, -0.26, W, true, true)).toBe("next");
+    expect(g.pageDecision(-30, -0.25, W, true, true)).toBe("stay");
     expect(g.pageDecision(30, 0.6, W, true, true)).toBe("prev");
   });
   it("never commits past the ends", () => {
@@ -142,13 +142,13 @@ describe("desktop mouse drag at fit (#267)", () => {
 describe("constants from #214", () => {
   it("match the issue", () => {
     expect(g.ORIGINAL_DWELL_MS).toBe(350);
-    expect(g.PAGE_COMMIT_FRACTION).toBe(0.25);
-    expect(g.PAGE_COMMIT_VELOCITY).toBe(0.5);
+    expect(g.PAGE_COMMIT_FRACTION).toBe(0.15);
+    expect(g.PAGE_COMMIT_VELOCITY).toBe(0.25);
     expect(g.DISMISS_DISTANCE_PX).toBe(100);
     expect(g.DISMISS_VELOCITY).toBe(0.6);
     expect(g.DOUBLE_TAP_ZOOM).toBe(2.5);
     expect([g.ZOOM_MIN, g.ZOOM_MAX]).toEqual([1, 6]);
-    expect(g.PAGE_SETTLE_MS).toBe(300);
+    expect(g.PAGE_SETTLE_MS).toBe(220);
     expect(g.SPRING_BACK_MS).toBe(250);
     expect(g.ZOOM_ANIM_MS).toBe(250);
     expect(g.ORIGINAL_FADE_MS).toBe(200);

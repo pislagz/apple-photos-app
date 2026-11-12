@@ -3,7 +3,6 @@ import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
 import { copyAssetLink, downloadVersion } from "./download";
-import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
@@ -31,7 +30,7 @@ export interface ViewerProps {
   revealItem?: (id: string) => void;
 }
 
-// P1.16 desktop Viewer: filmstrip, double-click/wheel zoom with drag-to-pan,
+// P1.16 desktop Viewer (no filmstrip, as in macOS Photos): double-click/wheel zoom with drag-to-pan,
 // arrow keys and Esc, and a right-hand info panel (file name + size on top
 // of the fields the mobile sheet shows). `items` is the Library view's own
 // array -- Esc/arrows only ever move within it, so a hidden asset (P1.13)
@@ -45,14 +44,9 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const { closing, dismiss } = useDismiss(onCloseNow, zoomOut);
   const onClose = useCallback(() => dismiss(), [dismiss]);
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
-  usePreloadNeighbours(libraryId, items, index, scrubbing);
-  const scrubVideo = useCallback((fraction: number) => {
-    const video = videoRef.current;
-    if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
-  }, []);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
+  usePreloadNeighbours(libraryId, items, index);
 
   const [infoOpen, setInfoOpen] = useState(false);
   // Playing video: the top bar fades after 2.5 s without pointer movement.
@@ -282,6 +276,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     <div
       className={`desktop-viewer${closing ? " is-closing" : ""}${dragging ? " is-dragging" : ""}`}
       data-testid="desktop-viewer"
+      data-index={index}
       ref={rootRef}
       tabIndex={-1}
       onMouseMove={chrome.reveal}
@@ -408,15 +403,6 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           })}
           <OriginalOutsideNote outside={detail?.original_outside_library} className="viewer-outside-banner" />
         </div>
-        <Filmstrip
-          libraryId={libraryId}
-          items={items}
-          index={index}
-          onSelect={onIndexChange}
-          className="desktop-viewer__filmstrip"
-          onScrubbingChange={setScrubbing}
-          onVideoScrub={scrubVideo}
-        />
       </div>
       {infoOpen && (
         <div className="desktop-viewer__info-panel" data-testid="viewer-info-panel">
