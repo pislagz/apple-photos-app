@@ -55,15 +55,13 @@ describe("DesktopShell layout", () => {
     // area, not a sibling of it -- that's what keeps the sidebar and
     // toolbar from scrolling off-screen with the grid.
     expect(content?.querySelector(".desktop-library__grid")).not.toBeNull();
-    const switcher = await screen.findByLabelText("Library switcher");
-    expect(switcher).toBeInTheDocument();
-    // Tracker R21: the switcher sits at the very bottom of the sidebar,
-    // below the account menu, not at the top -- same placement rule as the
-    // bottom of the phone More tab (#90).
-    expect(sidebar?.lastElementChild).toBe(switcher);
+    // #292: the library switcher lives in the account menu now, not as a
+    // floating line under it.
+    expect(screen.queryByLabelText("Library switcher")).not.toBeInTheDocument();
+    expect(sidebar?.lastElementChild?.querySelector(".account-menu__row-trigger")).not.toBeNull();
   });
 
-  it("lets a multi-library account pick the active library from the bottom of the sidebar", async () => {
+  it("lets a multi-library account pick the active library from the account menu", async () => {
     mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
@@ -82,10 +80,10 @@ describe("DesktopShell layout", () => {
       />,
     );
 
-    const select = await screen.findByLabelText("Library switcher");
-    expect(select).toBeInTheDocument();
-
-    fireEvent.change(select, { target: { value: "2" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Library/ }));
+    expect(screen.getByRole("menuitemradio", { name: "Family" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Travel" }));
     expect(onActiveLibraryChange).toHaveBeenCalledWith(2);
   });
 
