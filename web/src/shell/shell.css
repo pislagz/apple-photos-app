@@ -1259,6 +1259,11 @@ body {
   cursor: pointer;
 }
 
+.toolbar-button--small {
+  width: 22px;
+  color: var(--color-label-secondary);
+}
+
 .toolbar-button:hover:not(:disabled) {
   background: var(--color-hover);
 }

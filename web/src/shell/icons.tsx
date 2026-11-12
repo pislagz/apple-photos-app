@@ -97,6 +97,7 @@ const CALENDAR_RINGS = "M7 2.8v3 M13 2.8v3";
 const CLOCK = circle(10, 10, 7.2);
 const CLOCK_HANDS = "M10 6v4.2l2.6 1.6";
 const PHOTO_FRAME = rr(3, 3.5, 14, 13, 2.5);
+const FILTER_LINES = "M6.4 7.4h7.2 M7.8 10h4.4 M9.1 12.6h1.8";
 
 export const ICONS = {
   // --- Approved sample sheet ---
@@ -253,25 +254,32 @@ export const ICONS = {
       ["M4 13.6v.6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-.6", "s"],
     ],
   },
+  // Photos' "Filter By": a circle with three lines of decreasing length.
   filter: {
     parts: [
-      ["M3 6h5.8 M13.2 6H17 M3 14h2.8 M10.2 14H17", "s"],
-      [circle(11, 6, 2.2), "s"],
-      [circle(8, 14, 2.2), "s"],
+      [circle(10, 10, 7.2), "s"],
+      [FILTER_LINES, "s"],
     ],
     filled: [
-      ["M3 6h5.8 M13.2 6H17 M3 14h2.8 M10.2 14H17", "s"],
-      [circle(11, 6, 2.2), "fs"],
-      [circle(8, 14, 2.2), "fs"],
+      [circle(10, 10, 7.2), "f"],
+      [FILTER_LINES, "k"],
     ],
   },
   chevron: { parts: [["M7.5 4.5 13 10l-5.5 5.5", "s"]] },
-  rotate: {
+  // "Show whole photos": a wide photo shown entire inside the corners of a
+  // square tile, instead of cropped to fill it.
+  aspect: {
     parts: [
-      ["M16 10a6 6 0 1 1-1.9-4.4", "s"],
-      ["M14.6 2.9v3.1h-3.1", "s"],
+      [rr(2.5, 4.5, 15, 11, 2.4), "s"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "s"],
+    ],
+    filled: [
+      [rr(2.5, 4.5, 15, 11, 2.4), "fs"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "k"],
     ],
   },
+  plus: { parts: [["M10 4.5v11 M4.5 10h11", "s"]] },
+  minus: { parts: [["M4.5 10h11", "s"]] },
   more: {
     parts: [
       [circle(4.5, 10, 1.3), "f"],

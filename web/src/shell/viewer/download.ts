@@ -111,3 +111,26 @@ export async function shareOrDownloadAssets(
     }
   }
 }
+
+// Desktop toolbar Share (#274): only where the browser can share files (Safari
+// on Mac -> system share sheet with AirDrop). Files keep their original
+// filenames; no download fallback, the caller disables the button instead.
+export function canShareFiles(): boolean {
+  return typeof navigator !== "undefined" && typeof navigator.canShare === "function" && typeof navigator.share === "function";
+}
+
+export async function shareAssets(
+  libraryId: number,
+  items: { id: string; filename: string | null }[],
+): Promise<void> {
+  if (!canShareFiles() || items.length === 0) return;
+  const versions = await Promise.all(items.map((item) => resolveVersion(libraryId, item.id)));
+  const files = await Promise.all(items.map((item, i) => fetchAsFile(libraryId, item, versions[i])));
+  if (!navigator.canShare({ files })) throw new Error("cannot share these files");
+  try {
+    await navigator.share({ files });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    throw error;
+  }
+}

@@ -8,7 +8,7 @@ import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages } from "./albumText";
 import { Icon } from "../icons";
-import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
+import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import {
@@ -559,6 +559,17 @@ export default function DesktopLibrary({
     else void zip.start([...selected]);
   }, [libraryId, selected, zip.start]);
 
+  const shareSupported = canShareFiles();
+  const handleShare = useCallback(async () => {
+    const toShare = items.filter((item) => selected.has(item.id));
+    if (toShare.length === 0) return;
+    try {
+      await shareAssets(libraryId, toShare.map((item) => ({ id: item.id, filename: item.filename })));
+    } catch {
+      // Nothing useful to show; the user can still use Download.
+    }
+  }, [items, selected, libraryId]);
+
   // Right-click on a single cell (ios17-viewer.png's Download/Copy Link
   // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
   // edited vs. original the same way the Viewer does, independent of
@@ -622,7 +633,16 @@ export default function DesktopLibrary({
     <div className="desktop-library" data-testid="desktop-library">
       <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
         <div className="desktop-library__zoom-slider">
-          <Icon name="grid" size={14} />
+          <button
+            type="button"
+            className="toolbar-button toolbar-button--small"
+            aria-label="Zoom Out"
+            title="Zoom Out"
+            disabled={zoomIndex === 0}
+            onClick={() => setZoomIndex((previous) => Math.max(0, previous - 1))}
+          >
+            <Icon name="minus" size={12} />
+          </button>
           <input
             type="range"
             aria-label="Zoom"
@@ -631,6 +651,27 @@ export default function DesktopLibrary({
             value={zoomIndex}
             onChange={(event) => changeZoom(Number(event.target.value))}
           />
+          <button
+            type="button"
+            className="toolbar-button toolbar-button--small"
+            aria-label="Zoom In"
+            title="Zoom In"
+            disabled={zoomIndex === MAX_ZOOM_INDEX}
+            onClick={() => setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1))}
+          >
+            <Icon name="plus" size={12} />
+          </button>
+          {/* #264: belongs with the size slider -- both change how tiles look. */}
+          <button
+            type="button"
+            className="toolbar-button"
+            aria-label="Show Whole Photos"
+            aria-pressed={!squareMode}
+            onClick={() => setSquareMode((value) => !value)}
+            title={squareMode ? "Show Whole Photos" : "Show Square Tiles"}
+          >
+            <Icon name="aspect" size={16} filled={!squareMode} />
+          </button>
         </div>
         <div className="desktop-library__spacer" />
         {fixedView === undefined && (
@@ -656,11 +697,11 @@ export default function DesktopLibrary({
             aria-haspopup="menu"
             aria-expanded={filterMenuOpen}
             aria-pressed={filter !== "all"}
+            aria-label="Filter By"
             title="Filter By"
             onClick={() => setFilterMenuOpen((value) => !value)}
           >
             <Icon name="filter" size={16} filled={filter !== "all"} />
-            <span className="sr-only">Filter By</span>
           </button>
           {filterMenuOpen && (
             <div className="desktop-library__filter-menu" role="menu" aria-label="Filter By">
@@ -682,12 +723,12 @@ export default function DesktopLibrary({
         <button
           type="button"
           className="toolbar-button"
-          aria-pressed={!squareMode}
-          onClick={() => setSquareMode((value) => !value)}
-          title={squareMode ? "Square" : "Aspect"}
+          aria-label="Share"
+          onClick={() => void handleShare()}
+          disabled={!shareSupported || selected.size === 0}
+          title={shareSupported ? "Share" : "Sharing isn't supported in this browser"}
         >
-          <Icon name="rotate" size={16} />
-          <span className="sr-only">{squareMode ? "Square" : "Aspect"}</span>
+          <Icon name="share" size={16} />
         </button>
         <button
           type="button"
