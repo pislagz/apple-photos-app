@@ -583,13 +583,48 @@ describe("DesktopLibrary", () => {
 
       const slider = screen.getByRole("slider", { name: "Zoom" });
       const toggle = screen.getByRole("button", { name: "Show Whole Photos" });
-      expect(slider.nextElementSibling).toBe(toggle);
+      expect(slider.nextElementSibling?.nextElementSibling).toBe(toggle);
       expect(toggle).toHaveAttribute("aria-pressed", "false");
       expect(toggle).toHaveAttribute("title", "Show Whole Photos");
 
       fireEvent.click(toggle);
       expect(toggle).toHaveAttribute("aria-pressed", "true");
       expect(toggle).toHaveAttribute("title", "Show Square Tiles");
+    });
+
+    it("steps zoom with the minus and plus buttons next to the slider", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const slider = screen.getByRole("slider", { name: "Zoom" }) as HTMLInputElement;
+      const start = Number(slider.value);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+      expect(Number(slider.value)).toBe(start + 1);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      expect(Number(slider.value)).toBe(start - 1);
+    });
+
+    it("disables Share with a tooltip when the browser can't share files", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const share = screen.getByRole("button", { name: "Share" });
+      expect(share).toBeDisabled();
+      expect(share).toHaveAttribute("title", "Sharing isn't supported in this browser");
+      vi.unstubAllGlobals();
+    });
+
+    it("enables Share only with a selection when file sharing is supported", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      const cell = (await screen.findAllByRole("img"))[0];
+      expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+      fireEvent.click(cell);
+      expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
+      vi.unstubAllGlobals();
     });
 
     it("labels the Filter By button and gives it a tooltip", async () => {

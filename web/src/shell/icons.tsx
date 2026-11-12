@@ -98,9 +98,6 @@ const CLOCK = circle(10, 10, 7.2);
 const CLOCK_HANDS = "M10 6v4.2l2.6 1.6";
 const PHOTO_FRAME = rr(3, 3.5, 14, 13, 2.5);
 const FILTER_LINES = "M6.4 7.4h7.2 M7.8 10h4.4 M9.1 12.6h1.8";
-const ASPECT_HILLS = "M6.6 12l2-1.9 2.1 2 M10.3 11.6l1-.9 1.9 1.7";
-const ASPECT_CORNERS =
-  "M3 6.2V5a2 2 0 0 1 2-2h1.2 M13.8 3H15a2 2 0 0 1 2 2v1.2 M17 13.8V15a2 2 0 0 1-2 2h-1.2 M6.2 17H5a2 2 0 0 1-2-2v-1.2";
 
 export const ICONS = {
   // --- Approved sample sheet ---
@@ -273,16 +270,16 @@ export const ICONS = {
   // square tile, instead of cropped to fill it.
   aspect: {
     parts: [
-      [ASPECT_CORNERS, "s"],
-      [rr(4.6, 6.6, 10.8, 6.8, 1.4), "s"],
-      [ASPECT_HILLS, "s"],
+      [rr(2.5, 4.5, 15, 11, 2.4), "s"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "s"],
     ],
     filled: [
-      [ASPECT_CORNERS, "s"],
-      [rr(4.6, 6.6, 10.8, 6.8, 1.4), "fs"],
-      [ASPECT_HILLS, "k"],
+      [rr(2.5, 4.5, 15, 11, 2.4), "fs"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "k"],
     ],
   },
+  plus: { parts: [["M10 4.5v11 M4.5 10h11", "s"]] },
+  minus: { parts: [["M4.5 10h11", "s"]] },
   more: {
     parts: [
       [circle(4.5, 10, 1.3), "f"],

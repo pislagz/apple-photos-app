@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../../testHelpers";
-import { downloadAsset, downloadVersion, shareOrDownloadAssets } from "./download";
+import { downloadAsset, downloadVersion, shareAssets, shareOrDownloadAssets } from "./download";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -67,5 +67,18 @@ describe("shareOrDownloadAssets", () => {
     await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
 
     expect(href).toContain("download=1");
+  });
+});
+
+describe("shareAssets", () => {
+  it("shares files under their original filenames", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/") ? { has_edited: false } : new Response("x", { status: 200 }),
+    );
+    const share = vi.fn(async (_data?: ShareData) => {});
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share });
+    await shareAssets(1, [{ id: "a1", filename: "IMG_0001.HEIC" }]);
+    const arg = share.mock.calls[0][0] as { files: File[] };
+    expect(arg.files.map((f) => f.name)).toEqual(["IMG_0001.HEIC"]);
   });
 });

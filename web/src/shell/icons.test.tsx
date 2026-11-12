@@ -27,7 +27,7 @@ describe("icon set", () => {
   it("covers every icon name the app uses", () => {
     const used = [
       "library", "days", "albums", "people", "map", "favorite", "added", "folder", "hidden", "tray",
-      "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "aspect",
+      "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "aspect", "plus", "minus",
       "more", "play", "close", "livephoto", "video", "camera", "portrait", "panorama", "screenshot",
       "document", "link", "original", "slomo",
     ];
