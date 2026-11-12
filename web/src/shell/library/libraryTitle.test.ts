@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { desktopTitle, phoneTitle } from "./libraryTitle";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { TITLE_SCRIM_FADE_PX, desktopTitle, phoneTitle, titleScrimProgress } from "./libraryTitle";
+
+describe("title scrim fade (#261)", () => {
+  it("goes 0 -> 1 over the first 48 px of scroll", () => {
+    expect(TITLE_SCRIM_FADE_PX).toBe(48);
+    expect(titleScrimProgress(0)).toBe(0);
+    expect(titleScrimProgress(-30)).toBe(0); // rubber-band overscroll
+    expect(titleScrimProgress(Number.NaN)).toBe(0);
+    expect(titleScrimProgress(12)).toBe(0.25);
+    expect(titleScrimProgress(24)).toBe(0.5);
+    expect(titleScrimProgress(48)).toBe(1);
+    expect(titleScrimProgress(5000)).toBe(1);
+  });
+
+  it("is a light blur driven by --title-scrim, with no blur under Reduce Transparency", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const blur = /\.desktop-library__title-scrim::before \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(blur).toContain("backdrop-filter: blur(8px)");
+    expect(blur).toContain("opacity: var(--title-scrim, 1)");
+    const tint = /\.desktop-library__title-scrim::after \{([^}]*var\(--scrim-title\)[^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(tint).toContain("opacity: calc(0.4 + 0.6 * var(--title-scrim, 1))");
+    const reduced = /@media \(prefers-reduced-transparency: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(reduced).toContain("backdrop-filter: none");
+  });
+});
 
 const dates = ["2025-09-19T10:00:00", "2025-08-30T10:00:00", "2025-08-08T10:00:00"];
 
