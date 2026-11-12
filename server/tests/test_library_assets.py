@@ -9,6 +9,7 @@ the same convention `test_media.py` uses for the P1.7 backend.
 from __future__ import annotations
 
 import io
+import pathlib
 
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -1638,5 +1639,117 @@ def test_referenced_original_thumb_falls_back_to_the_package_derivative(
         conn.commit()
         response = client.get(f"/api/libraries/{library_id}/thumb/a")
         assert response.status_code == 200
+    finally:
+        conn.close()
+
+
+def _disposition_for(tmp_path, route_suffix, params=None, **asset):
+    conn, client = _client(tmp_path)
+    try:
+        library_path = tmp_path / "L1.photoslibrary"
+        library_path.mkdir(exist_ok=True)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", **asset)
+        _login(client, "alice")
+        response = client.get(
+            f"/api/libraries/{library_id}/{route_suffix}", params=params
+        )
+        assert response.status_code == 200
+        return response.headers["content-disposition"]
+    finally:
+        conn.close()
+
+
+def test_download_name_helper():
+    row = {"original_filename": "IMG_1234.HEIC", "filename": "UUID.jpeg"}
+    path = pathlib.Path("/x/UUID.jpeg")
+    assert library_assets.download_name(row, path) == "IMG_1234.jpeg"
+    assert library_assets.download_name(row, path, ".jpg") == "IMG_1234.jpg"
+    only = {"original_filename": None, "filename": "stored.heic"}
+    assert (
+        library_assets.download_name(only, pathlib.Path("/x/p.heic")) == "stored.heic"
+    )
+    bare = {"original_filename": None, "filename": None}
+    assert library_assets.download_name(bare, pathlib.Path("/x/p.mov")) == "p.mov"
+    nasty = {"original_filename": "../a/b\r\n\x00c.HEIC", "filename": None}
+    name = library_assets.download_name(nasty, pathlib.Path("/x/p.heic"))
+    assert "/" not in name and "\n" not in name and "\x00" not in name
+    assert name.endswith(".heic")
+
+
+def test_content_disposition_adds_utf8_filename_for_non_ascii():
+    header = library_assets.content_disposition('Café "x".jpg')
+    assert header.startswith('attachment; filename="Caf_ \\"x\\".jpg"')
+    assert "filename*=UTF-8''Caf%C3%A9%20%22x%22.jpg" in header
+    assert library_assets.content_disposition("a.jpg") == 'attachment; filename="a.jpg"'
+
+
+def test_original_download_uses_original_filename(tmp_path):
+    _, file_path = _library_root_with_jpeg(tmp_path, "UUID-1.jpeg")
+    header = _disposition_for(
+        tmp_path,
+        "original/a",
+        path_original=str(file_path),
+        original_filename="IMG_1234.HEIC",
+    )
+    assert header == 'attachment; filename="IMG_1234.jpeg"'
+
+
+def test_edited_download_uses_original_stem_with_edited_extension(tmp_path):
+    _, file_path = _library_root_with_jpeg(tmp_path, "UUID-1_edited.jpeg")
+    header = _disposition_for(
+        tmp_path,
+        "original/a",
+        {"version": "edited"},
+        path_edited=str(file_path),
+        original_filename="IMG_1234.HEIC",
+    )
+    assert header == 'attachment; filename="IMG_1234.jpeg"'
+
+
+def test_heic_to_jpeg_download_is_named_jpg(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    originals = tmp_path / "L1.photoslibrary" / "originals"
+    originals.mkdir(parents=True)
+    heic_path = originals / "UUID-2.heic"
+    buffer = io.BytesIO()
+    Image.new("RGB", (32, 24)).save(buffer, format="HEIF", quality=50)
+    heic_path.write_bytes(buffer.getvalue())
+    header = _disposition_for(
+        tmp_path,
+        "original/a",
+        {"format": "jpeg"},
+        path_original=str(heic_path),
+        original_filename="IMG_1234.HEIC",
+    )
+    assert header == 'attachment; filename="IMG_1234.jpg"'
+
+
+def test_livephoto_video_download_uses_original_stem_with_mov(tmp_path):
+    originals = tmp_path / "L1.photoslibrary" / "originals"
+    originals.mkdir(parents=True)
+    video = originals / "UUID-3.mov"
+    video.write_bytes(b"x")
+    header = _disposition_for(
+        tmp_path,
+        "livephoto/a/video",
+        path_live_photo=str(video),
+        original_filename="IMG_1234.HEIC",
+    )
+    assert header == 'attachment; filename="IMG_1234.mov"'
+
+
+def test_list_items_expose_original_filename(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", original_filename="IMG_1234.HEIC")
+        _login(client, "alice")
+        items = client.get(f"/api/libraries/{library_id}/assets").json()["items"]
+        assert items[0]["original_filename"] == "IMG_1234.HEIC"
     finally:
         conn.close()

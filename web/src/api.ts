@@ -160,6 +160,7 @@ export function setLayoutOverride(value: "desktop" | "mobile" | null): Promise<v
 export interface AssetListItem {
   id: string;
   filename: string | null;
+  original_filename?: string | null;
   date: string | null;
   is_video: boolean;
   is_live_photo: boolean;

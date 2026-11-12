@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../../testHelpers";
-import { downloadAsset, downloadVersion, shareOrDownloadAssets } from "./download";
+import { downloadAsset, downloadVersion, shareFileName, shareOrDownloadAssets } from "./download";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -67,5 +67,24 @@ describe("shareOrDownloadAssets", () => {
     await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
 
     expect(href).toContain("download=1");
+  });
+});
+
+describe("shareFileName", () => {
+  it("uses the original name, not the stored UUID name", () => {
+    const item = { id: "u", filename: "ABC-123.heic", original_filename: "IMG_1234.HEIC" };
+    expect(shareFileName(item, "image/heic")).toBe("IMG_1234.HEIC");
+  });
+  it("ends in .jpg when a HEIC was converted to JPEG", () => {
+    const item = { id: "u", filename: "ABC.heic", original_filename: "IMG_1234.HEIC" };
+    expect(shareFileName(item, "image/jpeg")).toBe("IMG_1234.jpg");
+  });
+  it("keeps .jpeg for a JPEG blob and a .jpeg name", () => {
+    expect(shareFileName({ id: "u", filename: null, original_filename: "a.jpeg" }, "image/jpeg")).toBe("a.jpeg");
+  });
+  it("falls back to filename, then id, and strips path separators", () => {
+    expect(shareFileName({ id: "u", filename: "x.png" }, "image/png")).toBe("x.png");
+    expect(shareFileName({ id: "u", filename: null }, "")).toBe("u");
+    expect(shareFileName({ id: "u", filename: null, original_filename: "a/b\\c.mov" }, "video/quicktime")).toBe("a_b_c.mov");
   });
 });
