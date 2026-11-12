@@ -273,7 +273,7 @@ describe("DesktopShell Days double-click (#152)", () => {
     expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("clicking Library while on Library > All Photos goes back to Years (#167)", async () => {
+  it("clicking Library while on Library > All Photos resets to the default All Photos view (#167, #265)", async () => {
     const items = ["a", "b"].map((id, i) => ({
       id,
       filename: `${id}.jpg`,
@@ -305,8 +305,10 @@ describe("DesktopShell Days double-click (#152)", () => {
     fireEvent.doubleClick(container.querySelector('[data-asset-id="b"]') as HTMLElement);
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
 
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
   });
 });
 

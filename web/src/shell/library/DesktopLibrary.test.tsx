@@ -75,10 +75,13 @@ describe("DesktopLibrary", () => {
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
 
-    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
+    // Opens on All Photos so a double-click on a tile opens the photo (#265).
+    expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("tab", { name: "Days" })).toBeNull();
-    expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0));
 
@@ -390,6 +393,30 @@ describe("DesktopLibrary", () => {
     expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
   });
 
+  it("opens the photo on a double-click right after a fresh single-click selection change (#265)", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const first = cells(container)[0];
+    const second = cells(container)[1];
+    // Select a1, then immediately click+dblclick a2 with no await between,
+    // as a real fast double-click on a different tile does.
+    fireEvent.click(first, { clientX: 10, clientY: 10 });
+    fireEvent.click(second, { clientX: 300, clientY: 10 });
+    fireEvent.click(second, { clientX: 300, clientY: 10 });
+    fireEvent.doubleClick(second, { clientX: 300, clientY: 10 });
+
+    const viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
+  });
+
   it("double-clicking a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
@@ -397,7 +424,7 @@ describe("DesktopLibrary", () => {
     ];
     mockAssets(items);
 
-    const { container } = render(<DesktopLibrary libraryId={1} />);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="years" />);
     await screen.findAllByRole("img");
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
     const grid = screen.getByTestId("desktop-library-grid");

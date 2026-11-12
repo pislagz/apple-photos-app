@@ -189,7 +189,7 @@ export default function DesktopLibrary({
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
 }) {
-  const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
+  const [switchedView, setView] = useState<ViewKey>(initialView ?? "all");
   const view = fixedView ?? switchedView;
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
