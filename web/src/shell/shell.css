@@ -2394,8 +2394,25 @@ body {
   cursor: pointer;
 }
 
+/* #291: the desktop field lives at the right end of the toolbar row. */
+.shell--desktop .shell__main {
+  position: relative;
+}
+
+.shell__search {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-16);
+  z-index: 5;
+}
+
+.shell--desktop .toolbar,
+.shell--desktop .desktop-library__toolbar {
+  padding-right: calc(var(--space-16) + 190px + var(--space-10));
+}
+
 .search-box--desktop {
-  margin: 0 var(--space-4) var(--space-10);
+  width: 190px;
 }
 
 .search-box--desktop .search-box__input {
@@ -2407,6 +2424,49 @@ body {
 
 .search-box--desktop .search-box__input:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Narrow windows: just the magnifier until the field is focused. */
+@media (max-width: 1100px) {
+  .shell--desktop .toolbar,
+  .shell--desktop .desktop-library__toolbar {
+    padding-right: calc(var(--space-16) + 28px + var(--space-10));
+  }
+
+  .search-box--desktop {
+    width: 28px;
+    margin-left: auto;
+  }
+
+  .search-box--desktop .search-box__input {
+    width: 28px;
+    padding: 0;
+    cursor: pointer;
+    color: transparent;
+    transition: width 0.2s ease;
+  }
+
+  .search-box--desktop .search-box__input::placeholder {
+    color: transparent;
+  }
+
+  .search-box--desktop .search-box__input:focus,
+  .search-box--desktop .search-box__input:not(:placeholder-shown) {
+    position: absolute;
+    right: 0;
+    width: 190px;
+    padding: 0 26px 0 28px;
+    color: inherit;
+    cursor: text;
+  }
+
+  .search-box--desktop .search-box__input:focus::placeholder {
+    color: var(--color-label-secondary);
+  }
+
+  .search-box--desktop .search-box__icon {
+    z-index: 1;
+  }
 }
 
 .search-box--mobile {
