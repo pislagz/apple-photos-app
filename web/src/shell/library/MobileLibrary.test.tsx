@@ -167,6 +167,31 @@ describe("MobileLibrary", () => {
     expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
   });
 
+  it("puts a pushed grid's back button, Select and title in the same one top bar (#260)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const onBack = vi.fn();
+    const { container } = render(
+      <MobileLibrary libraryId={1} album="smart:videos" nav={{ title: "Videos", backLabel: "More", onBack }} />,
+    );
+    await screen.findAllByRole("img");
+    const bars = screen.getAllByTestId("top-bar");
+    expect(bars).toHaveLength(1);
+    const [bar] = bars;
+    const back = screen.getByRole("button", { name: "More" });
+    const select = screen.getByRole("button", { name: "Select" });
+    const title = screen.getByRole("heading", { name: "Videos" });
+    for (const element of [back, select, title]) expect(element.parentElement).toBe(bar);
+    // Back and Select share the first row; the title wraps below them.
+    expect(back.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(select.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar).toHaveClass("mobile-library__top-bar--nav");
+    expect(bar).not.toHaveAttribute("data-scrim");
+    expect(screen.queryByTestId("pinned-header")).toBeNull();
+    expect(container.querySelector(".mobile-library__view-switch")).toBeNull();
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
   it("keeps the scrim behind Select on the Days view too (#176)", async () => {
     mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
     render(<MobileLibrary libraryId={1} />);
