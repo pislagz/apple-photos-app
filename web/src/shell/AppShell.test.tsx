@@ -277,7 +277,7 @@ describe("AppShell", () => {
 
     render(<AppShell />);
     fireEvent.click(await screen.findByRole("button", { name: "Account menu" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Log Out" }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument());
   });
