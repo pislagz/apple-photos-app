@@ -41,3 +41,11 @@ describe("LoginScreen keep me signed in", () => {
     expect(onSubmit).toHaveBeenCalledWith("ann", "pw", false);
   });
 });
+
+describe("LoginScreen layout (F1)", () => {
+  it("renders the keep box inside a label carrying the inline-row class", () => {
+    render(<LoginScreen layout="mobile" error={null} onSubmit={vi.fn()} />);
+    const box = screen.getByLabelText("Keep me signed in");
+    expect(box.closest("label")).toHaveClass("login-card__keep");
+  });
+});
