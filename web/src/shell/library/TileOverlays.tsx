@@ -49,7 +49,9 @@ export function CheckBadge({ prefix, selected }: { prefix: string; selected: boo
   return (
     <span className={`${prefix}__check`} data-selected={selected} aria-hidden="true">
       <svg viewBox="0 0 22 22" width="22" height="22" focusable="false">
-        <path d="M6.5 11.5l3.2 3.2 6-6.6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle className={`${prefix}__check__fill`} cx="11" cy="11" r="11" />
+        <circle className={`${prefix}__check__ring`} cx="11" cy="11" r="10.25" />
+        <path d="M6 11L9 14L16 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
   );

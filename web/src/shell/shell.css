@@ -346,15 +346,13 @@ body {
 
 /* A selected video's duration steps left of the check badge (22 px + 5 px
    inset + 4 px gap) so the two never overlap. */
-.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration,
-.desktop-library__cell[data-selected="true"] .desktop-library__duration {
+.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration {
   right: 31px;
 }
 
 /* Selected: a 25 % white dim plus a 22 px accent check, bottom-right. */
 .mobile-library__cell-wrap::after,
-.mobile-library__row-feature::after,
-.desktop-library__cell::after {
+.mobile-library__row-feature::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -365,53 +363,64 @@ body {
 }
 
 .mobile-library__cell-wrap[data-selected="true"]::after,
-.mobile-library__row-feature[data-selected="true"]::after,
-.desktop-library__cell[data-selected="true"]::after {
+.mobile-library__row-feature[data-selected="true"]::after {
   opacity: 1;
 }
 
-.desktop-library__cell[data-flash="true"]::after {
-  background: var(--tile-flash);
-  opacity: 1;
-  transition: none;
+/* Desktop (Photos for Mac): a selected tile shows only a blue frame, with no
+   dim and no check badge. The badge is the iPhone selection look. */
+.desktop-library__cell[data-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
 }
 
-.mobile-library__check,
-.desktop-library__check {
+/* F10: the badge is one 22 x 22 SVG on whole pixels (circle, ring and tick all
+   drawn inside it), with no border, margin, transform or opacity transition,
+   so the tick is centred and does not settle by a pixel after appearing. */
+.mobile-library__check {
   position: absolute;
   right: 5px;
   bottom: 5px;
   width: 22px;
   height: 22px;
-  box-sizing: border-box;
-  border-radius: 50%;
+  line-height: 0;
   color: var(--color-white);
-  border: 1.5px solid var(--color-white);
-  background: var(--accent);
-  box-shadow: var(--shadow-check);
+  filter: drop-shadow(var(--shadow-check));
   z-index: 1;
-  opacity: 0;
-  transition: opacity 120ms ease;
+  visibility: hidden;
   pointer-events: none;
 }
 
-.mobile-library__check svg,
-.desktop-library__check svg {
+.mobile-library__check svg {
   display: block;
-  margin: -1.5px;
 }
 
-.mobile-library__check[data-selected="true"],
-.desktop-library__check[data-selected="true"] {
-  opacity: 1;
+.mobile-library__check__fill {
+  fill: var(--accent);
+}
+
+.mobile-library__check__ring {
+  fill: none;
+  stroke: var(--color-white);
+  stroke-width: 1.5;
+}
+
+.mobile-library__check[data-selected="true"] {
+  visibility: visible;
 }
 
 /* iPhone selection mode: an empty outlined circle on every tile that fills
    when selected. */
 .mobile-library__check[data-selected="false"] {
-  opacity: 1;
-  background: var(--scrim-badge);
-  color: transparent;
+  visibility: visible;
+}
+
+.mobile-library__check[data-selected="false"] .mobile-library__check__fill {
+  fill: var(--scrim-badge);
+}
+
+.mobile-library__check[data-selected="false"] path {
+  stroke: transparent;
 }
 
 /* Bottom action bar for multi-select, replacing the tab bar's role while
@@ -1158,6 +1167,11 @@ body {
 }
 
 .desktop-library__grid {
+  /* F6: reserve the scrollbar's width always. Otherwise it appears when a
+     column-count change adds rows, which narrows the grid, which changes the
+     column count back: an endless resize loop at some zoom steps. */
+  scrollbar-gutter: stable;
+  -webkit-tap-highlight-color: transparent;
   flex: 1 1 auto;
   min-width: 0;
   user-select: none;
@@ -1207,6 +1221,9 @@ body {
   overflow: hidden;
   border-radius: var(--radius-tile);
   cursor: default;
+  /* F2: no white tap/active/focus flash; the blue frame alone marks selection.
+     The keyboard ring stays on :focus-visible only. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .desktop-library__thumb {
