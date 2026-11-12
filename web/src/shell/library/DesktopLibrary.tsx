@@ -1,4 +1,4 @@
-import { CheckBadge, TileOverlays } from "./TileOverlays";
+import { TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
@@ -724,6 +724,9 @@ export default function DesktopLibrary({
         ref={scrollRef}
         className="desktop-library__grid"
         data-testid="desktop-library-grid"
+        role="listbox"
+        aria-label="Photos"
+        aria-multiselectable="true"
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
         onMouseDown={handleGridMouseDown}
@@ -787,6 +790,8 @@ export default function DesktopLibrary({
                         // Focus lands here when the Viewer closes (D59); arrow keys bubble to the grid.
                         tabIndex={-1}
                         data-testid="library-cell"
+                        role="option"
+                        aria-selected={selected.has(item.id)}
                         data-selected={selected.has(item.id)}
                         data-flash={flashId === item.id ? "true" : undefined}
                         className="desktop-library__cell"
@@ -805,7 +810,6 @@ export default function DesktopLibrary({
                         />
                         {row.type === "feature" && <div className="desktop-library__feature-caption">{row.label}</div>}
                         <TileOverlays item={item} tileWidth={tileWidth} prefix="desktop-library" />
-                        <CheckBadge prefix="desktop-library" selected={selected.has(item.id)} />
                       </div>
                     );
                   })}

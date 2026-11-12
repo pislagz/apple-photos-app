@@ -101,20 +101,22 @@ describe("DesktopLibrary", () => {
     expect(screen.getByText("2:05")).toBeInTheDocument();
   });
 
-  it("selected tile gets a check badge and a click flash, with no ring (#208)", async () => {
+  it("selected tile has no check badge, exposes aria-selected, and flashes on click (#208)", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       mockAssets([makeItem("a1", "2024-05-10T10:00:00", { favorite: true }), makeItem("a2", "2024-05-09T10:00:00")]);
       const { container } = render(<DesktopLibrary libraryId={1} />);
       await screen.findAllByRole("img");
       const [first, second] = cells(container);
-      expect(first.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "false");
+      expect(first.querySelector(".desktop-library__check")).toBeNull();
+      expect(first).toHaveAttribute("aria-selected", "false");
 
       fireEvent.click(first);
       expect(first).toHaveAttribute("data-selected", "true");
       expect(first).toHaveAttribute("data-flash", "true");
-      expect(first.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "true");
-      expect(second.querySelector(".desktop-library__check")).toHaveAttribute("data-selected", "false");
+      expect(first).toHaveAttribute("aria-selected", "true");
+      expect(second).toHaveAttribute("aria-selected", "false");
+      expect(container.querySelector(".desktop-library__check")).toBeNull();
 
       act(() => {
         vi.advanceTimersByTime(160);

@@ -69,10 +69,17 @@ describe("CheckBadge", () => {
     expect(path).toHaveAttribute("stroke", "currentColor");
     expect(path).toHaveAttribute("fill", "none");
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
-    const rule = /\.mobile-library__check,\s*\.desktop-library__check \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    const rule = /\.mobile-library__check \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(rule).toContain("color: var(--color-white)");
     expect(rule).toMatch(/border: 1\.5px solid var\(--color-white\)/);
     expect(rule).toContain("background: var(--accent)");
     expect(css).not.toContain("mobile-library__select-badge");
+  });
+
+  // Desktop shows the blue frame only; the badge is iPhone-only.
+  it("has no desktop check badge styling", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    expect(css).not.toContain("desktop-library__check");
+    expect(/\.desktop-library__cell\[data-selected="true"\] \{([^}]*)\}/.exec(css)?.[1]).toContain("outline: 3px solid var(--accent)");
   });
 });
