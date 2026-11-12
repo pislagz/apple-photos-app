@@ -523,6 +523,28 @@ describe("MobileLibrary", () => {
     expect(screen.getByTestId("select-bar")).toBeInTheDocument();
   });
 
+  it("offers HEIC as JPEG only once a HEIC photo is selected (#254)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: false },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: true },
+    ];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    fireEvent.click(image("a1"));
+    expect(screen.getByTestId("zip-status")).toBeInTheDocument();
+    expect(screen.queryByLabelText("HEIC as JPEG")).toBeNull();
+
+    fireEvent.click(image("a2"));
+    expect(screen.getByLabelText("HEIC as JPEG")).toBeInTheDocument();
+  });
+
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockAssets(items);

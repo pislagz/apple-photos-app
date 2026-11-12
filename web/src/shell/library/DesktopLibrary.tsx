@@ -1,7 +1,7 @@
 import { TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
-import { useZipDownload } from "./zipDownload";
+import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
@@ -548,12 +548,13 @@ export default function DesktopLibrary({
   }, [dragActive]);
 
   const zip = useZipDownload(libraryId);
+  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selected), [items, selected]);
   const handleDownload = useCallback(() => {
     if (selected.size === 0) return;
     // One file stays a plain download; several become one streamed zip (P3.2).
     if (selected.size === 1) downloadSelection(libraryId, selected);
-    else void zip.start([...selected]);
-  }, [libraryId, selected, zip.start]);
+    else void zip.start([...selected], { forceNative: !selectionHasHeicPhoto });
+  }, [libraryId, selected, zip.start, selectionHasHeicPhoto]);
 
   const shareSupported = canShareFiles();
   const handleShare = useCallback(async () => {
@@ -771,7 +772,12 @@ export default function DesktopLibrary({
           <span className="sr-only">Info</span>
         </button>
         {(selected.size > 1 || zip.state.phase !== "idle") && (
-          <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+          <ZipStatus
+            state={zip.state}
+            jpeg={zip.jpeg}
+            onJpegChange={zip.setJpeg}
+            showHeicOption={selectionHasHeicPhoto}
+          />
         )}
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}

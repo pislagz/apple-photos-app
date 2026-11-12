@@ -1,7 +1,7 @@
 import HeicFallbackModal from "./HeicFallbackModal";
 import { CheckBadge, TileOverlays } from "./TileOverlays";
 import ZipStatus from "./ZipStatus";
-import { useZipDownload } from "./zipDownload";
+import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
@@ -164,6 +164,7 @@ export default function MobileLibrary({
   }
 
   const zip = useZipDownload(libraryId);
+  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -442,13 +443,18 @@ export default function MobileLibrary({
           </button>
           <button
             type="button"
-            onClick={() => void zip.start([...selectedIds])}
+            onClick={() => void zip.start([...selectedIds], { forceNative: !selectionHasHeicPhoto })}
             disabled={selectedIds.size === 0 || zip.busy}
           >
             Zip
           </button>
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
-            <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+            <ZipStatus
+              state={zip.state}
+              jpeg={zip.jpeg}
+              onJpegChange={zip.setJpeg}
+              showHeicOption={selectionHasHeicPhoto}
+            />
           )}
         </div>
       )}
