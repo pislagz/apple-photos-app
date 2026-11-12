@@ -414,8 +414,10 @@ export default function MobileLibrary({
       </div>
       {selectMode && (
         <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-count">
-            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+          <span className="mobile-library__select-summary">
+            <span className="mobile-library__select-count">
+              {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
+            </span>
           </span>
           <button
             type="button"

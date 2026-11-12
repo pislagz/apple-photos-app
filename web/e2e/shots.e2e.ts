@@ -1267,3 +1267,22 @@ test("motion: reduced motion has no translate", async ({ page }, info) => {
   expect(transforms.every((t) => t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)")).toBe(true);
   await page.screenshot({ path: `${MOTION_DIR}/reduced-desktop-menu.png` });
 });
+
+test("F11: phone Select bar has no × next to the count; desktop keeps it (#287)", async ({ page }, info) => {
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const deselect = page.getByRole("button", { name: "Deselect all" });
+  if (info.project.name === "desktop") {
+    await cells(page).first().click();
+    await cells(page).nth(1).click({ modifiers: ["Meta"] });
+    await expect(deselect).toBeVisible();
+    return;
+  }
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await cells(page).first().click();
+  await expect(page.getByTestId("select-bar")).toContainText("1 Selected");
+  await expect(deselect).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("select-bar")).toHaveCount(0);
+});
