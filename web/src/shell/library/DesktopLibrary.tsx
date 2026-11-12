@@ -24,6 +24,8 @@ import {
   thumbSizeFor,
   ZOOM_EDGES,
 } from "./gridMetrics";
+import DateTitle from "./DateTitle";
+import { desktopTitle, titleScrimProgress } from "./libraryTitle";
 import { buildRows, columnOf, verticalTarget } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -33,6 +35,9 @@ import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
 
 const HEADER_ROW_HEIGHT = 40;
 const MAX_ZOOM_INDEX = ZOOM_EDGES.length - 1;
+// Height of the overlaid title and its scrim; a month header starting inside
+// this band would sit under the title, so the title steps aside (#209).
+const TITLE_BAND_PX = 56;
 const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
   { key: "all", label: "All Items" },
   { key: "favorites", label: "Favorites" },
@@ -52,19 +57,6 @@ const DRAG_THRESHOLD_PX = 4;
 // clicks can't turn it into two single clicks on different elements).
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 6;
-
-// Short form for the Sequoia-style date-range title (sequoia-library-grid.png:
-// "Apr 13, 2021 – Jun 11, 2024" overlaid on the first row). `date` is a naive
-// UTC-ish ISO string, same convention as grouping.ts's `formatGroupLabel`.
-function shortDate(iso: string): string {
-  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
-  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 // #208: click flash length. Local constant until the #206 motion tokens land.
 const FLASH_MS = 150;
@@ -307,21 +299,22 @@ export default function DesktopLibrary({
   // newest first, so the range runs from the last visible item to the first.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const viewportHeight = rowVirtualizer.scrollRect?.height ?? 0;
-  const dateRangeLabel = useMemo(() => {
+  const { dateRangeLabel, headerInBand } = useMemo(() => {
     const onScreen = virtualRows.filter(
       (row) => viewportHeight <= 0 || (row.end > scrollOffset && row.start < scrollOffset + viewportHeight),
     );
     const dated: string[] = [];
+    let headerInBand = false;
     for (const virtualRow of onScreen) {
       const row = rows[virtualRow.index];
-      if (row.type === "header") continue;
+      if (row.type === "header") {
+        if (virtualRow.start < scrollOffset + TITLE_BAND_PX) headerInBand = true;
+        continue;
+      }
       for (const item of row.items) if (item.date) dated.push(item.date);
     }
-    if (dated.length === 0) return "";
-    const newest = shortDate(dated[0]);
-    const oldest = shortDate(dated[dated.length - 1]);
-    return newest === oldest ? newest : `${oldest} – ${newest}`;
-  }, [virtualRows, rows, scrollOffset, viewportHeight]);
+    return { dateRangeLabel: desktopTitle(view, dated), headerInBand };
+  }, [virtualRows, rows, scrollOffset, viewportHeight, view]);
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
@@ -846,8 +839,13 @@ export default function DesktopLibrary({
         {/* #157: Days labels each card with its own day (feature caption);
             the loaded-library range would sit on top of the first card. */}
         {dateRangeLabel && view !== "days" && (
-          <div className="desktop-library__date-range">
-            <span>{dateRangeLabel}</span>
+          <div
+            className="desktop-library__date-range"
+            data-hidden={headerInBand || undefined}
+            style={{ "--title-scrim": titleScrimProgress(scrollOffset) } as CSSProperties}
+          >
+            <div className="desktop-library__title-scrim" aria-hidden="true" />
+            <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
           </div>
         )}
         {items.length === 0 && error ? (

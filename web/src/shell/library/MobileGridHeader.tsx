@@ -1,3 +1,4 @@
+import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "../icons";
 
 export type MobileGridNav = { title: string; backLabel: string; onBack: () => void };
@@ -8,13 +9,16 @@ export type MobileGridNav = { title: string; backLabel: string; onBack: () => vo
 // account button the shell floats beside it) sit at the same spot everywhere.
 export default function MobileGridHeader({
   nav,
-  pinnedLabel,
+  title,
+  style,
   showSelect,
   selectMode,
   onToggleSelect,
 }: {
   nav?: MobileGridNav;
-  pinnedLabel?: string;
+  // The Library's own title block (#209); ignored for a pushed grid.
+  title?: ReactNode;
+  style?: CSSProperties;
   showSelect: boolean;
   selectMode: boolean;
   onToggleSelect: () => void;
@@ -24,6 +28,7 @@ export default function MobileGridHeader({
       className={nav ? "mobile-library__top-bar mobile-library__top-bar--nav" : "mobile-library__top-bar"}
       data-testid="top-bar"
       data-scrim={nav ? undefined : "true"}
+      style={nav ? undefined : style}
     >
       {nav ? (
         <button type="button" className="mobile-screen__back mobile-library__back" onClick={nav.onBack}>
@@ -31,11 +36,7 @@ export default function MobileGridHeader({
           {nav.backLabel}
         </button>
       ) : (
-        pinnedLabel !== undefined && (
-          <div className="mobile-library__pinned-header" data-testid="pinned-header">
-            {pinnedLabel}
-          </div>
-        )
+        title
       )}
       {showSelect && (
         <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>

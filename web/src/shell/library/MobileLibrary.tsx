@@ -19,6 +19,8 @@ import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
+import DateTitle from "./DateTitle";
+import { phoneTitle, titleScrimProgress } from "./libraryTitle";
 import { usePinchColumns } from "./usePinchColumns";
 
 const HEADER_ROW_HEIGHT = 32;
@@ -214,7 +216,9 @@ export default function MobileLibrary({
   // topmost row actually scrolled to, found by scroll offset instead.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const topmostRow = virtualRows.find((row) => row.start + row.size > scrollOffset) ?? virtualRows[0];
-  const pinnedLabel = topmostRow ? rows[topmostRow.index]?.label ?? "" : "";
+  const topRow = topmostRow ? rows[topmostRow.index] : undefined;
+  const topDate = topRow && (topRow.type === "grid" || topRow.type === "feature") ? topRow.items[0]?.date : undefined;
+  const { subtitle: pinnedSubtitle, pill: pinnedPill } = phoneTitle(columns, topDate || undefined);
 
   useEffect(() => {
     // Years/Months never page -- `/summary` already carries every bucket.
@@ -260,9 +264,24 @@ export default function MobileLibrary({
         // One flex row so the title can never sit under Select: the title
         // shrinks and ellipsizes, Select keeps its natural width. The scrim is
         // always on: Days has the white Select over a bright hero photo too (#176).
+        // In All Photos it fades in with the first bit of scroll (#261).
         <MobileGridHeader
           nav={nav}
-          pinnedLabel={view === "all" ? pinnedLabel : undefined}
+          style={{ "--title-scrim": view === "all" ? titleScrimProgress(scrollOffset) : 1 } as CSSProperties}
+          title={
+            view === "all" && (
+              <div className="mobile-library__title-block">
+                {pinnedPill ? (
+                  <DateTitle text={pinnedPill} className="mobile-library__pill" testId="pinned-header" />
+                ) : (
+                  <>
+                    <div className="mobile-library__large-title">Library</div>
+                    <DateTitle text={pinnedSubtitle} className="mobile-library__subtitle" testId="pinned-header" />
+                  </>
+                )}
+              </div>
+            )
+          }
           showSelect={!isTileView}
           selectMode={selectMode}
           onToggleSelect={() => (selectMode ? exitSelectMode() : setSelectMode(true))}

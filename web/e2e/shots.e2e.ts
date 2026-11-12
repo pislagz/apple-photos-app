@@ -1172,6 +1172,40 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
+// #209: the library date title at each level, both appearances. TITLE_SHOTS_PREFIX
+// names the files (`before`, `after`); run with -g "title shots".
+for (const scheme of ["light", "dark"] as const) {
+  test(`title shots: ${scheme}`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone only");
+    const prefix = process.env.TITLE_SHOTS_PREFIX ?? "after";
+    const kind = info.project.name === "desktop" ? "desktop" : "phone";
+    const scroller = page.getByTestId(kind === "desktop" ? "desktop-library-grid" : "library-scroll");
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page);
+    for (const [label, slug] of [
+      ["Years", "years"],
+      ["Months", "months"],
+      ["All Photos", "all"],
+    ] as const) {
+      await openZoom(page, label);
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: `${SHOTS}/${prefix}-${scheme}-${kind}-${slug}.png` });
+      if (kind === "desktop" || slug === "all") {
+        // Scrolled: a header row or photos sit right under the title.
+        await scroller.evaluate((el) => {
+          el.scrollTop = 420;
+        });
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: `${SHOTS}/${prefix}-${scheme}-${kind}-${slug}-scrolled.png` });
+        await scroller.evaluate((el) => {
+          el.scrollTop = 0;
+        });
+      }
+    }
+  });
+}
+
 // #208 tile overlays and selection. Light and dark; desktop mixed selection
 // (a video and a favourite), the densest zoom, and the iPhone grid and
 // selection mode.
@@ -1236,3 +1270,47 @@ for (const scheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// #209: the title and scrim never take pointer events, so taps and rubber-band
+// drags reach the tiles underneath, and no inline header overlaps the title.
+test("date title and scrim are click-through, with no overlapping text (#209)", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const desktop = info.project.name === "desktop";
+  const title = page.getByTestId(desktop ? "desktop-library-title" : "pinned-header");
+  await expect(title).toBeVisible();
+  const tb = (await title.boundingBox())!;
+  const hit = await page.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? { cell: !!el.closest("[data-asset-id], .mobile-library__cell"), cls: el.className } : null;
+    },
+    [tb.x + 4, tb.y + 4],
+  );
+  expect(hit?.cell, `element under the title: ${hit?.cls}`).toBe(true);
+  if (desktop) {
+    // Tap through the scrim selects the tile under it.
+    await page.mouse.click(tb.x + 40, tb.y + 4);
+    await expect(page.locator('[data-testid="library-cell"][data-selected="true"]')).toHaveCount(1);
+    // Months: scroll through the whole first screens; the title and a header never intersect.
+    await openZoom(page, "Months");
+    const grid = page.getByTestId("desktop-library-grid");
+    for (let top = 0; top < 1800; top += 90) {
+      await grid.evaluate((el, t) => {
+        el.scrollTop = t;
+      }, top);
+      await page.waitForTimeout(220); // outlast the 150 ms fade
+      const t = page.getByTestId("desktop-library-title");
+      const visible = (await t.evaluate((el) => getComputedStyle(el.parentElement!).opacity)) !== "0";
+      if (!visible) continue;
+      const tbx = (await t.boundingBox())!;
+      for (const h of await page.locator(".desktop-library__row-header").all()) {
+        const hb = await h.boundingBox();
+        if (!hb) continue;
+        expect(hb.y >= tbx.y + tbx.height || hb.y + hb.height <= tbx.y, `header at ${hb.y} vs title at scroll ${top}`).toBe(true);
+      }
+    }
+  }
+});

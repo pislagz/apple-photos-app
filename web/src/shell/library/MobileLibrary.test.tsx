@@ -139,7 +139,7 @@ describe("MobileLibrary", () => {
     // Years/Months no longer have a pinned header (each tile already shows
     // its own label); only All Photos' uniform grid still needs one.
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("May 10, 2024"));
+    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("10 May 2024"));
 
     const scrollEl = screen.getByTestId("library-scroll");
     // One grid row (cellSize 200px with the mocked 800px-wide container / 4
@@ -147,7 +147,7 @@ describe("MobileLibrary", () => {
     scrollEl.scrollTop = 220;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("April 18, 2024"));
+    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("18 Apr 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {
@@ -158,10 +158,11 @@ describe("MobileLibrary", () => {
     const title = await screen.findByTestId("pinned-header");
     const select = screen.getByRole("button", { name: "Select" });
     const bar = screen.getByTestId("top-bar");
-    expect(title.parentElement).toBe(bar);
+    // The title block (large title + subtitle) and Select share the bar.
+    expect(title.closest(".mobile-library__title-block")?.parentElement).toBe(bar);
     expect(select.parentElement).toBe(bar);
     // Select follows the title in flow, so the two cannot overlap.
-    expect(title.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(title.closest(".mobile-library__title-block")!.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(select);
     expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
   });
@@ -198,7 +199,24 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
     const bar = await screen.findByTestId("top-bar");
     expect(bar).toHaveAttribute("data-scrim", "true");
+    expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"); // full scrim over the hero photo
     expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+  });
+
+  it("fades the title scrim in over the first 48 px of All Photos scroll (#261)", async () => {
+    mockAssets(Array.from({ length: 40 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(28 - (i % 28)).padStart(2, "0")}T10:00:00`)));
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const bar = await screen.findByTestId("top-bar");
+    expect(bar.style.getPropertyValue("--title-scrim")).toBe("0");
+    const scrollEl = screen.getByTestId("library-scroll");
+    scrollEl.scrollTop = 24;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0.5"));
+    scrollEl.scrollTop = 400;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"));
   });
 
   it("changes the column count on a pinch gesture", async () => {
@@ -735,5 +753,17 @@ describe("MobileLibrary person grid text (#193)", () => {
     });
     render(<MobileLibrary libraryId={1} album="person:p1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this person's photos.");
+  });
+});
+
+describe("MobileLibrary date title follows the zoom level (#209)", () => {
+  it("shows Library with a D Mon YYYY subtitle at 4 columns and no pill", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("10 May 2024"));
+    expect(container.querySelector(".mobile-library__large-title")).toHaveTextContent("Library");
+    expect(container.querySelector(".mobile-library__pill")).toBeNull();
   });
 });
