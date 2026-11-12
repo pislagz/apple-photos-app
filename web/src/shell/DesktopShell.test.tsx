@@ -345,7 +345,7 @@ describe("DesktopShell with no library (#263)", () => {
   it("tells a user to ask their admin, without a stray Library caption", () => {
     mockFetch(() => []);
     render(<DesktopShell me={noLibrary("user")} {...props} />);
-    expect(screen.getByText(/Ask your admin/)).toBeInTheDocument();
+    expect(screen.getByText(/Ask the person who set up Photos/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Add a Library" })).toBeNull();
     expect(screen.queryByLabelText("Library switcher")).toBeNull();
   });

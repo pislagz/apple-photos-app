@@ -17,7 +17,7 @@ export default function WelcomeScreen({ isAdmin }: { isAdmin: boolean }) {
         </>
       ) : (
         <p className="welcome__text">
-          There are no photo libraries for you yet. Ask your admin to add one or give you access.
+          Ask the person who set up Photos to share a library with you.
         </p>
       )}
     </div>

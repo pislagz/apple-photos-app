@@ -83,7 +83,7 @@ export default function MobileShell({
   const unavailable =
     activeLibraryId === undefined
       ? "Nothing here yet. Photos appear once a library has been added."
-      : "Back once the library has finished updating.";
+      : "Your library is being prepared. This will appear when it's ready.";
 
   function renderContent() {
     if (route.tab === "library") return null;
@@ -163,7 +163,7 @@ export default function MobileShell({
       return (
         <MorePlaceholderScreen
           title={title}
-          message={known ? unavailable : "This list doesn't exist."}
+          message={known ? unavailable : "This page doesn't exist."}
           onBack={() => navigate("/more")}
         />
       );
