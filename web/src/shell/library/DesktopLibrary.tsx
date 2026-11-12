@@ -956,6 +956,10 @@ export default function DesktopLibrary({
           index={viewerIndex}
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
+          revealItem={(id) => {
+            const row = rows.findIndex((r) => r.type !== "header" && r.items.some((cell) => cell.id === id));
+            if (row !== -1) rowVirtualizer.scrollToIndex(row, { align: "auto" });
+          }}
         />
       )}
       {contextMenu && (

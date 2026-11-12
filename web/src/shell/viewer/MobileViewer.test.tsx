@@ -74,6 +74,26 @@ function mockDetail(details: Record<string, AssetDetailResponse>) {
   });
 }
 
+// One-finger drag with a controlled clock, so velocity is deterministic.
+function drag(stage: HTMLElement, from: [number, number], to: [number, number], ms: number) {
+  let now = 1_000_000;
+  const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+  fireEvent.touchStart(stage, { touches: [{ clientX: from[0], clientY: from[1] }] });
+  now += ms;
+  fireEvent.touchMove(stage, { touches: [{ clientX: to[0], clientY: to[1] }] });
+  fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: to[0], clientY: to[1] }] });
+  spy.mockRestore();
+}
+
+function stubMatchMedia(reduce: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: reduce && query.includes("prefers-reduced-motion"),
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+}
+
 describe("MobileViewer", () => {
   it("shows the preview thumb first and requests the original only after zooming in", async () => {
     const items = [makeItem("a1")];
@@ -128,9 +148,7 @@ describe("MobileViewer", () => {
     render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={onClose} />);
     const stage = screen.getByTestId("mobile-viewer-stage");
 
-    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 260 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 260 }] });
+    drag(stage, [200, 200], [200, 260], 400);
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -142,10 +160,38 @@ describe("MobileViewer", () => {
     render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={onClose} />);
     const stage = screen.getByTestId("mobile-viewer-stage");
 
-    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 340 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 340 }] });
+    drag(stage, [200, 200], [200, 340], 400);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("dismisses on a short fast flick down (velocity above 0.6 px/ms)", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const onClose = vi.fn();
+    render(<MobileViewer libraryId={1} items={[makeItem("a1")]} index={0} onIndexChange={() => {}} onClose={onClose} />);
+    drag(screen.getByTestId("mobile-viewer-stage"), [200, 200], [200, 260], 60); // 1 px/ms
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("scales the photo down and fades the background while dragging down, then springs back", () => {
+    stubMatchMedia(false);
+    mockDetail({ a1: makeDetail("a1") });
+    render(<MobileViewer libraryId={1} items={[makeItem("a1")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const root = screen.getByTestId("mobile-viewer");
+
+    let now = 5_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 200 }] });
+    now += 900;
+    fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 290 }] });
+    // 90 px of 300: 30 % of the way to scale 0.8 and a 70 % background.
+    expect(stage.style.transform).toMatch(/^translate\(0px, 90px\) scale\(0\.94/);
+    expect(root.style.backgroundColor).toContain("70%");
+
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 290 }] });
+    vi.mocked(Date.now).mockRestore();
+    expect(stage.style.transform).toBe("");
+    expect(stage.style.transition).toContain("250ms");
   });
 
   it("swipes to the next item on a swipe left", () => {
@@ -156,9 +202,7 @@ describe("MobileViewer", () => {
     render(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={onIndexChange} onClose={() => {}} />);
     const stage = screen.getByTestId("mobile-viewer-stage");
 
-    fireEvent.touchStart(stage, { touches: [{ clientX: 300, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 180, clientY: 200 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 180, clientY: 200 }] });
+    drag(stage, [600, 200], [300, 200], 600); // 300 px of a 1024 px window = 29 %, 0.5 px/ms
     expect(onIndexChange).toHaveBeenCalledWith(2);
   });
 
@@ -170,10 +214,149 @@ describe("MobileViewer", () => {
     render(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={onIndexChange} onClose={() => {}} />);
     const stage = screen.getByTestId("mobile-viewer-stage");
 
-    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 220, clientY: 200 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 220, clientY: 200 }] });
+    drag(stage, [100, 200], [400, 200], 800);
     expect(onIndexChange).toHaveBeenCalledWith(0);
+  });
+
+  it("does not page on a short, slow drag (under 25 % and 0.5 px/ms) and settles back", () => {
+    const onIndexChange = vi.fn();
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    render(
+      <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+    );
+    drag(screen.getByTestId("mobile-viewer-stage"), [600, 200], [400, 200], 1000);
+    expect(onIndexChange).not.toHaveBeenCalled();
+  });
+
+  it("pages on a short fast flick (above 0.5 px/ms)", () => {
+    const onIndexChange = vi.fn();
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    render(
+      <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+    );
+    drag(screen.getByTestId("mobile-viewer-stage"), [300, 200], [200, 200], 100); // 1 px/ms
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+  });
+
+  it("moves the strip with the finger, rubber-bands at the ends and settles with the 300 ms ease", () => {
+    stubMatchMedia(false);
+    vi.useFakeTimers();
+    try {
+      const onIndexChange = vi.fn();
+      mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+      const { container } = render(
+        <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+      );
+      const stage = screen.getByTestId("mobile-viewer-stage");
+      const strip = container.querySelector(".mobile-viewer__strip") as HTMLElement;
+
+      // Dragging left moves the strip by exactly the finger distance.
+      fireEvent.touchStart(stage, { touches: [{ clientX: 600, clientY: 200 }] });
+      fireEvent.touchMove(stage, { touches: [{ clientX: 500, clientY: 200 }] });
+      expect(strip.style.transform).toContain("+ -100px");
+      // Dragging right on the first item (no previous) is rubber-banded.
+      fireEvent.touchMove(stage, { touches: [{ clientX: 800, clientY: 200 }] });
+      const banded = Number(/\+ ([\d.]+)px/.exec(strip.style.transform)?.[1]);
+      expect(banded).toBeGreaterThan(0);
+      expect(banded).toBeLessThan(200);
+      fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 200 }] });
+      fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 200 }] });
+
+      // Committed: animates to one page + gap over 300 ms, then swaps the item.
+      expect(strip.style.transition).toContain("300ms cubic-bezier(0.22, 1, 0.36, 1)");
+      expect(strip.style.transform).toContain(`+ -${1024 + 16}px`);
+      expect(onIndexChange).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onIndexChange).toHaveBeenCalledWith(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preloads the neighbours' previews, nothing larger", () => {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2"), a3: makeDetail("a3") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2"), makeItem("a3")]} index={1} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const srcs = Array.from(container.querySelectorAll(".mobile-viewer__stage img")).map((img) => (img as HTMLImageElement).getAttribute("src"));
+    expect(srcs).toContain("/api/libraries/1/thumb/a1?size=preview");
+    expect(srcs).toContain("/api/libraries/1/thumb/a3?size=preview");
+    expect(srcs.some((src) => src?.includes("/original/"))).toBe(false);
+  });
+
+  it("pinch is clamped to 1-6 and zooms about the pinch midpoint", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1", { width: 4000, height: 3000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    const two = (a: number, b: number) => [
+      { clientX: 500 - a, clientY: 400 },
+      { clientX: 500 + b, clientY: 400 },
+    ];
+    fireEvent.touchStart(stage, { touches: two(50, 50) });
+    fireEvent.touchMove(stage, { touches: two(2000, 2000) }); // 40x the start distance
+    const scale = Number(/scale\(([\d.]+)\)/.exec(still.style.transform)?.[1]);
+    expect(scale).toBeGreaterThan(6);
+    expect(scale).toBeLessThanOrEqual(6.5); // rubber-band only just past the limit
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [] });
+    expect(still.style.transform).toContain("scale(6)");
+  });
+
+  it("pans a zoomed photo with one finger, bounded by the image edge, and does not page", () => {
+    const onIndexChange = vi.fn();
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1", { width: 1000, height: 1000 }), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    // Double tap at the centre: 2.5x. Window is 1024x768 so the fit is 768 square.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 512, clientY: 384 }] });
+    fireEvent.touchStart(stage, { touches: [{ clientX: 512, clientY: 384 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 512, clientY: 384 }] });
+    expect(still.style.transform).toContain("scale(2.5)");
+
+    drag(stage, [500, 400], [5000, 400], 5000); // far past the edge
+    const x = Number(/translate\((-?[\d.]+)px/.exec(still.style.transform)?.[1]);
+    // (768 * 2.5 - 1024) / 2 = 448
+    expect(x).toBeCloseTo(448);
+    expect(onIndexChange).not.toHaveBeenCalled();
+  });
+
+  it("double tap goes to 2.5x centred on the tap point, and back to fit", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1", { width: 4000, height: 3000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    const tap = () => {
+      fireEvent.touchStart(stage, { touches: [{ clientX: 600, clientY: 384 }] });
+      fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 600, clientY: 384 }] });
+    };
+    tap();
+    tap();
+    expect(still.style.transform).toContain("scale(2.5)");
+    tap();
+    tap();
+    expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("with reduced motion, gestures work but nothing animates", () => {
+    stubMatchMedia(true);
+    const onIndexChange = vi.fn();
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    drag(stage, [600, 200], [200, 200], 400);
+    expect(onIndexChange).toHaveBeenCalledWith(1); // immediately, no 300 ms wait
+    expect((container.querySelector(".mobile-viewer__strip") as HTMLElement).style.transition).toBe("");
   });
 
   it("does not navigate past the first or last item", () => {
@@ -185,16 +368,12 @@ describe("MobileViewer", () => {
       <MobileViewer libraryId={1} items={items} index={0} onIndexChange={onIndexChange} onClose={() => {}} />,
     );
     let stage = screen.getByTestId("mobile-viewer-stage");
-    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 220, clientY: 200 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 220, clientY: 200 }] });
+    drag(stage, [100, 200], [900, 200], 800);
     expect(onIndexChange).not.toHaveBeenCalled();
 
     rerender(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={onIndexChange} onClose={() => {}} />);
     stage = screen.getByTestId("mobile-viewer-stage");
-    fireEvent.touchStart(stage, { touches: [{ clientX: 300, clientY: 200 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 180, clientY: 200 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 180, clientY: 200 }] });
+    drag(stage, [600, 200], [300, 200], 600); // 300 px of a 1024 px window = 29 %, 0.5 px/ms
     expect(onIndexChange).not.toHaveBeenCalled();
   });
 
@@ -298,7 +477,8 @@ describe("MobileViewer", () => {
     const title = document.querySelector(".mobile-viewer__title-primary");
     expect(title?.textContent).toMatch(/2024/);
     expect(title?.textContent).not.toContain("52.2297");
-    expect(document.querySelector(".mobile-viewer__title-secondary")).toBeNull();
+    // Line 2 is the time only: no place name, and never the coordinates.
+    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("10:00 AM");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -316,9 +496,7 @@ describe("MobileViewer", () => {
     render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
     const stage = screen.getByTestId("mobile-viewer-stage");
 
-    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 600 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 200, clientY: 400 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 200, clientY: 400 }] });
+    drag(stage, [200, 600], [200, 400], 500);
 
     await screen.findByTestId("viewer-info-sheet");
   });
@@ -351,9 +529,7 @@ describe("MobileViewer", () => {
     // A swipe from near the bottom edge of a 844px-tall screen to a 150px
     // dismiss drag -- exercised with coordinates that only make sense at
     // this viewport, not the test harness's default 800x600 stub.
-    fireEvent.touchStart(stage, { touches: [{ clientX: 195, clientY: 700 }] });
-    fireEvent.touchMove(stage, { touches: [{ clientX: 195, clientY: 850 }] });
-    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 195, clientY: 850 }] });
+    drag(stage, [195, 700], [195, 850], 500);
     expect(onClose).toHaveBeenCalled();
 
     rectSpy.mockRestore();
@@ -523,5 +699,169 @@ describe("MobileViewer info sheet styling (#112)", () => {
     expect(rule).not.toMatch(/rgba/);
     const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
     expect(tokens).toMatch(/--surface-dark:\s*#[0-9a-f]{6}\s*;/i);
+  });
+});
+
+describe("MobileViewer chrome (#211, #111, #131)", () => {
+  const noop = () => {};
+  const tapAt = (stage: HTMLElement, x = 200, y = 300, target: HTMLElement = stage) => {
+    fireEvent.touchStart(target, { touches: [{ clientX: x, clientY: y }] });
+    fireEvent.touchEnd(target, { touches: [], changedTouches: [{ clientX: x, clientY: y }] });
+  };
+  const root = () => screen.getByTestId("mobile-viewer");
+  const setup = (overrides: Partial<AssetListItem> = {}, detail: Partial<AssetDetailResponse> = {}) => {
+    mockDetail({ a1: makeDetail("a1", detail) });
+    render(<MobileViewer libraryId={1} items={[makeItem("a1", overrides)]} index={0} onIndexChange={noop} onClose={noop} />);
+    return screen.getByTestId("mobile-viewer-stage");
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  it("a single tap toggles all the chrome, after the double-tap window", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    expect(root().className).not.toContain("is-chrome-hidden");
+    tapAt(stage);
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(299));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(1));
+    expect(root().className).toContain("is-chrome-hidden");
+    tapAt(stage);
+    act(() => void vi.advanceTimersByTime(300));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a double tap zooms and does not toggle the chrome", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ width: 4000, height: 3000 });
+    tapAt(stage);
+    tapAt(stage);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    expect(document.querySelector<HTMLElement>(".viewer-still")?.style.transform).toContain("scale(2.5)");
+  });
+
+  it("a drag, a swipe up and a pinch do not toggle the chrome", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    drag(stage, [200, 300], [200, 360], 100);
+    drag(stage, [200, 600], [200, 400], 500);
+    drag(stage, [300, 300], [150, 300], 100);
+    fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 300 }, { clientX: 200, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [] });
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a tap that turns into a drag inside the double-tap window cancels the toggle", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup();
+    tapAt(stage, 200, 300);
+    drag(stage, [400, 300], [250, 300], 100);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("a tap on a control inside the stage (the video Play button) does not toggle", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ is_video: true }, { is_video: true });
+    tapAt(stage, 200, 300, screen.getByLabelText("Play video"));
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("hides the bars 2.5 s after video playback starts and brings them back on pause or tap", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const stage = setup({ is_video: true }, { is_video: true });
+    fireEvent.click(screen.getByLabelText("Play video"));
+    const video = screen.getByTestId("viewer-video");
+    fireEvent.play(video);
+    act(() => void vi.advanceTimersByTime(2499));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(1));
+    expect(root().className).toContain("is-chrome-hidden");
+    // A tap on the video brings them back (and the timer starts over).
+    tapAt(stage, 200, 300, video);
+    act(() => void vi.advanceTimersByTime(300));
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(2500));
+    expect(root().className).toContain("is-chrome-hidden");
+    fireEvent.pause(video);
+    expect(root().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("never auto-hides for a still", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    setup();
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(root().className).not.toContain("is-chrome-hidden");
+  });
+
+  it("two-line title: relative day, then time and place", async () => {
+    const day = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T14:07:00`;
+    setup({}, { date_created: today, place_address: null, place: "Kraków" });
+    await waitFor(() => expect(document.querySelector(".mobile-viewer__title-primary")?.textContent).toBe("Today"));
+    const second = document.querySelector(".mobile-viewer__title-secondary")?.textContent ?? "";
+    expect(second).toMatch(/2:07/);
+    expect(second).toMatch(/ \u00b7 Kraków$/);
+  });
+
+  it("every icon button is at least 44 x 44, and the bar buttons 44 x 52 (shell.css)", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const block = (selector: string) => {
+      const start = css.indexOf(`\n${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return css.slice(start, css.indexOf("}", start));
+    };
+    const size = (b: string) => [/width:\s*(\d+)px/.exec(b)?.[1], /height:\s*(\d+)px/.exec(b)?.[1]].map(Number);
+    expect(size(block(".mobile-viewer__icon-button"))).toEqual([44, 44]);
+    expect(size(block(".mobile-viewer__status"))).toEqual([44, 52]);
+    const grouped = css.slice(css.indexOf(".mobile-viewer__icon-button--bar,"), css.indexOf(".mobile-viewer__status {"));
+    expect(size(grouped)).toEqual([44, 52]);
+  });
+
+  it("the bar has fixed slots in the order Share, Favorite, Download Original, Info", async () => {
+    setup({ favorite: true }, { has_edited: true });
+    const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
+    await screen.findByLabelText("Download Original");
+    expect(row.children).toHaveLength(4);
+    expect([...row.children].map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Share",
+      "Favorite",
+      "Download Original",
+      "Info",
+    ]);
+  });
+
+  it("keeps the empty slots when the favourite and the original download are absent", () => {
+    setup();
+    const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
+    expect(row.children).toHaveLength(4);
+    expect(row.querySelectorAll(".mobile-viewer__slot")).toHaveLength(2);
+  });
+
+  it("the favourite heart is a status, not a button", () => {
+    setup({ favorite: true });
+    const heart = screen.getByLabelText("Favorite");
+    expect(heart.tagName).not.toBe("BUTTON");
+    expect(heart.getAttribute("role")).toBe("img");
+    expect(heart.closest("button")).toBeNull();
+    expect(heart.hasAttribute("tabindex")).toBe(false);
+    expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = css.slice(css.indexOf(".mobile-viewer__status {"), css.indexOf("}", css.indexOf(".mobile-viewer__status {")));
+    expect(rule).toContain("pointer-events: none");
+    expect(rule).toContain("cursor: default");
+  });
+
+  it("the filmstrip sits directly above the bottom toolbar, inside one blurred bar", () => {
+    setup();
+    const bar = document.querySelector(".mobile-viewer__bottombar") as HTMLElement;
+    expect([...bar.children].map((c) => c.className.split(" ")[0])).toEqual(["mobile-viewer__filmstrip", "mobile-viewer__icon-row"]);
   });
 });

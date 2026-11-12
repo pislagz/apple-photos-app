@@ -1826,12 +1826,62 @@ body {
   color: var(--color-label);
 }
 
+/* #214: while a swipe-down dismiss drag runs, the chrome fades with the
+   background (--viewer-chrome-alpha is set inline from the drag distance). */
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  opacity: var(--viewer-chrome-alpha, 1);
+}
+
+/* #211: a single tap hides all chrome with a 200 ms ease-in-out fade and the
+   stage goes to pure black over the same time. 200 ms is a local constant
+   (CHROME_FADE_MS in useChromeVisibility.ts) until the #206 motion tokens
+   land. visibility drops after the fade so hidden controls cannot be tapped
+   or focused. */
+.mobile-viewer {
+  transition: background-color 200ms ease-in-out;
+}
+
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 0s;
+}
+
+.mobile-viewer.is-chrome-hidden {
+  background-color: var(--color-black);
+}
+
+.mobile-viewer.is-chrome-hidden .mobile-viewer__topbar,
+.mobile-viewer.is-chrome-hidden .mobile-viewer__bottombar {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 200ms;
+}
+
+/* Blurred bar material; the safe-area insets keep the controls off the notch,
+   the Dynamic Island and the home indicator. */
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  background: var(--material-bar);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
 
 .mobile-viewer__topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-10) var(--space-12);
+  padding: max(var(--space-8), env(safe-area-inset-top)) max(var(--space-8), env(safe-area-inset-right)) var(--space-8)
+    max(var(--space-8), env(safe-area-inset-left));
+}
+
+.mobile-viewer__bottombar {
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .mobile-viewer__title {
@@ -1845,7 +1895,7 @@ body {
 }
 
 .mobile-viewer__title-primary {
-  font-size: var(--font-size-subhead);
+  font-size: var(--font-size-body-lg);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
   overflow: hidden;
@@ -1854,8 +1904,8 @@ body {
 }
 
 .mobile-viewer__title-secondary {
-  font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  font-size: var(--font-size-caption);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1863,8 +1913,10 @@ body {
 }
 
 .mobile-viewer__icon-button {
-  width: 36px;
-  height: 36px;
+  /* 44 x 44 minimum touch target. */
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1878,9 +1930,16 @@ body {
 /* #131: read-only status (the library is view-only), not a tappable control:
    no pointer cursor, no button chrome. #190: a solid secondary-label tint
    (not an opacity fade) so the heart keeps its contrast on light chrome. */
+.mobile-viewer__icon-button--bar,
+.mobile-viewer__status,
+.mobile-viewer__slot {
+  width: 44px;
+  height: 52px;
+}
+
 .mobile-viewer__status {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1902,6 +1961,67 @@ body {
   justify-content: center;
   overflow: hidden;
   touch-action: none;
+}
+
+/* #214 three-page strip: previous | current | next with a 16 px gap, moved
+   by the finger. The current page is first in the DOM, `order` lays it out
+   in the middle; the strip's own translateX (inline) recentres it. */
+.mobile-viewer__strip {
+  display: flex;
+  gap: 16px; /* = PAGE_GAP_PX in gestures.ts */
+  width: 100%;
+  height: 100%;
+  flex: 0 0 auto;
+  will-change: transform;
+}
+
+.mobile-viewer__page {
+  flex: 0 0 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-viewer__page--prev {
+  order: 0;
+}
+
+.mobile-viewer__page--current {
+  order: 1;
+}
+
+.mobile-viewer__page--next {
+  order: 2;
+}
+
+/* The still and, while the original loads, the preview beneath it.
+   #267: the single track must be minmax(0, 1fr); an auto row grows to the
+   image's natural height at full width, overflows the stage and is clipped,
+   so the photo looks "cover" and the pan bounds no longer match. */
+.viewer-still {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  will-change: transform;
+}
+
+.viewer-still > img {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+.viewer-still__main {
+  position: relative;
+  z-index: 1;
 }
 
 .mobile-viewer__original-badge {
@@ -1929,6 +2049,8 @@ body {
 
 .mobile-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1957,37 +2079,23 @@ body {
   color: var(--color-on-dark-play);
 }
 
+/* Fixed slots (share, favourite, download original, info): a missing control
+   leaves its slot empty instead of moving the others. */
 .mobile-viewer__icon-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  justify-content: space-between;
   align-items: center;
-  justify-content: space-around;
-  padding: var(--space-8) var(--space-24);
+  padding: 0 var(--space-24);
+}
+
+.mobile-viewer__icon-row > * {
+  justify-self: center;
 }
 
 .mobile-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-6) var(--space-8) var(--space-10);
-}
-
-.mobile-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: default;
-}
-
-.mobile-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-}
-
-.mobile-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  --filmstrip-slit-bg: var(--color-slit-bg);
+  margin: var(--space-6) 0 var(--space-10);
 }
 
 .mobile-viewer__info-sheet {
@@ -2002,6 +2110,13 @@ body {
   background: var(--surface-dark);
   border-radius: var(--radius-14) var(--radius-14) 0 0;
   padding: var(--space-16);
+  animation: viewer-sheet-up 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes viewer-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
 }
 
 .mobile-viewer__info-sheet-close {
@@ -2053,7 +2168,25 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-10) var(--space-14);
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 var(--space-14);
+  background: var(--material-viewer-bar);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  /* 200 ms is local until the #206 motion tokens land. */
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 0s;
+}
+
+/* Video playback: fades after 2.5 s without pointer movement (#211). */
+.desktop-viewer__topbar.is-chrome-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 200ms ease-in-out,
+    visibility 0s linear 200ms;
 }
 
 /* Sequoia's viewer title: date/place centered in the top bar, like the
@@ -2079,7 +2212,7 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2115,6 +2248,8 @@ body {
 
 .desktop-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2132,30 +2267,11 @@ body {
 }
 
 .desktop-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-8) var(--space-14);
+  --filmstrip-slit-bg: var(--color-slit-bg-on-dark);
+  --filmstrip-playhead: var(--color-white);
+  padding: var(--space-8) 0;
+  box-sizing: content-box;
   background: var(--color-filmstrip-bg);
-}
-
-.desktop-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: default;
-}
-
-.desktop-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--color-white);
-}
-
-.desktop-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .desktop-viewer__info-panel {
@@ -2835,6 +2951,87 @@ body {
   outline-color: var(--color-focus-viewer);
 }
 
+/* #221 centred scrubber. Cells are placed by transform from the strip's
+   centre (filmstripGeometry.ts); 250 ms ease-out is the snap/expand time from
+   the issue, a local constant until the #206 motion tokens land. No transition
+   while a finger or mouse is dragging so the strip tracks it one-to-one. */
+.mobile-viewer__filmstrip,
+.desktop-viewer__filmstrip {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.mobile-viewer__filmstrip[data-dragging="true"],
+.desktop-viewer__filmstrip[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.mobile-viewer__filmstrip__track,
+.desktop-viewer__filmstrip__track {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+}
+
+.mobile-viewer__filmstrip__item,
+.desktop-viewer__filmstrip__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border: none;
+  padding: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--filmstrip-slit-bg);
+  cursor: inherit;
+  transition:
+    transform 250ms ease-out,
+    width 250ms ease-out;
+}
+
+[data-dragging="true"] > * > .mobile-viewer__filmstrip__item,
+[data-dragging="true"] > * > .desktop-viewer__filmstrip__item {
+  transition: none;
+}
+
+.mobile-viewer__filmstrip__item img,
+.desktop-viewer__filmstrip__item img,
+.mobile-viewer__filmstrip__frames,
+.desktop-viewer__filmstrip__frames {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Video cell: the thumbnail repeated side by side as frames. */
+.mobile-viewer__filmstrip__frames,
+.desktop-viewer__filmstrip__frames {
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+}
+
+.mobile-viewer__filmstrip__playhead,
+.desktop-viewer__filmstrip__playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 1.5px;
+  background: var(--filmstrip-playhead, var(--color-white));
+  box-shadow: var(--shadow-playhead);
+  pointer-events: none;
+}
+
+
 /* Clipped or edge-to-edge containers: draw the ring inside. */
 .desktop-library__grid:focus-visible,
 .desktop-library__cell:focus-visible,
@@ -2935,6 +3132,12 @@ body {
 .mobile-viewer,
 .desktop-viewer {
   animation: viewer-in 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* #220: the zoom from / to the tile (useZoomTransition) replaces the fade. */
+.mobile-viewer[data-zoom],
+.desktop-viewer[data-zoom] {
+  animation: none;
 }
 
 .mobile-viewer.is-closing,

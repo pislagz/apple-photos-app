@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
@@ -9,8 +9,13 @@ import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
-import { useDismiss } from "./useDismiss";
-import { buildInfoRows, formatDateLine, formatPlaceName } from "./viewerInfo";
+import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { useZoomTransition } from "./useZoomTransition";
+import { ViewerStill } from "./ViewerStill";
+import * as g from "./gestures";
+import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { formatViewerTitle } from "./viewerTitle";
+import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
 
 export interface ViewerProps {
@@ -19,35 +24,65 @@ export interface ViewerProps {
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  // #220: scroll the grid behind so this item's tile is on screen; called as
+  // paging moves on, so the close zoom has a tile to land on.
+  revealItem?: (id: string) => void;
 }
-
-const ZOOM_SCALE = 2.5;
 
 // P1.16 desktop Viewer: filmstrip, double-click/wheel zoom with drag-to-pan,
 // arrow keys and Esc, and a right-hand info panel (file name + size on top
 // of the fields the mobile sheet shows). `items` is the Library view's own
 // array -- Esc/arrows only ever move within it, so a hidden asset (P1.13)
 // stays unreachable here exactly like it is from the grid.
-export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow }: ViewerProps) {
-  const { closing, dismiss: onClose } = useDismiss(onCloseNow);
+export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
+  // #220: zoom from / back into the tile of the item being shown.
+  const { zoomOut } = useZoomTransition({ rootRef, stageRef, item });
+  const { closing, dismiss } = useDismiss(onCloseNow, zoomOut);
+  const onClose = useCallback(() => dismiss(), [dismiss]);
   const detail = useAssetDetail(libraryId, item?.id ?? null);
-  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
+  const [scrubbing, setScrubbing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
+  const scrubVideo = useCallback((fraction: number) => {
+    const video = videoRef.current;
+    if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
+  }, []);
 
   const [infoOpen, setInfoOpen] = useState(false);
-  const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  // Playing video: the top bar fades after 2.5 s without pointer movement.
+  const [videoRunning, setVideoRunning] = useState(false);
+  const chrome = useChromeVisibility(media.isVideo && media.videoPlaying && videoRunning);
+  const [view, setView] = useState<g.View>(g.FIT);
+  const [animating, setAnimating] = useState(false);
+  const scale = view.scale;
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
 
   // D59: the grid behind is inert while the Viewer is open, and focus goes
   // back to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
-  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(openedFromId.current) });
+  const shownId = useRef(item?.id);
+  shownId.current = item?.id;
+  // The tile the close zoom lands on; the opener's if that one is gone.
+  useFocusScope(rootRef, { restoreTo: () => thumbnailFor(shownId.current) ?? thumbnailFor(openedFromId.current) });
+
+  const revealRef = useRef(revealItem);
+  revealRef.current = revealItem;
+  const firstItem = useRef(true);
+  useEffect(() => {
+    if (!item?.id) return;
+    if (firstItem.current) firstItem.current = false;
+    else revealRef.current?.(item.id);
+  }, [item?.id]);
 
   useEffect(() => {
-    setScale(1);
-    setPan({ x: 0, y: 0 });
+    setView(g.FIT);
+    setAnimating(false);
+    setVideoRunning(false);
   }, [item?.id]);
 
   // Window-level, not the root div's onKeyDown: clicking the video play
@@ -75,24 +110,86 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     if (scale > 1.01) media.requestOriginal();
   }, [scale, media]);
 
-  function toggleZoom() {
-    setScale((value) => (value > 1 ? 1 : ZOOM_SCALE));
-    setPan({ x: 0, y: 0 });
+  // Stage geometry (the still is centred in the stage and fills it, drawn
+  // object-fit: contain), falling back to the window where layout is absent.
+  function geometry() {
+    const rect = stageRef.current?.getBoundingClientRect();
+    const box = { w: rect?.width || window.innerWidth, h: rect?.height || window.innerHeight };
+    const centre = { x: (rect?.left ?? 0) + box.w / 2, y: (rect?.top ?? 0) + box.h / 2 };
+    const fit = g.fitSize({ w: item?.width ?? 0, h: item?.height ?? 0 }, box);
+    return { box, centre, fit };
   }
+
+  function toggleZoom(event: MouseEvent) {
+    const { box, centre, fit } = geometry();
+    setAnimating(!prefersReducedMotion());
+    setView((value) => g.toggleZoom(value, { x: event.clientX - centre.x, y: event.clientY - centre.y }, fit, box));
+  }
+
+  // Trackpad pinch arrives as ctrl+wheel. Added natively (not onWheel)
+  // because React's wheel listener is passive and cannot stop the browser
+  // zooming the whole page.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    function onWheel(event: WheelEvent) {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const { box, centre, fit } = geometry();
+      const current = viewRef.current;
+      const focal = { x: event.clientX - centre.x, y: event.clientY - centre.y };
+      setAnimating(false);
+      const next = g.zoomView(current, g.wheelScale(current.scale, event.deltaY), focal, fit, box);
+      setView(next.scale <= g.ZOOM_MIN ? g.FIT : next);
+    }
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  });
+
+  // #267: the drag follows the mouse on the window, so leaving the stage
+  // mid-drag still pans (clamped at the edge) instead of freezing the photo.
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
 
   function onMediaMouseDown(event: MouseEvent) {
-    if (scale <= 1) return;
-    dragRef.current = { startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y };
-  }
-
-  function onMediaMouseMove(event: MouseEvent) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    setPan({ x: drag.panX + (event.clientX - drag.startX), y: drag.panY + (event.clientY - drag.startY) });
-  }
-
-  function endDrag() {
-    dragRef.current = null;
+    if (event.button !== 0) return;
+    event.preventDefault();
+    setAnimating(false);
+    endDragRef.current?.();
+    const atFit = scale <= 1;
+    dragRef.current = { startX: event.clientX, startY: event.clientY, panX: view.x, panY: view.y };
+    let last = { dx: 0, dy: 0 };
+    const onMove = (move: globalThis.MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      last = { dx: move.clientX - drag.startX, dy: move.clientY - drag.startY };
+      if (atFit) {
+        setView(g.fitDragView(last));
+        return;
+      }
+      const { box, fit } = geometry();
+      const pan = g.clampPan({ x: drag.panX + last.dx, y: drag.panY + last.dy }, g.panBounds(viewRef.current.scale, fit, box));
+      setView({ scale: viewRef.current.scale, ...pan });
+    };
+    const end = (up?: globalThis.MouseEvent | FocusEvent) => {
+      if (atFit && (last.dx !== 0 || last.dy !== 0)) {
+        const outcome = up?.type === "mouseup" ? g.fitDragOutcome(last, geometry().box) : null;
+        setAnimating(!prefersReducedMotion() && outcome !== "close");
+        setView(g.FIT);
+        if (outcome === "prev" && index > 0) onIndexChange(index - 1);
+        else if (outcome === "next" && index < items.length - 1) onIndexChange(index + 1);
+        else if (outcome === "close") onClose();
+      }
+      dragRef.current = null;
+      endDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", end);
+      window.removeEventListener("blur", end);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", end);
+    window.addEventListener("blur", end);
+    endDragRef.current = end;
   }
 
   function handleDownload() {
@@ -111,15 +208,16 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
-  const mediaTransform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
+  const mediaTransform: CSSProperties = {
+    transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+    transition: animating ? `transform ${g.ZOOM_ANIM_MS}ms ease-out` : undefined,
+    cursor: scale > 1 ? "grab" : "zoom-in",
+  };
+  const isFull = media.showingOriginal || media.wantsOriginal;
+  const alt = assetAlt({ ...item, title: detail?.title });
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
-  const dateLine = detail ? formatDateLine(detail.date_created) : "";
-  const placeLine = detail ? formatPlaceName(detail) : "";
-  // Same place-is-title convention as the mobile viewer (ios17-viewer.png);
-  // no place falls back to the date as the sole title.
-  const titleLine = placeLine || dateLine;
-  const subtitleLine = placeLine ? dateLine : "";
+  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
 
   return (
     <div
@@ -127,15 +225,16 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       data-testid="desktop-viewer"
       ref={rootRef}
       tabIndex={-1}
+      onMouseMove={chrome.reveal}
     >
       <div className="desktop-viewer__main">
-        <div className="desktop-viewer__topbar">
+        <div className={`desktop-viewer__topbar${chrome.hidden ? " is-chrome-hidden" : ""}`}>
           <button type="button" className="toolbar-button" onClick={onClose} aria-label="Close">
             <Icon name="close" size={16} />
           </button>
           <div className="desktop-viewer__title">
-            {titleLine && <span className="desktop-viewer__title-primary">{titleLine}</span>}
-            {subtitleLine && <span className="desktop-viewer__title-secondary">{subtitleLine}</span>}
+            {title.primary && <span className="desktop-viewer__title-primary">{title.primary}</span>}
+            {title.secondary && <span className="desktop-viewer__title-secondary">{title.secondary}</span>}
           </div>
           <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
             <Icon name="link" size={16} />
@@ -172,13 +271,18 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
         <div
           className="desktop-viewer__stage"
           data-testid="desktop-viewer-stage"
-          onMouseMove={onMediaMouseMove}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
+          ref={stageRef}
         >
           {media.isVideo ? (
             media.videoPlaying ? (
-              <video className="desktop-viewer__media" src={media.originalSrc} controls autoPlay data-testid="viewer-video" />
+              <video className="desktop-viewer__media" src={media.originalSrc} controls
+                autoPlay
+                onPlay={() => setVideoRunning(true)}
+                onPause={() => setVideoRunning(false)}
+                onEnded={() => setVideoRunning(false)}
+                ref={videoRef}
+                data-testid="viewer-video"
+              />
             ) : (
               <button type="button" className="desktop-viewer__play-button" onClick={() => media.startVideo()} aria-label="Play video">
                 <img className="desktop-viewer__media" src={media.previewSrc} alt={assetAlt({ ...item, title: detail?.title })} />
@@ -202,11 +306,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                   data-testid="viewer-live-video"
                 />
               ) : (
-                <img
-                  className="desktop-viewer__media"
-                  src={stillSrc}
-                  alt={assetAlt({ ...item, title: detail?.title })}
-                  style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
+                <ViewerStill
+                  imgClassName="desktop-viewer__media"
+                  stillSrc={stillSrc}
+                  previewSrc={media.previewSrc}
+                  isFull={isFull}
+                  alt={alt}
+                  transform={mediaTransform}
                   onDoubleClick={toggleZoom}
                   onMouseDown={onMediaMouseDown}
                   onLoad={media.onPreviewLoaded}
@@ -216,11 +322,13 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               <Icon name="livephoto" size={18} className="mobile-viewer__live-badge" />
             </div>
           ) : (
-            <img
-              className="desktop-viewer__media"
-              src={stillSrc}
-              alt={assetAlt({ ...item, title: detail?.title })}
-              style={{ transform: mediaTransform, cursor: scale > 1 ? "grab" : "zoom-in" }}
+            <ViewerStill
+              imgClassName="desktop-viewer__media"
+              stillSrc={stillSrc}
+              previewSrc={media.previewSrc}
+              isFull={isFull}
+              alt={alt}
+              transform={mediaTransform}
               onDoubleClick={toggleZoom}
               onMouseDown={onMediaMouseDown}
               onLoad={media.onPreviewLoaded}
@@ -235,7 +343,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           index={index}
           onSelect={onIndexChange}
           className="desktop-viewer__filmstrip"
-          itemSize={52}
+          onScrubbingChange={setScrubbing}
+          onVideoScrub={scrubVideo}
         />
       </div>
       {infoOpen && (
