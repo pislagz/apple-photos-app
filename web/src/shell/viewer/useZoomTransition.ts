@@ -86,6 +86,10 @@ export function useZoomTransition({ rootRef, stageRef, item }: Options) {
     const show = hide(tile);
     const done = () => {
       show();
+      // #286: dropping data-zoom re-enables the CSS fade-up, which restarts at
+      // opacity 0 and flashes the grid over the opened photo. Mark the open as
+      // played so the fallback never runs again.
+      root.dataset.zoomed = "1";
       delete root.dataset.zoom;
     };
     Promise.all(animations.map((a) => a.finished)).then(done, done);

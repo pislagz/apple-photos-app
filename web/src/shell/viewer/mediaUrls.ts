@@ -7,6 +7,12 @@ export function previewThumbUrl(libraryId: number, assetId: string): string {
   return `/api/libraries/${libraryId}/thumb/${assetId}?size=preview`;
 }
 
+// The grid's thumbnail: already in the browser cache for any photo opened from
+// the grid, so it can stand in while the preview loads.
+export function gridThumbUrl(libraryId: number, assetId: string): string {
+  return `/api/libraries/${libraryId}/thumb/${assetId}?size=grid`;
+}
+
 // `download` must stay `false` for viewer zoom, the HEIC->JPEG fallback, and
 // video play -- the server only writes an audit row when it's `true`, which
 // callers set for an explicit Download/share action.

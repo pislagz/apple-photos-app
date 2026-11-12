@@ -124,7 +124,9 @@ test.describe("reduced motion", () => {
     await open();
     await expect(viewer).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(viewer).toHaveClass(/is-closing/);
+    // #220: closing zooms back into the tile (data-zoom), or plays the fade
+    // (is-closing) when no tile is on screen; either way it is not instant.
+    await expect(viewer).toHaveAttribute("data-zoom", "1");
     await expect(viewer).toHaveCount(0);
 
     await page.emulateMedia({ reducedMotion: "reduce" });

@@ -10,10 +10,11 @@ import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { usePreloadNeighbours } from "./usePreloadNeighbours";
 import { useZoomTransition } from "./useZoomTransition";
 import { type ZoomFrame, dragFrame } from "./zoomTransition";
 import { ViewerStill } from "./ViewerStill";
-import { previewThumbUrl } from "./mediaUrls";
+import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
 import { viewerKeyAction } from "./viewerKeys";
 import { buildInfoRows, formatPlaceName } from "./viewerInfo";
@@ -81,6 +82,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
+  usePreloadNeighbours(libraryId, items, index, scrubbing);
   const scrubVideo = useCallback((fraction: number) => {
     const video = videoRef.current;
     if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
@@ -517,6 +519,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
                 imgClassName="mobile-viewer__media"
                 stillSrc={stillSrc}
                 previewSrc={media.previewSrc}
+                placeholderSrc={gridThumbUrl(libraryId, item.id)}
                 isFull={isFull}
                 alt={alt}
                 transform={zoomStyle}
@@ -531,6 +534,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             imgClassName="mobile-viewer__media"
             stillSrc={stillSrc}
             previewSrc={media.previewSrc}
+            placeholderSrc={gridThumbUrl(libraryId, item.id)}
             isFull={isFull}
             alt={alt}
             transform={zoomStyle}

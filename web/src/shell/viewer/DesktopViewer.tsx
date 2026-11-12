@@ -10,7 +10,9 @@ import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { usePreloadNeighbours } from "./usePreloadNeighbours";
 import { useZoomTransition } from "./useZoomTransition";
+import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
 import { buildInfoRows, formatPlaceName } from "./viewerInfo";
@@ -46,6 +48,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
+  usePreloadNeighbours(libraryId, items, index, scrubbing);
   const scrubVideo = useCallback((fraction: number) => {
     const video = videoRef.current;
     if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
@@ -57,6 +60,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const chrome = useChromeVisibility(media.isVideo && media.videoPlaying && videoRunning);
   const [view, setView] = useState<g.View>(g.FIT);
   const [animating, setAnimating] = useState(false);
+  // #286: a page change slides (the neighbour follows the photo) for
+  // PAGE_SETTLE_MS before the index moves; arrows and drags wait until then.
+  const [paging, setPaging] = useState(false);
+  const pageTimer = useRef<number | null>(null);
   const scale = view.scale;
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const viewRef = useRef(view);
@@ -82,8 +89,36 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   useEffect(() => {
     setView(g.FIT);
     setAnimating(false);
+    setPaging(false);
     setVideoRunning(false);
   }, [item?.id]);
+
+  useEffect(
+    () => () => {
+      if (pageTimer.current !== null) window.clearTimeout(pageTimer.current);
+    },
+    [],
+  );
+
+  // Slide the strip the rest of the way, then move the index in the same
+  // batch that recentres it. Reduced motion: switch at once, no slide.
+  function commitPage(direction: "prev" | "next", width: number) {
+    const nextIndex = direction === "next" ? index + 1 : index - 1;
+    if (prefersReducedMotion()) {
+      setAnimating(false);
+      setView(g.FIT);
+      onIndexChange(nextIndex);
+      return;
+    }
+    setPaging(true);
+    setView({ scale: 1, x: g.pageTarget(direction, width), y: 0 });
+    pageTimer.current = window.setTimeout(() => {
+      pageTimer.current = null;
+      setPaging(false);
+      setView(g.FIT);
+      onIndexChange(nextIndex);
+    }, g.PAGE_SETTLE_MS);
+  }
 
   // Window-level, not the root div's onKeyDown: clicking the video play
   // button unmounts it, which drops focus to <body>, and a div-level
@@ -94,6 +129,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   useEffect(() => {
     function onWindowKeyDown(event: KeyboardEvent) {
       const action = viewerKeyAction(event, document.fullscreenElement);
+      if (pageTimer.current !== null) return;
       if (action === "close") {
         onClose();
       } else if (action === "prev" && index > 0) {
@@ -153,7 +189,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   useEffect(() => () => endDragRef.current?.(), []);
 
   function onMediaMouseDown(event: MouseEvent) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || pageTimer.current !== null) return;
     event.preventDefault();
     setAnimating(false);
     endDragRef.current?.();
@@ -169,7 +205,10 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
       last = { dx: move.clientX - drag.startX, dy: move.clientY - drag.startY };
       if (atFit) {
         if (g.lockAxis(last.dx, last.dy)) setDragging(true);
-        setView(g.fitDragView(last));
+        const dragged = g.fitDragView(last);
+        // Rubber band against the first and last photo.
+        const x = g.pagingOffset(dragged.x, index > 0, index < items.length - 1, geometry().box.w);
+        setView({ ...dragged, x });
         return;
       }
       const { box, fit } = geometry();
@@ -178,12 +217,16 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     };
     const end = (up?: globalThis.MouseEvent | FocusEvent) => {
       if (atFit && (last.dx !== 0 || last.dy !== 0)) {
-        const outcome = up?.type === "mouseup" ? g.fitDragOutcome(last, geometry().box) : null;
-        setAnimating(!prefersReducedMotion() && outcome !== "close");
-        setView(g.FIT);
-        if (outcome === "prev" && index > 0) onIndexChange(index - 1);
-        else if (outcome === "next" && index < items.length - 1) onIndexChange(index + 1);
-        else if (outcome === "close") onClose();
+        const { box } = geometry();
+        const outcome = up?.type === "mouseup" ? g.fitDragOutcome(last, box) : null;
+        if (outcome === "prev" && index > 0) commitPage("prev", box.w);
+        else if (outcome === "next" && index < items.length - 1) commitPage("next", box.w);
+        else {
+          // Spring back (or hand over to the close zoom, which starts from here).
+          setAnimating(!prefersReducedMotion() && outcome !== "close");
+          setView(g.FIT);
+          if (outcome === "close") onClose();
+        }
       }
       dragRef.current = null;
       endDragRef.current = null;
@@ -214,9 +257,17 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
 
   if (!item) return null;
   const infoRows = detail ? buildInfoRows(detail, { includeFile: true }) : [];
+  const slide = paging ? `transform ${g.PAGE_SETTLE_MS}ms ${g.PAGE_SETTLE_EASE}` : undefined;
+  // Horizontal offset of the neighbouring photos: they ride along with a fit
+  // drag, and stay parked off-stage while zoomed.
+  const pageX = scale <= 1 ? view.x : 0;
+  const neighbourStyle = (side: -1 | 1): CSSProperties => ({
+    transform: `translateX(calc(${side * 100}% + ${side * g.PAGE_GAP_PX}px + ${pageX}px))`,
+    transition: slide ?? (animating ? `transform ${g.SPRING_BACK_MS}ms ease-out` : undefined),
+  });
   const mediaTransform: CSSProperties = {
     transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-    transition: animating ? `transform ${g.ZOOM_ANIM_MS}ms ease-out` : undefined,
+    transition: slide ?? (animating ? `transform ${g.ZOOM_ANIM_MS}ms ease-out` : undefined),
     // #257: open hand when there is something to pan, closed while the button
     // is held, the plain arrow at fit (no click-to-zoom, only double-click).
     cursor: dragging ? "grabbing" : scale > 1 ? "grab" : "default",
@@ -318,6 +369,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
                   imgClassName="desktop-viewer__media"
                   stillSrc={stillSrc}
                   previewSrc={media.previewSrc}
+                  placeholderSrc={gridThumbUrl(libraryId, item.id)}
                   isFull={isFull}
                   alt={alt}
                   transform={mediaTransform}
@@ -334,6 +386,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               imgClassName="desktop-viewer__media"
               stillSrc={stillSrc}
               previewSrc={media.previewSrc}
+              placeholderSrc={gridThumbUrl(libraryId, item.id)}
               isFull={isFull}
               alt={alt}
               transform={mediaTransform}
@@ -343,6 +396,16 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
               onError={stillOnError}
             />
           )}
+          {(["prev", "next"] as const).map((side) => {
+            const other = items[index + (side === "prev" ? -1 : 1)];
+            return (
+              other && (
+                <div key={side} className="desktop-viewer__neighbour" style={neighbourStyle(side === "prev" ? -1 : 1)} aria-hidden>
+                  <img className="desktop-viewer__media" src={previewThumbUrl(libraryId, other.id)} alt="" draggable={false} />
+                </div>
+              )
+            );
+          })}
           <OriginalOutsideNote outside={detail?.original_outside_library} className="viewer-outside-banner" />
         </div>
         <Filmstrip

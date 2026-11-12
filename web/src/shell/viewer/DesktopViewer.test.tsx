@@ -525,6 +525,48 @@ describe("DesktopViewer fit, zoom and pan (#267)", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the neighbours beside the photo and moves them with the drag (#286)", () => {
+    const { still } = setup();
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    const neighbours = () => [...stage.querySelectorAll<HTMLElement>(".desktop-viewer__neighbour")];
+    expect(neighbours()).toHaveLength(2);
+    expect(neighbours()[0].querySelector("img")?.getAttribute("src")).toContain("/thumb/a1?size=preview");
+    expect(neighbours()[1].querySelector("img")?.getAttribute("src")).toContain("/thumb/a3?size=preview");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(window, { clientX: 440, clientY: 400 });
+    expect(neighbours()[1].style.transform).toBe("translateX(calc(100% + 16px + -60px))");
+    expect(still.style.transform).toBe("translate(-60px, 0px) scale(1)");
+    fireEvent.mouseUp(window, { clientX: 440, clientY: 400 });
+  });
+
+  it("has no neighbour past the ends and rubber-bands the drag there (#286)", () => {
+    const { still } = setup(0);
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    expect(stage.querySelectorAll(".desktop-viewer__neighbour")).toHaveLength(1);
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+    const x = Number(/translate\((-?[\d.]+)px/.exec(still.style.transform)![1]);
+    expect(x).toBeGreaterThan(0);
+    expect(x).toBeLessThan(200 * 0.6);
+    fireEvent.mouseUp(window, { clientX: 700, clientY: 400 });
+  });
+
+  it("slides to the next photo before the index moves when motion is allowed (#286)", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const { still, onIndexChange } = setup();
+    drag(still, [500, 400], [300, 400]);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    expect(still.style.transform).toMatch(/^translate\(-\d+px, 0px\) scale\(1\)$/);
+    expect(still.style.transition).toContain("transform");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(onIndexChange).toHaveBeenCalledWith(2);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   it("at fit, a short drag or a drag up snaps back without paging or closing", () => {
     const { still, onIndexChange, onClose } = setup();
     drag(still, [500, 400], [460, 400]);
