@@ -1,13 +1,14 @@
 import { Icon } from "../icons";
 
-// People, Places, and each media type have a real route (#125) before
-// Phase 2 gives them real data (docs/TASKS.md P2.1-P2.4) -- this is the
-// shared "frame matches the reference, no data yet" screen for all of them.
+// People, Places and media types when there is nothing to show them for yet:
+// no library, the library is being updated, or an unknown media type (#263).
 export default function MorePlaceholderScreen({
   title,
+  message,
   onBack,
 }: {
   title: string;
+  message: string;
   onBack: () => void;
 }) {
   return (
@@ -20,7 +21,7 @@ export default function MorePlaceholderScreen({
         <h1 className="mobile-screen__title">{title}</h1>
       </header>
       <div className="mobile-screen__body">
-        <p>{title} lands in a later phase.</p>
+        <p className="empty-state">{message}</p>
       </div>
     </div>
   );

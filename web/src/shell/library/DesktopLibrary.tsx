@@ -6,7 +6,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages } from "./albumText";
+import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
@@ -159,8 +160,10 @@ export default function DesktopLibrary({
   initialView,
   initialScrollAssetId,
   album,
+  isAdmin = false,
 }: {
   libraryId: number;
+  isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Sidebar-driven view (Days, #127): pins the view and hides the
@@ -207,6 +210,7 @@ export default function DesktopLibrary({
   const pendingDownRef = useRef<{ id: string; column: number; count: number } | null>(null);
 
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
+  const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
@@ -809,6 +813,8 @@ export default function DesktopLibrary({
               type="button"
               role="tab"
               aria-selected={view === item.key}
+              // #263: nothing to group into years or months yet.
+              disabled={libraryEmpty && (item.key === "years" || item.key === "months")}
               className="segmented-control__item"
               onClick={() => setView(item.key)}
             >
@@ -933,7 +939,11 @@ export default function DesktopLibrary({
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <p className="desktop-library__empty">{albumMessages(album).empty}</p>
+          <LibraryEmptyState
+            title={albumMessages(album).empty}
+            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+            adminLink={isWholeLibraryEmpty(album) && isAdmin}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

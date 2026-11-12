@@ -9,7 +9,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages } from "./albumText";
+import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import LibraryEmptyState from "./LibraryEmptyState";
 import { downloadSingleAsset, shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -46,8 +47,10 @@ export default function MobileLibrary({
   resetSignal = 0,
   album,
   nav,
+  isAdmin = false,
 }: {
   libraryId: number;
+  isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Bumped by the shell when the already-active Library tab is tapped again.
@@ -74,6 +77,7 @@ export default function MobileLibrary({
     album ?? null,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
+  const libraryEmpty = summary !== null && summary.years.length === 0;
   const pinchAnchor = useRef<PinchAnchor | null>(null);
   const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
@@ -308,6 +312,8 @@ export default function MobileLibrary({
               type="button"
               role="tab"
               aria-selected={view === item.key}
+              // #263: nothing to group into years or months yet.
+              disabled={libraryEmpty && (item.key === "years" || item.key === "months")}
               className="mobile-library__view-switch-item"
               onClick={() => {
                 // A direct tab tap is not a drill-down (`openTile` below) --
@@ -342,7 +348,11 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <p className="mobile-library__empty">{albumMessages(album).empty}</p>
+          <LibraryEmptyState
+            title={albumMessages(album).empty}
+            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+            adminLink={isWholeLibraryEmpty(album) && isAdmin}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {

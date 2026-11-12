@@ -707,17 +707,17 @@ describe("MobileLibrary summary failure (#147)", () => {
     if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
   });
 });
 
 describe("MobileLibrary assets failure (#147)", () => {
-  it.each(["Days", "All Photos"])("shows an error and Retry in %s instead of 'No photos yet.', then recovers", async (name) => {
+  it.each(["Days", "All Photos"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     let fail = true;
     mockFetch((url) => {
@@ -731,12 +731,12 @@ describe("MobileLibrary assets failure (#147)", () => {
     fireEvent.click(screen.getByRole("tab", { name }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
   });
 });
 
@@ -757,7 +757,7 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more photos.");
     expect(queryThumb("a1")).not.toBeNull();
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -765,7 +765,7 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
     await waitFor(() => expect(queryThumb("a2")).not.toBeNull());
   });
 
-  it("still says 'No photos yet.' for an empty library", async () => {
+  it("still says 'No Photos or Videos' for an empty library", async () => {
     mockFetch((url) => {
       if (url === "/api/libraries/1/summary") return computeSummary([]);
       if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items: [], next_cursor: null };
@@ -773,8 +773,12 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
     });
     render(<MobileLibrary libraryId={1} />);
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    expect(await screen.findByText("No photos yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No Photos or Videos")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
+    // #263: nothing to group into years or months yet.
+    expect(screen.getByRole("tab", { name: "Years" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Months" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Days" })).toBeEnabled();
   });
 });
 
