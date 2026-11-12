@@ -1,6 +1,6 @@
 # apple-photos-app
 
-A self-hosted, strictly read-only viewer for several Apple Photos libraries (`.photoslibrary` packages) on one drive. People sign in over Tailscale. The iPhone PWA follows iOS 17 Photos. The desktop browser follows macOS Sequoia Photos. An admin registers each library and chooses which user can open it. Downloads only.
+A self-hosted, strictly read-only viewer for several Apple Photos libraries (`.photoslibrary` packages) on one drive. People sign in over the home network (plain http by default) or Tailscale. The iPhone PWA follows iOS 17 Photos. The desktop browser follows macOS Sequoia Photos. An admin registers each library and chooses which user can open it. Downloads only.
 
 The server runs on macOS and on Linux, including Docker. Libraries are read with [osxphotos](https://github.com/RhetTbull/osxphotos) by path. PhotoKit is not used. The app never writes into a library package. The server makes no outbound requests. The only external connection is the browser loading OpenStreetMap map tiles, and an admin can switch that off for a local tile file.
 
@@ -31,32 +31,45 @@ pip install -e "./server"
 (cd web && npm ci && npm run build)       # the server serves web/dist
 mkdir -p ~/photos-viewer-data             # outside every .photoslibrary
 sed "s#/Users/CHANGEME#$HOME#g" deploy/com.photosviewer.plist > ~/Library/LaunchAgents/com.photosviewer.plist
-# Edit PHOTOS_VIEWER_PUBLIC_ORIGINS in that file to your Tailscale Serve URL, then:
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.photosviewer.plist
 ```
 
-[`deploy/com.photosviewer.plist`](deploy/com.photosviewer.plist) runs `uvicorn photos_viewer.main:app` on `127.0.0.1:8000` from the checkout, with `KeepAlive`, `PHOTOS_VIEWER_DATA_DIR` and `OSXPHOTOS_NO_VERSION_CHECK=1` set, and stdout/stderr in `server.log` and `server.err.log` inside the data directory. Stop with `launchctl bootout gui/$(id -u)/com.photosviewer`. The app can use `sips`/`qlmanage` here; otherwise it falls back to Pillow and ffmpeg (`brew install ffmpeg`).
+[`deploy/com.photosviewer.plist`](deploy/com.photosviewer.plist) runs `uvicorn photos_viewer.main:app` on `0.0.0.0:8000` (change to `127.0.0.1` for a Tailscale-only setup) from the checkout, with `KeepAlive`, `PHOTOS_VIEWER_DATA_DIR` and `OSXPHOTOS_NO_VERSION_CHECK=1` set, and stdout/stderr in `server.log` and `server.err.log` inside the data directory. Stop with `launchctl bootout gui/$(id -u)/com.photosviewer`. The app can use `sips`/`qlmanage` here; otherwise it falls back to Pillow and ffmpeg (`brew install ffmpeg`).
 
 ### Linux (Docker)
 
 ```bash
 export PHOTOS_LIBRARY_DIR=/mnt/photos            # directory holding the *.photoslibrary packages
-export PHOTOS_VIEWER_PUBLIC_ORIGINS=https://myhost.tailxyz.ts.net
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-[`deploy/Dockerfile`](deploy/Dockerfile) builds the web app, installs the server, ffmpeg and libheif, and runs as uid 10001. The image contains code only; `.dockerignore` keeps libraries, `app.db`, `.env` and `*.sqlite` out of the build. [`deploy/docker-compose.yml`](deploy/docker-compose.yml) has a read-only root filesystem, a `/tmp` tmpfs (sqlite copies and transcode scratch), the libraries at `/libraries` (`:ro`), an optional `/tiles` (`:ro`), and the named volume `viewer-data` at `/data` (`app.db`, thumbnails). A small `forward` sidecar (socat, TCP passthrough only) publishes the app on `127.0.0.1:8000`, because the app container itself has no route off its internal network. Register libraries by their in-container path, e.g. `/libraries/Family.photoslibrary`. Without Docker, `pip install -e ./server`, build `web/`, and run `uvicorn photos_viewer.main:app --host 127.0.0.1` under systemd.
+[`deploy/Dockerfile`](deploy/Dockerfile) builds the web app, installs the server, ffmpeg and libheif, and runs as uid 10001. The image contains code only; `.dockerignore` keeps libraries, `app.db`, `.env` and `*.sqlite` out of the build. [`deploy/docker-compose.yml`](deploy/docker-compose.yml) has a read-only root filesystem, a `/tmp` tmpfs (sqlite copies and transcode scratch), the libraries at `/libraries` (`:ro`), an optional `/tiles` (`:ro`), and the named volume `viewer-data` at `/data` (`app.db`, thumbnails). A small `forward` sidecar (socat, TCP passthrough only) publishes the app on port 8000 of the LAN (`0.0.0.0`; edit the `ports:` line to `127.0.0.1:8000:8000` for Tailscale only), because the app container itself has no route off its internal network. Register libraries by their in-container path, e.g. `/libraries/Family.photoslibrary`. Without Docker, `pip install -e ./server`, build `web/`, and run `uvicorn photos_viewer.main:app --host 0.0.0.0` under systemd.
 
-## Tailscale Serve
+## Use it on your home network
 
-HTTPS comes from Tailscale; the app is never exposed beyond the tailnet. Session cookies are `Secure`, so plain HTTP will not sign in (except `PHOTOS_VIEWER_COOKIE_SECURE=false` for local dev).
+You do not need Tailscale, a domain name or a certificate. Start the server on the computer that holds the photos, then open it from your phone or laptop on the same Wi-Fi.
+
+1. Start it so other devices can reach it. With Docker: `docker compose -f deploy/docker-compose.yml up -d --build`. Without Docker: `.venv/bin/uvicorn photos_viewer.main:app --host 0.0.0.0 --port 8000`.
+2. Find the computer's address. Either its name, like `http://homeserver.local:8000` (on a Mac: System Settings, General, Sharing, "Local hostname"), or its number, like `http://192.168.1.20:8000` (on the router's device list, or `ip addr` on Linux).
+3. On another device, open that address in the browser and sign in. On the computer itself you can use `http://localhost:8000`.
+
+Things to know:
+
+- Only devices on your home network can reach it. Do not forward port 8000 on your router.
+- Passkeys and "Add to Home Screen" as an app need HTTPS. On plain http the login screen hides the passkey button and says so; passwords work normally.
+- To turn on HTTPS later (optional), use Tailscale Serve (next section) or put any reverse proxy with a certificate in front. Then open the https address instead. Nothing else needs to change; the sign-in cookie becomes `Secure` on its own.
+- If you only want Tailscale and nothing on the LAN, bind to `127.0.0.1` (`--host 127.0.0.1`, or `127.0.0.1:8000:8000` in the compose `ports:`).
+
+## Tailscale Serve (optional HTTPS)
+
+HTTPS comes from Tailscale; the app is never exposed beyond the tailnet. Session cookies are `Secure` automatically when the request arrives over https.
 
 ```bash
 tailscale serve --bg 8000                       # proxies to 127.0.0.1:8000 (native, or the compose forwarder)
 tailscale serve status                          # shows https://myhost.tailxyz.ts.net
 ```
 
-Set `PHOTOS_VIEWER_PUBLIC_ORIGINS` to that URL. Do not use Tailscale Funnel. See [server/README.md](server/README.md) for CSRF and trusted-proxy details.
+`PHOTOS_VIEWER_PUBLIC_ORIGINS` is optional (set it to that URL only if sign-in is rejected). Do not use Tailscale Funnel. See [server/README.md](server/README.md) for CSRF and trusted-proxy details.
 
 ## First admin
 
