@@ -54,7 +54,39 @@ async function fetchAsFile(
   const response = await fetch(originalUrl(libraryId, item.id, version, true), { credentials: "same-origin" });
   if (!response.ok) throw new Error(`download failed: ${response.status}`);
   const blob = await response.blob();
-  return new File([blob], item.filename ?? item.id, { type: blob.type });
+  // Desktop Safari names the share-sheet preview from the File, and ignores a
+  // blank/octet-stream type; so prefer the server's Content-Disposition name
+  // (it matches the served bytes, e.g. the edited JPEG) and a real MIME type.
+  const name = filenameFromDisposition(response.headers.get("content-disposition")) ?? item.filename ?? item.id;
+  return new File([blob], name, { type: pickMime(blob.type || response.headers.get("content-type"), name) });
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp",
+  heic: "image/heic", heif: "image/heif", tif: "image/tiff", tiff: "image/tiff",
+  mov: "video/quicktime", mp4: "video/mp4", m4v: "video/x-m4v",
+};
+
+export function pickMime(type: string | null | undefined, filename: string): string {
+  const clean = (type ?? "").split(";")[0].trim().toLowerCase();
+  if (clean && clean !== "application/octet-stream") return clean;
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  return MIME_BY_EXT[ext] ?? clean;
+}
+
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]+)"|([^;]+))/.exec(header);
+  const value = (plain?.[1] ?? plain?.[2])?.trim();
+  return value || null;
 }
 
 // iPhone multi-select share (P1.17): one `navigator.share({ files })` call
@@ -86,10 +118,11 @@ export async function shareOrDownloadAssets(
 }
 
 // Desktop toolbar Share (#274): only where the browser can share files (Safari
-// on Mac -> system share sheet with AirDrop). Files keep their original
-// filenames; no download fallback, the caller disables the button instead.
+// on Mac -> system share sheet with AirDrop). Web Share needs a secure
+// context, so over plain http on a LAN IP `navigator.share` is undefined; the
+// caller hides the button then. Files keep their original filenames.
 export function canShareFiles(): boolean {
-  return typeof navigator !== "undefined" && typeof navigator.canShare === "function" && typeof navigator.share === "function";
+  return typeof window !== "undefined" && window.isSecureContext !== false && typeof navigator.canShare === "function" && typeof navigator.share === "function";
 }
 
 export async function shareAssets(

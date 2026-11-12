@@ -605,14 +605,12 @@ describe("DesktopLibrary", () => {
       expect(Number(slider.value)).toBe(start - 1);
     });
 
-    it("disables Share with a tooltip when the browser can't share files", async () => {
+    it("hides Share when the browser can't share files (e.g. plain http)", async () => {
       vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
       mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
       render(<DesktopLibrary libraryId={1} />);
       await screen.findAllByRole("img");
-      const share = screen.getByRole("button", { name: "Share" });
-      expect(share).toBeDisabled();
-      expect(share).toHaveAttribute("title", "Sharing isn't supported in this browser");
+      expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
       vi.unstubAllGlobals();
     });
 

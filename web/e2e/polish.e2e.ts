@@ -167,3 +167,33 @@ test("compact view switch follows the container width, not the viewport", async 
   expect(await onOneLine()).toBe(true);
   expect(await page.evaluate(() => window.innerWidth)).toBe(info.project.name === "small" ? 320 : 390);
 });
+
+// F8: at <=1100px the expanded search takes toolbar space instead of covering the icons.
+test("narrow desktop: expanded search never overlaps the toolbar buttons", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop toolbar only");
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await signIn(page);
+  await openAllPhotos(page);
+  const input = page.locator(".search-box--desktop .search-box__input");
+  await input.focus();
+  await expect(input).toHaveCSS("width", "190px");
+  const box = await input.boundingBox();
+  const buttons = page.locator(".desktop-library__toolbar button:visible");
+  const n = await buttons.count();
+  for (let i = 0; i < n; i++) {
+    const b = await buttons.nth(i).boundingBox();
+    if (!b || b.width === 0) continue;
+    expect(b.x + b.width, `button ${i} overlaps search`).toBeLessThanOrEqual(box!.x + 1);
+  }
+});
+
+// F7: no dead Share button without Web Share (plain http / unsupported).
+test("desktop: Share is hidden when navigator.share is unavailable", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop toolbar only");
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+  });
+  await signIn(page);
+  await openAllPhotos(page);
+  await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+});

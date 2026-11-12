@@ -692,16 +692,20 @@ export default function DesktopLibrary({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="toolbar-button"
-          aria-label="Share"
-          onClick={() => void handleShare()}
-          disabled={!shareSupported || selected.size === 0}
-          title={shareSupported ? "Share" : "Sharing isn't supported in this browser"}
-        >
-          <Icon name="share" size={16} />
-        </button>
+        {/* No dead button: sharing needs a secure (https) context, so it is
+            hidden where unavailable, like macOS toolbars omit unusable items. */}
+        {shareSupported && (
+          <button
+            type="button"
+            className="toolbar-button"
+            aria-label="Share"
+            onClick={() => void handleShare()}
+            disabled={selected.size === 0}
+            title="Share"
+          >
+            <Icon name="share" size={16} />
+          </button>
+        )}
         <button
           type="button"
           className="toolbar-button"

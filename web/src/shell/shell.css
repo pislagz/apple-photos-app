@@ -2441,23 +2441,30 @@ body {
   .search-box--desktop .search-box__input {
     width: 28px;
     padding: 0;
-    cursor: pointer;
     color: transparent;
-    transition: width 0.2s ease;
   }
 
   .search-box--desktop .search-box__input::placeholder {
     color: transparent;
   }
 
+  /* Expanded: the field takes its real 190px, and the toolbar reserves the
+     same room (icons shift left, the spacer shrinks) so nothing overlaps. */
+  .search-box--desktop:has(.search-box__input:focus, .search-box__input:not(:placeholder-shown)) {
+    width: 190px;
+  }
+
+  .shell--desktop .shell__main:has(.search-box--desktop .search-box__input:focus, .search-box--desktop .search-box__input:not(:placeholder-shown))
+    :is(.toolbar, .desktop-library__toolbar) {
+    padding-right: calc(var(--space-16) + 190px + var(--space-10));
+    overflow: hidden;
+  }
+
   .search-box--desktop .search-box__input:focus,
   .search-box--desktop .search-box__input:not(:placeholder-shown) {
-    position: absolute;
-    right: 0;
     width: 190px;
     padding: 0 26px 0 28px;
     color: inherit;
-    cursor: text;
   }
 
   .search-box--desktop .search-box__input:focus::placeholder {
