@@ -24,6 +24,8 @@ import { useLibraryAssets } from "./useLibraryAssets";
 import { InfoRows } from "../viewer/InfoRows";
 import { useAssetDetailState, useSelectionSummary } from "../viewer/useAssetDetail";
 import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
+import FadeImage from "./FadeImage";
+import { useSlidingPill } from "./useSlidingPill";
 
 const HEADER_ROW_HEIGHT = 28;
 // Desktop toolbar's zoom slider/`+`/`-`: more, smaller columns at the low
@@ -123,6 +125,7 @@ export default function DesktopLibrary({
 }) {
   const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
   const view = fixedView ?? switchedView;
+  const segmentRef = useSlidingPill<HTMLDivElement>(view, fixedView === undefined);
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
   const [filter, setFilter] = useState<AssetFilter>("all");
@@ -606,7 +609,7 @@ export default function DesktopLibrary({
         </div>
         <div className="desktop-library__spacer" />
         {fixedView === undefined && (
-        <div role="tablist" aria-label="Library zoom" className="segmented-control">
+        <div ref={segmentRef} role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
             <button
               key={item.key}
@@ -763,7 +766,7 @@ export default function DesktopLibrary({
                         onDoubleClick={() => handleOpen(item.id)}
                         onContextMenu={(event) => handleCellContextMenu(event, item.id)}
                       >
-                        <img
+                        <FadeImage
                           src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
                           alt={assetAlt(item)}
                           loading="lazy"

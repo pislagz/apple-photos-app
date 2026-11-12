@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import FadeImage from "./FadeImage";
 
 // R4: cycle a tile through its few top-scored key photos instead of
 // pinning one, slowly enough to read -- not a carousel the user drives.
@@ -36,7 +37,7 @@ export default function SummaryTile({
   return (
     <button type="button" className="mobile-library__tile" onClick={onOpen}>
       {assetId && (
-        <img
+        <FadeImage
           key={assetId}
           src={`/api/libraries/${libraryId}/thumb/${assetId}?size=grid2x`}
           alt={label}

@@ -1127,3 +1127,143 @@ for (const scheme of ["light", "dark"] as const) {
     await snap("viewer");
   });
 }
+
+// #206 motion proof. MOTION_PREFIX=before|after names the files; the at-rest
+// shots must come out identical before and after. Mid-transition shots pause
+// every running animation at half its length (Web Animations API).
+const MOTION_DIR = process.env.MOTION_DIR ?? SHOTS;
+const MOTION_PREFIX = process.env.MOTION_PREFIX ?? "after";
+
+async function motionShot(page: Page, name: string) {
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${MOTION_DIR}/${name}.png` });
+}
+
+// Runs `action` in the page, then freezes all animations at `fraction` of their length.
+async function freezeMid(page: Page, action: string, fraction = 0.5) {
+  const count = await page.evaluate(
+    ([code, f]) =>
+      new Promise<number>((resolve) => {
+        // biome-ignore lint: test-only dynamic action
+        new Function(code)();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const running = document.getAnimations().filter((a) => a.playState !== "finished");
+            for (const a of running) {
+              a.pause();
+              const t = a.effect?.getComputedTiming();
+              a.currentTime = ((t?.delay ?? 0) as number) + ((t?.duration as number) || 0) * (f as number);
+            }
+            resolve(running.length);
+          }),
+        );
+      }),
+    [action, fraction] as const,
+  );
+  return count;
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`motion: at rest (${scheme})`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone only");
+    const device = info.project.name === "desktop" ? "desktop" : "phone";
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "no-preference" });
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-library`);
+    if (device === "desktop") {
+      await page.getByRole("button", { name: "Filter By" }).click();
+      await expect(page.getByRole("menu", { name: "Filter By" })).toBeVisible();
+      await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-menu`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Filter By" }).click().catch(() => {});
+    } else {
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-menu`);
+      await page.keyboard.press("Escape");
+    }
+    await page.reload();
+    await openZoom(page, "All Photos");
+    const first = cells(page).first();
+    await expect(first).toBeVisible();
+    if (device === "desktop") await first.dblclick();
+    else await first.tap();
+    await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+    await page.waitForTimeout(800);
+    await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-viewer`);
+  });
+}
+
+test("motion: mid-transition shots", async ({ page }, info) => {
+  test.skip(info.project.name === "small" || MOTION_PREFIX === "before", "after only, desktop and iPhone");
+  const device = info.project.name === "desktop" ? "desktop" : "phone";
+  const log: string[] = [];
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+
+  // Segmented control: pill half way between two segments.
+  const tabs = page.getByRole("tab");
+  const n = await freezeMid(page, `[...document.querySelectorAll('[role=tab]')].find(t => t.getAttribute('aria-selected') !== 'true' && /Months/.test(t.textContent)).click()`, 0.15);
+  log.push(`segmented animations: ${n}`);
+  log.push(`pill: ${await page.evaluate(() => document.getAnimations().map((a) => `${(a.effect as KeyframeEffect).pseudoElement ?? (a.effect as KeyframeEffect).target?.className}:${(a as CSSTransition).transitionProperty ?? ''}:${Math.round(Number(a.currentTime))}`).filter((t) => /::before/.test(t)).join(' | '))}`);
+  await page.waitForTimeout(100);
+  await page.screenshot({ path: `${MOTION_DIR}/mid-${device}-segmented.png` });
+  void tabs;
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+
+  // Menu half-faded (desktop filter menu; phone account menu).
+  const menuAction =
+    device === "desktop"
+      ? `document.querySelector('button[title="Filter By"]').click()`
+      : `document.querySelector('[aria-label="Account menu"]').click()`;
+  log.push(`menu animations: ${await freezeMid(page, menuAction)}`);
+  await page.screenshot({ path: `${MOTION_DIR}/mid-${device}-menu.png` });
+  await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+  await page.reload();
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+
+  // Selected tile: ring/badge half way. Desktop clicks a cell; phone enters Select.
+  if (device === "desktop") {
+    log.push(`tile animations: ${await freezeMid(page, `document.querySelector('[data-testid="library-cell"]').click()`)}`);
+    await page.screenshot({ path: `${MOTION_DIR}/mid-${device}-tile.png` });
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+  } else {
+    await page.getByRole("button", { name: "Select", exact: true }).click();
+    log.push(`tile animations: ${await freezeMid(page, `document.querySelector('.mobile-library__cell').click()`)}`);
+    await page.screenshot({ path: `${MOTION_DIR}/mid-${device}-tile.png` });
+    await page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  }
+
+  // Viewer + info sheet / panel half way.
+  const first = cells(page).first();
+  if (device === "desktop") await first.dblclick();
+  else await first.tap();
+  await expect(page.locator('[aria-label="Info"]')).toBeVisible();
+  await page.waitForTimeout(500);
+  log.push(`info animations: ${await freezeMid(page, `document.querySelector('[aria-label="Info"]').click()`)}`);
+  await page.screenshot({ path: `${MOTION_DIR}/mid-${device}-info.png` });
+  console.log(log.join("\n"));
+});
+
+test("motion: reduced motion has no translate", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop" || MOTION_PREFIX === "before", "desktop, after only");
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const n = await freezeMid(page, `document.querySelector('button[title="Filter By"]').click()`);
+  const transforms = await page.evaluate(() =>
+    [...document.querySelectorAll(".desktop-library__filter-menu")].map((e) => getComputedStyle(e).transform),
+  );
+  console.log(`reduced-motion animations: ${n}; menu transform: ${transforms.join(",")}`);
+  expect(transforms.every((t) => t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)")).toBe(true);
+  await page.screenshot({ path: `${MOTION_DIR}/reduced-desktop-menu.png` });
+});

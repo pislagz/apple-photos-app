@@ -155,6 +155,12 @@ jobs:
         # stylesheet; the rules are unit-tested by web/src/cssColours.test.ts.
         run: npm run check-colours
 
+      - name: Check durations live in tokens.css only
+        working-directory: web
+        # #206: no literal ms/s time in a transition or animation outside
+        # tokens.css; unit-tested by web/src/cssMotion.test.ts.
+        run: npm run check-motion
+
       - name: Build the production bundle
         working-directory: web
         run: npm run build

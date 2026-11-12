@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const DISMISS_MS = 180;
+export const DISMISS_MS = 150; // matches --dur-fade-open (tokens.css)
 
 // No matchMedia (jsdom) counts as "no animation" so unit tests close at once.
 export function prefersReducedMotion(): boolean {
