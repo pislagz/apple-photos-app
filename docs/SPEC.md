@@ -1,12 +1,12 @@
 # Project: Private Photos Viewer
 
-Multiple `.photoslibrary` files → web app for iPhone (PWA, iOS 17 Photos style) and desktop (macOS Sequoia Photos style), over Tailscale.
+Multiple `.photoslibrary` files → web app for iPhone (PWA, iOS 17 Photos style) and desktop (macOS Sequoia Photos style), over the home network or Tailscale.
 
 The server runs on macOS and on Linux. Both are first-class. See [Platforms](#platforms).
 
 ## Goal
 
-Build a self-hosted, read-only web app that lets several people browse and download photos and videos from Apple Photos libraries stored as `.photoslibrary` packages on one drive. Access is remote, over Tailscale, from:
+Build a self-hosted, read-only web app that lets several people browse and download photos and videos from Apple Photos libraries stored as `.photoslibrary` packages on one drive. Access is remote, over the home network (plain http, the default) or Tailscale, from:
 
 - **iPhone:** an installable PWA that looks and feels like the pre-iOS 18 (iOS 17) Photos app.
 - **Desktop browser** (Safari, Chrome, Firefox on Mac or PC): a layout that looks and feels like the macOS Sequoia (macOS 15) Photos app.
@@ -18,7 +18,7 @@ Both use the same login. Admins also get an admin panel to register library file
 - Several separate `.photoslibrary` packages on one drive, none of them the macOS System Photo Library. They total several terabytes, all originals are local, and there's no iCloud.
 - PhotoKit is not used. It only reaches the System Photo Library, and it does not exist on Linux. Libraries are read directly from disk with [osxphotos](https://github.com/RhetTbull/osxphotos), which opens any library by path on macOS and on Linux.
 - **Strictly read-only.** Never write to, migrate, repair, or open-for-write any library package or its database. Open the database read-only (`mode=ro`), immutable, or as a copy that lives outside the package. Detect when Photos.app has the same library open and show a warning.
-- Access only over the Tailscale tailnet, with HTTPS through Tailscale Serve. Nothing is exposed publicly.
+- **Home network by default, Tailscale supported (decided 2026-11-12, #266).** The server can be opened over plain http from other devices on the LAN (`http://192.168.1.20:8000`, `http://homeserver.local:8000`) with no extra settings: the session cookie is `Secure` only when the request arrived over https (`PHOTOS_VIEWER_COOKIE_SECURE=auto`; `true`/`false` force it), and the CSRF `Origin` check accepts an Origin whose host and port equal the request's `Host` header, plus any `PHOTOS_VIEWER_PUBLIC_ORIGINS` entry. A cross-site Origin is never accepted. `X-Forwarded-Proto` and `Tailscale-User-Login` are believed only from loopback or `PHOTOS_VIEWER_TRUSTED_PROXIES`; a direct LAN client gets its own login-lockout bucket from its real address. HTTPS is optional (Tailscale Serve or any reverse proxy) and is needed for passkeys and Add to Home Screen; without it the login screen hides the passkey button and says why. Nothing is exposed publicly; do not forward the port from the internet. Where the text below says "behind tailscale serve", that is the HTTPS option.
 - **No outbound connections except browser-side OSM map tiles.** The server makes zero outbound requests, with one exception: an admin's one-time download of the GeoNames city list for the optional Offline place names (below), possible only after the admin agreed to "Map & place names". The only other external connection is the browser loading OpenStreetMap tiles while a map is open, and only after that same agreement. See [No outbound network](#no-outbound-network).
 - No paid Apple Developer account, so the iPhone side is a PWA added from Safari, with no native app.
 - Out of scope: editing, deleting, uploading, public share links, Memories, Featured Photos.
