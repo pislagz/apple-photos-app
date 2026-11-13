@@ -452,10 +452,8 @@ body {
   align-content: start;
 }
 
-.period-grid--months {
-  --period-card-min: 132px;
-}
-
+/* Years and Months share one desktop card size (pp, #323); only the phone
+   layout packs Months tighter, below. */
 @media (max-width: 600px) {
   .period-grid {
     --period-card-min: 130px;
