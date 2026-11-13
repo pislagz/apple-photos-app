@@ -33,6 +33,23 @@ describe("admin styling (#158)", () => {
     expect(phone).toMatch(/\.admin-actions \{[^}]*grid-template-columns: repeat\(2, max-content\)/);
   });
 
+  // #308: the shared controls are opt-in classes, so the existing screens keep their look.
+  it("defines the shared control spec: 32px desktop, 44px phone, no pointer cursor", () => {
+    expect(css).toContain("--admin-control-h: 32px");
+    expect(css).toContain("--admin-control-h-touch: 44px");
+    for (const cls of [".admin-btn", ".admin-input", ".admin-group", ".admin-row", ".admin-switch", ".admin-sheet", ".admin-skeleton", ".admin-saved"]) {
+      expect(css).toContain(cls);
+    }
+    expect(css).toMatch(/\.admin-switch\.admin-switch--mac \{[^}]*width: 38px;[^}]*height: 22px/);
+    expect(css).toMatch(/button\.admin-switch \{[^}]*width: 51px;[^}]*height: 31px/);
+    expect(css).toMatch(/opacity: 0\.4;\s*cursor: not-allowed/);
+  });
+
+  it("the dev controls page is only reachable in dev or with the screenshot flag", () => {
+    const main = readFileSync(join(__dirname, "../main.tsx"), "utf-8");
+    expect(main).toMatch(/import\.meta\.env\.DEV \|\| import\.meta\.env\.VITE_ADMIN_GALLERY === "1"/);
+  });
+
   it("the sign-in screen carries the admin-auth class", async () => {
     mockFetch(() => jsonResponse({ detail: "not signed in" }, 401));
     render(<AdminApp />);

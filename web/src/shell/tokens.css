@@ -125,6 +125,7 @@
   --color-marquee-line: rgba(0, 122, 255, 0.9);
   --color-marquee-fill: rgba(0, 122, 255, 0.18);
   --color-danger: #ff3b30;
+  --color-success: #34c759;
   --color-danger-text: #d70015;
   --color-danger-bg: rgba(255, 59, 48, 0.12);
   --color-warn-bg: rgba(255, 159, 10, 0.16);
@@ -218,6 +219,7 @@
     --color-accent-soft: rgba(10, 132, 255, 0.3);
     --color-accent-tint: rgba(10, 132, 255, 0.2);
     --color-danger: #ff453a;
+    --color-success: #30d158;
     --color-danger-text: #ff6961;
     --color-danger-bg: rgba(255, 69, 58, 0.18);
     --color-warn-bg: rgba(255, 159, 10, 0.2);
