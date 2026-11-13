@@ -223,61 +223,129 @@ body {
 }
 
 
-/* #91 Years/Months tiles: one rounded card per period, title+count over
-   the photo like Apple's own Years/Months (design-refs/ios17-library-days.png
-   is the closest reference for the overlay treatment, applied here to a
-   full card instead of an edge-to-edge hero). */
-.mobile-library__tile {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-  padding: var(--space-6) var(--space-16);
+/* #307 Years/Months period cards (shared card style, reused by #301): a
+   multi-column grid of rounded, square-ish cards. Column count comes from the
+   container width via auto-fill, so there is never a single full-width card. */
+.period-grid {
+  --period-card-min: 168px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--period-card-min), 1fr));
+  gap: var(--space-12);
+  padding: var(--space-16);
   box-sizing: border-box;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
+  align-content: start;
 }
 
-.mobile-library__tile-image {
+/* Years and Months share one desktop card size (pp, #323); only the phone
+   layout packs Months tighter, below. */
+@media (max-width: 600px) {
+  .period-grid {
+    --period-card-min: 130px;
+    gap: var(--space-8);
+    padding: var(--space-12);
+  }
+
+  .period-grid--months {
+    --period-card-min: 88px;
+  }
+}
+
+.period-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--color-placeholder);
+  color: var(--color-white);
+  text-align: left;
+  font: inherit;
+}
+
+.period-card__image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: var(--radius-large);
-  background: var(--color-placeholder);
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration) var(--motion-ease),
+    transform var(--motion-duration) var(--motion-ease);
 }
 
-.mobile-library__tile-caption {
+.period-card__image.is-loaded {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .period-card:hover .period-card__image {
+    transform: scale(1.04);
+  }
+}
+
+/* Top gradient so the label reads on bright and dark photos alike. */
+.period-card__scrim {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 6px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-8);
-  padding: var(--space-16) 18px var(--space-14);
-  color: var(--color-white);
-  background: linear-gradient(to top, var(--scrim-medium) 0%, var(--scrim-clear) 80%);
-  border-radius: 0 0 var(--radius-large) var(--radius-large);
+  inset: 0 0 auto 0;
+  height: 55%;
+  background: linear-gradient(to bottom, var(--scrim-soft) 0%, var(--scrim-clear) 100%);
   pointer-events: none;
 }
 
-.mobile-library__tile-label {
+.period-card__caption {
+  position: absolute;
+  top: var(--space-12);
+  left: var(--space-12);
+  right: var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-shadow: var(--text-shadow-overlay);
+  pointer-events: none;
+}
+
+.period-card__label {
   font-size: var(--font-size-title-3);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.3px;
+  line-height: 1.15;
 }
 
-.mobile-library__tile-count {
-  font-size: var(--font-size-body-sm);
+.period-grid--years .period-card__label {
+  font-size: var(--font-size-title-2);
+}
+
+.period-card__count {
+  font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
-  opacity: 0.85;
+  opacity: 0.9;
   font-variant-numeric: tabular-nums;
 }
 
+@media (max-width: 600px) {
+  .period-grid--months .period-card__label {
+    font-size: var(--font-size-body-sm);
+  }
+
+  .period-grid--months .period-card__count {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .period-card__image {
+    transition: none;
+  }
+
+  .period-card:hover .period-card__image {
+    transform: none;
+  }
+}
 
 .mobile-library__empty {
   text-align: center;
@@ -2489,7 +2557,7 @@ body {
 .sidebar__item:focus-visible,
 .tab-bar__item:focus-visible,
 .hidden-view__cell:focus-visible,
-.mobile-library__tile:focus-visible,
+.period-card:focus-visible,
 .desktop-viewer__filmstrip__item:focus-visible,
 .mobile-viewer__filmstrip__item:focus-visible {
   outline-offset: -2px;

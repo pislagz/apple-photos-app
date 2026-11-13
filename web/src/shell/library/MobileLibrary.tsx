@@ -9,8 +9,8 @@ import { albumMessages } from "./albumText";
 import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
-import { buildRows, buildTileRows, type LibraryRow } from "./rows";
-import SummaryTile from "./SummaryTile";
+import PeriodCardGrid from "./PeriodCards";
+import { buildPeriodCards, buildRows, type LibraryRow } from "./rows";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
@@ -19,10 +19,6 @@ import { usePinchColumns } from "./usePinchColumns";
 
 const HEADER_ROW_HEIGHT = 32;
 const DEFAULT_COLUMNS = 4;
-// Years/Months tiles are full-width cards, sized off the container alone --
-// independent of pinch-zoom's `columns`, which only ever applies to Days
-// and All Photos.
-const TILE_ASPECT_RATIO = 0.66;
 // Keep fetching the next page well before the user reaches the physical
 // bottom of what's loaded, since a page covers many virtual rows.
 const LOAD_MORE_ROW_MARGIN = 3;
@@ -49,6 +45,8 @@ export default function MobileLibrary({
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewKey>(album ? "all" : "years");
+  const viewRef = useRef(view);
+  viewRef.current = view;
   // Set right before drilling Months -> Days (#126): anchors the Days/All
   // Photos feed's first page at that month instead of the top of the whole
   // library. `/assets`'s `to` bound is a string compare on the local-day
@@ -77,19 +75,22 @@ export default function MobileLibrary({
   });
   // #146: back to the newest photos -- drop the Month -> Days anchor and
   // scroll to the top. Re-selecting a zoom tab or the Library tab does this.
-  const backToNewest = useCallback(() => {
+  // Years/Months are oldest first, so their newest end is the bottom (#307).
+  const backToNewest = useCallback((target: ViewKey) => {
     setDaysAnchor(null);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setPendingScrollKey(null);
+    const element = scrollRef.current;
+    if (element) element.scrollTop = target === "years" || target === "months" ? element.scrollHeight : 0;
   }, []);
   const lastResetSignal = useRef(resetSignal);
   useEffect(() => {
     if (lastResetSignal.current === resetSignal) return;
     lastResetSignal.current = resetSignal;
-    backToNewest();
+    backToNewest(viewRef.current);
   }, [resetSignal, backToNewest]);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  // Set right before drilling Years -> Months, so the scroll effect below
-  // can land on the tapped year's own tile once Months' rows exist.
+  // Set right before drilling Years -> Months, so Months can land on the
+  // tapped year's first card.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
   const isTileView = view === "years" || view === "months";
 
@@ -137,6 +138,8 @@ export default function MobileLibrary({
         return;
       }
       setDaysAnchor(`${bucketKey}-31`);
+      // The cards were scrolled to the bottom; Days starts at its top.
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
       setView("days");
     },
     [view],
@@ -174,17 +177,14 @@ export default function MobileLibrary({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  // #91: Years/Months tiles come straight from `/summary`, not from
-  // `buildRows` over the cursor-paged `items` -- so they render instantly
-  // without paging through the whole library, and a `summary` still
-  // loading renders zero rows rather than a stale grid.
-  const rows = useMemo<LibraryRow[]>(() => {
-    if (view === "years") return summary ? buildTileRows(summary.years, "years") : [];
-    if (view === "months") return summary ? buildTileRows(summary.months, "months") : [];
-    return buildRows(items, view, columns);
-  }, [view, summary, items, columns]);
+  // #307: Years/Months are cards built straight from `/summary`, not rows
+  // over the cursor-paged `items`; Days and All Photos use the virtualized rows.
+  const periodCards = useMemo(() => {
+    if (view !== "years" && view !== "months") return [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.months, view) : [];
+  }, [view, summary]);
+  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns)), [isTileView, view, items, columns]);
   const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
-  const tileHeight = containerWidth > 0 ? containerWidth * TILE_ASPECT_RATIO : 0;
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -192,7 +192,6 @@ export default function MobileLibrary({
     estimateSize: (index) => {
       const row = rows[index];
       if (row.type === "header") return HEADER_ROW_HEIGHT;
-      if (row.type === "tile") return tileHeight;
       return row.type === "feature" ? cellSize * 2 : cellSize;
     },
     overscan: 6,
@@ -227,22 +226,10 @@ export default function MobileLibrary({
     // Only columns changing should re-anchor.
   }, [columns]);
 
-  // Lands Months scrolled to the year tile that was tapped, not back at the
-  // top -- see `openTile` above. A month's own key ("2022-01") always
-  // starts with its year's key ("2022").
-  useEffect(() => {
-    if (!pendingScrollKey) return;
-    const rowIndex = rows.findIndex((row) => row.type === "tile" && row.key.startsWith(pendingScrollKey));
-    if (rowIndex !== -1) {
-      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
-      setPendingScrollKey(null);
-    }
-  }, [pendingScrollKey, rows, rowVirtualizer]);
-
   const showSummaryError = isTileView && summaryError;
   // #147: Days / All Photos page `/assets`; a failed first page is an error, not an empty library.
   const showAssetsError = !isTileView && assetsError && items.length === 0;
-  const isEmpty = isTileView ? summary !== null && rows.length === 0 : items.length === 0 && done;
+  const isEmpty = isTileView ? summary !== null && periodCards.length === 0 : items.length === 0 && done;
 
   return (
     <div className="mobile-library">
@@ -281,7 +268,7 @@ export default function MobileLibrary({
                 // clear any stale Month -> Days anchor so tapping Days here
                 // starts at the top of the library, not back at the last
                 // drilled-into month.
-                backToNewest();
+                backToNewest(item.key);
                 setView(item.key);
               }}
             >
@@ -310,6 +297,17 @@ export default function MobileLibrary({
           </div>
         ) : isEmpty ? (
           <p className="mobile-library__empty">{albumMessages(album).empty}</p>
+        ) : isTileView ? (
+          <PeriodCardGrid
+            key={view}
+            libraryId={libraryId}
+            view={view as "years" | "months"}
+            cards={periodCards}
+            scrollRef={scrollRef}
+            landOnKey={view === "months" ? pendingScrollKey : null}
+            onLanded={() => setPendingScrollKey(null)}
+            onOpen={openTile}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
@@ -330,19 +328,6 @@ export default function MobileLibrary({
                 return (
                   <div key={row.key} style={style} className="mobile-library__row-header">
                     {isPinnedRow ? null : row.label}
-                  </div>
-                );
-              }
-              if (row.type === "tile") {
-                return (
-                  <div key={row.key} style={style}>
-                    <SummaryTile
-                      libraryId={libraryId}
-                      label={row.label}
-                      count={row.count}
-                      keyAssetIds={row.keyAssetIds}
-                      onOpen={() => openTile(row.key)}
-                    />
                   </div>
                 );
               }

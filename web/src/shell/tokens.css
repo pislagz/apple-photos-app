@@ -157,6 +157,9 @@
   --shadow-pin: 0 1px 4px rgba(0, 0, 0, 0.4);
   --shadow-minipin: 0 1px 3px rgba(0, 0, 0, 0.4);
   --text-shadow-overlay: 0 1px 3px rgba(0, 0, 0, 0.6);
+  /* Shared motion timing for hover / fade-in transitions. */
+  --motion-duration: 150ms;
+  --motion-ease: ease;
 }
 
 @media (prefers-color-scheme: dark) {
