@@ -17,6 +17,8 @@ async function openViewer(page: Page) {
   await cell.dblclick();
   await expect(page.getByTestId("desktop-viewer")).toBeVisible();
   await expect(page.getByTestId("viewer-title")).toContainText(/ of /);
+  // pp: the title is the date (and time/place), never a file name.
+  await expect(page.getByTestId("viewer-title")).not.toContainText(/\.(jpe?g|heic|png|mov|mp4)\b/i);
 }
 
 const position = (page: Page) => page.getByTestId("viewer-title").textContent();

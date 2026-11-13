@@ -250,13 +250,13 @@ describe("DesktopViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-panel");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
-    // D41: the title is never the coordinates (no place: the file name),
-    // and line 2 is date, time and position.
+    // D41: the title is never the coordinates nor a file name; line 1 is the date,
+    // line 2 is time and position.
     const title = document.querySelector(".desktop-viewer__title-primary");
-    expect(title?.textContent).toBe("a1.jpg");
+    expect(title?.textContent).toMatch(/2024/);
+    expect(title?.textContent).not.toContain("a1.jpg");
     expect(title?.textContent).not.toContain("52.2297");
     const line = document.querySelector(".desktop-viewer__title-secondary")?.textContent;
-    expect(line).toMatch(/2024/);
     expect(line).toMatch(/ · 1 of 2$/);
     expect(line).not.toContain("52.2297");
     expect(global.fetch).toHaveBeenCalled();
@@ -686,21 +686,30 @@ describe("DesktopViewer chrome (#211)", () => {
     const open = (items = [makeItem("a1"), makeItem("a2")], index = 0) =>
       render(<DesktopViewer libraryId={1} items={items} index={index} onIndexChange={() => {}} onClose={() => {}} />);
 
-    it("titles with the place, then date and time and N of M", async () => {
+    it("titles with the date, then time, place and N of M", async () => {
       mockDetail({ a1: makeDetail("a1", { date_created: "2026-06-14T21:08:35" }), a2: makeDetail("a2") });
       open();
       const title = screen.getByTestId("viewer-title");
       await waitFor(() => expect(title.textContent).toContain("San Francisco"));
-      expect(title.textContent).toMatch(/9:08:35|21:08:35/);
+      expect(title.textContent).toMatch(/9:08|21:08/);
       expect(title.textContent).toMatch(/2026/);
       expect(title.textContent).toMatch(/ · 1 of 2$/);
     });
 
-    it("falls back to the file name when there is no place", async () => {
-      mockDetail({ a1: makeDetail("a1", { place: null, place_address: null }), a2: makeDetail("a2") });
-      open();
-      await waitFor(() => expect(screen.getByTestId("viewer-title").textContent).toContain("a1.jpg"));
-      expect(screen.getByTestId("viewer-title").textContent).not.toContain("San Francisco");
+    it("never shows a file name, stored or original, in the title", async () => {
+      mockDetail({
+        a1: makeDetail("a1", { place: null, place_address: null, filename: "ABC-uuid.jpg", original_filename: "IMG_1234.HEIC" }),
+        a2: makeDetail("a2"),
+      });
+      open([makeItem("a1", { filename: "ABC-uuid.jpg" }), makeItem("a2")]);
+      fireEvent.click(screen.getByLabelText("Info"));
+      await screen.findByTestId("viewer-info-panel");
+      const title = screen.getByTestId("viewer-title").textContent ?? "";
+      expect(title).toMatch(/2024/);
+      expect(title).not.toContain("ABC-uuid");
+      expect(title).not.toContain("IMG_1234");
+      expect(title).not.toContain("HEIC");
+      expect(title).not.toContain("San Francisco");
     });
 
     it("has every icon button named", () => {

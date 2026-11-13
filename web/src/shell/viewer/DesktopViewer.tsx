@@ -282,7 +282,6 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const title = formatDesktopTitle({
     place: detail ? formatPlaceName(detail) : "",
-    filename: item.filename ?? "",
     dateCreated: detail?.date_created ?? item.date ?? null,
     index,
     total: items.length,
