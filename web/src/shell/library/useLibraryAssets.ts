@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type AssetFilter, type AssetListItem, getAssets } from "../../api";
+import { type AssetFilter, type AssetHide, type AssetListItem, getAssets } from "../../api";
 
 export interface UseLibraryAssetsResult {
   items: AssetListItem[];
@@ -19,7 +19,9 @@ export interface UseLibraryAssetsResult {
 // Days drill-down) starts the first page at that local day instead of the
 // top of the library, so landing on a month deep in the library's history
 // doesn't page through everything newer first.
-export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all", album: string | null = null): UseLibraryAssetsResult {
+const NO_HIDE: readonly AssetHide[] = [];
+
+export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all", album: string | null = null, hide: readonly AssetHide[] = NO_HIDE): UseLibraryAssetsResult {
   const [items, setItems] = useState<AssetListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -31,7 +33,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(false);
-    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album)
+    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album, hide)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
@@ -51,7 +53,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       .finally(() => {
         if (requestIdRef.current === requestId) setLoading(false);
       });
-  }, [anchorTo, filter, album]);
+  }, [anchorTo, filter, album, hide]);
 
   useEffect(() => {
     cursorRef.current = null;

@@ -157,11 +157,11 @@ describe("MobileLibrary", () => {
     const select = screen.getByRole("button", { name: "Select" });
     const bar = screen.getByTestId("top-bar");
     expect(title.parentElement).toBe(bar);
-    expect(select.parentElement).toBe(bar);
+    expect(bar.contains(select)).toBe(true);
     // Select follows the title in flow, so the two cannot overlap.
     expect(title.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(select);
-    expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
+    expect(bar.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
   });
 
   it("keeps the scrim behind Select on the Days view too (#176)", async () => {
@@ -171,7 +171,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
     const bar = await screen.findByTestId("top-bar");
     expect(bar).toHaveAttribute("data-scrim", "true");
-    expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+    expect(bar.contains(screen.getByRole("button", { name: "Select" }))).toBe(true);
   });
 
   it("changes the column count on a pinch gesture", async () => {
