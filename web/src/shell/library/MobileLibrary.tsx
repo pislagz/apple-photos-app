@@ -1,4 +1,5 @@
 import HeicFallbackModal from "./HeicFallbackModal";
+import MobileGridHeader, { type MobileGridNav } from "./MobileGridHeader";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -39,6 +40,7 @@ export default function MobileLibrary({
   onInitialAssetOpened,
   resetSignal = 0,
   album,
+  nav,
 }: {
   libraryId: number;
   initialAssetId?: string;
@@ -48,6 +50,9 @@ export default function MobileLibrary({
   // P2.1: an album's id (or `smart:<slug>`). Lists only that album, as one
   // All Photos grid -- no Years/Months/Days switch, no summary.
   album?: string;
+  // A pushed grid (an album, a media type, a person, a place): back button
+  // and title in the grid's own top bar instead of a header above it.
+  nav?: MobileGridNav;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState<ViewKey>(album ? "all" : "years");
@@ -249,26 +254,17 @@ export default function MobileLibrary({
 
   return (
     <div className="mobile-library">
-      {(view === "all" || !isTileView) && (
+      {(nav || view === "all" || !isTileView) && (
         // One flex row so the title can never sit under Select: the title
         // shrinks and ellipsizes, Select keeps its natural width. The scrim is
         // always on: Days has the white Select over a bright hero photo too (#176).
-        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
-          {view === "all" && (
-            <div className="mobile-library__pinned-header" data-testid="pinned-header">
-              {pinnedLabel}
-            </div>
-          )}
-          {!isTileView && (
-            <button
-              type="button"
-              className="mobile-library__select-button"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            >
-              {selectMode ? "Cancel" : "Select"}
-            </button>
-          )}
-        </div>
+        <MobileGridHeader
+          nav={nav}
+          pinnedLabel={view === "all" ? pinnedLabel : undefined}
+          showSelect={!isTileView}
+          selectMode={selectMode}
+          onToggleSelect={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+        />
       )}
       {!selectMode && !album && (
         <div ref={segmentRef} className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
