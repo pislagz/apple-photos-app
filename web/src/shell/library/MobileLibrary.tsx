@@ -18,6 +18,8 @@ import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAncho
 import { usePinchColumns } from "./usePinchColumns";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
+import { subtitleForRow } from "./headerSubtitle";
+import { Icon } from "../icons";
 
 const HEADER_ROW_HEIGHT = 32;
 const DEFAULT_COLUMNS = 4;
@@ -207,7 +209,7 @@ export default function MobileLibrary({
   // topmost row actually scrolled to, found by scroll offset instead.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const topmostRow = virtualRows.find((row) => row.start + row.size > scrollOffset) ?? virtualRows[0];
-  const pinnedLabel = topmostRow ? rows[topmostRow.index]?.label ?? "" : "";
+  const pinnedSubtitle = subtitleForRow(topmostRow ? rows[topmostRow.index] : undefined, columns, view);
 
   useEffect(() => {
     // Years/Months never page -- `/summary` already carries every bucket.
@@ -250,24 +252,37 @@ export default function MobileLibrary({
   return (
     <div className="mobile-library">
       {(view === "all" || !isTileView) && (
-        // One flex row so the title can never sit under Select: the title
-        // shrinks and ellipsizes, Select keeps its natural width. The scrim is
-        // always on: Days has the white Select over a bright hero photo too (#176).
+        // One flex row so the title block can never sit under the controls: it
+        // shrinks and ellipsizes, the controls keep their width. The account
+        // button is floated at the right by the shell, so the bar leaves room
+        // for it. The scrim is always on: white text sits over bright photos (#176).
         <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
-          {view === "all" && (
-            <div className="mobile-library__pinned-header" data-testid="pinned-header">
-              {pinnedLabel}
+          <div className="mobile-library__title-block">
+            {/* Keyed so a changed text fades in instead of jumping (#212). */}
+            <div key={selectMode ? "select" : "library"} className="mobile-library__title" data-testid="header-title">
+              {selectMode ? "Select Items" : "Library"}
             </div>
-          )}
-          {!isTileView && (
-            <button
-              type="button"
-              className="mobile-library__select-button"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            >
-              {selectMode ? "Cancel" : "Select"}
-            </button>
-          )}
+            <div className="mobile-library__subtitle" data-testid="header-subtitle" aria-live={selectMode ? "polite" : undefined}>
+              <span key={selectMode ? selectedIds.size : pinnedSubtitle} className="mobile-library__subtitle-text">
+                {selectMode ? (selectedIds.size > 0 ? `${selectedIds.size} Selected` : "None Selected") : pinnedSubtitle}
+              </span>
+            </div>
+          </div>
+          {!isTileView &&
+            (selectMode ? (
+              <button
+                type="button"
+                className="mobile-library__glass-button mobile-library__close-button"
+                aria-label="Cancel"
+                onClick={exitSelectMode}
+              >
+                <Icon name="close" />
+              </button>
+            ) : (
+              <button type="button" className="mobile-library__glass-button mobile-library__select-button" onClick={() => setSelectMode(true)}>
+                Select
+              </button>
+            ))}
         </div>
       )}
       {!selectMode && !album && (
@@ -414,9 +429,6 @@ export default function MobileLibrary({
       </div>
       {selectMode && (
         <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-count">
-            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
-          </span>
           <button
             type="button"
             onClick={handleShareSelection}
