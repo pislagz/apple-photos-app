@@ -173,7 +173,7 @@ export default function DesktopLibrary({
   fixedView,
   onOpenDay,
   initialView,
-  initialScrollAssetId,
+  initialScrollDayKey,
   album,
 }: {
   libraryId: number;
@@ -184,10 +184,10 @@ export default function DesktopLibrary({
   fixedView?: ViewKey;
   // #152: in the fixed Days view, opening a day hands off to the shell
   // (which shows Library > All Photos) instead of opening the Viewer.
-  onOpenDay?: (id: string) => void;
+  onOpenDay?: (dayKey: string) => void;
   // One-shot start state, read on mount only (#152).
   initialView?: ViewKey;
-  initialScrollAssetId?: string;
+  initialScrollDayKey?: string;
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
 }) {
@@ -253,16 +253,16 @@ export default function DesktopLibrary({
 
   const columns = ZOOM_STEPS[zoomIndex].columns;
   const thumbSize = ZOOM_STEPS[zoomIndex].thumbSize;
-  const isPeriodView = view === "years" || view === "months";
+  const isPeriodView = view === "years" || view === "months" || view === "days";
   // #307: Years/Months are cards from `/summary`, fetched on first use. They
   // have no photo rows, so the virtualizer has nothing to do in those views.
   const summaryWanted = useRef(false);
   if (isPeriodView) summaryWanted.current = true;
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, summaryWanted.current && !album);
   const periodCards = useMemo(() => {
-    if (view !== "years" && view !== "months") return [];
-    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.months, view) : [];
-  }, [view, summary]);
+    if (!isPeriodView) return [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view as "years" | "months" | "days") : [];
+  }, [view, summary, isPeriodView]);
   const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns)), [isPeriodView, items, view, columns]);
   const cellSize = computeCellSize(containerWidth, columns);
 
@@ -381,11 +381,11 @@ export default function DesktopLibrary({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
-  const [pendingScrollId, setPendingScrollId] = useState<string | null>(initialScrollAssetId ?? null);
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   // Years -> Months: the year whose first month card to land on.
   const [pendingYearKey, setPendingYearKey] = useState<string | null>(null);
   // Months -> All Photos: the month ("2022-01") whose newest photo goes to the top.
-  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(null);
+  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(initialScrollDayKey ?? null);
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
 
@@ -406,7 +406,7 @@ export default function DesktopLibrary({
   useLayoutEffect(() => {
     const previous = previousViewRef.current;
     previousViewRef.current = view;
-    if ((previous === "years" || previous === "months") && !isPeriodView && scrollRef.current) scrollRef.current.scrollTop = 0;
+    if ((previous === "years" || previous === "months" || previous === "days") && !isPeriodView && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [view, isPeriodView]);
 
   // All Photos is newest first and paged: keep loading until the requested
@@ -428,7 +428,14 @@ export default function DesktopLibrary({
   // lands on that year's first month, Months -> All Photos on that month.
   const handleOpenPeriod = useCallback(
     (key: string) => {
-      if (view === "years") {
+      if (view === "days") {
+        // #301: Day card -> the shell opens All Photos at that day.
+        if (onOpenDay) onOpenDay(key);
+        else {
+          setPendingMonthKey(key);
+          setView("all");
+        }
+      } else if (view === "years") {
         setPendingYearKey(key);
         setView("months");
       } else {
@@ -436,7 +443,7 @@ export default function DesktopLibrary({
         setView("all");
       }
     },
-    [view],
+    [view, onOpenDay],
   );
 
   // A double-click (or Enter/Space on the focused cell) opens the Viewer at
@@ -445,15 +452,10 @@ export default function DesktopLibrary({
   // Viewer can only ever page through what the grid itself shows.
   const handleOpen = useCallback(
     (id: string) => {
-      // Sequoia opens the whole day, not one photo (#152).
-      if (view === "days" && onOpenDay) {
-        onOpenDay(id);
-        return;
-      }
       const index = items.findIndex((item) => item.id === id);
       if (index !== -1) setViewerIndex(index);
     },
-    [items, view, onOpenDay],
+    [items],
   );
 
   const lastClickRef = useRef<{ id: string; time: number; x: number; y: number } | null>(null);
@@ -869,7 +871,7 @@ export default function DesktopLibrary({
             <PeriodCardGrid
               key={view}
               libraryId={libraryId}
-              view={view as "years" | "months"}
+              view={view as "years" | "months" | "days"}
               cards={periodCards}
               scrollRef={scrollRef}
               landOnKey={view === "months" ? pendingYearKey : null}

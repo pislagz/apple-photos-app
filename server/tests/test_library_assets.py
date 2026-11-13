@@ -387,7 +387,7 @@ def test_summary_counts_by_year_month_day(tmp_path):
         )
         assert months_2024_01["count"] == 2
         assert set(months_2024_01["key_asset_ids"]) == {"a", "b"}
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
+        assert {"key": "2024-01-01", "count": 1, "key_asset_ids": ["a"]} in body["days"]
     finally:
         conn.close()
 
@@ -472,7 +472,10 @@ def test_summary_excludes_hidden(tmp_path):
         )
         assert months_2024_01["count"] == 1
         assert months_2024_01["key_asset_ids"] == ["visible"]
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
+        # Days carry exactly one key photo, never the hidden one (#301).
+        assert {"key": "2024-01-01", "count": 1, "key_asset_ids": ["visible"]} in body[
+            "days"
+        ]
     finally:
         conn.close()
 
@@ -523,8 +526,7 @@ def test_summary_buckets_by_local_day_not_utc_day(tmp_path):
 
         assert response.status_code == 200
         body = response.json()
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
-        assert {"key": "2024-01-02", "count": 1} not in body["days"]
+        assert [(d["key"], d["count"]) for d in body["days"]] == [("2024-01-01", 1)]
     finally:
         conn.close()
 

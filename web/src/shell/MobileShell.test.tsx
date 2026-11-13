@@ -157,7 +157,11 @@ describe("MobileShell Library tab re-tap (#146)", () => {
             count,
             key_asset_ids: items.filter((i) => (i.date ?? "").startsWith(key)).slice(0, 5).map((i) => i.id),
           })),
-          days: bucket(10).map(([key, count]) => ({ key, count })),
+          days: bucket(10).map(([key, count]) => ({
+            key,
+            count,
+            key_asset_ids: items.filter((i) => (i.date ?? "").startsWith(key)).slice(0, 1).map((i) => i.id),
+          })),
         };
       }
       const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
@@ -187,6 +191,8 @@ describe("MobileShell Library tab re-tap (#146)", () => {
   async function drillToOlderMonth() {
     fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("Jan 2022"));
+    // Month -> Days cards -> the newest day opens All Photos at that day.
+    fireEvent.click(await screen.findByText("Jan 20, 2022"));
     await waitFor(() => expect(queryThumb("recent")).toBeNull());
     expect(getThumb("jan22-0")).toBeInTheDocument();
   }

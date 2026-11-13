@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SummaryPeriodBucket } from "../../api";
-import PeriodCardGrid from "./PeriodCards";
+import PeriodCardGrid, { pickThumbSize } from "./PeriodCards";
 import { buildPeriodCards } from "./rows";
 
 afterEach(() => {
@@ -26,7 +26,7 @@ describe("buildPeriodCards (#307)", () => {
   });
 });
 
-function renderGrid(view: "years" | "months", buckets: SummaryPeriodBucket[], extra: Partial<Parameters<typeof PeriodCardGrid>[0]> = {}) {
+function renderGrid(view: "years" | "months" | "days", buckets: SummaryPeriodBucket[], extra: Partial<Parameters<typeof PeriodCardGrid>[0]> = {}) {
   const scroller = document.createElement("div");
   document.body.appendChild(scroller);
   Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 5000 });
@@ -78,5 +78,46 @@ describe("PeriodCardGrid (#307)", () => {
     const { onOpen } = renderGrid("years", YEARS);
     fireEvent.click(screen.getByText("2007"));
     expect(onOpen).toHaveBeenCalledWith("2007");
+  });
+});
+
+describe("pickThumbSize (#301)", () => {
+  it("never upscales: picks the smallest size covering the card at the device pixel ratio", () => {
+    expect(pickThumbSize(150, 1)).toBe("grid");
+    expect(pickThumbSize(170, 2)).toBe("grid2x");
+    expect(pickThumbSize(170, 3)).toBe("grid2x");
+    expect(pickThumbSize(300, 2)).toBe("grid2x");
+    expect(pickThumbSize(320, 3)).toBe("preview");
+  });
+});
+
+describe("Day cards (#301)", () => {
+  const DAYS: SummaryPeriodBucket[] = [
+    { key: "2022-05-12", count: 9, key_asset_ids: ["d1"] },
+    { key: "2024-03-01", count: 3, key_asset_ids: ["d2"] },
+    { key: "2024-03-02", count: 1, key_asset_ids: [] },
+  ];
+
+  it("labels days 'May 12' in the current year and with the year otherwise", () => {
+    const labels = buildPeriodCards(DAYS, "days", 2024).map((c) => c.label);
+    expect(labels).toEqual(["May 12, 2022", "Mar 1", "Mar 2"]);
+  });
+
+  it("renders a header with the total, a pill only above 3 photos, and a placeholder card without a key photo", () => {
+    const { container, onOpen } = renderGrid("days", DAYS);
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("Days");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("13 Items");
+    const pills = screen.getAllByTestId("period-card-pill");
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent("9");
+    expect(container.querySelectorAll(".period-card__image")).toHaveLength(2);
+    expect(container.querySelectorAll(".period-card--days")).toHaveLength(3);
+    fireEvent.click(container.querySelector('[data-period-key="2024-03-01"]') as HTMLElement);
+    expect(onOpen).toHaveBeenCalledWith("2024-03-01");
+  });
+
+  it("requests the key photo, never the per-asset detail", () => {
+    const { container } = renderGrid("days", DAYS);
+    expect(container.querySelector("img")?.getAttribute("src")).toMatch(/\/thumb\/d1\?size=grid2x$/);
   });
 });

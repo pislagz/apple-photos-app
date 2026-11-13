@@ -126,6 +126,16 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
           next_cursor: null,
         };
       }
+      if (url.startsWith("/api/libraries/1/summary")) {
+        return {
+          years: [],
+          months: [],
+          days: [
+            { key: "2024-05-01", count: 1, key_asset_ids: ["a3"] },
+            { key: "2024-05-02", count: 2, key_asset_ids: ["a1"] },
+          ],
+        };
+      }
       throw new Error(`unexpected request: ${url}`);
     });
     render(
@@ -147,8 +157,8 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Days" }));
     expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
-    // One hero per day, with the date as its caption; no Years/Months switch.
-    await waitFor(() => expect(document.querySelectorAll(".desktop-library__feature-caption")).toHaveLength(2));
+    // One card per day; no Years/Months switch.
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="period-card"]')).toHaveLength(2));
     expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Library/ }));
@@ -230,7 +240,12 @@ describe("DesktopShell Hidden password prompt (#130)", () => {
   });
 });
 
-describe("DesktopShell Days double-click (#152)", () => {
+const DAYS = [
+  { key: "2024-05-09", count: 1, key_asset_ids: ["b"] },
+  { key: "2024-05-10", count: 1, key_asset_ids: ["a"] },
+];
+
+describe("DesktopShell Days card tap (#152, #301)", () => {
   it("opens Library > All Photos, and the sidebar Days item goes back to Days", async () => {
     const items = ["a", "b"].map((id, i) => ({
       id,
@@ -245,6 +260,7 @@ describe("DesktopShell Days double-click (#152)", () => {
     }));
     mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
+      if (url.startsWith("/api/libraries/1/summary")) return { years: [], months: [], days: DAYS };
       throw new Error(`unexpected request: ${url}`);
     });
     const { container } = render(
@@ -261,7 +277,7 @@ describe("DesktopShell Days double-click (#152)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Days" }));
     await screen.findAllByRole("img");
     expect(screen.queryByRole("tab")).toBeNull();
-    fireEvent.doubleClick(container.querySelector('[data-asset-id="b"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-period-key="2024-05-09"]') as HTMLElement);
 
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
     expect(screen.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
@@ -287,7 +303,7 @@ describe("DesktopShell Days double-click (#152)", () => {
     }));
     mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
-      if (url.startsWith("/api/libraries/1/summary")) return { total: 2, years: [], months: [] };
+      if (url.startsWith("/api/libraries/1/summary")) return { years: [], months: [], days: DAYS };
       throw new Error(`unexpected request: ${url}`);
     });
     const { container } = render(
@@ -302,7 +318,7 @@ describe("DesktopShell Days double-click (#152)", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Days" }));
     await screen.findAllByRole("img");
-    fireEvent.doubleClick(container.querySelector('[data-asset-id="b"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-period-key="2024-05-09"]') as HTMLElement);
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
 
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));

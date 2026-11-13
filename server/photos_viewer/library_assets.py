@@ -403,15 +403,14 @@ class SummaryPeriodBucket(SummaryBucket):
     # aesthetic score, so the client can cycle a tile through a few
     # candidates instead of pinning one "best shot" (Pawel declined a
     # curated-best-shot feature; this only re-orders assets already in the
-    # bucket). Days stays plain `SummaryBucket`: it keeps cursor paging and
-    # has no tiles to feed.
+    # bucket). Days (#301) carries one key photo per day for its cards.
     key_asset_ids: list[str]
 
 
 class SummaryResponse(BaseModel):
     years: list[SummaryPeriodBucket]
     months: list[SummaryPeriodBucket]
-    days: list[SummaryBucket]
+    days: list[SummaryPeriodBucket]
 
 
 _KEY_ASSETS_PER_BUCKET = 5
@@ -429,7 +428,10 @@ def _buckets(
 
 
 def _period_buckets(
-    db: sqlite3.Connection, library_id: int, length: int
+    db: sqlite3.Connection,
+    library_id: int,
+    length: int,
+    per_bucket: int = _KEY_ASSETS_PER_BUCKET,
 ) -> list[SummaryPeriodBucket]:
     buckets = _buckets(db, library_id, length)
     # Ranked within each bucket -- favorite first, then score, then most
@@ -453,7 +455,7 @@ def _period_buckets(
         WHERE rn <= ?
         ORDER BY key, rn
         """,
-        (length, length, library_id, _KEY_ASSETS_PER_BUCKET),
+        (length, length, library_id, per_bucket),
     ).fetchall()
     key_asset_ids: dict[str, list[str]] = {}
     for row in key_rows:
@@ -476,7 +478,7 @@ def library_summary(
     return SummaryResponse(
         years=_period_buckets(db, library["id"], 4),
         months=_period_buckets(db, library["id"], 7),
-        days=_buckets(db, library["id"], 10),
+        days=_period_buckets(db, library["id"], 10, per_bucket=1),
     )
 
 

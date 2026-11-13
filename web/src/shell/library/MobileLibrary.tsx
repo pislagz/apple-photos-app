@@ -80,7 +80,7 @@ export default function MobileLibrary({
     setDaysAnchor(null);
     setPendingScrollKey(null);
     const element = scrollRef.current;
-    if (element) element.scrollTop = target === "years" || target === "months" ? element.scrollHeight : 0;
+    if (element) element.scrollTop = target !== "all" ? element.scrollHeight : 0;
   }, []);
   const lastResetSignal = useRef(resetSignal);
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function MobileLibrary({
   // Set right before drilling Years -> Months, so Months can land on the
   // tapped year's first card.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
-  const isTileView = view === "years" || view === "months";
+  const isTileView = view === "years" || view === "months" || view === "days";
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
@@ -137,10 +137,17 @@ export default function MobileLibrary({
         setView("months");
         return;
       }
-      setDaysAnchor(`${bucketKey}-31`);
-      // The cards were scrolled to the bottom; Days starts at its top.
+      if (view === "months") {
+        // Month -> Days lands on that month's first day card (#301).
+        setPendingScrollKey(bucketKey);
+        setView("days");
+        return;
+      }
+      // Day -> All Photos at that day: the feed starts at the day's last
+      // photo, newest-first (#126, `to` is a string compare on the local day).
+      setDaysAnchor(bucketKey);
       if (scrollRef.current) scrollRef.current.scrollTop = 0;
-      setView("days");
+      setView("all");
     },
     [view],
   );
@@ -180,8 +187,8 @@ export default function MobileLibrary({
   // #307: Years/Months are cards built straight from `/summary`, not rows
   // over the cursor-paged `items`; Days and All Photos use the virtualized rows.
   const periodCards = useMemo(() => {
-    if (view !== "years" && view !== "months") return [];
-    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.months, view) : [];
+    if (!isTileView) return [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view) : [];
   }, [view, summary]);
   const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns)), [isTileView, view, items, columns]);
   const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
@@ -301,10 +308,10 @@ export default function MobileLibrary({
           <PeriodCardGrid
             key={view}
             libraryId={libraryId}
-            view={view as "years" | "months"}
+            view={view}
             cards={periodCards}
             scrollRef={scrollRef}
-            landOnKey={view === "months" ? pendingScrollKey : null}
+            landOnKey={view !== "years" ? pendingScrollKey : null}
             onLanded={() => setPendingScrollKey(null)}
             onOpen={openTile}
           />
