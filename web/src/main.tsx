@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import AdminApp from "./admin/AdminApp";
 import ControlsGallery from "./admin/ui/ControlsGallery";
 import AppShell from "./shell/AppShell";
+import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler";
 import "./shell/tokens.css";
 import "./shell/shell.css";
 
@@ -25,6 +26,9 @@ const isAdmin = window.location.pathname.startsWith("/admin");
 createRoot(root).render(
   <StrictMode>{showGallery ? <ControlsGallery /> : isAdmin ? <AdminApp /> : <AppShell />}</StrictMode>,
 );
+
+// #215: no new thumbnail loads while the grid is flying past.
+watchScrollSpeed(thumbScheduler);
 
 // Same-origin app requests only -- see `public/sw.js`. Skipped under test,
 // since jsdom has no `navigator.serviceWorker`.
