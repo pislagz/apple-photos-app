@@ -24,7 +24,7 @@ for (const scheme of ["light", "dark"] as const) {
     test("empty, typing, token, results", async ({ page }, info) => {
       const problems: string[] = [];
       page.on("pageerror", (e) => problems.push(e.message));
-      const mobile = info.project.name === "iphone";
+      const mobile = info.project.name !== "desktop"; // iphone and small both render the phone layout
       const shot = (name: string) =>
         page.screenshot({ path: `e2e/screenshots/225-${info.project.name}-${scheme}-${name}.png` });
       await signIn(page);
