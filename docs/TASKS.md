@@ -589,3 +589,12 @@ Then, in this order:
 Decisions 3 (D59): `viewer/focusScope.ts` — while the Viewer, the iPhone Info sheet or the HEIC modal is open, everything outside it is `inert`, focus moves in, and on close it returns to the originating thumbnail (grid cells and phone thumbnails carry `data-asset-id` and `tabIndex=-1`) or the Info button. Tests: `focusScope.test.tsx`, `MobileLibrary.test.tsx`.
 
 Decisions 5, fix run 2: (a) the map source is derived from the consent, never stored: with consent OSM tiles (a configured PMTiles file is only the fallback, `MapConfig.pmtiles_url` plus a one-time switch in `createMap` on the first failed OSM tile); without consent the PMTiles file if readable, else off; the CSP names the OSM host only with consent. The stored `map_tiles_mode` key is gone (no installs exist, so no migration). (b) The admin notice has "Allow" and "Not now" (`PUT /api/admin/place-names/consent`, audited `osm_consent_agreed` / `osm_consent_not_now` / `osm_consent_withdrawn`); "Allow" starts the GeoNames download automatically with progress and Retry; saving Settings no longer answers the notice (the consent row is written only when the checkbox changes).
+
+### #313 admin API additions (server)
+
+- `GET /api/admin/sessions` rows carry `is_current`; `GET /api/admin/users` and the access matrix carry `locked` (login lockout active).
+- `LibraryStatusResponse` adds `disk_size_bytes` (+ `disk_size_estimated`: capped, cached stat-only walk, 200k entries / 1 s, cached 10 min) and `thumb_cache_bytes` (same walk over the library's cache dir, cached 30 s). New batch `GET /api/admin/libraries/status`.
+- `DELETE /api/admin/invites/{id}` cancels an unused invite (audit `cancel_invite`; used invite 409).
+- `PATCH /api/admin/settings`: partial body, same bounds as PUT, unknown fields 422.
+- Audit log (JSON and CSV) accepts `username` and `library_name` filters.
+- An admin can't demote, disable, or sign out (revoke the current session of) their own account: 400 with a plain message.

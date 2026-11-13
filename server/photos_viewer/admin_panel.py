@@ -15,7 +15,7 @@ import sqlite3
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import (
     app_db,
@@ -54,10 +54,19 @@ class UserResponse(BaseModel):
     role: Literal["admin", "user"]
     disabled: bool
     created_at: str
+    # True while the login lockout (too many wrong passwords) is active.
+    locked: bool = False
 
 
-def _to_user_response(row: sqlite3.Row) -> UserResponse:
+def _to_user_response(
+    row: sqlite3.Row, db: sqlite3.Connection | None = None
+) -> UserResponse:
     return UserResponse(
+        locked=(
+            session_auth.is_locked_out(db, row["username"], user_exists=True)
+            if db is not None
+            else False
+        ),
         id=row["id"],
         username=row["username"],
         role=row["role"],
@@ -130,7 +139,7 @@ def create_user(
         actor=admin["username"],
         detail=f"role={payload.role}",
     )
-    return _to_user_response(_get_user_by_username_or_404(db, payload.username))
+    return _to_user_response(_get_user_by_username_or_404(db, payload.username), db)
 
 
 @router.get("/api/admin/users", response_model=list[UserResponse])
@@ -139,7 +148,7 @@ def list_users(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> list[UserResponse]:
     rows = db.execute("SELECT * FROM users ORDER BY username").fetchall()
-    return [_to_user_response(row) for row in rows]
+    return [_to_user_response(row, db) for row in rows]
 
 
 @router.patch(
@@ -161,6 +170,18 @@ def update_user(
         raise HTTPException(
             status_code=400, detail="this would leave no enabled admin account"
         )
+
+    if target["id"] == admin["user_id"]:
+        if payload.role == "user":
+            raise HTTPException(
+                status_code=400,
+                detail="You can't remove your own admin access. Ask another admin to do it.",
+            )
+        if payload.disabled:
+            raise HTTPException(
+                status_code=400,
+                detail="You can't disable your own account. Ask another admin to do it.",
+            )
 
     changed_fields: list[str] = []
     if payload.role is not None:
@@ -198,7 +219,7 @@ def update_user(
             actor=admin["username"],
             detail=f"changed={','.join(changed_fields)}",
         )
-    return _to_user_response(_get_user_by_username_or_404(db, normalized))
+    return _to_user_response(_get_user_by_username_or_404(db, normalized), db)
 
 
 @router.delete(
@@ -328,6 +349,33 @@ def list_invites(
     ]
 
 
+@router.delete(
+    "/api/admin/invites/{invite_id}",
+    status_code=204,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def cancel_invite(
+    invite_id: str,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> None:
+    """Cancel an invite nobody has used yet. A used invite is history (the
+    account exists), so it stays and answers 409."""
+    row = db.execute("SELECT * FROM invites WHERE id = ?", (invite_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if row["used_at"] is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="this invite was already used and can't be cancelled",
+        )
+    db.execute("DELETE FROM invites WHERE id = ?", (invite_id,))
+    db.commit()
+    app_db.write_audit_log(
+        db, "cancel_invite", actor=admin["username"], detail=f"role={row['role']}"
+    )
+
+
 @router.get(
     "/api/invites/{code}",
     response_model=InviteInfoResponse,
@@ -433,7 +481,7 @@ def read_access_matrix(
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AccessMatrixResponse:
     users = [
-        _to_user_response(row)
+        _to_user_response(row, db)
         for row in db.execute("SELECT * FROM users ORDER BY username").fetchall()
     ]
     libraries = [
@@ -517,6 +565,8 @@ class SessionResponse(BaseModel):
     last_seen_at: str
     expires_at: str
     remember_me: bool
+    # The session making this request, so the UI can label "This device".
+    is_current: bool = False
 
 
 @router.get("/api/admin/sessions", response_model=list[SessionResponse])
@@ -538,6 +588,7 @@ def list_sessions(
             last_seen_at=row["last_seen_at"],
             expires_at=row["expires_at"],
             remember_me=bool(row["remember_me"]),
+            is_current=row["id"] == admin["id"],
         )
         for row in rows
     ]
@@ -558,6 +609,11 @@ def revoke_session(
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
+    if session_id == admin["public_id"]:
+        raise HTTPException(
+            status_code=400,
+            detail="You can't sign out the device you're using here. Use Sign out instead.",
+        )
     session_auth.revoke_session_by_public_id(db, session_id)
     app_db.write_audit_log(
         db, "revoke_session", user_id=row["user_id"], actor=admin["username"]
@@ -610,9 +666,17 @@ def _audit_log_filters(
     library_id: int | None,
     date_from: str | None,
     date_to: str | None,
+    username: str | None = None,
+    library_name: str | None = None,
 ) -> tuple[str, list[object]]:
     clauses = []
     params: list[object] = []
+    if username:
+        clauses.append("users.username = ?")
+        params.append(session_auth._normalize_username(username))
+    if library_name:
+        clauses.append("libraries.display_name = ?")
+        params.append(library_name)
     if user_id is not None:
         clauses.append("audit_log.user_id = ?")
         params.append(user_id)
@@ -658,12 +722,16 @@ def read_audit_log(
     library_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    username: str | None = None,
+    library_name: str | None = None,
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AuditLogResponse:
-    where, params = _audit_log_filters(user_id, library_id, date_from, date_to)
+    where, params = _audit_log_filters(
+        user_id, library_id, date_from, date_to, username, library_name
+    )
     rows = db.execute(
         f"{_AUDIT_LOG_SELECT}{where} ORDER BY audit_log.occurred_at DESC, audit_log.id DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
@@ -677,10 +745,14 @@ def read_audit_log_csv(
     library_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    username: str | None = None,
+    library_name: str | None = None,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> Response:
-    where, params = _audit_log_filters(user_id, library_id, date_from, date_to)
+    where, params = _audit_log_filters(
+        user_id, library_id, date_from, date_to, username, library_name
+    )
     rows = db.execute(
         f"{_AUDIT_LOG_SELECT}{where} ORDER BY audit_log.occurred_at DESC, audit_log.id DESC LIMIT ?",
         (*params, _AUDIT_LOG_CSV_MAX_ROWS + 1),
@@ -801,6 +873,40 @@ class SettingsUpdateRequest(BaseModel):
     show_library_updated_note: bool = True
 
 
+class SettingsPatchRequest(BaseModel):
+    """Partial update: only the fields sent change. Same bounds as the PUT
+    body; an unknown field is a 422, and null is allowed only where the
+    stored value can be empty (the PMTiles path)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_lifetime_desktop_seconds: int | None = Field(default=None, ge=60)
+    session_lifetime_pwa_seconds: int | None = Field(default=None, ge=60)
+    session_lifetime_remember_me_seconds: int | None = Field(default=None, ge=60)
+    thumb_size_grid: int | None = Field(default=None, ge=32, le=4096)
+    thumb_size_grid2x: int | None = Field(default=None, ge=32, le=4096)
+    thumb_size_preview: int | None = Field(default=None, ge=32, le=8192)
+    thumb_quality: int | None = Field(default=None, ge=1, le=100)
+    media_cache_size_limit_bytes: int | None = Field(default=None, ge=0)
+    zip_size_limit_bytes: int | None = Field(default=None, ge=1)
+    osm_consent: bool | None = None
+    map_tiles_pmtiles_path: str | None = None
+    library_check_interval_minutes: int | None = Field(
+        default=None, ge=0, le=library_watch.MAX_MINUTES
+    )
+    library_stable_minutes: int | None = Field(
+        default=None, ge=0, le=library_watch.MAX_MINUTES
+    )
+    show_library_updated_note: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_null_except_path(self) -> SettingsPatchRequest:
+        for name in self.model_fields_set:
+            if name != "map_tiles_pmtiles_path" and getattr(self, name) is None:
+                raise ValueError(f"{name} can't be null")
+        return self
+
+
 def _read_settings(db: sqlite3.Connection) -> SettingsResponse:
     values: dict[str, int | str | None] = {
         "map_tiles_mode": app_db.effective_map_mode(db)
@@ -852,6 +958,41 @@ def write_settings(
     app_db.write_audit_log(db, "set_settings", actor=admin["username"])
     if payload.osm_consent != was_agreed:
         _record_consent(db, admin, payload.osm_consent, "Map & place names (Settings)")
+    return _read_settings(db)
+
+
+@router.patch(
+    "/api/admin/settings",
+    response_model=SettingsResponse,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def patch_settings(
+    payload: SettingsPatchRequest,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> SettingsResponse:
+    """Save only the fields in the body, so each Settings control can save
+    the moment it changes."""
+    sent = {name: getattr(payload, name) for name in payload.model_fields_set}
+    if not sent:
+        return _read_settings(db)
+    was_agreed = app_db.osm_consent(db)
+    consent = sent.pop("osm_consent", None)
+    for key, value in sent.items():
+        if key == "map_tiles_pmtiles_path":
+            value = (value or "").strip() or None
+        if isinstance(value, bool):
+            value = int(value)
+        app_db.set_setting(db, key, "" if value is None else str(value))
+    changed = sorted(sent) + (["osm_consent"] if consent is not None else [])
+    app_db.write_audit_log(
+        db,
+        "set_settings",
+        actor=admin["username"],
+        detail=f"changed={','.join(changed)}",
+    )
+    if consent is not None and consent != was_agreed:
+        _record_consent(db, admin, consent, "Map & place names (Settings)")
     return _read_settings(db)
 
 
