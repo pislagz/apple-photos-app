@@ -105,3 +105,16 @@ test("hovering a card scales its image without moving the layout", async ({ page
   const after = await card.boundingBox();
   expect(after).toEqual(before);
 });
+
+test("Months cards are as wide as Years cards on desktop at 1440x900", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop card size");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signIn(page);
+  await openZoom(page, "Years");
+  const years = await columnsOf(page);
+  await openZoom(page, "Months");
+  const months = await columnsOf(page);
+  // Few Years cards do not fill a row, so compare card width (auto-fill keeps
+  // the track width), not the per-row count.
+  expect(Math.abs(months.widest - years.widest)).toBeLessThan(1);
+});
