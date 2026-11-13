@@ -282,6 +282,27 @@ export default function MobileLibrary({
     overscan: 6,
   });
 
+  // The virtualizer caches row sizes per index and `estimateSize` is not part
+  // of its memo key, so a resize left the old heights (black gaps between
+  // rows) until a reload. Drop the cache when the width or columns change and
+  // keep the row at the top of the viewport (and the fraction scrolled into
+  // it) anchored. Runs before measure(), so the cache is still the old one.
+  const lastLayout = useRef({ cellSize, tileHeight, columns });
+  useLayoutEffect(() => {
+    const prev = lastLayout.current;
+    if (prev.cellSize === cellSize && prev.tileHeight === tileHeight && prev.columns === columns) return;
+    lastLayout.current = { cellSize, tileHeight, columns };
+    const element = scrollRef.current;
+    const top = element?.scrollTop ?? 0;
+    const old = rowVirtualizer.measurementsCache.find((m) => m.start + m.size > top);
+    const fraction = old && old.size > 0 ? (top - old.start) / old.size : 0;
+    rowVirtualizer.measure();
+    // A column change is re-anchored by the pinch effect below.
+    if (!old || !element || prev.columns !== columns) return;
+    const next = rowVirtualizer.measurementsCache[old.index];
+    if (next) rowVirtualizer.scrollToOffset(next.start + fraction * next.size);
+  }, [rowVirtualizer, cellSize, tileHeight, columns]);
+
   const virtualRows = rowVirtualizer.getVirtualItems();
   // `virtualRows[0]` is the first row in the *overscanned* range, which
   // sits above the viewport while scrolling -- the pinned header needs the
