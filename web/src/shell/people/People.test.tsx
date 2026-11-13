@@ -95,7 +95,8 @@ describe("desktop People & Pets", () => {
     // An unnamed face group comes after the named people, with a muted
     // generated label instead of a name.
     const buttons = screen.getAllByRole("button", { name: /Ann|Ben|Person A/ });
-    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Person A"]);
+    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Add NamePerson A"]);
+    expect(screen.getByText("Add Name")).toHaveAttribute("aria-hidden", "true");
     expect(buttons[2].querySelector(".people-grid__name--unnamed")).not.toBeNull();
     expect(buttons[0].querySelector(".people-grid__name--unnamed")).toBeNull();
 
@@ -130,7 +131,7 @@ describe("desktop People & Pets", () => {
     renderDesktop();
     fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
     const names = (await screen.findAllByRole("button", { name: /Person/ })).map(
-      (b) => b.querySelector(".people-grid__name")?.textContent,
+      (b) => b.querySelector(".sr-only")?.textContent,
     );
     expect(names).toEqual(["Person A", "Person B"]);
     fireEvent.click(screen.getByRole("button", { name: /Person B/ }));

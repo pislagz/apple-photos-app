@@ -13,6 +13,25 @@ async function signIn(page: Page) {
   await expect(page.getByLabel("Username")).toHaveCount(0);
 }
 
+// An opened album must show real photos: tiles present, thumbnails decoded
+// (not just the toolbar). Caught a "blank" screenshot taken before thumbs loaded.
+async function expectPhotosShown(page: Page, imgSelector: string) {
+  const tiles = page.locator(imgSelector);
+  await expect(tiles.first()).toBeVisible();
+  expect(await tiles.count()).toBeGreaterThan(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (sel) =>
+          [...document.querySelectorAll<HTMLImageElement>(sel)].filter((i) => i.complete && i.naturalWidth > 0)
+            .length,
+        imgSelector,
+      ),
+    )
+    .toBeGreaterThan(1);
+  await expect(page.locator(`${imgSelector}[data-loaded="false"]`)).toHaveCount(0);
+}
+
 async function shot(page: Page, name: string, project: string, scheme: string) {
   mkdirSync("e2e/screenshots", { recursive: true });
   await page.screenshot({ path: `e2e/screenshots/223-${name}-${project}-${scheme}.png` });
@@ -48,8 +67,10 @@ for (const scheme of ["light", "dark"] as const) {
         expect(cover.radius).toBe("8px");
         await shot(page, "albums", project, scheme);
 
+        // "Busy Days" is the demo's big album (the first tile).
         await grid.locator(".album-tile").first().click();
         await expect(page.locator(".toolbar .toolbar-button", { hasText: "Albums" })).toBeVisible();
+        await expectPhotosShown(page, ".desktop-library__cell img");
         await page.waitForLoadState("networkidle");
         await shot(page, "album-open", project, scheme);
         await page.keyboard.press("Control+[");
@@ -82,6 +103,12 @@ for (const scheme of ["light", "dark"] as const) {
         await page.mouse.wheel(0, 700);
         await page.waitForTimeout(300);
         await shot(page, "albums-scrolled", project, scheme);
+
+        await page.goto("/albums");
+        await page.locator(".album-card", { hasText: "Busy Days" }).first().click();
+        await expectPhotosShown(page, "img[data-asset-id]");
+        await page.waitForLoadState("networkidle");
+        await shot(page, "album-open", project, scheme);
 
         await page.goto("/people");
         await expect(page.locator(".people-grid__item").first()).toBeVisible();

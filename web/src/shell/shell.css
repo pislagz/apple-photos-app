@@ -320,6 +320,7 @@ body {
 
 .mobile-library__cell-wrap {
   position: relative;
+  background: var(--color-placeholder);
 }
 
 .mobile-library__select-badge {
@@ -1170,6 +1171,8 @@ body {
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
+  /* Shown while the thumbnail fades in, so a slow thumb is a grey tile, not a hole. */
+  background: var(--color-placeholder);
   border-radius: var(--radius-xs);
   cursor: default;
 }
@@ -2265,7 +2268,7 @@ body {
 
 .people-grid__name--unnamed {
   font-weight: var(--font-weight-regular);
-  color: var(--color-label-secondary);
+  color: var(--accent);
 }
 
 .people-grid__count {

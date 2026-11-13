@@ -48,8 +48,9 @@ export function FaceCircle({ libraryId, cover }: { libraryId: number; cover: Fac
 
 // One face with its name and count, as a button. A heart sits inside the
 // circle's bottom-right (inset, so the round crop never cuts it off). Unnamed
-// groups keep their generated label ("Person A") in the secondary colour: this
-// app is read-only, so an "Add Name" prompt would promise something it can't do.
+// groups show Photos' "Add Name" placeholder text; it is only a label (the app
+// is read-only, so it can't add names). The generated label ("Person A") stays
+// as the accessible name and as the opened page's title.
 export function PersonButton({
   libraryId,
   person,
@@ -77,7 +78,14 @@ export function PersonButton({
         )}
       </span>
       <span className={person.name === null ? "people-grid__name people-grid__name--unnamed" : "people-grid__name"}>
-        {person.label}
+        {person.name === null ? (
+          <>
+            <span aria-hidden="true">Add Name</span>
+            <span className="sr-only">{person.label}</span>
+          </>
+        ) : (
+          person.label
+        )}
       </span>
       <span className="people-grid__count">{person.count.toLocaleString()}</span>
     </button>

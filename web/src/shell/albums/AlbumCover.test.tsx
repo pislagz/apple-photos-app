@@ -30,11 +30,17 @@ describe("coverIds", () => {
 
 describe("AlbumCover", () => {
   it("renders a 2x2 mosaic, one image, or an icon tile", () => {
-    const folder = node("F", null, [node("a", "1"), node("b", "2")], "folder");
+    const folder = node("F", null, ["1", "2", "3", "4"].map((c) => node(`a${c}`, c)), "folder");
     const { container, rerender } = render(<AlbumCover libraryId={1} node={folder} />);
     expect(container.querySelector(".album-cover--mosaic")).not.toBeNull();
-    expect(container.querySelectorAll(".album-cover__img")).toHaveLength(2);
-    expect(container.querySelectorAll(".album-cover__blank")).toHaveLength(2);
+    expect(container.querySelectorAll(".album-cover__img")).toHaveLength(4);
+    expect(container.querySelectorAll(".album-cover__blank")).toHaveLength(0);
+    // Fewer than four covers: one photo, never grey squares.
+    const small = node("S", null, [node("a", "1"), node("b", "2")], "folder");
+    rerender(<AlbumCover libraryId={1} node={small} />);
+    expect(container.querySelector(".album-cover--mosaic")).toBeNull();
+    expect(container.querySelectorAll(".album-cover__img")).toHaveLength(1);
+    expect(container.querySelectorAll(".album-cover__blank")).toHaveLength(0);
     rerender(<AlbumCover libraryId={1} node={node("A", "x")} />);
     expect(container.querySelector("img")?.getAttribute("src")).toBe("/api/libraries/1/thumb/x?size=grid2x");
     rerender(<AlbumCover libraryId={1} node={node("E", null)} />);

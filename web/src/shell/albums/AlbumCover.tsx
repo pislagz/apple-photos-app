@@ -17,8 +17,9 @@ export function coverIds(node: AlbumNode, limit = 4): string[] {
   return found;
 }
 
-// A square cover: one photo, a 2x2 mosaic (2 px gaps) when only several are
-// known, or a plain tile with an icon when the album has nothing to show.
+// A square cover: one photo, a 2x2 mosaic (2 px gaps) once four are known (fewer
+// would leave grey squares, so the first photo stands alone), or a plain tile
+// with an icon when the album has nothing to show.
 export default function AlbumCover({
   libraryId,
   node,
@@ -37,7 +38,7 @@ export default function AlbumCover({
       </span>
     );
   }
-  if (ids.length === 1) {
+  if (ids.length < 4) {
     return (
       <span className="album-cover">
         <img className="album-cover__img" src={src(ids[0])} alt="" loading="lazy" />
