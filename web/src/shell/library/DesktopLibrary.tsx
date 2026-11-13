@@ -380,10 +380,6 @@ export default function DesktopLibrary({
         loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
         return;
       }
-      if (event.key === "Escape") {
-        setSelected(new Set());
-        return;
-      }
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
         setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1));
@@ -587,6 +583,30 @@ export default function DesktopLibrary({
     };
   }, [filterMenuOpen]);
 
+  // Esc clears the selection only when nothing layered on top (Viewer, modal,
+  // menus) is open -- those own the first Esc.
+  const hasSelection = selected.size > 0;
+  const overlayOpen = viewerIndex !== null || contextMenu !== null || filterMenuOpen || zip.heicFallback !== null;
+  useEffect(() => {
+    if (!hasSelection || overlayOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelected(new Set());
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hasSelection, overlayOpen]);
+
+  const handleGridClick = useCallback((event: React.MouseEvent) => {
+    if (suppressClickRef.current || event.shiftKey || event.metaKey || event.ctrlKey) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-asset-id], button, a")) return;
+    const grid = scrollRef.current;
+    // A press on the scrollbar is not a click on empty space.
+    if (grid && event.clientX >= grid.getBoundingClientRect().left + grid.clientWidth) return;
+    setSelected(new Set());
+    anchorIdRef.current = null;
+  }, []);
+
   function chooseFilter(next: AssetFilter) {
     setFilterMenuOpen(false);
     if (next === filter) return;
@@ -696,6 +716,17 @@ export default function DesktopLibrary({
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}
         </span>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => setSelected(new Set())}
+            title="Deselect"
+            aria-label="Deselect all"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        )}
       </div>
       <div className="desktop-library__body">
       <div
@@ -705,6 +736,7 @@ export default function DesktopLibrary({
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
         onMouseDown={handleGridMouseDown}
+        onClick={handleGridClick}
       >
         {/* #157: Days labels each card with its own day (feature caption);
             the loaded-library range would sit on top of the first card. */}

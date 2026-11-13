@@ -469,6 +469,20 @@ describe("MobileLibrary", () => {
     expect(share.mock.calls[0][0].files).toHaveLength(2);
   });
 
+  it("has no × deselect button next to the count on mobile; Cancel exits Select mode", async () => {
+    mockLibraryFetch([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    fireEvent.click(images[0]);
+    expect(screen.getByText("1 Selected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByTestId("select-bar")).toBeNull();
+  });
+
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockAssets(items);
