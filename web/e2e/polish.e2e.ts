@@ -197,3 +197,37 @@ test("desktop: Share is hidden when navigator.share is unavailable", async ({ pa
   await openAllPhotos(page);
   await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
 });
+
+// #255: one cursor across a whole menu row -- padding, label and the gap to
+// the next item -- so it never flickers between the hand and the arrow.
+test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "hover cursors are a desktop concern");
+  await signIn(page);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const popover = page.locator(".account-menu__popover");
+  await expect(popover).toBeVisible();
+  // Points inside the control must all be the arrow. A rounded corner's point
+  // can land on the bar behind it (`auto`, also drawn as the arrow); those
+  // only must never be the hand.
+  const cursorsAcross = async (selector: string) =>
+    page.locator(selector).evaluateAll((elements) => {
+      const seen = new Set<string>();
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect();
+        for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) {
+          for (const fy of [0.1, 0.5, 0.9]) {
+            const hit = document.elementFromPoint(rect.left + rect.width * fx, rect.top + rect.height * fy);
+            if (!hit) continue;
+            const cursor = getComputedStyle(hit).cursor;
+            if (element.contains(hit)) seen.add(cursor);
+            else if (cursor === "pointer") seen.add(`pointer outside ${element.className}`);
+          }
+        }
+      }
+      return [...seen];
+    });
+  expect(await cursorsAcross(".account-menu__popover :is(a, button)")).toEqual(["default"]);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(popover).toHaveCount(0);
+  expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
+});
