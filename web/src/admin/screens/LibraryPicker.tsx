@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import InfoButton from "../../help/InfoButton";
 import {
-  ApiError,
   addLibraryFolder,
   candidateSize,
   listLibraryCandidates,
@@ -8,60 +8,74 @@ import {
   type LibraryCandidate,
   type LibraryCandidates,
 } from "../api";
+import { describeError } from "../sharing";
+import { Footer, GroupedList, Row } from "../ui/GroupedList";
+import Sheet from "../ui/Sheet";
+import { formatBytes } from "../ui/format";
 
-function describeError(err: unknown): string {
-  return err instanceof ApiError ? err.message : "something went wrong";
+export interface PickedFile {
+  path: string;
+  name: string;
 }
 
-export function formatSize(bytes: number): string {
-  if (bytes < 1000) return `${bytes} bytes`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = -1;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit += 1;
-  }
-  return `${value >= 100 ? Math.round(value) : Math.round(value * 10) / 10} ${units[unit]}`;
+/** Shown when no folder is connected yet. Also used by the empty Libraries screen. */
+export function ConnectHelp() {
+  return (
+    <details className="admin-advanced admin-help-details">
+      <summary>How do I connect a folder?</summary>
+      <p>
+        The folder with your Photos libraries has to be connected to the computer that runs this app first. With Docker, add the
+        folder in <code>docker-compose.yml</code> under <code>volumes</code>, for example <code>/path/to/photos:/libraries:ro</code>,
+        then restart. On a Mac, just type the folder's location below, for example <code>/Volumes/Photos</code>.
+      </p>
+    </details>
+  );
 }
 
 function rowStatus(candidate: LibraryCandidate, size: number | undefined): string {
   const parts: string[] = [];
   if (candidate.status === "ready") {
     parts.push("Ready");
-    if (candidate.asset_count !== null) parts.push(`${candidate.asset_count} ${candidate.asset_count === 1 ? "photo" : "photos"}`);
+    if (candidate.asset_count !== null) parts.push(`${candidate.asset_count.toLocaleString()} ${candidate.asset_count === 1 ? "photo" : "photos"}`);
   } else if (candidate.status === "cannot_open") {
     parts.push("Can't be opened");
   } else {
     parts.push("Not added yet");
   }
-  parts.push(size === undefined ? "Measuring size…" : formatSize(size));
+  parts.push(size === undefined ? "Measuring size…" : formatBytes(size));
   return parts.join(" · ");
 }
 
-// Folders that hold libraries, and every library package found in them.
-// `onPick` adds the chosen package; `refreshKey` reloads after a change.
+// Folders that hold libraries, and every library package found in them. The same list
+// serves Add (`buttonLabel` "Add") and Replace ("Choose"). `suggestions` are pinned first.
+// `children` is the typed-path form, shown under Advanced.
 export default function LibraryPicker({
   onPick,
   refreshKey,
   onError,
+  buttonLabel = "Add",
+  suggestions = [],
+  children,
 }: {
-  onPick: (candidate: LibraryCandidate) => void;
+  onPick: (file: PickedFile) => void;
   refreshKey: number;
   onError: (message: string | null) => void;
+  buttonLabel?: string;
+  suggestions?: Array<PickedFile & { message?: string }>;
+  children?: ReactNode;
 }) {
   const [data, setData] = useState<LibraryCandidates | null>(null);
   const [sizes, setSizes] = useState<Record<string, number>>({});
   const [folderPath, setFolderPath] = useState("");
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
-  function load() {
+  useEffect(() => {
     listLibraryCandidates()
       .then(setData)
       .catch((err: unknown) => onError(describeError(err)));
-  }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey, reload]);
 
   // Sizes are measured one package at a time so the list itself appears at once.
   useEffect(() => {
@@ -91,76 +105,146 @@ export default function LibraryPicker({
     try {
       await addLibraryFolder(folderPath);
       setFolderPath("");
-      load();
+      setReload((n) => n + 1);
     } catch (err) {
       onError(describeError(err));
     }
   }
 
   async function handleRemoveFolder(path: string) {
-    if (!window.confirm(`Stop looking for libraries in ${path}? Libraries you already added stay, and no files are deleted.`)) return;
+    setRemoving(null);
     onError(null);
     try {
       await removeLibraryFolder(path);
-      load();
+      setReload((n) => n + 1);
     } catch (err) {
       onError(describeError(err));
     }
   }
 
   if (!data) return null;
+  const suggested = new Set(suggestions.map((s) => s.path));
+  const candidates = data.candidates.filter((c) => !suggested.has(c.path));
   return (
     <div className="library-picker">
-      <h2>Libraries found</h2>
-      {data.candidates.length === 0 ? (
-        <p>
-          {data.folders.length === 0
-            ? "No libraries found. Add a folder that contains your Photos libraries."
-            : "No libraries found in your folders. Check that the drive is connected, or add another folder."}
-        </p>
-      ) : (
-        <ul aria-label="Libraries found" className="library-picker-list">
-          {data.candidates.map((candidate) => (
-            <li key={candidate.path}>
-              <div>
-                <strong>{candidate.registered ? (candidate.library_name ?? candidate.name) : candidate.name}</strong>
-                <span>{rowStatus(candidate, sizes[candidate.path])}</span>
-              </div>
-              {candidate.registered ? (
-                <span>Already added</span>
-              ) : (
-                <button type="button" disabled={candidate.status === "cannot_open"} onClick={() => onPick(candidate)}>
-                  Add {candidate.name}
+      {suggestions.length > 0 && (
+        <GroupedList heading="Suggested" label="Suggested libraries">
+          {suggestions.map((s) => (
+            <Row
+              key={s.path}
+              label={s.name}
+              detail={s.message}
+              control={
+                <button type="button" className="admin-btn admin-btn--primary" aria-label={`${buttonLabel} ${s.name}`} onClick={() => onPick(s)}>
+                  {buttonLabel}
                 </button>
-              )}
-            </li>
+              }
+            />
           ))}
-        </ul>
+        </GroupedList>
       )}
 
-      <h2>Folders with libraries</h2>
-      {data.folders.length > 0 && (
-        <ul aria-label="Folders with libraries">
-          {data.folders.map((folder) => (
-            <li key={folder.path}>
-              <code>{folder.path}</code>
-              {!folder.reachable && <span> · Can't be read. Is the drive connected?</span>}{" "}
-              <button type="button" onClick={() => handleRemoveFolder(folder.path)}>
-                Remove folder {folder.path}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {candidates.length === 0 && suggestions.length === 0 ? (
+        <>
+          <p className="admin-hint">
+            {data.folders.length === 0
+              ? "No libraries found. Add a folder that contains your Photos libraries."
+              : "No libraries found in your folders. Check that the drive is connected, or add another folder."}
+          </p>
+          <ConnectHelp />
+        </>
+      ) : (
+        candidates.length > 0 && (
+          <GroupedList heading="Libraries found" label="Libraries found">
+            {candidates.map((candidate) => (
+              <Row
+                key={candidate.path}
+                label={candidate.registered ? (candidate.library_name ?? candidate.name) : candidate.name}
+                detail={rowStatus(candidate, sizes[candidate.path])}
+                control={
+                  candidate.registered ? (
+                    <span className="admin-row__value">Already added</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="admin-btn"
+                      aria-label={`${buttonLabel} ${candidate.name}`}
+                      disabled={candidate.status === "cannot_open"}
+                      onClick={() => onPick(candidate)}
+                    >
+                      {buttonLabel}
+                    </button>
+                  )
+                }
+              />
+            ))}
+          </GroupedList>
+        )
       )}
-      <form onSubmit={handleAddFolder}>
-        <label>
-          Add a folder that contains your libraries
-          <input value={folderPath} onChange={(event) => setFolderPath(event.target.value)} placeholder="/Volumes/Photos" />
-        </label>
-        <button type="submit" disabled={folderPath.trim() === ""}>
-          Add folder
-        </button>
-      </form>
+
+      <GroupedList
+        heading="Folders with libraries"
+        label="Folders with libraries"
+        footer="Libraries are looked for inside these folders on the computer that runs this app. Removing a folder deletes no files."
+      >
+        {data.folders.map((folder) => (
+          <Row
+            key={folder.path}
+            label={folder.path}
+            detail={folder.reachable ? undefined : "Can't be read. Is the drive connected?"}
+            control={
+              <button
+                type="button"
+                className="admin-btn admin-btn--danger"
+                aria-label={`Remove folder ${folder.path}`}
+                onClick={() => setRemoving(folder.path)}
+              >
+                Remove
+              </button>
+            }
+          />
+        ))}
+        <form onSubmit={handleAddFolder} role="listitem" className="admin-row admin-row--form">
+          <span className="admin-row__text">
+            <span className="admin-row__label">
+              <label htmlFor="library-folder-path">Add a folder</label> <InfoButton helpKey="libFolders" name="folders with libraries" />
+            </span>
+          </span>
+          <span className="admin-row__control">
+            <input
+              id="library-folder-path"
+              className="admin-input"
+              value={folderPath}
+              onChange={(event) => setFolderPath(event.target.value)}
+              placeholder="/Volumes/Photos"
+            />
+            <button type="submit" className="admin-btn" disabled={folderPath.trim() === ""}>
+              Add Folder
+            </button>
+          </span>
+        </form>
+      </GroupedList>
+
+      {children !== undefined && (
+        <details className="admin-advanced">
+          <summary>Advanced</summary>
+          {children}
+        </details>
+      )}
+      <Footer>Libraries are read-only here. Nothing in a library is ever changed.</Footer>
+
+      {removing !== null && (
+        <Sheet
+          title="Stop looking in this folder?"
+          onClose={() => setRemoving(null)}
+          actions={[{ label: "Remove Folder", kind: "destructive", onClick: () => void handleRemoveFolder(removing) }]}
+        >
+          <p>
+            Libraries you already added stay. No files are deleted. You can add the folder again later.
+          </p>
+          <p className="admin-hint">{removing}</p>
+        </Sheet>
+      )}
     </div>
   );
 }

@@ -55,6 +55,27 @@ export const HELP = {
     "Looks at every library right now for changes instead of waiting for the next automatic check. Safe to press at any time; nothing is changed in your libraries.",
   allowlist:
     "Which people on your private Tailscale network (the \"tailnet\") may open this app, one name per line. Empty lets everyone on the network in. Saving a list that leaves you out is refused, so you cannot lock yourself out.",
+  // Libraries
+  libAdd:
+    "Shows the Photos libraries found in your folders. Pick one to add it to this app. The library files are only read, never changed.",
+  libFolders:
+    "A folder on the computer that runs this app, with your Photos libraries inside. Removing a folder here only stops looking in it; no files are deleted.",
+  libRename:
+    "Changes the name people see in the app. The library file keeps its name.",
+  libCheck:
+    "Reads the library again and updates this app's list of photos. Your library files are not changed. Use it right after you copy new photos in and don't want to wait for the automatic check; big libraries can take a few minutes.",
+  libReplace:
+    "Points this library at a different Photos library file, for example after you copied a newer version over. The name, who can see it and the settings stay the same. You see what changes before anything happens.",
+  libPrepare:
+    "Makes all the small preview pictures ahead of time, so browsing is fast the first time. It uses some disk space and processor time while it runs, and you can pause. Use it once after adding a big library, ideally when nobody is using the app.",
+  libPause:
+    "Stops preparing thumbnails and keeps what is done. Resume continues where it stopped. Use it if the server feels slow.",
+  libDeleteCache:
+    "Deletes the small preview pictures this app made. They are made again when needed. Your photos are not touched. Use it to free disk space, or if previews look wrong.",
+  libHistory:
+    "The last few times this library was read again, with what changed.",
+  libRemove:
+    "Takes this library out of the app. People will no longer see it. The photos and the library file stay exactly where they are. You can add it again later, but sharing choices have to be set again.",
 } as const;
 
 export type HelpKey = keyof typeof HELP;

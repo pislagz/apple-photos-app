@@ -6,16 +6,19 @@ export type RowSize = "compact" | "touch";
 export function GroupedList({
   heading,
   footer,
+  label,
   children,
 }: {
   heading?: string;
+  /** Names the list for screen readers when it has no heading. */
+  label?: string;
   footer?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="admin-group">
       {heading !== undefined && <h3 className="admin-group__heading">{heading}</h3>}
-      <div className="admin-group__rows" role="list">
+      <div className="admin-group__rows" role="list" aria-label={label}>
         {children}
       </div>
       {footer !== undefined && <Footer>{footer}</Footer>}

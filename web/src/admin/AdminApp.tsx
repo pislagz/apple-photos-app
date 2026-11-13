@@ -261,7 +261,12 @@ export default function AdminApp() {
             )}
           </p>
         )}
-        {screen === "libraries" && <LibrariesScreen />}
+        {screen === "libraries" && (
+          <LibrariesScreen
+            selected={route.id}
+            onSelect={(id) => navigate("libraries", id)}
+          />
+        )}
         {screen === "people" && (
           <PeopleScreen
             currentUsername={me.username}

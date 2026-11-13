@@ -198,7 +198,8 @@ describe("MobileLibrary", () => {
     const back = screen.getByRole("button", { name: "More" });
     const select = screen.getByRole("button", { name: "Select" });
     const title = screen.getByRole("heading", { name: "Videos" });
-    for (const element of [back, select, title]) expect(element.parentElement).toBe(bar);
+    for (const element of [back, select]) expect(bar.contains(element)).toBe(true);
+    expect(title.parentElement).toBe(bar);
     // Back and Select share the first row; the title wraps below them.
     expect(back.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(select.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

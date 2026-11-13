@@ -43,6 +43,9 @@ export default function Sheet({
   }, []);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // A sheet opened from inside this one is portalled elsewhere in the DOM but its
+    // events still bubble here through React; leave those to the inner sheet.
+    if (!dialogRef.current?.contains(event.target as Node)) return;
     if (event.key === "Escape") {
       event.stopPropagation();
       onClose();
