@@ -1,17 +1,16 @@
 // An on/off toggle that saves the moment it is flipped, like iPhone Settings.
+// Size comes from --admin-switch-w/h in admin.css, so every admin view matches.
 export default function Switch({
   checked,
   onChange,
   label,
   disabled = false,
-  variant = "ios",
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   /** Read out by screen readers; say what turns on, e.g. "Allow downloads". */
   label: string;
   disabled?: boolean;
-  variant?: "ios" | "mac";
 }) {
   return (
     <button
@@ -20,7 +19,7 @@ export default function Switch({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
-      className={`admin-switch admin-switch--${variant}`}
+      className="admin-switch"
       onClick={() => onChange(!checked)}
     >
       <span className="admin-switch__knob" aria-hidden="true" />

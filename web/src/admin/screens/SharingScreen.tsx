@@ -103,7 +103,6 @@ function Matrix({ matrix, access }: { matrix: AccessMatrixResponse; access: Acce
                   <td key={library.id}>
                     <span className="admin-matrix-cell">
                       <Switch
-                        variant="mac"
                         checked={on}
                         disabled={access.busyKey === key}
                         label={switchLabel(user, library)}
