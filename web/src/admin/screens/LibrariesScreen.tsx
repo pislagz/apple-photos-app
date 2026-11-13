@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import LibraryPicker from "./LibraryPicker";
 import PrewarmControls from "./PrewarmControls";
 import ReplaceDialog from "./ReplaceDialog";
 import {
@@ -6,6 +7,7 @@ import {
   addLibrary,
   libraryStatus,
   listLibraries,
+  type LibraryCandidate,
   type LibraryResponse,
   type LibraryStatusResponse,
   reindexLibrary,
@@ -19,13 +21,20 @@ export default function LibrariesScreen() {
   const [path, setPath] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
   const [replacing, setReplacing] = useState<{ library: LibraryResponse; path: string } | null>(null);
 
-  function refresh() {
+  function load() {
     listLibraries().then(setLibraries).catch((err: unknown) => setError(describeError(err)));
   }
 
-  useEffect(refresh, []);
+  // A change to the registered libraries also changes the picker's rows.
+  function refresh() {
+    setPickerKey((k) => k + 1);
+    load();
+  }
+
+  useEffect(load, []);
 
   async function handleAdd(event: React.FormEvent) {
     event.preventDefault();
@@ -34,6 +43,16 @@ export default function LibrariesScreen() {
       await addLibrary(path, displayName.trim() === "" ? undefined : displayName);
       setPath("");
       setDisplayName("");
+      refresh();
+    } catch (err) {
+      setError(describeError(err));
+    }
+  }
+
+  async function handlePick(candidate: LibraryCandidate) {
+    setError(null);
+    try {
+      await addLibrary(candidate.path);
       refresh();
     } catch (err) {
       setError(describeError(err));
@@ -98,17 +117,22 @@ export default function LibrariesScreen() {
         />
       )}
 
-      <form onSubmit={handleAdd}>
-        <label>
-          Path
-          <input value={path} onChange={(event) => setPath(event.target.value)} placeholder="/libraries/Family.photoslibrary" />
-        </label>
-        <label>
-          Display name (optional)
-          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-        </label>
-        <button type="submit">Add library</button>
-      </form>
+      <LibraryPicker onPick={handlePick} refreshKey={pickerKey} onError={setError} />
+
+      <details className="library-advanced">
+        <summary>Advanced</summary>
+        <form onSubmit={handleAdd}>
+          <label>
+            Path
+            <input value={path} onChange={(event) => setPath(event.target.value)} placeholder="/libraries/Family.photoslibrary" />
+          </label>
+          <label>
+            Display name (optional)
+            <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </label>
+          <button type="submit">Add library</button>
+        </form>
+      </details>
 
       <div className="admin-table-wrap">
         <table>

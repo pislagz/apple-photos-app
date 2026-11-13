@@ -495,6 +495,8 @@ def main() -> int:
         **os.environ,
         "PHOTOS_VIEWER_DATA_DIR": str(DATA_DIR),
         "OSXPHOTOS_NO_VERSION_CHECK": "1",
+        # The picker in Admin > Libraries lists this folder.
+        "PHOTOS_VIEWER_LIBRARIES_DIR": str(LIBRARY_DIR),
         # Dev only: the session cookie is Secure by default and a browser will
         # not send it back over plain http://127.0.0.1. Applies to this child only.
         "PHOTOS_VIEWER_COOKIE_SECURE": "false",

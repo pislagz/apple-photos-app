@@ -36,6 +36,7 @@ from . import (
     app_db,
     indexer,
     libraries,
+    library_folders,
     library_prewarm,
     library_watch,
     session_auth,
@@ -276,7 +277,9 @@ class LibraryStatusResponse(BaseModel):
     alternatives: list[ReplaceSuggestion] = []
 
 
-def _validate_library_path(path: pathlib.Path) -> None:
+def _validate_library_path(
+    path: pathlib.Path, db: sqlite3.Connection | None = None
+) -> None:
     """Raise a 400 with an admin-facing message for a bad path, a missing
     mount, an unsupported Photos version, or an unreadable library. Returns
     normally only when `path` is a readable, supported `.photoslibrary`."""
@@ -286,7 +289,10 @@ def _validate_library_path(path: pathlib.Path) -> None:
                 status_code=400,
                 detail=f"{path.parent} does not exist -- is the drive mounted?",
             )
-        raise HTTPException(status_code=400, detail=f"{path} does not exist")
+        detail = f"{path} does not exist"
+        if db is not None:
+            detail += ". " + library_folders.nearby_hint(db, path)
+        raise HTTPException(status_code=400, detail=detail)
     if path.suffix != ".photoslibrary":
         raise HTTPException(
             status_code=400, detail=f"{path} does not end in .photoslibrary"
@@ -615,7 +621,7 @@ def add_library(
     # Resolve first so `x/../Lib.photoslibrary` and symlinks can't register
     # the same package twice.
     path = pathlib.Path(payload.path).resolve()
-    _validate_library_path(path)
+    _validate_library_path(path, db)
     display_name = payload.display_name or _default_display_name(path)
     if path in _registered_paths(db):
         raise HTTPException(status_code=409, detail="this path is already registered")
@@ -863,7 +869,7 @@ def _preview_replace(
     """Reads the new package on `open_library_readonly`'s temp copy only.
     With `keep_open` the handle is returned (caller closes or hands it to the
     indexer) so a confirm does not copy a big package a second time."""
-    _validate_library_path(new_path)
+    _validate_library_path(new_path, db)
     if new_path in _registered_paths(db, exclude_id=row["id"]):
         raise HTTPException(
             status_code=409, detail="this path is already registered as another library"
