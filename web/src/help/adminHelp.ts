@@ -17,26 +17,20 @@ export const HELP = {
     "How long someone stays signed in when the app was added to the iPhone Home Screen. This is usually longer, because typing a password on a phone is a nuisance.",
   sessionRememberMe:
     "How long someone stays signed in when they tick \"Remember me\" at sign-in. Lower it if people share devices.",
-  thumbGrid:
-    "The size, in pixels, of the small pictures in the photo grid. Bigger pictures look sharper but use more disk space and load slower. Existing pictures are rebuilt only when the thumbnail cache is cleared.",
-  thumbGrid2x:
-    "The size, in pixels, of the grid pictures for sharp (high-resolution) screens such as iPhones and Retina Macs. Make it about twice the grid size.",
-  thumbPreview:
-    "The size, in pixels, of the larger picture shown while the full photo is still loading. Raise it if previews look blurry on big screens.",
-  thumbQuality:
-    "How much detail the small pictures keep, from 1 to 100. Higher looks better and takes more space; the default is a good balance.",
+  pictureQuality:
+    "How sharp the small pictures in the grid and the preview are. High looks sharper on big or very sharp screens but uses more disk space and loads a little slower. Standard suits most people. Pictures already made are rebuilt only after the picture cache is cleared.",
+  cacheSize:
+    "How much disk space the small pictures may use. When it is full, the oldest pictures are removed first and made again when someone looks at them. Bigger means fewer rebuilds.",
   zipLimit:
-    "The biggest download of many photos at once, counted in bytes (1 GB is about 1,073,741,824 bytes). It stops one request from filling the server's disk or network.",
+    "The biggest download of many photos at once. A bigger limit lets people take more in one go but uses more disk space and takes longer. It stops one request from filling the server's disk or network.",
   mapConsent:
-    "Turns on the map and on place names. People's browsers then load map pictures from OpenStreetMap, which tells that website roughly which area is being looked at; your photos are never sent. Leave it off to keep everything inside your home network.",
+    "Turns on the map and on place names. People's browsers then load map pictures from OpenStreetMap, which tells that website roughly which area is being looked at; your photos are never sent. Each person's browser fetches these from tile.openstreetmap.org while a map is open; this server never does. Until you agree, nothing is downloaded and place names are off; the map stays blank unless an offline map file is set under Advanced.",
   mapFile:
     "A map file stored on this server (a PMTiles file) that works with no internet. It is used when the map is not allowed above, or when the online map cannot load. Leave it empty if you do not have one.",
   placeNamesDownload:
     "Downloads a public list of cities (GeoNames) once, so photos can show a place name. This is the only time the server itself contacts the internet, and no photo data is sent. It needs the map and place names option above to be on and saved.",
-  checkManual:
-    "Stops the automatic look for changed libraries. Then libraries are only checked when you press Check now. Use it if the photo drive should stay quiet or sleep.",
   checkInterval:
-    "How often, in minutes, the server looks for photos added to or removed from each library. Shorter finds changes sooner but wakes the drive more often.",
+    "How often the app looks for photos added to or removed from your libraries. More often finds changes sooner but wakes the drive more often. Never means libraries are only checked when you press Check Now; use it if the photo drive should stay quiet or sleep.",
   stableMinutes:
     "After a change is spotted, the server waits until the library has stopped changing for this many minutes before reading it again. This avoids reading a library while Photos is still copying files into it.",
   updatedNote:

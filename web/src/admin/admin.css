@@ -799,3 +799,58 @@ button.admin-switch[aria-checked="true"] {
   gap: var(--space-8);
   padding: var(--space-12) var(--space-16);
 }
+
+/* Settings (#312) */
+.admin-settings .admin-row__control select.admin-input {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-row--stacked {
+  align-items: flex-start;
+}
+
+.admin-input--area {
+  width: 100%;
+  margin-top: var(--space-6);
+  resize: vertical;
+}
+
+.admin-input--wide {
+  min-width: 14em;
+}
+
+.admin-advanced > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--admin-row-h);
+  padding: 0 var(--space-16);
+  cursor: pointer;
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-label-secondary);
+}
+
+@media (max-width: 700px) {
+  .admin-input--wide {
+    min-width: 0;
+    width: 11em;
+  }
+}
+
+/* Settings rows: a label never collapses; the control drops below it instead (#312). */
+.admin-settings .admin-row {
+  flex-wrap: wrap;
+}
+
+.admin-settings .admin-row > :first-child {
+  flex: 1 1 7em;
+  min-width: 7em;
+}
+
+.admin-settings .admin-row__label {
+  overflow-wrap: break-word;
+}
