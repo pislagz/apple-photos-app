@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "../testHelpers";
+import { HELP, type HelpKey } from "../../help/adminHelp";
 import SettingsScreen from "./SettingsScreen";
 
 const SETTINGS = {
@@ -34,6 +35,46 @@ const PLACE_NAMES = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("SettingsScreen info buttons", () => {
+  it("every setting row has an (i) with its registered text", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    await screen.findByDisplayValue("3600");
+    const rows: [string, HelpKey][] = [
+      ["desktop session lifetime", "sessionDesktop"],
+      ["home screen app session lifetime", "sessionPwa"],
+      ["remember me session lifetime", "sessionRememberMe"],
+      ["keep me signed in on the sign-in screen", "keepSignedInMode"],
+      ["Thumbnail size, grid", "thumbGrid"],
+      ["Thumbnail size, grid 2x", "thumbGrid2x"],
+      ["Thumbnail size, preview", "thumbPreview"],
+      ["Thumbnail quality", "thumbQuality"],
+      ["zip size limit", "zipLimit"],
+      ["map and place names", "mapConsent"],
+      ["local map file", "mapFile"],
+      ["place-name data download", "placeNamesDownload"],
+      ["check interval", "checkInterval"],
+      ["wait time before re-indexing", "stableMinutes"],
+      ["library updated message", "updatedNote"],
+      ["Check now", "checkNow"],
+      ["tailnet allow-list", "allowlist"],
+    ];
+    // The interval row is replaced by a note while "Manual only" is on.
+    for (const [name, key] of rows) {
+      const button = screen.getByRole("button", { name: `About ${name}` });
+      const tip = document.getElementById(button.getAttribute("aria-describedby")!);
+      expect(tip?.textContent, name).toBe(HELP[key]);
+      expect(tip?.textContent?.trim()).not.toBe("");
+    }
+    expect(screen.getByRole("button", { name: "About manual checks only" })).toBeInTheDocument();
+  });
 });
 
 describe("SettingsScreen", () => {
