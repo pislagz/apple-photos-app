@@ -159,12 +159,12 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
 
     const scrollEl = screen.getByTestId("library-scroll");
-    // One grid row (cellSize 199.25px with the mocked 800px-wide container / 4
+    // One grid row (cellSize 265px with the mocked 800px-wide container / 3
     // columns) comfortably clears the first row (may-1, may-2, apr-0, apr-1).
-    scrollEl.scrollTop = 220;
+    scrollEl.scrollTop = 300;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("18 Apr 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("19 Apr 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {
@@ -252,27 +252,89 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"));
   });
 
-  it("changes the column count on a pinch gesture", async () => {
-    const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
-    mockAssets(items);
+  describe("pinch zoom levels (#213)", () => {
+    const pinchTo = (scrollEl: HTMLElement, endX: number) => {
+      const a = { clientX: 0, clientY: 0 };
+      fireEvent.touchStart(scrollEl, { touches: [a, { clientX: 100, clientY: 0 }] });
+      fireEvent.touchMove(scrollEl, { touches: [a, { clientX: endX, clientY: 0 }] });
+      fireEvent.touchEnd(scrollEl, { touches: [] });
+    };
+    const cellWidth = (container: HTMLElement) => (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
+    async function setup() {
+      const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+      mockAssets(items);
+      const view = render(<MobileLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+      await screen.findAllByRole("img");
+      return { ...view, scrollEl: screen.getByTestId("library-scroll") };
+    }
 
-    const { container } = render(<MobileLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
-    // Pinch-to-zoom only applies to the uniform grid, not Years/Months tiles.
-    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await screen.findAllByRole("img");
+    it("starts at 3 columns with a 2px gap", async () => {
+      const { container } = await setup();
+      expect(parseFloat(cellWidth(container))).toBeCloseTo(265.3333, 3); // (800 - 2 * 2) / 3
+    });
 
-    const scrollEl = screen.getByTestId("library-scroll");
-    const initialWidth = (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
-    expect(initialWidth).toBe("199.25px"); // (800px - 3 gaps of 1px) / 4 default columns
+    it("changes level only on release, using the issue thresholds", async () => {
+      const { container, scrollEl } = await setup();
+      const before = cellWidth(container);
+      const a = { clientX: 0, clientY: 0 };
+      fireEvent.touchStart(scrollEl, { touches: [a, { clientX: 100, clientY: 0 }] });
+      fireEvent.touchMove(scrollEl, { touches: [a, { clientX: 300, clientY: 0 }] });
+      // Scaled in place while the fingers are down; no re-layout yet.
+      expect(container.querySelector<HTMLElement>(".mobile-library__zoom-layer")!.style.transform).toBe("scale(3)");
+      expect(cellWidth(container)).toBe(before);
+      fireEvent.touchEnd(scrollEl, { touches: [] });
+      await waitFor(() => expect(cellWidth(container)).not.toBe(before));
+      expect(parseFloat(cellWidth(container))).toBe(800);
+      expect(container.querySelector<HTMLElement>(".mobile-library__zoom-layer")!.style.transform).toBe("");
+    });
 
-    // Pinch in (fingers moving together): zoom out to more, smaller columns.
-    fireEvent.touchStart(scrollEl, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 200, clientY: 0 }] });
-    fireEvent.touchMove(scrollEl, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] });
+    it("pinching in goes to 5 columns, then Months", async () => {
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 70); // scale 0.7: one level out
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBeCloseTo(158.4, 1));
+      pinchTo(scrollEl, 70);
+      await screen.findByTestId("period-grid");
+      expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    });
 
-    await waitFor(() => {
-      const width = (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
-      expect(width).not.toBe(initialWidth);
+    it("snaps back when the pinch is too small", async () => {
+      const { container, scrollEl } = await setup();
+      const before = cellWidth(container);
+      pinchTo(scrollEl, 105);
+      expect(cellWidth(container)).toBe(before);
+    });
+
+    it("ignores a tap right after a pinch, then opens the viewer again", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        const { container, scrollEl } = await setup();
+        pinchTo(scrollEl, 105); // too small to change level, still a pinch
+        fireEvent.click(container.querySelector(".mobile-library__cell") as HTMLElement);
+        expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+        vi.setSystemTime(Date.now() + 700);
+        fireEvent.click(container.querySelector(".mobile-library__cell") as HTMLElement);
+        await screen.findByTestId("mobile-viewer");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("zooms in without animation under prefers-reduced-motion", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), addEventListener: () => {}, removeEventListener: () => {}, media: query }));
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 300);
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBe(800));
+      expect(document.querySelector(".mobile-library__zoom-ghost")).toBeNull();
+      expect(container.querySelector(".is-fading-in")).toBeNull();
+    });
+
+    it("leaves a ghost copy that fades out when animations are on", async () => {
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 300);
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBe(800));
+      expect(container.querySelector(".mobile-library__zoom-ghost")).not.toBeNull();
     });
   });
 
@@ -897,15 +959,15 @@ describe("MobileLibrary person grid text (#193)", () => {
           top: Number(/translateY\(([\d.]+)px\)/.exec(r.style.transform)?.[1]),
           height: parseFloat(r.style.height),
         }));
-      // 800px wide, 4 columns -> 199.25px square rows (1px gap between cells), back to back.
-      expect(rowTops()[0].height).toBe(199.25);
+      // 800px wide, 3 columns -> square rows (2px gap between cells), back to back.
+      expect(rowTops()[0].height).toBeCloseTo(265.3333, 3);
 
       const narrow = () =>
         ({ width: 400, height: 600, top: 0, left: 0, right: 400, bottom: 600, x: 0, y: 0, toJSON() {} }) as DOMRect;
       Element.prototype.getBoundingClientRect = narrow;
       act(() => callbacks.forEach((cb) => cb([], {} as ResizeObserver)));
 
-      await waitFor(() => expect(rowTops()[0].height).toBe(99.25));
+      await waitFor(() => expect(rowTops()[0].height).toBeCloseTo(132, 3));
       const rows = rowTops();
       rows.slice(1).forEach((row, n) => expect(row.top).toBe(rows[n].top + rows[n].height));
     } finally {
@@ -915,7 +977,7 @@ describe("MobileLibrary person grid text (#193)", () => {
 });
 
 describe("MobileLibrary date title follows the zoom level (#209)", () => {
-  it("shows Library with a D Mon YYYY subtitle at 4 columns and no pill", async () => {
+  it("shows Library with a D Mon YYYY subtitle at 3 columns and no pill", async () => {
     mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
     const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
