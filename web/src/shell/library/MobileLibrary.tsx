@@ -287,11 +287,11 @@ export default function MobileLibrary({
   // rows) until a reload. Drop the cache when the width or columns change and
   // keep the row at the top of the viewport (and the fraction scrolled into
   // it) anchored. Runs before measure(), so the cache is still the old one.
-  const lastLayout = useRef({ cellSize, tileHeight, columns });
+  const lastLayout = useRef({ cellSize, columns });
   useLayoutEffect(() => {
     const prev = lastLayout.current;
-    if (prev.cellSize === cellSize && prev.tileHeight === tileHeight && prev.columns === columns) return;
-    lastLayout.current = { cellSize, tileHeight, columns };
+    if (prev.cellSize === cellSize && prev.columns === columns) return;
+    lastLayout.current = { cellSize, columns };
     const element = scrollRef.current;
     const top = element?.scrollTop ?? 0;
     const old = rowVirtualizer.measurementsCache.find((m) => m.start + m.size > top);
@@ -301,7 +301,7 @@ export default function MobileLibrary({
     if (!old || !element || prev.columns !== columns) return;
     const next = rowVirtualizer.measurementsCache[old.index];
     if (next) rowVirtualizer.scrollToOffset(next.start + fraction * next.size);
-  }, [rowVirtualizer, cellSize, tileHeight, columns]);
+  }, [rowVirtualizer, cellSize, columns]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   // `virtualRows[0]` is the first row in the *overscanned* range, which
