@@ -1882,7 +1882,7 @@ body {
   border-radius: 50%;
   background: transparent;
   color: var(--color-white);
-  cursor: pointer;
+  cursor: default;
 }
 
 .filter-menu__button[data-active="true"] {
