@@ -9,13 +9,13 @@ import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
-import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 import LibrarySwitcher from "./LibrarySwitcher";
 import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
+import WelcomeScreen from "./WelcomeScreen";
 
 const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
 function readSidebarCollapsed(): boolean {
@@ -401,6 +401,7 @@ export default function DesktopShell({
               <DesktopLibrary
                 key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
+                isAdmin={me.role === "admin"}
                 fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={
                   view === "days"
@@ -418,7 +419,7 @@ export default function DesktopShell({
               />
               </LibraryNoteFrame>
             ) : (
-              <LibraryPlaceholder />
+              <WelcomeScreen isAdmin={me.role === "admin"} />
             )}
           </main>
           </>

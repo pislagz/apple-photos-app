@@ -108,14 +108,14 @@ describe("MobileShell tab switching", () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
-    expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(await screen.findByRole("tab", { name: "Days" }));
+    expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    expect(await screen.findByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true");
   });
 });
 
@@ -396,5 +396,24 @@ describe("MobileShell More tab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Hidden/ }));
     expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+  });
+});
+
+describe("MobileShell with no library (#263)", () => {
+  it("shows the welcome and friendly empty tabs instead of developer text", async () => {
+    mockFetch(() => []);
+    render(
+      <MobileShell
+        me={{ ...ME_RESPONSE, role: "user", libraries: [] }}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Welcome to Photos" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Albums" }));
+    expect(await screen.findByText(/Photos appear once a library has been added/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/later phase/i);
   });
 });
