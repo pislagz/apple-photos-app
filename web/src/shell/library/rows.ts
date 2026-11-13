@@ -78,12 +78,32 @@ function formatShortMonth(key: string): string {
   });
 }
 
-export function buildPeriodCards(buckets: SummaryPeriodBucket[], view: "years" | "months"): PeriodCardData[] {
+// "May 12" for the current year, "May 12, 2022" otherwise (Apple Photos).
+function formatDayCardLabel(key: string, currentYear: number): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(year === currentYear ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  });
+}
+
+export function buildPeriodCards(
+  buckets: SummaryPeriodBucket[],
+  view: "years" | "months" | "days",
+  currentYear = new Date().getFullYear(),
+): PeriodCardData[] {
   return buckets.map((bucket) => ({
     key: bucket.key,
-    label: view === "months" ? formatShortMonth(bucket.key) : formatGroupLabel(bucket.key, view),
+    label:
+      view === "months"
+        ? formatShortMonth(bucket.key)
+        : view === "days"
+          ? formatDayCardLabel(bucket.key, currentYear)
+          : formatGroupLabel(bucket.key, view),
     count: bucket.count,
-    keyAssetIds: bucket.key_asset_ids,
+    keyAssetIds: bucket.key_asset_ids ?? [],
   }));
 }
 

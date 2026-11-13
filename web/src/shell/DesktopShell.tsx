@@ -127,7 +127,7 @@ export default function DesktopShell({
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
   // #152: one-shot start state for the Library opened from a Days double-click.
   // Cleared on the next sidebar choice; tied to a library so a switch drops it.
-  const [dayStart, setDayStart] = useState<{ libraryId: number; assetId: string } | null>(null);
+  const [dayStart, setDayStart] = useState<{ libraryId: number; dayKey: string } | null>(null);
   // P2.2: a person is an `album` whose id is `person:<uuid>`; Back returns to the grid.
   const showingPerson = view === "album" && album?.id.startsWith(PERSON_PREFIX);
   const showingPlace = view === "album" && album?.id.startsWith(PLACE_PREFIX);
@@ -410,14 +410,14 @@ export default function DesktopShell({
                 fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={
                   view === "days"
-                    ? (id) => {
-                        setDayStart({ libraryId: activeLibraryId, assetId: id });
+                    ? (dayKey) => {
+                        setDayStart({ libraryId: activeLibraryId, dayKey });
                         setView("library");
                       }
                     : undefined
                 }
                 initialView={dayStart?.libraryId === activeLibraryId ? "all" : undefined}
-                initialScrollAssetId={dayStart?.libraryId === activeLibraryId ? dayStart.assetId : undefined}
+                initialScrollDayKey={dayStart?.libraryId === activeLibraryId ? dayStart.dayKey : undefined}
                 libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}

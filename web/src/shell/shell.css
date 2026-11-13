@@ -433,7 +433,31 @@ body {
   }
 }
 
+.period-grid--days {
+  --period-card-min: 150px;
+}
+
+.period-grid__header {
+  grid-column: 1 / -1;
+  padding: var(--space-8) var(--space-4) var(--space-4);
+}
+
+.period-grid__title {
+  margin: 0;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.4px;
+  color: var(--color-label);
+}
+
+.period-grid__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-body-sm);
+  color: var(--color-label-secondary);
+}
+
 .period-card {
+  transition: transform var(--motion-duration) var(--motion-ease);
   position: relative;
   display: block;
   width: 100%;
@@ -469,6 +493,10 @@ body {
   .period-card:hover .period-card__image {
     transform: scale(1.04);
   }
+}
+
+.period-card:active {
+  transform: scale(0.98);
 }
 
 /* Top gradient so the label reads on bright and dark photos alike. */
@@ -510,7 +538,45 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Days (#301): the date sits bottom-left over a bottom gradient. */
+.period-card--days .period-card__scrim {
+  inset: auto 0 0 0;
+  height: 60%;
+  background: linear-gradient(to top, var(--scrim-medium) 0%, var(--scrim-clear) 100%);
+}
+
+.period-card--days .period-card__caption {
+  top: auto;
+  bottom: var(--space-12);
+  text-shadow: var(--text-shadow-label);
+}
+
+.period-card--days .period-card__label {
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.period-card__pill {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-8);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--scrim-badge);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--color-white);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 @media (max-width: 600px) {
+  .period-grid--days {
+    --period-card-min: 140px;
+  }
+
   .period-grid--months .period-card__label {
     font-size: var(--font-size-body-sm);
   }
@@ -521,6 +587,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .period-card,
   .period-card__image {
     transition: none;
   }

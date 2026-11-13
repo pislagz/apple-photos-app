@@ -49,7 +49,7 @@ function computeSummary(items: AssetListItem[]) {
   return {
     years: bucket(4).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
     months: bucket(7).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
-    days: bucket(10).map(([key, { count }]) => ({ key, count })),
+    days: bucket(10).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids.slice(0, 1) })),
   };
 }
 
@@ -140,7 +140,7 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__row-feature").length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card--days").length).toBeGreaterThan(0));
   });
 
   it("updates the pinned date header to the topmost visible day while scrolling All Photos", async () => {
@@ -209,15 +209,29 @@ describe("MobileLibrary", () => {
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  it("keeps the scrim behind Select on the Days view too (#176)", async () => {
-    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
-    render(<MobileLibrary libraryId={1} />);
+  it("Days is a card grid under a Days header with the item count, oldest first, opening at the newest (#301)", async () => {
+    mockAssets([
+      makeItem("a1", "2024-05-10T10:00:00"),
+      makeItem("a2", "2024-05-10T09:00:00"),
+      makeItem("a3", "2024-05-10T08:00:00"),
+      makeItem("a4", "2024-05-10T07:00:00"),
+      makeItem("b1", "2023-02-02T10:00:00"),
+    ]);
+    const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
-    const bar = await screen.findByTestId("top-bar");
-    expect(bar).toHaveAttribute("data-scrim", "true");
-    expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"); // full scrim over the hero photo
-    expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+    await waitFor(() => expect(container.querySelectorAll(".period-card--days")).toHaveLength(2));
+
+    const cards = Array.from(container.querySelectorAll(".period-card--days"));
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-02-02", "2024-05-10"]);
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("Days");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("5 Items");
+    // Count pill only on the day with more than 3 photos.
+    expect(cards[0].querySelector(".period-card__pill")).toBeNull();
+    expect(cards[1].querySelector(".period-card__pill")).toHaveTextContent("4");
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(1_000_000);
+    // One key-photo thumbnail per card, no per-asset requests.
+    expect(container.querySelectorAll(".period-card__image")).toHaveLength(2);
   });
 
   it("fades the title scrim in over the first 48 px of All Photos scroll (#261)", async () => {
@@ -394,12 +408,14 @@ describe("MobileLibrary", () => {
     expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01");
   });
 
-  it("tapping a Month tile anchors Days to that tile's month, without opening the Viewer", async () => {
+  it("tapping a Month card lands Days on that month's first day; a Day card opens All Photos at that day (#301)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
@@ -410,11 +426,13 @@ describe("MobileLibrary", () => {
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
-    // The anchor (`to=2022-01-31`) must exclude "recent" (2024-05-10) and
-    // land Days at the top of Jan 2022 -- its newest day
-    // (2022-01-20, "jan22-0"), not scrolled to a specific older day.
-    await waitFor(() => expect(screen.getByText("January 20, 2022")).toBeInTheDocument());
-    expect(getThumb("jan22-0")).toBeInTheDocument();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
+
+    // The anchor (`to=2022-01-20`) excludes "recent" and starts All Photos at that day.
+    fireEvent.click(screen.getByText("Jan 20, 2022"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
     expect(queryThumb("recent")).toBeNull();
   });
 
@@ -429,6 +447,7 @@ describe("MobileLibrary", () => {
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("Jan 2022"));
+    fireEvent.click(await screen.findByText("Jan 20, 2022"));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
     expect(queryThumb("recent")).toBeNull();
 
@@ -453,7 +472,8 @@ describe("MobileLibrary", () => {
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText("Jan 2022"));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
+    fireEvent.click(await screen.findByText("Jan 20, 2022"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(queryThumb("recent")).toBeNull());
 
     rerender(<MobileLibrary libraryId={1} resetSignal={1} />);
@@ -749,7 +769,7 @@ describe("MobileLibrary summary failure (#147)", () => {
 });
 
 describe("MobileLibrary assets failure (#147)", () => {
-  it.each(["Days", "All Photos"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
+  it.each(["All Photos"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     let fail = true;
     mockFetch((url) => {

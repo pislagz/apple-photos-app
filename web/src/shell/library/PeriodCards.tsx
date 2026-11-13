@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 // Shared Apple Photos-style period card (#307, reused by the Days cards in
 // #301): a rounded, square-ish card with a sharp key photo and the period
@@ -13,17 +13,33 @@ export interface PeriodCardData {
   keyAssetIds: string[];
 }
 
-// Cards are at most ~300 px wide on a 2x display, so `grid2x` (600 px) is
-// sharp at the card size; the 300 px `grid` size would be an upscaled blur.
-const CARD_THUMB_SIZE = "grid2x";
+type ThumbSize = "grid" | "grid2x" | "preview";
+
+// Server thumbnail edges in px (media.SIZES): grid 300, grid2x 600, then preview.
+// The smallest one that covers the card at the device pixel ratio, so a
+// Retina card never shows an upscaled micro thumbnail (#301).
+export function pickThumbSize(cssWidth: number, devicePixelRatio: number): ThumbSize {
+  const needed = cssWidth * devicePixelRatio;
+  if (needed <= 300) return "grid";
+  if (needed <= 600) return "grid2x";
+  return "preview";
+}
+
+// Days (#301) caption sits bottom-left and shows a count pill instead of a
+// count line; the pill only appears when the day has more than 3 photos.
+const PILL_MIN_COUNT = 4;
 
 export const PeriodCard = memo(function PeriodCard({
   libraryId,
   card,
+  view,
+  size,
   onOpen,
 }: {
   libraryId: number;
   card: PeriodCardData;
+  view: "years" | "months" | "days";
+  size: ThumbSize;
   onOpen: (key: string) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -32,7 +48,7 @@ export const PeriodCard = memo(function PeriodCard({
   return (
     <button
       type="button"
-      className="period-card"
+      className={`period-card period-card--${view}`}
       data-testid="period-card"
       data-period-key={card.key}
       aria-label={`${card.label}, ${countText}`}
@@ -40,7 +56,7 @@ export const PeriodCard = memo(function PeriodCard({
     >
       {assetId && (
         <img
-          src={`/api/libraries/${libraryId}/thumb/${assetId}?size=${CARD_THUMB_SIZE}`}
+          src={`/api/libraries/${libraryId}/thumb/${assetId}?size=${size}`}
           alt={card.label}
           loading="lazy"
           draggable={false}
@@ -51,8 +67,13 @@ export const PeriodCard = memo(function PeriodCard({
       <span className="period-card__scrim" aria-hidden="true" />
       <span className="period-card__caption">
         <span className="period-card__label">{card.label}</span>
-        <span className="period-card__count">{countText}</span>
+        {view !== "days" && <span className="period-card__count">{countText}</span>}
       </span>
+      {view === "days" && card.count >= PILL_MIN_COUNT && (
+        <span className="period-card__pill" data-testid="period-card-pill" aria-hidden="true">
+          {card.count.toLocaleString("en-US")}
+        </span>
+      )}
     </button>
   );
 });
@@ -71,7 +92,7 @@ export default function PeriodCardGrid({
   onOpen,
 }: {
   libraryId: number;
-  view: "years" | "months";
+  view: "years" | "months" | "days";
   cards: PeriodCardData[];
   scrollRef: RefObject<HTMLElement | null>;
   landOnKey?: string | null;
@@ -79,6 +100,7 @@ export default function PeriodCardGrid({
   onOpen: (key: string) => void;
 }) {
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<ThumbSize>("grid2x");
   // Read inside the effect without re-running it when `onLanded` clears it.
   const landOnKeyRef = useRef(landOnKey);
   landOnKeyRef.current = landOnKey;
@@ -99,10 +121,35 @@ export default function PeriodCardGrid({
     // Once per set of cards, not on every re-render.
   }, [scrollRef, cards]);
 
+  // Re-pick the thumbnail size from the real card width as the container resizes.
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const measure = () => {
+      const width = grid.querySelector<HTMLElement>(".period-card")?.getBoundingClientRect().width ?? 0;
+      if (width > 0) setSize(pickThumbSize(width, window.devicePixelRatio || 1));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [cards]);
+
+  const totalCount = useMemo(() => cards.reduce((sum, card) => sum + card.count, 0), [cards]);
+
   return (
     <div ref={gridRef} className={`period-grid period-grid--${view}`} data-testid="period-grid">
+      {view === "days" && (
+        <header className="period-grid__header" data-testid="period-grid-header">
+          <h1 className="period-grid__title">Days</h1>
+          <p className="period-grid__subtitle">
+            {totalCount.toLocaleString("en-US")} {totalCount === 1 ? "Item" : "Items"}
+          </p>
+        </header>
+      )}
       {cards.map((card) => (
-        <PeriodCard key={card.key} libraryId={libraryId} card={card} onOpen={onOpen} />
+        <PeriodCard key={card.key} libraryId={libraryId} card={card} view={view} size={size} onOpen={onOpen} />
       ))}
     </div>
   );
