@@ -1344,8 +1344,8 @@ body {
 }
 
 .shell--desktop .sidebar {
-  flex: 0 0 220px;
-  width: 220px;
+  flex: 0 0 var(--sidebar-width, 220px);
+  width: var(--sidebar-width, 220px);
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1375,6 +1375,10 @@ body {
 }
 
 .sidebar__group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
   font-size: var(--font-size-footnote);
   font-weight: var(--font-weight-semibold);
   color: var(--color-label-secondary);
@@ -1382,24 +1386,59 @@ body {
   cursor: default;
 }
 
+.sidebar__group > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* #217: an 8px chevron at the right, only on hover or keyboard focus; it
+   turns down when the section is open. */
+.sidebar__group-chevron {
+  opacity: 0;
+  transition:
+    opacity var(--dur-tint) var(--ease-tint),
+    transform var(--dur-tint) var(--ease-tint);
+}
+
+.sidebar__group[open] > summary > .sidebar__group-chevron {
+  transform: rotate(90deg);
+}
+
+.sidebar__group > summary:hover .sidebar__group-chevron,
+.sidebar__group > summary:focus-visible .sidebar__group-chevron {
+  opacity: 1;
+}
+
 .sidebar__item {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   width: 100%;
+  height: 28px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   text-align: left;
-  font-size: var(--font-size-subhead);
+  font-size: 13px;
   color: var(--color-label);
-  padding: var(--space-5) var(--space-8);
-  border-radius: var(--radius-small);
+  padding: 0 var(--space-8);
+  border-radius: 6px;
   cursor: default;
 }
 
 .sidebar__icon {
   flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
   color: var(--accent);
+}
+
+.sidebar__cover {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+  background: var(--color-placeholder);
 }
 
 .sidebar__item:disabled {
@@ -1412,7 +1451,7 @@ body {
 }
 
 .sidebar__item[aria-current="page"] {
-  background: var(--color-selected);
+  background: var(--color-sidebar-selected);
   color: var(--color-label);
 }
 
@@ -1420,14 +1459,29 @@ body {
   color: var(--accent);
 }
 
-.sidebar__item--sub {
-  padding-left: 22px;
-  font-size: var(--font-size-caption-lg);
+/* Drag edge for the sidebar width (#217). Sits on the sidebar's right border. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 220px) - 3px);
+  width: 6px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
 }
 
-.sidebar__item--sub .sidebar__icon {
-  width: 15px;
-  height: 15px;
+.sidebar-resizer:hover,
+.shell--resizing .sidebar-resizer {
+  background: var(--color-hover);
+}
+
+.shell--resizing {
+  user-select: none;
+}
+
+.shell--resizing .sidebar {
+  transition: none;
 }
 
 .sidebar .account-menu {
@@ -1484,6 +1538,21 @@ body {
   flex: 1 1 auto;
 }
 
+/* #217: left group | centred Years/Months/All Photos | right group. The two
+   groups share the free width equally, so the switch sits in the middle. */
+.desktop-library__bar-left,
+.desktop-library__bar-right {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.desktop-library__bar-right {
+  justify-content: flex-end;
+}
+
 .desktop-library__zoom-slider {
   display: flex;
   align-items: center;
@@ -1491,9 +1560,52 @@ body {
   color: var(--color-label-secondary);
 }
 
+.desktop-library__zoom-end {
+  padding: 0;
+  background: transparent;
+}
+
+/* Slim slider: 3px grey track, 18px white thumb with a soft shadow. */
 .desktop-library__zoom-slider input[type="range"] {
-  width: 90px;
-  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+}
+
+.desktop-library__zoom-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-fill-strong);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-fill-strong);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7.5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-slider-thumb);
+  box-shadow: var(--shadow-slider-thumb);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-slider-thumb);
+  box-shadow: var(--shadow-slider-thumb);
 }
 
 .segmented-control {
@@ -1590,13 +1702,6 @@ body {
 .toolbar-button[aria-pressed="true"] {
   background: var(--color-accent-soft);
   color: var(--accent);
-}
-
-.desktop-library__selection-count {
-  font-size: var(--font-size-caption);
-  color: var(--color-label-secondary);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .desktop-library__body {
@@ -3434,6 +3539,11 @@ body {
   flex: 0 0 auto;
 }
 
+.shell__toolbar-controls > .desktop-library__bar-left,
+.shell__toolbar-controls > .desktop-library__bar-right {
+  flex: 1 1 0;
+}
+
 .shell__toolbar-controls > .desktop-library__spacer {
   flex: 1 1 auto;
 }
@@ -3474,14 +3584,14 @@ body {
 }
 
 .search-box--desktop {
-  width: 190px;
+  width: 140px;
   height: 28px;
   gap: var(--space-4);
   padding: 0 var(--space-4) 0 var(--space-8);
   border-radius: var(--radius-small-2);
   font-size: var(--font-size-subhead);
   margin-left: auto;
-  transition: width var(--duration-fast) ease;
+  transition: width var(--dur-tint) var(--ease-tint);
 }
 
 .search-box--desktop:focus-within {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
-import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
+import { mockFetch } from "../testHelpers";
 import DesktopShell from "./DesktopShell";
 import { useFakeLayout } from "../testLayout";
 
@@ -148,41 +148,38 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
     );
   }
 
-  it("has a Days item right after Library that shows the Days view", async () => {
+  it("has no Days item: Library, Recently Added, Favorites lead, under sentence-case titles", () => {
     setup();
+    expect(screen.queryByRole("button", { name: "Days" })).toBeNull();
     const labels = Array.from(document.querySelectorAll(".sidebar nav .sidebar__item")).map((el) => el.textContent);
-    expect(labels.slice(0, 2)).toEqual(["Library", "Days"]);
-
-    fireEvent.click(screen.getByRole("button", { name: "Days" }));
-    expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
-    // One card per day; no Years/Months switch.
-    await waitFor(() => expect(document.querySelectorAll('[data-testid="period-card"]')).toHaveLength(2));
-    expect(screen.queryByRole("tab", { name: "Years" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Library/ }));
-    expect(screen.getByRole("tab", { name: "Years" })).toBeInTheDocument();
-  });
-
-  it("has no Recently Deleted, no duplicate Favorites, and labels People & Pets", () => {
-    setup();
-    expect(screen.queryByText("Recently Deleted")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Favorites")).toHaveLength(1);
-    expect(screen.queryByText("Smart Albums")).not.toBeInTheDocument();
-    expect(screen.getByText("People & Pets")).toBeInTheDocument();
-    expect(screen.queryByText("People")).not.toBeInTheDocument();
+    expect(labels).toEqual(["Library", "Recently Added", "Favorites", "People & Pets", "Map", "Albums"]);
+    const titles = Array.from(document.querySelectorAll(".sidebar__group > summary")).map((el) => el.textContent);
+    expect(titles.slice(0, 2)).toEqual(["Photos", "Collections"]);
+    expect(titles).toContain("Utilities");
   });
 });
 
-describe("DesktopShell Hidden password prompt (#130)", () => {
-  function setup(reconfirmStatus: number) {
-    const fetchMock = mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
-      if (url === "/api/libraries/1/albums") return { tree: [], smart: [] };
-      if (url === "/api/auth/reconfirm-password") {
-        return reconfirmStatus === 204 ? noContentResponse() : jsonResponse({ detail: "x" }, reconfirmStatus);
-      }
-      if (url === "/api/auth/lock-hidden") return noContentResponse();
-      if (url === "/api/libraries/1/hidden") return { items: [], next_cursor: null };
+const DAYS = [
+  { key: "2024-05-09", count: 1, key_asset_ids: ["b"] },
+  { key: "2024-05-10", count: 1, key_asset_ids: ["a"] },
+];
+
+describe("DesktopShell Library reset (#167)", () => {
+  it("clicking Library while on Library > Months resets to the default All Photos view (#167, #265)", async () => {
+    const items = ["a", "b"].map((id, i) => ({
+      id,
+      filename: `${id}.jpg`,
+      date: `2024-05-${10 - i}T10:00:00`,
+      is_video: false,
+      is_live_photo: false,
+      favorite: false,
+      width: 100,
+      height: 100,
+      duration: null,
+    }));
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
+      if (url.startsWith("/api/libraries/1/summary")) return { years: [], months: [], days: DAYS };
       throw new Error(`unexpected request: ${url}`);
     });
     render(
@@ -195,130 +192,7 @@ describe("DesktopShell Hidden password prompt (#130)", () => {
         onLogout={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Hidden" }));
-    return fetchMock;
-  }
-
-  it("prompts, then opens Hidden on the correct password and re-locks on leaving", async () => {
-    const fetchMock = setup(204);
-    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "pw" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
-
-    expect(await screen.findByText("No hidden photos.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /Library/ }));
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => url === "/api/auth/lock-hidden")).toBe(true),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Hidden" }));
-    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
-  });
-
-  it("shows an inline error on a wrong password and a try-later message on 429", async () => {
-    setup(401);
-    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "bad" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Incorrect password.");
-    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
-  });
-
-  it("shows try-later when locked out", async () => {
-    setup(429);
-    fireEvent.change(await screen.findByLabelText("Password"), { target: { value: "bad" } });
-    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/try again later/i);
-  });
-
-  it("cancel closes the prompt and stays in the Library", async () => {
-    setup(204);
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-    expect(screen.queryByText("No hidden photos.")).not.toBeInTheDocument();
-  });
-});
-
-const DAYS = [
-  { key: "2024-05-09", count: 1, key_asset_ids: ["b"] },
-  { key: "2024-05-10", count: 1, key_asset_ids: ["a"] },
-];
-
-describe("DesktopShell Days card tap (#152, #301)", () => {
-  it("opens Library > All Photos, and the sidebar Days item goes back to Days", async () => {
-    const items = ["a", "b"].map((id, i) => ({
-      id,
-      filename: `${id}.jpg`,
-      date: `2024-05-${10 - i}T10:00:00`,
-      is_video: false,
-      is_live_photo: false,
-      favorite: false,
-      width: 100,
-      height: 100,
-      duration: null,
-    }));
-    mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
-      if (url.startsWith("/api/libraries/1/summary")) return { years: [], months: [], days: DAYS };
-      throw new Error(`unexpected request: ${url}`);
-    });
-    const { container } = render(
-      <DesktopShell
-        me={ME_RESPONSE}
-        activeLibraryId={1}
-        onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
-        onLogout={() => {}}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Days" }));
     await screen.findAllByRole("img");
-    expect(screen.queryByRole("tab")).toBeNull();
-    fireEvent.click(container.querySelector('[data-period-key="2024-05-09"]') as HTMLElement);
-
-    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-    expect(screen.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Days" })).not.toHaveAttribute("aria-current");
-    expect(screen.queryByTestId("desktop-viewer")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Days" }));
-    await waitFor(() => expect(screen.queryByRole("tab")).toBeNull());
-    expect(screen.getByRole("button", { name: "Days" })).toHaveAttribute("aria-current", "page");
-  });
-
-  it("clicking Library while on Library > All Photos resets to the default All Photos view (#167, #265)", async () => {
-    const items = ["a", "b"].map((id, i) => ({
-      id,
-      filename: `${id}.jpg`,
-      date: `2024-05-${10 - i}T10:00:00`,
-      is_video: false,
-      is_live_photo: false,
-      favorite: false,
-      width: 100,
-      height: 100,
-      duration: null,
-    }));
-    mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets")) return { items, next_cursor: null };
-      if (url.startsWith("/api/libraries/1/summary")) return { years: [], months: [], days: DAYS };
-      throw new Error(`unexpected request: ${url}`);
-    });
-    const { container } = render(
-      <DesktopShell
-        me={ME_RESPONSE}
-        activeLibraryId={1}
-        onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
-        onLogout={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Days" }));
-    await screen.findAllByRole("img");
-    fireEvent.click(container.querySelector('[data-period-key="2024-05-09"]') as HTMLElement);
-    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
@@ -326,9 +200,39 @@ describe("DesktopShell Days card tap (#152, #301)", () => {
   });
 });
 
+describe("sidebar resize (#217)", () => {
+  it("resizes with the keyboard within 190-300 and remembers the width", () => {
+    mockFetch(() => ({ items: [], next_cursor: null, years: [], months: [], days: [], tree: [], smart: [] }));
+    localStorage.removeItem("photos-viewer.sidebar-width");
+    const { container } = render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    const shell = container.querySelector(".shell--desktop") as HTMLElement;
+    expect(shell.style.getPropertyValue("--sidebar-width")).toBe("220px");
+    const handle = screen.getByRole("separator", { name: "Resize sidebar" });
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(shell.style.getPropertyValue("--sidebar-width")).toBe("230px");
+    fireEvent.keyDown(handle, { key: "End" });
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(shell.style.getPropertyValue("--sidebar-width")).toBe("300px");
+    expect(localStorage.getItem("photos-viewer.sidebar-width")).toBe("300");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(shell.style.getPropertyValue("--sidebar-width")).toBe("190px");
+    fireEvent.doubleClick(handle);
+    expect(shell.style.getPropertyValue("--sidebar-width")).toBe("220px");
+  });
+});
+
 describe("sidebar section labels (#105)", () => {
   it("uses small grey title case, not uppercase", () => {
-    const rule = css.match(/\.sidebar__group summary \{[^}]*\}/)?.[0] ?? "";
+    const rule = css.match(/\.sidebar__group > summary \{[^}]*\}/)?.[0] ?? "";
     expect(rule).not.toContain("uppercase");
   });
 });

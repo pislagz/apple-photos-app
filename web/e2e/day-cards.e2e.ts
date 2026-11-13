@@ -14,7 +14,7 @@ async function signIn(page: Page) {
 
 async function openDays(page: Page) {
   if (await page.locator("aside.sidebar").count()) {
-    await page.locator("aside.sidebar").getByRole("button", { name: "Days", exact: true }).click();
+    test.skip(true, "desktop has no Days entry (#217); the period cards are iPhone-only now");
   } else {
     await page.getByRole("tab", { name: "Days", exact: true }).click();
   }

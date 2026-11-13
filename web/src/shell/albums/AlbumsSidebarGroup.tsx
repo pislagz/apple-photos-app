@@ -40,11 +40,13 @@ function useClosedFolders() {
 
 export default function AlbumsSidebarGroup({
   state,
+  libraryId,
   currentId,
   onOpen,
 }: {
   // Owned by the sidebar, which also needs it for Media Types (one request).
   state: AlbumsState;
+  libraryId: number;
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
@@ -61,20 +63,22 @@ export default function AlbumsSidebarGroup({
   }
   if (!albums) return <p className="sidebar__note">Loading…</p>;
   if (albums.tree.length === 0) return <p className="sidebar__note">No albums</p>;
-  return <AlbumTree nodes={albums.tree} currentId={currentId} onOpen={onOpen} />;
+  return <AlbumTree nodes={albums.tree} libraryId={libraryId} currentId={currentId} onOpen={onOpen} />;
 }
 
 function AlbumTree({
   nodes,
+  libraryId,
   currentId,
   onOpen,
 }: {
   nodes: AlbumNode[];
+  libraryId: number;
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
   const folders = useClosedFolders();
-  return <AlbumList nodes={nodes} depth={0} currentId={currentId} onOpen={onOpen} folders={folders} />;
+  return <AlbumList nodes={nodes} depth={0} libraryId={libraryId} currentId={currentId} onOpen={onOpen} folders={folders} />;
 }
 
 // Thin stroked chevron (12 px box, 1.5 stroke) on folder rows. It is a row
@@ -102,12 +106,14 @@ function Disclosure() {
 function AlbumList({
   nodes,
   depth,
+  libraryId,
   currentId,
   onOpen,
   folders,
 }: {
   nodes: AlbumNode[];
   depth: number;
+  libraryId: number;
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
   folders: ReturnType<typeof useClosedFolders>;
@@ -130,6 +136,7 @@ function AlbumList({
               <AlbumList
                 nodes={node.children}
                 depth={depth + 1}
+                libraryId={libraryId}
                 currentId={currentId}
                 onOpen={onOpen}
                 folders={folders}
@@ -146,7 +153,18 @@ function AlbumList({
               onClick={() => onOpen(node.id, node.title)}
             >
               <span className="sidebar__disclosure-spacer" aria-hidden="true" />
-              <Icon name="albums" className="sidebar__icon" filled={currentId === node.id} />
+              {node.cover_id ? (
+                <img
+                  className="sidebar__cover"
+                  src={`/api/libraries/${libraryId}/thumb/${encodeURIComponent(node.cover_id)}?size=grid`}
+                  alt=""
+                  loading="lazy"
+                  width={18}
+                  height={18}
+                />
+              ) : (
+                <Icon name="albums" className="sidebar__icon" filled={currentId === node.id} />
+              )}
               {node.title}
             </button>
           </li>

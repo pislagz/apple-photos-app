@@ -1,4 +1,9 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useCallback, useEffect, useRef, useState } from "react";
 import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../api";
 import MapView, { boundsParam } from "./map/MapView";
 import AlbumsOverview from "./albums/AlbumsOverview";
@@ -16,6 +21,9 @@ import DesktopSearch from "./search/DesktopSearch";
 import { useSearchModel } from "./search/useSearchModel";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
+import { clampSidebarWidth, readSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_DEFAULT, writeSidebarWidth } from "./sidebarWidth";
+import { isTypingTarget, shortcutAction } from "./shortcuts";
+import type { AlbumsState } from "./albums/useAlbums";
 import WelcomeScreen from "./WelcomeScreen";
 
 const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
@@ -28,18 +36,21 @@ function readSidebarCollapsed(): boolean {
 }
 
 // SPEC.md "Desktop layout: macOS Sequoia Photos" sidebar sections. Library
-// and Days (#127) have real screens; the rest is disabled chrome so the frame
-// matches the reference.
-// P2.1: items with a `smart` slug open the server's `smart:<slug>` album;
-// the rest stay disabled until their phase.
+// has a real screen; the rest is disabled chrome or opens a smart album.
+// P2.1: items with a `smart` slug open the server's `smart:<slug>` album.
 // P2.2: "People & Pets" opens the People grid (`view` "people").
 // P2.3: "Map" opens the map (`view` "map"); a pin opens its photos as a
 // `place:` album with a Back button, like a person.
-const SECTIONS: { label: string; icon: IconName; smart?: string; people?: boolean; map?: boolean; albums?: boolean }[] = [
-  { label: "Favorites", icon: "favorite", smart: "favorites" },
+// #217: Days has no sidebar entry; the toolbar switches Years/Months/All.
+type SectionItem = { label: string; icon: IconName; smart?: string; people?: boolean; map?: boolean; albums?: boolean; library?: boolean };
+const PHOTOS_SECTION: SectionItem[] = [
+  { label: "Library", icon: "library", library: true },
   { label: "Recently Added", icon: "added", smart: "recently-added" },
-  { label: "Map", icon: "map", map: true },
+  { label: "Favorites", icon: "favorite", smart: "favorites" },
+];
+const COLLECTIONS_SECTION: SectionItem[] = [
   { label: "People & Pets", icon: "people", people: true },
+  { label: "Map", icon: "map", map: true },
   { label: "Albums", icon: "albums", albums: true },
 ];
 const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
@@ -56,49 +67,64 @@ const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
 // items are excluded by design (#128).
 const UTILITIES: { label: string; icon: IconName }[] = [{ label: "Imports", icon: "tray" }];
 
-// Media Types and Albums share one /albums request. Like /albums itself, a
-// media type with no items is not listed; while loading or on failure none is
-// (the Albums group shows the failure with Retry).
-function SidebarAlbumGroups({
-  libraryId,
+// Sentence-case section title; the chevron only shows on hover or focus (CSS).
+function SidebarSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="sidebar__group" open>
+      <summary>
+        <span>{title}</span>
+        <Icon name="chevron" size={8} className="sidebar__group-chevron" />
+      </summary>
+      {children}
+    </details>
+  );
+}
+
+// Media types are not listed when empty: like /albums itself, while loading
+// or on failure none is (the Albums group shows the failure with Retry).
+function MediaTypesGroup({
+  state,
   currentId,
   onOpen,
 }: {
-  libraryId: number;
+  state: AlbumsState;
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
-  const state = useAlbums(libraryId);
   const present = new Set(state.albums?.smart.map((album) => album.id));
   const types = MEDIA_TYPES.filter((type) => present.has(`smart:${type.smart}`));
+  if (types.length === 0) return null;
   return (
-    <>
-      {types.length > 0 && (
-        <details className="sidebar__group" open>
-          <summary>Media Types</summary>
-          <ul>
-            {types.map((type) => (
-              <li key={type.label}>
-                <button
-                  type="button"
-                  aria-current={currentId === `smart:${type.smart}` ? "page" : undefined}
-                  className="sidebar__item sidebar__item--sub"
-                  onClick={() => onOpen(`smart:${type.smart}`, type.label)}
-                >
-                  <Icon name={type.icon} className="sidebar__icon" filled={currentId === `smart:${type.smart}`} />
-                  {type.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      <details className="sidebar__group" open>
-        <summary>Albums</summary>
-        <AlbumsSidebarGroup state={state} currentId={currentId} onOpen={onOpen} />
-      </details>
-    </>
+    <SidebarSection title="Media types">
+      <ul>
+        {types.map((type) => (
+          <li key={type.label}>
+            <button
+              type="button"
+              aria-current={currentId === `smart:${type.smart}` ? "page" : undefined}
+              className="sidebar__item"
+              onClick={() => onOpen(`smart:${type.smart}`, type.label)}
+            >
+              <Icon name={type.icon} className="sidebar__icon" filled={currentId === `smart:${type.smart}`} />
+              {type.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </SidebarSection>
   );
+}
+
+// One /albums request feeds the Media types group (above Utilities) and the
+// user albums group (below it).
+function SidebarAlbumData({
+  libraryId,
+  children,
+}: {
+  libraryId: number;
+  children: (state: AlbumsState) => ReactNode;
+}) {
+  return <>{children(useAlbums(libraryId))}</>;
 }
 
 function PageHeading({ title, children }: { title: string; children?: ReactNode }) {
@@ -136,15 +162,12 @@ export default function DesktopShell({
   onNoteDismissed?: () => void;
   onAvatarChanged?: () => void;
 }) {
-  const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map" | "albums">("library");
+  const [view, setView] = useState<"library" | "hidden" | "album" | "people" | "map" | "albums">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
   const [album, setAlbum] = useState<{ id: string; title: string; count?: number | null; fromOverview?: boolean } | null>(
     null,
   );
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
-  // #152: one-shot start state for the Library opened from a Days double-click.
-  // Cleared on the next sidebar choice; tied to a library so a switch drops it.
-  const [dayStart, setDayStart] = useState<{ libraryId: number; dayKey: string } | null>(null);
   // P2.2: a person is an `album` whose id is `person:<uuid>`; Back returns to the grid.
   const showingPerson = view === "album" && album?.id.startsWith(PERSON_PREFIX);
   const showingPlace = view === "album" && album?.id.startsWith(PLACE_PREFIX);
@@ -164,7 +187,6 @@ export default function DesktopShell({
   );
   const applyQuery = useCallback((query: string) => {
     if (query) {
-      setDayStart(null);
       setAlbum((current) =>
         current?.id === `${SEARCH_PREFIX}${query}`
           ? current
@@ -194,17 +216,15 @@ export default function DesktopShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
   // Bumped by every sidebar choice so clicking "Library" while already on
-  // Library > All Photos (from a Days double-click) remounts it back to Years (#167).
+  // Library > All Photos remounts it back to Years (#167).
   const [selectNonce, setSelectNonce] = useState(0);
-  function selectView(next: "library" | "days" | "hidden" | "people" | "map" | "albums") {
+  function selectView(next: "library" | "hidden" | "people" | "map" | "albums") {
     setSelectNonce((n) => n + 1);
-    setDayStart(null);
     setAlbum(null);
     search.clear();
     setView(next);
   }
   function openAlbum(id: string, title: string, extra?: { count?: number | null; fromOverview?: boolean }) {
-    setDayStart(null);
     setAlbum({ id, title, ...extra });
     search.clear();
     setView("album");
@@ -217,18 +237,19 @@ export default function DesktopShell({
         ? itemsLabel(searchCount.count, !searchCount.done)
         : undefined;
   const backToAlbums = view === "album" && !!album?.fromOverview;
-  // Cmd [ (Ctrl [ elsewhere) goes back from an album opened on the Albums screen.
+  // Cmd [ (Ctrl [ elsewhere) goes back from a place, person or an album opened
+  // on the Albums screen. An open Viewer takes it first (it closes).
+  const backTo = showingPlace ? "map" : showingPerson ? "people" : backToAlbums ? "albums" : null;
   useEffect(() => {
-    if (!backToAlbums) return;
+    if (!backTo) return;
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key === "[") {
-        event.preventDefault();
-        selectView("albums");
-      }
+      if (event.defaultPrevented || isTypingTarget(event.target) || shortcutAction(event) !== "back") return;
+      event.preventDefault();
+      selectView(backTo as "map" | "people" | "albums");
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [backToAlbums]);
+  }, [backTo]);
   const currentAlbumId =
     view === "album" && !showingPerson && !showingPlace && !showingSearch ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
@@ -245,9 +266,113 @@ export default function DesktopShell({
     });
   }
 
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [resizing, setResizing] = useState(false);
+  function commitSidebarWidth(width: number) {
+    const next = clampSidebarWidth(width);
+    setSidebarWidth(next);
+    writeSidebarWidth(next);
+  }
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture?.(event.pointerId);
+    const left = handle.parentElement?.getBoundingClientRect().left ?? 0;
+    setResizing(true);
+    let last = sidebarWidth;
+    function move(e: PointerEvent) {
+      last = clampSidebarWidth(e.clientX - left);
+      setSidebarWidth(last);
+    }
+    function end() {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      setResizing(false);
+      writeSidebarWidth(last);
+    }
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+  function resizeKey(event: ReactKeyboardEvent) {
+    const step = event.shiftKey ? 30 : 10;
+    if (event.key === "ArrowLeft") commitSidebarWidth(sidebarWidth - step);
+    else if (event.key === "ArrowRight") commitSidebarWidth(sidebarWidth + step);
+    else if (event.key === "Home") commitSidebarWidth(SIDEBAR_MIN);
+    else if (event.key === "End") commitSidebarWidth(SIDEBAR_MAX);
+    else return;
+    event.preventDefault();
+  }
+
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
+  function renderItem(section: SectionItem) {
+    const current = section.library
+      ? view === "library"
+      : section.albums
+        ? view === "albums" || backToAlbums
+        : section.map
+          ? view === "map" || !!showingPlace
+          : section.people
+            ? view === "people" || !!showingPerson
+            : !!section.smart && currentAlbumId === `smart:${section.smart}`;
+    const onClick = section.library
+      ? () => selectView("library")
+      : section.albums
+        ? () => selectView("albums")
+        : section.map
+          ? () => selectView("map")
+          : section.people
+            ? () => selectView("people")
+            : section.smart
+              ? () => openAlbum(`smart:${section.smart}`, section.label)
+              : undefined;
+    return (
+      <li key={section.label}>
+        <button
+          type="button"
+          disabled={!onClick}
+          aria-current={current ? "page" : undefined}
+          className="sidebar__item"
+          onClick={onClick}
+        >
+          <Icon name={section.icon} className="sidebar__icon" filled={current} />
+          {section.label}
+        </button>
+      </li>
+    );
+  }
+  const utilities = (
+    <SidebarSection title="Utilities">
+      <ul>
+        <li>
+          <button
+            type="button"
+            aria-current={view === "hidden" ? "page" : undefined}
+            className="sidebar__item"
+            onClick={() => view !== "hidden" && setUnlockPrompt(true)}
+          >
+            <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
+            Hidden
+          </button>
+        </li>
+        {UTILITIES.map((item) => (
+          <li key={item.label}>
+            <button type="button" disabled className="sidebar__item">
+              <Icon name={item.icon} className="sidebar__icon" />
+              {item.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </SidebarSection>
+  );
+
   return (
-    <div className={`shell shell--desktop${sidebarCollapsed ? " shell--sidebar-collapsed" : ""}`}>
+    <div
+      className={`shell shell--desktop${sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${resizing ? " shell--resizing" : ""}`}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+    >
       <button
         type="button"
         className="sidebar-toggle"
@@ -262,120 +387,38 @@ export default function DesktopShell({
           leave the Tab order and the accessibility tree. */}
       <aside className="sidebar" id="app-sidebar" aria-label="Sidebar" inert={sidebarCollapsed}>
         <nav aria-label="Sections">
-          <ul>
-            <li>
-              <button
-                type="button"
-                aria-current={view === "library" ? "page" : undefined}
-                className="sidebar__item"
-                onClick={() => selectView("library")}
-              >
-                <Icon name="library" className="sidebar__icon" filled={view === "library"} />
-                Library
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                aria-current={view === "days" ? "page" : undefined}
-                className="sidebar__item"
-                onClick={() => selectView("days")}
-              >
-                <Icon name="days" className="sidebar__icon" filled={view === "days"} />
-                Days
-              </button>
-            </li>
-            {SECTIONS.map((section) => (
-              <li key={section.label}>
-                <button
-                  type="button"
-                  disabled={!section.smart && !section.people && !section.map && !section.albums}
-                  aria-current={
-                    section.albums
-                      ? view === "albums" || backToAlbums
-                        ? "page"
-                        : undefined
-                      : section.map
-                      ? view === "map" || showingPlace
-                        ? "page"
-                        : undefined
-                      : section.people
-                      ? view === "people" || showingPerson
-                        ? "page"
-                        : undefined
-                      : section.smart && currentAlbumId === `smart:${section.smart}`
-                        ? "page"
-                        : undefined
-                  }
-                  className="sidebar__item"
-                  onClick={
-                    section.albums
-                      ? () => selectView("albums")
-                      : section.map
-                      ? () => selectView("map")
-                      : section.people
-                      ? () => selectView("people")
-                      : section.smart
-                        ? () => openAlbum(`smart:${section.smart}`, section.label)
-                        : undefined
-                  }
-                >
-                  <Icon
-                    name={section.icon}
-                    className="sidebar__icon"
-                    filled={
-                      section.albums
-                        ? view === "albums" || backToAlbums
-                        : section.map
-                        ? view === "map" || showingPlace
-                        : section.people
-                          ? view === "people" || showingPerson
-                          : !!section.smart && currentAlbumId === `smart:${section.smart}`
-                    }
-                  />
-                  {section.label}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <SidebarSection title="Photos">
+            <ul>{PHOTOS_SECTION.map(renderItem)}</ul>
+          </SidebarSection>
+          <SidebarSection title="Collections">
+            <ul>{COLLECTIONS_SECTION.map(renderItem)}</ul>
+          </SidebarSection>
         </nav>
         {activeLibraryId !== undefined && !activeLibrary?.updating ? (
-          <SidebarAlbumGroups
-            key={activeLibraryId}
-            libraryId={activeLibraryId}
-            currentId={currentAlbumId}
-            onOpen={openAlbum}
-          />
+          <SidebarAlbumData key={activeLibraryId} libraryId={activeLibraryId}>
+            {(state) => (
+              <>
+                <MediaTypesGroup state={state} currentId={currentAlbumId} onOpen={openAlbum} />
+                {utilities}
+                <SidebarSection title="Albums">
+                  <AlbumsSidebarGroup
+                    state={state}
+                    libraryId={activeLibraryId}
+                    currentId={currentAlbumId}
+                    onOpen={openAlbum}
+                  />
+                </SidebarSection>
+              </>
+            )}
+          </SidebarAlbumData>
         ) : (
-          <details className="sidebar__group" open>
-            <summary>Albums</summary>
-            <p className="sidebar__note">No albums</p>
-          </details>
+          <>
+            {utilities}
+            <SidebarSection title="Albums">
+              <p className="sidebar__note">No albums</p>
+            </SidebarSection>
+          </>
         )}
-        <details className="sidebar__group" open>
-          <summary>Utilities</summary>
-          <ul>
-            <li>
-              <button
-                type="button"
-                aria-current={view === "hidden" ? "page" : undefined}
-                className="sidebar__item"
-                onClick={() => view !== "hidden" && setUnlockPrompt(true)}
-              >
-                <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
-                Hidden
-              </button>
-            </li>
-            {UTILITIES.map((item) => (
-              <li key={item.label}>
-                <button type="button" disabled className="sidebar__item">
-                  <Icon name={item.icon} className="sidebar__icon" />
-                  {item.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
         <MacAccountMenu
           onAvatarChanged={onAvatarChanged}
           me={me}
@@ -387,6 +430,21 @@ export default function DesktopShell({
           onActiveLibraryChange={onActiveLibraryChange}
         />
       </aside>
+      {!sidebarCollapsed && (
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={resizeKey}
+          onDoubleClick={() => commitSidebarWidth(SIDEBAR_DEFAULT)}
+        />
+      )}
       <div className="shell__main">
         {/* #296: ONE fixed toolbar row for every view, like Photos for Mac:
             back button and the view's controls on the left (DesktopLibrary
@@ -458,7 +516,7 @@ export default function DesktopShell({
             ) : activeLibraryId !== undefined ? (
               <LibraryNoteFrame
                 libraryId={activeLibraryId}
-                note={view === "library" || view === "days" ? activeLibrary?.updated_note : null}
+                note={view === "library" ? activeLibrary?.updated_note : null}
                 variant="desktop"
                 onDismissed={onNoteDismissed}
               >
@@ -466,20 +524,10 @@ export default function DesktopShell({
                 key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
                 isAdmin={me.role === "admin"}
-                title={view === "album" ? album?.title : view === "days" ? "Days" : "Library"}
+                title={view === "album" ? album?.title : "Library"}
                 subtitle={headingSubtitle}
                 toolbarSlot={toolbarSlot}
-                fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
-                onOpenDay={
-                  view === "days"
-                    ? (dayKey) => {
-                        setDayStart({ libraryId: activeLibraryId, dayKey });
-                        setView("library");
-                      }
-                    : undefined
-                }
-                initialView={dayStart?.libraryId === activeLibraryId ? "all" : undefined}
-                initialScrollDayKey={dayStart?.libraryId === activeLibraryId ? dayStart.dayKey : undefined}
+                fixedView={view === "album" ? "all" : undefined}
                 libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}

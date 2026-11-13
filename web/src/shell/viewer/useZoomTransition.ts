@@ -44,11 +44,26 @@ function fade(el: Element, property: "opacity" | "backgroundColor", from: string
   return el.animate({ [property]: [from, to] }, { duration: ms, easing: "ease-in-out", fill });
 }
 
+// Open and close zooms can overlap (a quick Esc or Space right after opening).
+// A count of active hides keeps the first one's original value, so the tile is
+// only shown again when the last zoom lets go of it.
 function hide(tile: HTMLElement): () => void {
-  const before = tile.style.visibility;
+  const active = Number(tile.dataset.zoomHides ?? 0);
+  if (active === 0) tile.dataset.zoomBefore = tile.style.visibility;
+  tile.dataset.zoomHides = String(active + 1);
   tile.style.visibility = "hidden";
+  let released = false;
   return () => {
-    tile.style.visibility = before;
+    if (released) return;
+    released = true;
+    const left = Number(tile.dataset.zoomHides ?? 1) - 1;
+    if (left > 0) {
+      tile.dataset.zoomHides = String(left);
+      return;
+    }
+    tile.style.visibility = tile.dataset.zoomBefore ?? "";
+    delete tile.dataset.zoomHides;
+    delete tile.dataset.zoomBefore;
   };
 }
 
