@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../api";
+import * as api from "../api";
 import MacAccountMenu from "./MacAccountMenu";
 
 afterEach(cleanup);
@@ -156,5 +157,35 @@ describe("MacAccountMenu (#292)", () => {
       act(() => void vi.advanceTimersByTime(1000));
       expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
     });
+  });
+
+  it("offers Choose Avatar… (only with libraries) and Remove Avatar only when one is set", () => {
+    setup({ ...USER, libraries: [] });
+    fireEvent.click(trigger());
+    expect(screen.queryByRole("menuitem", { name: "Choose Avatar…" })).not.toBeInTheDocument();
+    cleanup();
+    const lib = { id: 1, display_name: "Family", updating: false, updating_reason: null, updated_note: null };
+    setup({ ...USER, libraries: [lib] });
+    fireEvent.click(trigger());
+    expect(screen.getByRole("menuitem", { name: "Choose Avatar…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove Avatar" })).not.toBeInTheDocument();
+  });
+
+  it("Remove Avatar calls the server and asks for a refresh", async () => {
+    const remove = vi.spyOn(api, "removeAvatar").mockResolvedValue(undefined);
+    const onAvatarChanged = vi.fn();
+    setup({ ...USER, avatar_version: 7 }, { onAvatarChanged });
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("/api/users/alice/avatar?v=7");
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove Avatar" }));
+    await vi.waitFor(() => expect(onAvatarChanged).toHaveBeenCalled());
+    expect(remove).toHaveBeenCalled();
+  });
+
+  it("falls back to the initial when the avatar image is missing", () => {
+    setup({ ...USER, avatar_version: 7 });
+    fireEvent.error(document.querySelector("img")!);
+    expect(document.querySelector("img")).toBeNull();
+    expect(trigger()).toHaveTextContent("A");
   });
 });

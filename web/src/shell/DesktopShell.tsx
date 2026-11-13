@@ -108,6 +108,7 @@ export default function DesktopShell({
   deepLinkAssetId,
   onDeepLinkConsumed,
   onNoteDismissed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
@@ -118,6 +119,7 @@ export default function DesktopShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
   onNoteDismissed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
   const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
@@ -319,6 +321,7 @@ export default function DesktopShell({
           </ul>
         </details>
         <MacAccountMenu
+          onAvatarChanged={onAvatarChanged}
           me={me}
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}

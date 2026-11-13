@@ -144,6 +144,9 @@ class MeResponse(BaseModel):
     # Whether the admin agreed to "Map & place names"; the Info panel explains
     # a missing place name with it.
     osm_consent: bool = False
+    # Set while the user has an avatar; changes with every new one so the
+    # browser re-fetches it. The picture is /api/users/{username}/avatar.
+    avatar_version: int | None = None
 
 
 def _updated_note(
@@ -227,8 +230,12 @@ def read_me(
         "WHERE library_assignments.user_id = ? ORDER BY libraries.display_name",
         (session["user_id"],),
     ).fetchall()
+    avatar = db.execute(
+        "SELECT avatar_version FROM users WHERE id = ?", (session["user_id"],)
+    ).fetchone()
     return MeResponse(
         username=session["username"],
+        avatar_version=avatar["avatar_version"] if avatar else None,
         role=session["role"],
         libraries=[_library_summary(db, row, session["user_id"]) for row in rows],
         layout_override=session["layout_override"],
@@ -812,16 +819,14 @@ def _original_not_available(library_path: str, raw_path: str | None) -> bool:
     return False
 
 
-@router.get("/api/libraries/{library_id}/thumb/{asset_id}")
-def asset_thumb(
-    asset_id: str,
-    size: Literal["grid", "grid2x", "preview"] = "grid",
-    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
-    session: sqlite3.Row = Depends(session_auth.require_session),
-    db: sqlite3.Connection = Depends(session_auth.get_db),
-    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
-) -> Response:
-    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+def render_thumb(
+    db: sqlite3.Connection,
+    cache_dir: pathlib.Path,
+    library: sqlite3.Row,
+    asset: sqlite3.Row,
+    size: str,
+) -> media.GeneratedImage:
+    """Shared by the thumb route and the avatar crop (user_avatar)."""
     edited, original, derivative = (
         asset["path_edited"],
         asset["path_original"],
@@ -868,6 +873,20 @@ def asset_thumb(
         # exists but no backend here could decode it (an unsupported RAW
         # variant, a corrupt file, a decompression-bomb guard trip).
         raise HTTPException(status_code=415, detail=str(exc)) from exc
+    return result
+
+
+@router.get("/api/libraries/{library_id}/thumb/{asset_id}")
+def asset_thumb(
+    asset_id: str,
+    size: Literal["grid", "grid2x", "preview"] = "grid",
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
+) -> Response:
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+    result = render_thumb(db, cache_dir, library, asset, size)
     return Response(
         content=result.data,
         media_type=result.content_type,
