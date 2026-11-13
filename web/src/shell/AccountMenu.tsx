@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { MeResponse } from "../api";
 import ChangePasswordDialog from "./ChangePasswordDialog";
+import InfoButton from "../help/InfoButton";
 import { Icon } from "./icons";
 import PasskeysDialog from "./PasskeysDialog";
 import LayoutOverrideControl from "./LayoutOverrideControl";
@@ -26,12 +27,18 @@ function AccountMenuItems({
       <p className="account-menu__username">{me.username}</p>
       {me.role === "admin" && <a href="/admin">Admin</a>}
       <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
-      <button type="button" onClick={() => setChangingPassword(true)}>
-        Change password
-      </button>
-      <button type="button" onClick={() => setManagingPasskeys(true)}>
-        Passkeys
-      </button>
+      <div className="account-menu__row">
+        <button type="button" onClick={() => setChangingPassword(true)}>
+          Change password
+        </button>
+        <InfoButton helpKey="changePassword" name="Change password" />
+      </div>
+      <div className="account-menu__row">
+        <button type="button" onClick={() => setManagingPasskeys(true)}>
+          Passkeys
+        </button>
+        <InfoButton helpKey="passkeys" name="Passkeys" />
+      </div>
       <button type="button" onClick={onLogout}>
         Log out
       </button>
