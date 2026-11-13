@@ -82,6 +82,15 @@ function mockAssets(items: AssetListItem[]) {
 }
 
 describe("MobileLibrary", () => {
+  it("opens on All Photos by default, with Years, Months and Days one tap away (#304)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    for (const name of ["All Photos", "Years", "Months", "Days"]) {
+      expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", String(name === "All Photos"));
+    }
+  });
+
   it("renders thumbnails from the thumb endpoint and never requests an original or /hidden", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     const fetchMock = mockAssets(items);
@@ -109,13 +118,12 @@ describe("MobileLibrary", () => {
     const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
 
-    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
-    expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBe(0));
+    expect(container.querySelectorAll(".mobile-library__tile").length).toBe(0);
     expect(container.querySelectorAll(".mobile-library__row-grid").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0));
@@ -297,6 +305,7 @@ describe("MobileLibrary", () => {
 
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
 
     // Tapping anywhere in the tile (its label text bubbles up to the
@@ -520,7 +529,7 @@ describe("MobileLibrary summary failure (#147)", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<MobileLibrary libraryId={1} />);
-    if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    fireEvent.click(screen.getByRole("tab", { name }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
     expect(screen.queryByText("No photos yet.")).toBeNull();
