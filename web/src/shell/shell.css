@@ -2935,3 +2935,144 @@ body {
   background: var(--color-warn-bg-on-dark);
   z-index: 3;
 }
+
+/* #268: the shared (i) button and its text. 20px visible, bigger hit area. */
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: -4px 0 -4px var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-label-secondary);
+  vertical-align: middle;
+}
+@media (pointer: coarse) {
+  .info-button {
+    width: 44px;
+    height: 44px;
+    margin: -12px -8px -12px -6px;
+  }
+}
+.info-button:hover,
+.info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}
+.info-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.info-tip {
+  position: fixed;
+  z-index: 60;
+  width: min(280px, calc(100vw - 16px));
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-10);
+  background: var(--surface-dark-raised);
+  color: var(--color-white);
+  font: var(--font-weight-regular) var(--font-size-caption) / 1.4 var(--font-sans);
+  box-shadow: var(--shadow-tip);
+  pointer-events: none;
+  animation: info-tip-in var(--dur-menu) var(--ease-menu);
+}
+.info-tip[hidden] {
+  display: none;
+}
+@keyframes info-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+/* A settings row: [label] (i) ---space---> [control]. The (i) sits right after the
+   label text; the control is pushed to the right edge. A long label wraps inside its
+   own box (the control keeps its width); on a phone the control drops to its own line. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-6);
+  padding: var(--space-10) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.admin-main .setting-row > label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border-bottom: none;
+}
+.setting-row__control {
+  flex: 0 1 280px;
+  min-width: 120px;
+  margin-left: auto;
+}
+.setting-row__control > input:not([type="checkbox"]) {
+  width: 100%;
+  box-sizing: border-box;
+}
+.setting-row__control > input[type="checkbox"] {
+  display: block;
+  margin-left: auto;
+}
+.setting-row:has(input[type="checkbox"]) .setting-row__control {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .setting-row {
+    display: grid;
+    grid-template-columns: fit-content(calc(100% - 44px)) auto 0;
+    justify-items: start;
+  }
+  .setting-row__control {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+  }
+  /* A checkbox stays on the label's line, at the right edge. */
+  .setting-row:has(input[type="checkbox"]) {
+    grid-template-columns: fit-content(calc(100% - 70px)) auto 1fr;
+    column-gap: var(--space-4);
+  }
+  .setting-row:has(input[type="checkbox"]) .setting-row__control {
+    grid-column: 3;
+    justify-self: end;
+    width: auto;
+  }
+}
+.setting-row--buttons {
+  display: flex;
+  padding: 0;
+  border-bottom: none;
+  justify-content: flex-start;
+}
+.info-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.account-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-4);
+}
+.account-menu__row.layout-override > select {
+  margin-left: auto;
+}
+/* Beat the generic admin and account-menu button rules. */
+.admin-main .info-button,
+.account-menu .info-button {
+  padding: 0;
+  background: transparent;
+  color: var(--color-label-secondary);
+}
+.admin-main .info-button:hover,
+.account-menu .info-button:hover,
+.admin-main .info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}

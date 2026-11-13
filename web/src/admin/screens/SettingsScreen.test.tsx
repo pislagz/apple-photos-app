@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch } from "../testHelpers";
+import { HELP, type HelpKey } from "../../help/adminHelp";
 import SettingsScreen from "./SettingsScreen";
 
 const SETTINGS = {
@@ -33,6 +34,74 @@ const PLACE_NAMES = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("SettingsScreen info buttons", () => {
+  it("every setting row has an (i) with its registered text", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SettingsScreen />);
+    await screen.findByDisplayValue("3600");
+    const rows: [string, HelpKey][] = [
+      ["desktop session lifetime", "sessionDesktop"],
+      ["home screen app session lifetime", "sessionPwa"],
+      ["remember me session lifetime", "sessionRememberMe"],
+      ["Thumbnail size, grid", "thumbGrid"],
+      ["Thumbnail size, grid 2x", "thumbGrid2x"],
+      ["Thumbnail size, preview", "thumbPreview"],
+      ["Thumbnail quality", "thumbQuality"],
+      ["zip size limit", "zipLimit"],
+      ["map and place names", "mapConsent"],
+      ["local map file", "mapFile"],
+      ["place-name data download", "placeNamesDownload"],
+      ["check interval", "checkInterval"],
+      ["wait time before re-indexing", "stableMinutes"],
+      ["library updated message", "updatedNote"],
+      ["Check now", "checkNow"],
+      ["tailnet allow-list", "allowlist"],
+    ];
+    // The interval row is replaced by a note while "Manual only" is on.
+    for (const [name, key] of rows) {
+      const button = screen.getByRole("button", { name: `About ${name}` });
+      const tip = document.getElementById(button.getAttribute("aria-describedby")!);
+      expect(tip?.textContent, name).toBe(HELP[key]);
+      expect(tip?.textContent?.trim()).not.toBe("");
+    }
+    expect(screen.getByRole("button", { name: "About manual checks only" })).toBeInTheDocument();
+  });
+
+  it("puts the (i) right after the label and before the control in every row", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<SettingsScreen />);
+    await screen.findByDisplayValue("3600");
+    const rows = container.querySelectorAll(".setting-row:not(.setting-row--buttons)");
+    expect(rows.length).toBeGreaterThanOrEqual(12);
+    for (const row of rows) {
+      const kids = Array.from(row.children);
+      expect(kids[0].tagName).toBe("LABEL");
+      expect(kids[1]).toHaveClass("info-button");
+      expect(kids[2]).toHaveClass("setting-row__control");
+      // The (i) is outside the label, and the label still names its control.
+      expect(kids[0].contains(kids[1])).toBe(false);
+      const control = kids[2].querySelector("input")!;
+      expect(control.id).toBe((kids[0] as HTMLLabelElement).htmlFor);
+    }
+    for (const name of ["Check now", "Download place-name data"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.nextElementSibling).toHaveClass("info-button");
+    }
+    const heading = screen.getByRole("heading", { name: /Tailnet allow-list/ });
+    expect(heading.lastElementChild).toHaveClass("info-button");
+  });
 });
 
 describe("SettingsScreen", () => {

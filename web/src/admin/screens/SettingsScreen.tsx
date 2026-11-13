@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import InfoButton from "../../help/InfoButton";
+import type { HelpKey } from "../../help/adminHelp";
 import { MAP_PLACE_NAMES_ANCHOR, MAP_PLACE_NAMES_TEXT } from "../../shell/PlaceInfoContext";
 import {
   ApiError,
@@ -19,6 +21,29 @@ const DEFAULT_CHECK_MINUTES = 15;
 
 function describeError(err: unknown): string {
   return err instanceof ApiError ? err.message : "something went wrong";
+}
+
+// A form row: the label plus its (i). The (i) is a sibling of the <label>, not inside
+// it, so the label still names only its own control and clicking it focuses that control.
+function SettingRow({
+  help,
+  name,
+  label,
+  children,
+}: {
+  help: HelpKey;
+  name: string;
+  label: React.ReactNode;
+  children: (id: string) => React.ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="setting-row">
+      <label htmlFor={id}>{label}</label>
+      <InfoButton helpKey={help} name={name} />
+      <div className="setting-row__control">{children(id)}</div>
+    </div>
+  );
 }
 
 export default function SettingsScreen() {
@@ -155,62 +180,62 @@ export default function SettingsScreen() {
       {notice && <p>{notice}</p>}
 
       <form onSubmit={handleSaveSettings}>
-        <label>
-          Desktop session lifetime (seconds)
-          <input {...numberProps("session_lifetime_desktop_seconds")} />
-        </label>
-        <label>
-          PWA session lifetime (seconds)
-          <input {...numberProps("session_lifetime_pwa_seconds")} />
-        </label>
-        <label>
-          "Remember me" session lifetime (seconds)
-          <input {...numberProps("session_lifetime_remember_me_seconds")} />
-        </label>
-        <label>
-          Thumbnail size, grid
-          <input {...numberProps("thumb_size_grid")} />
-        </label>
-        <label>
-          Thumbnail size, grid 2x
-          <input {...numberProps("thumb_size_grid2x")} />
-        </label>
-        <label>
-          Thumbnail size, preview
-          <input {...numberProps("thumb_size_preview")} />
-        </label>
-        <label>
-          Thumbnail quality
-          <input {...numberProps("thumb_quality")} />
-        </label>
-        <label>
-          Zip size limit (bytes)
-          <input {...numberProps("zip_size_limit_bytes")} />
-        </label>
+        <SettingRow help="sessionDesktop" name="desktop session lifetime" label="Desktop session lifetime (seconds)">
+          {(id) => <input id={id} {...numberProps("session_lifetime_desktop_seconds")} />}
+        </SettingRow>
+        <SettingRow help="sessionPwa" name="home screen app session lifetime" label="PWA session lifetime (seconds)">
+          {(id) => <input id={id} {...numberProps("session_lifetime_pwa_seconds")} />}
+        </SettingRow>
+        <SettingRow help="sessionRememberMe" name="remember me session lifetime" label={'"Remember me" session lifetime (seconds)'}>
+          {(id) => <input id={id} {...numberProps("session_lifetime_remember_me_seconds")} />}
+        </SettingRow>
+        <SettingRow help="thumbGrid" name="Thumbnail size, grid" label="Thumbnail size, grid">
+          {(id) => <input id={id} {...numberProps("thumb_size_grid")} />}
+        </SettingRow>
+        <SettingRow help="thumbGrid2x" name="Thumbnail size, grid 2x" label="Thumbnail size, grid 2x">
+          {(id) => <input id={id} {...numberProps("thumb_size_grid2x")} />}
+        </SettingRow>
+        <SettingRow help="thumbPreview" name="Thumbnail size, preview" label="Thumbnail size, preview">
+          {(id) => <input id={id} {...numberProps("thumb_size_preview")} />}
+        </SettingRow>
+        <SettingRow help="thumbQuality" name="Thumbnail quality" label="Thumbnail quality">
+          {(id) => <input id={id} {...numberProps("thumb_quality")} />}
+        </SettingRow>
+        <SettingRow help="zipLimit" name="zip size limit" label="Zip size limit (bytes)">
+          {(id) => <input id={id} {...numberProps("zip_size_limit_bytes")} />}
+        </SettingRow>
         <fieldset className="admin-privacy-options" id={MAP_PLACE_NAMES_ANCHOR} data-testid="map-place-names">
           <legend>Map &amp; place names</legend>
           <p className="admin-hint">{MAP_PLACE_NAMES_TEXT}</p>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.osm_consent}
-              onChange={(event) => updateField("osm_consent", event.target.checked)}
-            />
-            Allow
-          </label>
+          <SettingRow help="mapConsent" name="map and place names" label="Allow">
+            {(id) => (
+              <input
+                id={id}
+                type="checkbox"
+                checked={settings.osm_consent}
+                onChange={(event) => updateField("osm_consent", event.target.checked)}
+              />
+            )}
+          </SettingRow>
           <p className="admin-hint">
             Off until you agree. Agreed: the Map view draws OpenStreetMap tiles, which each person's browser fetches from
             tile.openstreetmap.org while a map is open (this server never does), and place names come from a city list you
             download once below. Not agreed: nothing is downloaded and offline place names are off; the map is blank
             unless a local map file below is set, which is read from this server and needs no internet.
           </p>
-          <label>
-            Local map file (PMTiles): used when you have not agreed above, and as the fallback if the OpenStreetMap tiles cannot be loaded
-            <input
-              value={settings.map_tiles_pmtiles_path ?? ""}
-              onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
-            />
-          </label>
+          <SettingRow
+            help="mapFile"
+            name="local map file"
+            label="Local map file (PMTiles): used when you have not agreed above, and as the fallback if the OpenStreetMap tiles cannot be loaded"
+          >
+            {(id) => (
+              <input
+                id={id}
+                value={settings.map_tiles_pmtiles_path ?? ""}
+                onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
+              />
+            )}
+          </SettingRow>
           <div className="admin-place-names" data-testid="place-names-status">
             <p>
               {placeNames === null
@@ -219,9 +244,12 @@ export default function SettingsScreen() {
                   ? `Place-name data: downloaded (${Math.max(1, Math.round(placeNames.size_bytes / 1024))} KB).`
                   : "Place-name data: not downloaded."}
             </p>
-            <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
-              {placeNames?.downloaded ? "Download again" : "Download place-name data"}
-            </button>
+            <div className="setting-row setting-row--buttons">
+              <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
+                {placeNames?.downloaded ? "Download again" : "Download place-name data"}
+              </button>
+              <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
+            </div>
             <p className="admin-hint">
               {settings.osm_consent
                 ? "This is the one time the server contacts the internet: it fetches the public GeoNames list of cities (cities15000, about 2 MB) from download.geonames.org. No photo data is sent."
@@ -232,48 +260,56 @@ export default function SettingsScreen() {
             </p>
           </div>
         </fieldset>
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.library_check_interval_minutes === 0}
-            onChange={(event) => {
-              setDrafts(({ library_check_interval_minutes: _dropped, ...rest }) => rest);
-              updateField("library_check_interval_minutes", event.target.checked ? 0 : DEFAULT_CHECK_MINUTES);
-            }}
-          />
-          Manual only: don't check libraries for changes automatically
-        </label>
+        <SettingRow help="checkManual" name="manual checks only" label="Manual only: don't check libraries for changes automatically">
+          {(id) => (
+            <input
+              id={id}
+              type="checkbox"
+              checked={settings.library_check_interval_minutes === 0}
+              onChange={(event) => {
+                setDrafts(({ library_check_interval_minutes: _dropped, ...rest }) => rest);
+                updateField("library_check_interval_minutes", event.target.checked ? 0 : DEFAULT_CHECK_MINUTES);
+              }}
+            />
+          )}
+        </SettingRow>
         {settings.library_check_interval_minutes === 0 ? (
           <p>Libraries are only checked when you press "Check now".</p>
         ) : (
-          <label>
-            Check libraries for changes every (minutes)
-            <input min={1} max={MAX_MINUTES} {...numberProps("library_check_interval_minutes")} />
-          </label>
+          <SettingRow help="checkInterval" name="check interval" label="Check libraries for changes every (minutes)">
+            {(id) => <input id={id} min={1} max={MAX_MINUTES} {...numberProps("library_check_interval_minutes")} />}
+          </SettingRow>
         )}
-        <label>
-          Library must be unchanged for (minutes) before it is re-indexed
-          <input
-            min={0}
-            max={MAX_MINUTES}
-            {...numberProps("library_stable_minutes")}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.show_library_updated_note}
-            onChange={(event) => updateField("show_library_updated_note", event.target.checked)}
-          />
-          Tell users when their library was updated
-        </label>
+        <SettingRow
+          help="stableMinutes"
+          name="wait time before re-indexing"
+          label="Library must be unchanged for (minutes) before it is re-indexed"
+        >
+          {(id) => <input id={id} min={0} max={MAX_MINUTES} {...numberProps("library_stable_minutes")} />}
+        </SettingRow>
+        <SettingRow help="updatedNote" name="library updated message" label="Tell users when their library was updated">
+          {(id) => (
+            <input
+              id={id}
+              type="checkbox"
+              checked={settings.show_library_updated_note}
+              onChange={(event) => updateField("show_library_updated_note", event.target.checked)}
+            />
+          )}
+        </SettingRow>
         <button type="submit">Save settings</button>
-        <button type="button" onClick={handleCheckNow} disabled={checking}>
-          Check now
-        </button>
+        <div className="setting-row setting-row--buttons">
+          <button type="button" onClick={handleCheckNow} disabled={checking}>
+            Check now
+          </button>
+          <InfoButton helpKey="checkNow" name="Check now" />
+        </div>
       </form>
 
-      <h2>Tailnet allow-list</h2>
+      <h2 className="info-heading">
+        Tailnet allow-list
+        <InfoButton helpKey="allowlist" name="tailnet allow-list" />
+      </h2>
       <p>Empty means everyone on the tailnet. A non-empty list that would lock out your own identity is rejected.</p>
       <form onSubmit={handleSaveAllowlist}>
         <label>
