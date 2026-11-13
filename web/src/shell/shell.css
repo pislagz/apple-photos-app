@@ -2900,7 +2900,11 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--space-8);
-  min-height: 60dvh;
+  /* Fill the scroll area below the toolbar so the content is centred in
+     the visible space, not in a fixed fraction of the viewport. */
+  height: 100%;
+  min-height: 240px;
+  box-sizing: border-box;
   padding: var(--space-24);
   text-align: center;
 }
