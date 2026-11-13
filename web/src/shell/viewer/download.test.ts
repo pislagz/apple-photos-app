@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../../testHelpers";
-import { downloadAsset, downloadVersion, shareAssets, shareOrDownloadAssets } from "./download";
+import { canShareFiles, downloadAsset, downloadVersion, filenameFromDisposition, pickMime, shareAssets, shareOrDownloadAssets } from "./download";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -80,5 +80,43 @@ describe("shareAssets", () => {
     await shareAssets(1, [{ id: "a1", filename: "IMG_0001.HEIC" }]);
     const arg = share.mock.calls[0][0] as { files: File[] };
     expect(arg.files.map((f) => f.name)).toEqual(["IMG_0001.HEIC"]);
+  });
+
+  it("uses the server's Content-Disposition name and a real MIME type", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/")
+        ? { has_edited: false }
+        : new Response("x", {
+            status: 200,
+            headers: { "content-disposition": 'attachment; filename="IMG_0002.JPG"', "content-type": "application/octet-stream" },
+          }),
+    );
+    const share = vi.fn(async (_data?: ShareData) => {});
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share });
+    await shareAssets(1, [{ id: "a2", filename: "other.heic" }]);
+    const file = (share.mock.calls[0][0] as { files: File[] }).files[0];
+    expect(file.name).toBe("IMG_0002.JPG");
+    expect(file.type).toBe("image/jpeg");
+  });
+});
+
+describe("share helpers", () => {
+  it("pickMime falls back to the extension for blank/octet-stream types", () => {
+    expect(pickMime("", "a.HEIC")).toBe("image/heic");
+    expect(pickMime("application/octet-stream", "a.mov")).toBe("video/quicktime");
+    expect(pickMime("image/png; charset=x", "a.jpg")).toBe("image/png");
+  });
+
+  it("parses plain and RFC 5987 filenames", () => {
+    expect(filenameFromDisposition(null)).toBeNull();
+    expect(filenameFromDisposition('attachment; filename="a b.jpg"')).toBe("a b.jpg");
+    expect(filenameFromDisposition("attachment; filename*=UTF-8''%C3%A9.jpg")).toBe("é.jpg");
+  });
+
+  it("canShareFiles is false in an insecure context", () => {
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
+    expect(canShareFiles()).toBe(true);
+    vi.stubGlobal("isSecureContext", false);
+    expect(canShareFiles()).toBe(false);
   });
 });

@@ -2206,7 +2206,7 @@ body {
   vertical-align: -2px;
 }
 
-.shell--desktop .toolbar .toolbar-button {
+.shell--desktop .shell__toolbar-nav .toolbar-button {
   margin-right: var(--space-12);
 }
 
@@ -2394,8 +2394,76 @@ body {
   cursor: pointer;
 }
 
+/* #296: one fixed toolbar row above every desktop view; the page heading
+   sits below it. Search is a normal flex item at the row's right end, so its
+   box is identical in every view. */
+.shell__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-hairline);
+  background: var(--material-toolbar);
+}
+
+.shell__toolbar-nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.shell__toolbar-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.shell__toolbar-controls > * {
+  flex: 0 0 auto;
+}
+
+.shell__toolbar-controls > .desktop-library__spacer {
+  flex: 1 1 auto;
+}
+
+.shell__search {
+  flex: 0 0 auto;
+}
+
+.page-heading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16) var(--space-8);
+}
+
+.page-heading__text {
+  min-width: 0;
+}
+
+.page-heading__title {
+  margin: 0;
+  font-size: var(--font-size-title-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.15;
+}
+
+.page-heading__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  min-height: 1.3em;
+}
+
 .search-box--desktop {
-  margin: 0 var(--space-4) var(--space-10);
+  width: 190px;
 }
 
 .search-box--desktop .search-box__input {
@@ -2407,6 +2475,43 @@ body {
 
 .search-box--desktop .search-box__input:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Narrow windows: just the magnifier until the field is focused. */
+@media (max-width: 1100px) {
+  .search-box--desktop {
+    width: 28px;
+  }
+
+  .search-box--desktop .search-box__input {
+    width: 28px;
+    padding: 0;
+    color: transparent;
+  }
+
+  .search-box--desktop .search-box__input::placeholder {
+    color: transparent;
+  }
+
+  /* Expanded: the field takes its real 190px; the controls slot shrinks. */
+  .search-box--desktop:has(.search-box__input:focus, .search-box__input:not(:placeholder-shown)) {
+    width: 190px;
+  }
+
+  .search-box--desktop .search-box__input:focus,
+  .search-box--desktop .search-box__input:not(:placeholder-shown) {
+    width: 190px;
+    padding: 0 26px 0 28px;
+    color: inherit;
+  }
+
+  .search-box--desktop .search-box__input:focus::placeholder {
+    color: var(--color-label-secondary);
+  }
+
+  .search-box--desktop .search-box__icon {
+    z-index: 1;
+  }
 }
 
 .search-box--mobile {
@@ -2529,7 +2634,7 @@ body {
   position: relative;
 }
 
-.shell--desktop .toolbar,
+.shell--desktop .shell__toolbar,
 .shell--desktop .desktop-library__toolbar {
   transition: padding-left 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -2544,7 +2649,7 @@ body {
 }
 
 /* Room for the floating sidebar toggle in the toolbar row. */
-.shell--sidebar-collapsed .toolbar,
+.shell--sidebar-collapsed .shell__toolbar,
 .shell--sidebar-collapsed .desktop-library__toolbar {
   padding-left: 48px;
 }

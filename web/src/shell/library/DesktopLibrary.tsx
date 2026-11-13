@@ -2,6 +2,7 @@ import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { createPortal } from "react-dom";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
@@ -105,6 +106,8 @@ export default function DesktopLibrary({
   initialView,
   initialScrollAssetId,
   album,
+  title = "Library",
+  toolbarSlot,
 }: {
   libraryId: number;
   initialAssetId?: string;
@@ -120,6 +123,10 @@ export default function DesktopLibrary({
   initialScrollAssetId?: string;
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
+  // #296: the page heading's title, and the shell's fixed toolbar row that
+  // the view controls render into (inline above the heading when absent).
+  title?: string;
+  toolbarSlot?: HTMLElement | null;
 }) {
   const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
   const view = fixedView ?? switchedView;
@@ -601,9 +608,8 @@ export default function DesktopLibrary({
     setFilter(next);
   }
 
-  return (
-    <div className="desktop-library" data-testid="desktop-library">
-      <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
+  const controlsBar = (
+    <>
         <div className="desktop-library__zoom-slider">
           <button
             type="button"
@@ -662,6 +668,63 @@ export default function DesktopLibrary({
           ))}
         </div>
         )}
+        {/* No dead button: sharing needs a secure (https) context, so it is
+            hidden where unavailable, like macOS toolbars omit unusable items. */}
+        {shareSupported && (
+          <button
+            type="button"
+            className="toolbar-button"
+            aria-label="Share"
+            onClick={() => void handleShare()}
+            disabled={selected.size === 0}
+            title="Share"
+          >
+            <Icon name="share" size={16} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="toolbar-button"
+          onClick={handleDownload}
+          disabled={selected.size === 0 || zip.busy}
+          title="Download"
+        >
+          <Icon name="download" size={16} />
+          <span className="sr-only">Download</span>
+        </button>
+        <button
+          type="button"
+          className="toolbar-button"
+          aria-pressed={infoOpen}
+          onClick={() => setInfoOpen((value) => !value)}
+          title="Info"
+        >
+          <Icon name="info" size={16} filled={infoOpen} />
+          <span className="sr-only">Info</span>
+        </button>
+        {(selected.size > 1 || zip.state.phase !== "idle") && (
+          <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+        )}
+        <span className="desktop-library__selection-count" data-testid="selection-count">
+          {selected.size > 0 ? `${selected.size} selected` : ""}
+        </span>
+    </>
+  );
+
+  return (
+    <div className="desktop-library" data-testid="desktop-library">
+      {toolbarSlot ? (
+        createPortal(controlsBar, toolbarSlot)
+      ) : (
+        <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
+          {controlsBar}
+        </div>
+      )}
+      <div className="page-heading" data-testid="page-heading">
+        <div className="page-heading__text">
+          <h1 className="page-heading__title">{title}</h1>
+          <p className="page-heading__subtitle">{view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"}</p>
+        </div>
         <div ref={filterMenuRef} className="desktop-library__filter">
           <button
             type="button"
@@ -692,42 +755,6 @@ export default function DesktopLibrary({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="toolbar-button"
-          aria-label="Share"
-          onClick={() => void handleShare()}
-          disabled={!shareSupported || selected.size === 0}
-          title={shareSupported ? "Share" : "Sharing isn't supported in this browser"}
-        >
-          <Icon name="share" size={16} />
-        </button>
-        <button
-          type="button"
-          className="toolbar-button"
-          onClick={handleDownload}
-          disabled={selected.size === 0 || zip.busy}
-          title="Download"
-        >
-          <Icon name="download" size={16} />
-          <span className="sr-only">Download</span>
-        </button>
-        <button
-          type="button"
-          className="toolbar-button"
-          aria-pressed={infoOpen}
-          onClick={() => setInfoOpen((value) => !value)}
-          title="Info"
-        >
-          <Icon name="info" size={16} filled={infoOpen} />
-          <span className="sr-only">Info</span>
-        </button>
-        {(selected.size > 1 || zip.state.phase !== "idle") && (
-          <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
-        )}
-        <span className="desktop-library__selection-count" data-testid="selection-count">
-          {selected.size > 0 ? `${selected.size} selected` : ""}
-        </span>
       </div>
       <div className="desktop-library__body">
       <div

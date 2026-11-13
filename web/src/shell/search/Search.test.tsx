@@ -119,6 +119,53 @@ describe("desktop search", () => {
     fireEvent.keyDown(window, { key: "f", metaKey: true });
     expect(screen.getByRole("searchbox")).toHaveFocus();
   });
+
+  it("focuses the field on /, but not while typing in another input", () => {
+    mockFetch(handler([], found));
+    renderDesktop();
+    fireEvent.keyDown(window, { key: "/" });
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    const other = document.createElement("input");
+    document.body.appendChild(other);
+    other.focus();
+    fireEvent.keyDown(other, { key: "/" });
+    expect(other).toHaveFocus();
+    other.remove();
+  });
+
+  it("puts search in the toolbar slot, not in the sidebar", () => {
+    mockFetch(handler([], found));
+    renderDesktop();
+    const field = screen.getByRole("searchbox");
+    expect(screen.getByRole("complementary", { name: "Sidebar" })).not.toContainElement(field);
+    expect(field.closest(".shell__search")).not.toBeNull();
+  });
+
+  it("keeps search in one fixed toolbar row and the title in a heading below it (#296)", async () => {
+    mockFetch(handler([], found));
+    renderDesktop();
+    const toolbar = screen.getByTestId("shell-toolbar");
+    const field = screen.getByRole("searchbox");
+    expect(toolbar).toContainElement(field);
+    // Library's own controls render into that row, not a second one.
+    expect(await screen.findByRole("button", { name: "Zoom In" })).toBeInTheDocument();
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "Zoom In" }));
+    expect(document.querySelector(".desktop-library__toolbar")).toBeNull();
+    // The title is a heading below the row, not inside it.
+    const heading = screen.getByRole("heading", { name: "Library" });
+    expect(toolbar).not.toContainElement(heading);
+    expect(heading.closest(".page-heading")).not.toBeNull();
+    expect(toolbar.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Filter By sits on the right of the heading row.
+    expect(screen.getByRole("button", { name: "Filter By" }).closest(".page-heading")).not.toBeNull();
+
+    // Another view: same toolbar element and field, heading swaps.
+    fireEvent.click(screen.getByRole("button", { name: "Map" }));
+    expect(screen.getByTestId("shell-toolbar")).toBe(toolbar);
+    expect(screen.getByRole("searchbox")).toBe(field);
+    expect(screen.getByRole("heading", { name: "Map" }).closest(".page-heading")).not.toBeNull();
+  });
 });
 
 describe("mobile search", () => {
