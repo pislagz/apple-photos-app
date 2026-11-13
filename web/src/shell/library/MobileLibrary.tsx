@@ -317,14 +317,27 @@ export default function MobileLibrary({
           selectMode={selectMode}
           onToggleSelect={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
         >
-          {view === "all" && (
+          {(view === "all" || selectMode) && (
             <div className="mobile-library__title-block">
-              {pinnedPill ? (
-                <DateTitle text={pinnedPill} className="mobile-library__pill" testId="pinned-header" />
+              {selectMode ? (
+                <>
+                  <div key="select" className="mobile-library__large-title" data-testid="header-title">
+                    Select Items
+                  </div>
+                  <div className="mobile-library__subtitle" data-testid="header-subtitle" aria-live="polite">
+                    <span key={selectedIds.size} className="date-title__text">
+                      {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "None Selected"}
+                    </span>
+                  </div>
+                </>
+              ) : pinnedPill ? (
+                <DateTitle text={pinnedPill} className="mobile-library__pill" testId="header-subtitle" />
               ) : (
                 <>
-                  <div className="mobile-library__large-title">Library</div>
-                  <DateTitle text={pinnedSubtitle} className="mobile-library__subtitle" testId="pinned-header" />
+                  <div className="mobile-library__large-title" data-testid="header-title">
+                    Library
+                  </div>
+                  <DateTitle text={pinnedSubtitle} className="mobile-library__subtitle" testId="header-subtitle" />
                 </>
               )}
             </div>

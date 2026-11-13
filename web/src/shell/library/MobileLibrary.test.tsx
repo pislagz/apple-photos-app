@@ -143,7 +143,7 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(container.querySelectorAll(".period-card--days").length).toBeGreaterThan(0));
   });
 
-  it("updates the pinned date header to the topmost visible day while scrolling All Photos", async () => {
+  it("updates the header subtitle to the topmost visible date while scrolling All Photos", async () => {
     const items = [
       makeItem("may-1", "2024-05-10T10:00:00"),
       makeItem("may-2", "2024-05-09T10:00:00"),
@@ -156,7 +156,7 @@ describe("MobileLibrary", () => {
     // Years/Months no longer have a pinned header (each tile already shows
     // its own label); only All Photos' uniform grid still needs one.
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("10 May 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
 
     const scrollEl = screen.getByTestId("library-scroll");
     // One grid row (cellSize 199.25px with the mocked 800px-wide container / 4
@@ -164,7 +164,7 @@ describe("MobileLibrary", () => {
     scrollEl.scrollTop = 220;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("18 Apr 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("18 Apr 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {
@@ -172,9 +172,10 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    const title = await screen.findByTestId("pinned-header");
+    const title = await screen.findByTestId("header-title");
     const select = screen.getByRole("button", { name: "Select" });
     const bar = screen.getByTestId("top-bar");
+    expect(title).toHaveTextContent("Library");
     // The title block (large title + subtitle) and Select share the bar.
     expect(title.closest(".mobile-library__title-block")?.parentElement).toBe(bar);
     expect(select.parentElement).toBe(bar);
@@ -203,7 +204,7 @@ describe("MobileLibrary", () => {
     expect(select.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(bar).toHaveClass("mobile-library__top-bar--nav");
     expect(bar).not.toHaveAttribute("data-scrim");
-    expect(screen.queryByTestId("pinned-header")).toBeNull();
+    expect(screen.queryByTestId("header-subtitle")).toBeNull();
     expect(container.querySelector(".mobile-library__view-switch")).toBeNull();
     fireEvent.click(back);
     expect(onBack).toHaveBeenCalledOnce();
@@ -578,7 +579,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(images[0]);
     expect(screen.getByText("1 Photo Selected")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByTestId("select-bar")).toBeNull();
   });
 
@@ -718,8 +719,26 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByText("Select"));
     expect(screen.queryByRole("tablist", { name: "Library zoom" })).toBeNull();
 
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+  });
+
+  it("swaps the header to Select Items with a live count in selection mode (#212)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Select Items");
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("None Selected");
+    expect(screen.queryByRole("button", { name: "Select" })).toBeNull();
+    fireEvent.click(images[0]);
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Selected");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024");
   });
 
   it("falls back to download links per item when the Web Share API is unavailable", async () => {
@@ -861,7 +880,7 @@ describe("MobileLibrary date title follows the zoom level (#209)", () => {
     const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("10 May 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
     expect(container.querySelector(".mobile-library__large-title")).toHaveTextContent("Library");
     expect(container.querySelector(".mobile-library__pill")).toBeNull();
   });

@@ -66,7 +66,8 @@ body {
   top: 0;
   right: 0;
   z-index: 5;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) var(--space-12) 0 0;
+  /* Centred on the 62px title block: 8px top gap + (62 - 44) / 2. */
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8) + var(--space-9)) var(--space-20) 0 0;
 }
 
 .shell--mobile .shell__content {
@@ -95,9 +96,10 @@ body {
    gradient scrim keeps the white text legible over whatever photo scrolls
    underneath. The grid fills the full height behind it (no top padding),
    so this must stay position:absolute rather than taking flex space. */
-/* Title (left) and Select (right) share one flex row. The right padding
+/* Title block (left) and Select (right) share one flex row. The right padding
    keeps the row clear of the account button that .shell__header floats at
-   the top-right (32px wide + 12px inset). */
+   the top-right (44px wide + 20px inset + 10px gap). Height is the safe-area
+   top + 8px + the 62px title block + a 30px fade (#212). */
 .mobile-library__top-bar {
   position: absolute;
   top: 0;
@@ -106,11 +108,10 @@ body {
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-10);
   box-sizing: border-box;
-  min-height: 44px;
   pointer-events: none;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-10)) 56px 28px var(--space-16);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) 74px 30px var(--space-20);
 }
 
 /* #209 scrim: a blur that is fully strong over the top 45 % and fades to clear
@@ -153,6 +154,15 @@ body {
 .mobile-library__nav-title {
   flex: 1 0 100%;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--color-white);
+  text-shadow: var(--text-shadow-overlay);
+}
+
+.mobile-library__title,
+.mobile-library__subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -276,6 +286,31 @@ body {
 .mobile-library__pill[data-prev]::after {
   left: 16px;
   top: 6px;
+}
+
+/* Round and pill controls over photos: translucent plus blur, so they stay
+   readable over white, black and mid-tone pictures. */
+.mobile-library__glass-button {
+  flex: 0 0 auto;
+  height: 44px;
+  min-width: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--glass-button);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: var(--color-on-glass);
+  cursor: default;
+  transition: opacity var(--dur-press) var(--ease-press);
+}
+
+.mobile-library__glass-button:active {
+  opacity: 0.6;
 }
 
 .mobile-library__view-switch {
@@ -609,9 +644,7 @@ body {
   color: var(--accent);
 }
 
-/* P1.17 multi-select: a top-left text button mirroring iOS Photos'
-   "Select"/"Cancel", symmetric with the account avatar the Shell already
-   floats at the top-right. */
+/* P1.17 multi-select: the "Select" pill, left of the account button. */
 .mobile-library__select-button {
   flex: 0 0 auto;
   /* Top of the first row, not centred on it: the row's other item (date
@@ -628,6 +661,18 @@ body {
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
   cursor: default;
+}
+
+/* #212: on the Library the Select button is a glass pill, and Cancel a round
+   glass close button; a pushed grid (nav) keeps the plain text button above. */
+.mobile-library__select-button.mobile-library__glass-button {
+  align-self: center;
+  min-height: 44px;
+  padding: 0 var(--space-18);
+  background: var(--glass-button);
+  color: var(--color-on-glass);
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
 }
 
 .mobile-library__cell-wrap,
@@ -1920,18 +1965,19 @@ body {
   position: relative;
 }
 
-.account-menu__trigger {
-  width: 32px;
-  height: 32px;
+.account-menu .account-menu__trigger {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: var(--color-fill-strong);
+  background: var(--glass-button);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  color: var(--color-label);
+  color: var(--color-on-glass);
+  box-shadow: var(--shadow-segment);
   cursor: default;
 }
 
@@ -1941,7 +1987,7 @@ body {
 
 .account-menu__popover {
   position: absolute;
-  top: 38px;
+  top: 50px;
   right: 0;
   z-index: 6;
   display: flex;

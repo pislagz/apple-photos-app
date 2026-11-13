@@ -39,11 +39,25 @@ export default function MobileGridHeader({
       ) : (
         children
       )}
-      {showSelect && (
-        <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>
-          {selectMode ? "Cancel" : "Select"}
-        </button>
-      )}
+      {showSelect &&
+        (nav ? (
+          <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>
+            {selectMode ? "Cancel" : "Select"}
+          </button>
+        ) : selectMode ? (
+          <button
+            type="button"
+            className="mobile-library__glass-button mobile-library__close-button"
+            aria-label="Cancel"
+            onClick={onToggleSelect}
+          >
+            <Icon name="close" />
+          </button>
+        ) : (
+          <button type="button" className="mobile-library__glass-button mobile-library__select-button" onClick={onToggleSelect}>
+            Select
+          </button>
+        ))}
       {nav && <h1 className="mobile-screen__title mobile-library__nav-title">{nav.title}</h1>}
     </div>
   );
