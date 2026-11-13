@@ -488,7 +488,7 @@ describe("MobileViewer", () => {
     expect(title?.textContent).toMatch(/2024/);
     expect(title?.textContent).not.toContain("52.2297");
     // Line 2 is the time only: no place name, and never the coordinates.
-    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("10:00 AM");
+    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("10:00");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -810,15 +810,23 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
     expect(root().className).not.toContain("is-chrome-hidden");
   });
 
-  it("two-line title: relative day, then time and place", async () => {
+  it("two-line title with a place: place, then \"date  time\" (iOS Photos)", async () => {
     const day = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const today = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T14:07:00`;
     setup({}, { date_created: today, place_address: null, place: "Kraków" });
+    await waitFor(() => expect(document.querySelector(".mobile-viewer__title-primary")?.textContent).toBe("Kraków"));
+    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("Today  14:07");
+    expect(document.querySelector('[data-testid="mobile-viewer"]')?.textContent).not.toMatch(/ of \d/);
+  });
+
+  it("two-line title without a place: date, then the time", async () => {
+    const day = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T14:07:00`;
+    setup({}, { date_created: today, place_address: null, place: null });
     await waitFor(() => expect(document.querySelector(".mobile-viewer__title-primary")?.textContent).toBe("Today"));
-    const second = document.querySelector(".mobile-viewer__title-secondary")?.textContent ?? "";
-    expect(second).toMatch(/2:07/);
-    expect(second).toMatch(/ \u00b7 Kraków$/);
+    expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("14:07");
   });
 
   it("every icon button is at least 44 x 44, and the bar buttons 44 x 52 (shell.css)", () => {

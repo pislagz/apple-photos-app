@@ -17,7 +17,7 @@ import { ViewerStill } from "./ViewerStill";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
 import { viewerKeyAction } from "./viewerKeys";
-import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { formatViewerTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 
@@ -441,7 +441,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
   // #211: line 1 relative day, line 2 "time . place"; Info keeps the full date.
-  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
+  const title = detail ? formatViewerTitle(detail.date_created, formatShortPlaceName(detail)) : { primary: "", secondary: "" };
 
   return (
     <div

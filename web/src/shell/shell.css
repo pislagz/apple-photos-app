@@ -1595,7 +1595,7 @@ body {
 .mobile-viewer__title-secondary {
   font-size: var(--font-size-caption);
   opacity: 0.8;
-  white-space: nowrap;
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
