@@ -144,6 +144,8 @@ export interface UserResponse {
   role: Role;
   disabled: boolean;
   created_at: string;
+  // True while too many wrong passwords have locked the account for a while.
+  locked?: boolean;
 }
 
 export function listUsers(): Promise<UserResponse[]> {
@@ -195,6 +197,10 @@ export function listInvites(): Promise<InviteResponse[]> {
 
 export function createInvite(role: Role): Promise<InviteCreateResponse> {
   return mutate<InviteCreateResponse>("POST", "/api/admin/invites", { role });
+}
+
+export function cancelInvite(id: string): Promise<void> {
+  return mutate<void>("DELETE", `/api/admin/invites/${encodeURIComponent(id)}`);
 }
 
 // -- Access matrix ------------------------------------------------------------------

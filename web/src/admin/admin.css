@@ -429,7 +429,10 @@ body:has(.admin-app, .admin-auth) {
 .admin-sheet {
   --admin-control-h: 32px;
   --admin-control-h-touch: 44px;
-  --admin-row-h: var(--admin-control-h);
+  /* One size system for every admin view: change sizes here only */
+  --admin-row-h: 40px;
+  --admin-switch-w: 38px;
+  --admin-switch-h: 22px;
 }
 
 @media (max-width: 700px) {
@@ -437,6 +440,8 @@ body:has(.admin-app, .admin-auth) {
   .admin-gallery,
   .admin-sheet {
     --admin-row-h: var(--admin-control-h-touch);
+    --admin-switch-w: 51px;
+    --admin-switch-h: 31px;
   }
 }
 
@@ -446,6 +451,7 @@ body:has(.admin-app, .admin-auth) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: var(--admin-control-h);
   min-height: var(--admin-control-h);
   padding: 0 14px;
   border: 1px solid transparent;
@@ -503,6 +509,7 @@ body:has(.admin-app, .admin-auth) {
 @media (max-width: 700px) {
   :is(.admin-app, .admin-gallery, .admin-sheet) :is(button, input, select, a).admin-btn,
   :is(.admin-app, .admin-gallery, .admin-sheet) :is(button, input, select).admin-input {
+    height: var(--admin-control-h-touch);
     min-height: var(--admin-control-h-touch);
   }
 
@@ -626,18 +633,13 @@ button.admin-switch {
   box-sizing: border-box;
   position: relative;
   flex: 0 0 auto;
-  width: 51px;
-  height: 31px;
+  width: var(--admin-switch-w);
+  height: var(--admin-switch-h);
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--color-fill-clear);
   transition: background-color var(--dur-tint) var(--ease-tint);
-}
-
-button.admin-switch.admin-switch--mac {
-  width: 38px;
-  height: 22px;
 }
 
 button.admin-switch[aria-checked="true"] {
@@ -648,25 +650,16 @@ button.admin-switch[aria-checked="true"] {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 27px;
-  height: 27px;
+  width: calc(var(--admin-switch-h) - 4px);
+  height: calc(var(--admin-switch-h) - 4px);
   border-radius: var(--radius-pill);
   background: var(--color-white);
   box-shadow: var(--shadow-segment);
   transition: transform var(--dur-tint) var(--ease-tint);
 }
 
-.admin-switch--mac .admin-switch__knob {
-  width: 18px;
-  height: 18px;
-}
-
 .admin-switch[aria-checked="true"] .admin-switch__knob {
-  transform: translateX(20px);
-}
-
-.admin-switch--mac[aria-checked="true"] .admin-switch__knob {
-  transform: translateX(16px);
+  transform: translateX(calc(var(--admin-switch-w) - var(--admin-switch-h)));
 }
 
 /* Inline "Saved" */
@@ -853,4 +846,114 @@ button.admin-switch[aria-checked="true"] {
 
 .admin-settings .admin-row__label {
   overflow-wrap: break-word;
+}
+
+/* People and Sharing (#314) */
+.admin-back {
+  margin: 0 0 var(--space-8);
+  padding-left: 0;
+  background: transparent;
+}
+
+.admin-tag {
+  margin-left: var(--space-8);
+  padding: 1px var(--space-6);
+  border-radius: var(--radius-8);
+  background: var(--color-fill-subtle);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.admin-hint--error {
+  color: var(--color-danger-text);
+  opacity: 1;
+}
+
+.admin-hint--warn {
+  color: var(--color-warn-text);
+  opacity: 1;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  color: var(--color-label);
+  font-size: var(--font-size-subhead);
+}
+
+.admin-field .admin-input {
+  width: 100%;
+}
+
+.admin-sheet__error {
+  margin: 0;
+  color: var(--color-danger-text);
+}
+
+.admin-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: var(--admin-control-h-touch);
+  color: var(--color-label);
+}
+
+.admin-choice input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.admin-choice > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-sharing-matrix .admin-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-card);
+  color: var(--color-label);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  white-space: nowrap;
+}
+
+.admin-sharing-matrix thead .admin-sticky-col {
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-secondary);
+}
+
+.admin-sharing-matrix td {
+  vertical-align: middle;
+}
+
+.admin-matrix-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* The person list uses the shared 44px rows; keep the control and its "Saved" on one line */
+.admin-people .admin-row__control,
+.admin-sharing .admin-row__control {
+  flex-wrap: nowrap;
+}
+
+.admin-sharing-matrix tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.admin-sharing-matrix :is(td, th[scope="row"]) {
+  vertical-align: middle;
 }

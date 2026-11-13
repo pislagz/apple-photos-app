@@ -40,8 +40,16 @@ describe("admin styling (#158)", () => {
     for (const cls of [".admin-btn", ".admin-input", ".admin-group", ".admin-row", ".admin-switch", ".admin-sheet", ".admin-skeleton", ".admin-saved"]) {
       expect(css).toContain(cls);
     }
-    expect(css).toMatch(/\.admin-switch\.admin-switch--mac \{[^}]*width: 38px;[^}]*height: 22px/);
-    expect(css).toMatch(/button\.admin-switch \{[^}]*width: 51px;[^}]*height: 31px/);
+    // One size system: switch, row and control sizes live in tokens; no per-screen size overrides
+    expect(css).toContain("--admin-switch-w: 38px");
+    expect(css).toContain("--admin-switch-h: 22px");
+    expect(css).toContain("--admin-switch-w: 51px");
+    expect(css).toContain("--admin-switch-h: 31px");
+    expect(css).toMatch(/button\.admin-switch \{[^}]*width: var\(--admin-switch-w\);[^}]*height: var\(--admin-switch-h\)/);
+    expect(css).not.toContain("admin-switch--mac");
+    expect(css).toMatch(/--admin-row-h: 40px/);
+    expect(css).toMatch(/\.admin-btn,[^{]*\{[^}]*height: var\(--admin-control-h\)/);
+    expect(css).toMatch(/:is\(input, select\)\.admin-input|:is\(button, input, select\)\.admin-input \{[^}]*height: var\(--admin-control-h\)/);
     expect(css).toMatch(/opacity: 0\.4;\s*cursor: not-allowed/);
   });
 

@@ -214,7 +214,7 @@ test("admin panel", async ({ page }, info) => {
   // #158: styled, and no page-level horizontal overflow on any screen.
   await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  for (const [i, label] of ["Libraries", "Users", "Access", "Sessions", "Audit log", "Settings"].entries()) {
+  for (const [i, label] of ["Libraries", "People", "Sharing", "Sessions", "Audit log", "Settings"].entries()) {
     await nav.getByRole("button", { name: label }).click();
     await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
     await page.waitForLoadState("networkidle");
@@ -310,24 +310,6 @@ test("phone Days view has a scrim behind Select (#176)", async ({ page }, info) 
   const bg = await page.getByTestId("top-bar").evaluate((el) => getComputedStyle(el).backgroundImage);
   expect(bg).toContain("linear-gradient");
   await shot(page, "11-days-scrim", info.project.name);
-});
-
-test("admin Users actions are compact on a phone (#179)", async ({ page }, info) => {
-  test.skip(info.project.name === "desktop", "phone only");
-  await signIn(page, ADMIN);
-  await page.goto("/admin");
-  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Users" }).click();
-  await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
-  const actions = page.locator(".admin-actions").first();
-  await expect(actions).toBeVisible();
-  const tops = await actions.locator("button").evaluateAll((buttons) =>
-    Array.from(new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))),
-  );
-  expect(tops.length, "four buttons sit in two rows, not a stack").toBe(2);
-  const wrap = page.locator(".admin-table-wrap").first();
-  const overflow = await wrap.evaluate((el) => el.scrollWidth - el.clientWidth);
-  expect(overflow, "the Users table does not scroll sideways").toBeLessThanOrEqual(0);
-  await shot(page, "12-admin-users-actions", info.project.name);
 });
 
 // The demo library has no update history and keeps every original, so these

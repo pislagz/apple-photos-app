@@ -18,7 +18,7 @@ function Section({ size }: { size: RowSize }) {
     <div data-testid={`gallery-${size}`}>
       <GroupedList heading={`Rows at ${px}px`} footer="Changes save as soon as you make them.">
         <Row size={size} label="Show hidden photos" control={<><SavedStatus state={saved} /><Switch checked={on} label="Show hidden photos" onChange={(v) => { setOn(v); setSaved("saved"); }} /></>} />
-        <Row size={size} label="Mac-style switch" control={<Switch variant="mac" checked={!on} label="Mac-style switch" onChange={(v) => setOn(!v)} />} />
+        <Row size={size} label="Mac-style switch" control={<Switch checked={!on} label="Mac-style switch" onChange={(v) => setOn(!v)} />} />
         <Row size={size} label="Disabled switch" control={<Switch checked disabled label="Disabled switch" onChange={() => {}} />} />
         <Row size={size} label="Last backup" detail="Checked every 15 minutes" value={`${formatWhen(new Date(Date.now() - 5 * 60_000))} · ${formatBytes(1_500_000_000)}`} />
         <Row size={size} label="Scan time" value={formatDuration(125)} />
