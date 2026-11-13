@@ -10,24 +10,23 @@ import {
   type PlaceNamesStatus,
   readPlaceNames,
 } from "./api";
-import { Icon } from "../shell/icons";
-import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
-import AuditLogScreen from "./screens/AuditLogScreen";
+import { Icon, type IconName } from "../shell/icons";
+import { type Section, useAdminRoute } from "./route";
+import { GroupedList, Row } from "./ui/GroupedList";
+import ActivityScreen from "./screens/ActivityScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
-import SessionsScreen from "./screens/SessionsScreen";
+import DevicesScreen from "./screens/DevicesScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import PeopleScreen from "./screens/PeopleScreen";
 import SharingScreen from "./screens/SharingScreen";
 
-type Screen = "libraries" | "users" | "access" | "sessions" | "audit-log" | "settings";
-
-const SCREENS: { key: Screen; label: string }[] = [
-  { key: "libraries", label: "Libraries" },
-  { key: "users", label: "People" },
-  { key: "access", label: "Sharing" },
-  { key: "sessions", label: "Sessions" },
-  { key: "audit-log", label: "Audit log" },
-  { key: "settings", label: "Settings" },
+const SCREENS: { key: Section; label: string; icon: IconName }[] = [
+  { key: "libraries", label: "Libraries", icon: "library" },
+  { key: "people", label: "People", icon: "people" },
+  { key: "sharing", label: "Sharing", icon: "share" },
+  { key: "devices", label: "Devices", icon: "screenshot" },
+  { key: "activity", label: "Activity", icon: "days" },
+  { key: "settings", label: "Settings", icon: "filter" },
 ];
 
 const PHOTOS_HREF = "/";
@@ -57,18 +56,18 @@ function shouldLeaveOnEscape(event: KeyboardEvent): boolean {
 export default function AdminApp() {
   const [me, setMe] = useState<MeResponse | null>(null);
   const [checkedSession, setCheckedSession] = useState(false);
-  const [screen, setScreen] = useState<Screen>(() =>
-    window.location.hash === `#${MAP_PLACE_NAMES_ANCHOR}` ? "settings" : "libraries",
-  );
+  const { route, direction, navigate } = useAdminRoute();
+  const screen = route.section;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   // Shown until an admin has answered the "Map & place names" question.
   const [optInsReviewed, setOptInsReviewed] = useState(true);
   // After "Allow": the automatic place-name download, shown like the manual one.
-  const [noticeProgress, setNoticeProgress] = useState<{ kind: "working" | "done" | "failed" | "error"; text: string } | null>(
-    null,
-  );
+  const [noticeProgress, setNoticeProgress] = useState<{
+    kind: "working" | "done" | "failed" | "error";
+    text: string;
+  } | null>(null);
   const [answering, setAnswering] = useState(false);
 
   useEffect(() => {
@@ -94,17 +93,23 @@ export default function AdminApp() {
   useEffect(() => {
     if (!isAdmin) return;
     readPlaceNames()
-      .then((status: PlaceNamesStatus) => setOptInsReviewed(status.consent_decided))
+      .then((status: PlaceNamesStatus) =>
+        setOptInsReviewed(status.consent_decided),
+      )
       .catch(() => setOptInsReviewed(true));
   }, [isAdmin, screen]);
 
   async function startPlaceNamesDownload() {
-    setNoticeProgress({ kind: "working", text: "Downloading place-name data…" });
+    setNoticeProgress({
+      kind: "working",
+      text: "Downloading place-name data…",
+    });
     try {
       await downloadPlaceNames();
       setNoticeProgress({ kind: "done", text: "Place-name data downloaded." });
     } catch (err) {
-      const reason = err instanceof ApiError ? err.message : "something went wrong";
+      const reason =
+        err instanceof ApiError ? err.message : "something went wrong";
       setNoticeProgress({
         kind: "failed",
         text: `Place-name data could not be downloaded: ${reason}. You can retry it in Settings.`,
@@ -136,7 +141,9 @@ export default function AdminApp() {
       await login(username, password);
       setMe(await getMe());
     } catch (err) {
-      setLoginError(err instanceof ApiError ? err.message : "something went wrong");
+      setLoginError(
+        err instanceof ApiError ? err.message : "something went wrong",
+      );
     }
   }
 
@@ -152,11 +159,18 @@ export default function AdminApp() {
         <form onSubmit={handleLogin}>
           <label>
             Username
-            <input value={username} onChange={(event) => setUsername(event.target.value)} />
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+            />
           </label>
           <label>
             Password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
           </label>
           <button type="submit">Sign in</button>
         </form>
@@ -174,61 +188,90 @@ export default function AdminApp() {
   }
 
   return (
-    <div className="admin-app">
+    <div className="admin-app" data-detail={route.id !== null}>
       <nav className="admin-nav" aria-label="Admin sections">
-        <div className="admin-nav__header">
-          <BackToPhotos />
-          <span className="admin-nav__title">Admin</span>
-        </div>
+        <a className="admin-nav__exit" href="/" aria-label="Back to Photos">
+          <span aria-hidden="true">‹</span> Photos
+        </a>
         <ul>
           {SCREENS.map((entry) => (
             <li key={entry.key}>
               <button
                 type="button"
                 aria-current={screen === entry.key}
-                onClick={() => setScreen(entry.key)}
+                onClick={() => navigate(entry.key)}
               >
-                {entry.label}
+                <Icon
+                  name={entry.icon}
+                  size={18}
+                  filled={screen === entry.key}
+                />
+                <span>{entry.label}</span>
               </button>
             </li>
           ))}
         </ul>
       </nav>
-      <main className="admin-main">
+      <main
+        className="admin-main"
+        data-nav={direction ?? undefined}
+        key={`${route.section}/${route.id ?? ""}`}
+      >
         {!optInsReviewed && (
-          <div className="admin-notice" role="note" data-testid="opt-in-notice">
-            <p>
-              The map and place names are off until you agree to use OpenStreetMap data. Allowing it also downloads a
-              public city list (GeoNames) once; nothing about your photos is sent.
-            </p>
-            <div className="admin-notice__actions">
-              <button type="button" onClick={() => answerNotice(true)} disabled={answering}>
-                Allow
-              </button>
-              <button type="button" onClick={() => answerNotice(false)} disabled={answering}>
-                Not now
-              </button>
-              <button type="button" className="admin-link" onClick={() => setScreen("settings")}>
-                Review it in Settings
-              </button>
-            </div>
+          <div data-testid="opt-in-notice" className="admin-notice-group">
+            <GroupedList
+              heading="Map & place names"
+              footer="Allowing it also downloads a public city list (GeoNames) once. Nothing about your photos is sent."
+            >
+              <Row
+                label="The map and place names are off"
+                detail="They stay off until you agree to use OpenStreetMap data."
+              />
+              <Row
+                label="Allow"
+                onClick={() => !answering && answerNotice(true)}
+              />
+              <Row
+                label="Not now"
+                onClick={() => !answering && answerNotice(false)}
+              />
+              <Row
+                label="Review it in Settings"
+                onClick={() => navigate("settings")}
+              />
+            </GroupedList>
           </div>
         )}
         {noticeProgress && (
-          <p className="admin-notice" role="status" data-testid="place-names-progress" data-state={noticeProgress.kind}>
+          <p
+            className="admin-notice"
+            role="status"
+            data-testid="place-names-progress"
+            data-state={noticeProgress.kind}
+          >
             {noticeProgress.text}{" "}
             {noticeProgress.kind === "failed" && (
-              <button type="button" onClick={startPlaceNamesDownload}>
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={startPlaceNamesDownload}
+              >
                 Retry
               </button>
             )}
           </p>
         )}
         {screen === "libraries" && <LibrariesScreen />}
-        {screen === "users" && <PeopleScreen currentUsername={me.username} />}
-        {screen === "access" && <SharingScreen />}
-        {screen === "sessions" && <SessionsScreen />}
-        {screen === "audit-log" && <AuditLogScreen />}
+        {screen === "people" && (
+          <PeopleScreen
+            currentUsername={me.username}
+            selected={route.id}
+            onSelect={(name) => navigate("people", name)}
+          />
+        )}
+        {screen === "sharing" && <SharingScreen />}
+        {screen === "devices" && <DevicesScreen />}
+        {screen === "activity" && <ActivityScreen />}
         {screen === "settings" && <SettingsScreen />}
       </main>
     </div>
