@@ -3,7 +3,7 @@ import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
@@ -56,6 +56,11 @@ const LOAD_MORE_ROW_MARGIN = 3;
 // Pointer travel before a press on the grid turns into a rubber-band drag, so
 // a plain click on a cell still just selects it (#97).
 const DRAG_THRESHOLD_PX = 4;
+// #265: our own double-click: a second plain click within this time, on the
+// same tile or within a few px of the first one (so a re-layout between the
+// clicks can't turn it into two single clicks on different elements).
+const DOUBLE_CLICK_MS = 500;
+const DOUBLE_CLICK_SLOP_PX = 6;
 
 // A single selected file downloads directly (a multi-selection goes through
 // the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
@@ -78,6 +83,68 @@ function downloadSelection(libraryId: number, ids: Iterable<string>) {
 // this only ever pages `/assets` -- never `/hidden` -- so a hidden asset
 // (P1.13) can't reach any view or ⌘A. Cells request thumbnails only; a
 // download is the only thing that may hit `/original`.
+// One grid tile. Memoised so a selection change re-renders only the tiles
+// whose `selected` flips: the rest keep their element and decoded image (#265).
+const GridCell = memo(function GridCell({
+  item,
+  index,
+  libraryId,
+  thumbSize,
+  squareMode,
+  selected,
+  height,
+  tileWidth,
+  featureLabel,
+  onCellClick,
+  onCellDoubleClick,
+  onCellContextMenu,
+  setCellRef,
+}: {
+  item: AssetListItem;
+  index: number;
+  libraryId: number;
+  thumbSize: string;
+  squareMode: boolean;
+  selected: boolean;
+  height: number;
+  tileWidth: number;
+  featureLabel: string | null;
+  onCellClick: (event: React.MouseEvent, item: AssetListItem, index: number) => void;
+  onCellDoubleClick: (id: string) => void;
+  onCellContextMenu: (event: React.MouseEvent, id: string) => void;
+  setCellRef: (id: string, element: HTMLElement | null) => void;
+}) {
+  const ref = useCallback((element: HTMLElement | null) => setCellRef(item.id, element), [setCellRef, item.id]);
+  return (
+    <div
+      ref={ref}
+      data-asset-id={item.id}
+      // Focus lands here when the Viewer closes (D59); arrow keys bubble to the grid.
+      tabIndex={-1}
+      data-testid="library-cell"
+      role="option"
+      aria-selected={selected}
+      data-selected={selected}
+      className="desktop-library__cell"
+      style={{ height }}
+      onClick={(event) => onCellClick(event, item, index)}
+      onDoubleClick={() => onCellDoubleClick(item.id)}
+      onContextMenu={(event) => onCellContextMenu(event, item.id)}
+    >
+      <FadeImage
+        src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
+        alt={assetAlt(item)}
+        loading="lazy"
+        draggable={false}
+        className="desktop-library__thumb"
+        style={{ objectFit: squareMode ? "cover" : "contain" }}
+      />
+      {featureLabel !== null && <div className="desktop-library__feature-caption">{featureLabel}</div>}
+      <TileOverlays item={item} tileWidth={tileWidth} prefix="desktop-library" />
+    </div>
+  );
+});
+
 export default function DesktopLibrary({
   libraryId,
   initialAssetId,
@@ -105,7 +172,7 @@ export default function DesktopLibrary({
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
 }) {
-  const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
+  const [switchedView, setView] = useState<ViewKey>(initialView ?? "all");
   const view = fixedView ?? switchedView;
   const segmentRef = useSlidingPill<HTMLDivElement>(view, fixedView === undefined);
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
@@ -261,8 +328,15 @@ export default function DesktopLibrary({
   // rows near the viewport, so moving focus by state alone (as selection
   // does) leaves the newly-focused cell unmounted if it was outside the
   // overscan window.
+  // A clicked tile is already under the pointer: scrolling it "into view"
+  // would move the grid between the two clicks of a double-click (#265).
+  const clickFocusIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!focusedId) return;
+    if (clickFocusIdRef.current === focusedId) {
+      clickFocusIdRef.current = null;
+      return;
+    }
     const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === focusedId));
     if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
   }, [focusedId, rows, rowVirtualizer]);
@@ -313,34 +387,6 @@ export default function DesktopLibrary({
     }
   }, [rows, loading, done, loadMore, selectSingle]);
 
-  const handleCellClick = useCallback(
-    (event: React.MouseEvent, item: AssetListItem, index: number) => {
-      if (suppressClickRef.current) return;
-      if (event.shiftKey && anchorIdRef.current) {
-        const anchorIndex = items.findIndex((candidate) => candidate.id === anchorIdRef.current);
-        if (anchorIndex !== -1) {
-          const [lo, hi] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
-          setSelected(new Set(items.slice(lo, hi + 1).map((candidate) => candidate.id)));
-          setFocusedId(item.id);
-          return;
-        }
-      }
-      if (event.metaKey || event.ctrlKey) {
-        setSelected((previous) => {
-          const next = new Set(previous);
-          if (next.has(item.id)) next.delete(item.id);
-          else next.add(item.id);
-          return next;
-        });
-        anchorIdRef.current = item.id;
-        setFocusedId(item.id);
-        return;
-      }
-      selectSingle(item.id);
-    },
-    [items, selectSingle],
-  );
-
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
@@ -385,6 +431,63 @@ export default function DesktopLibrary({
       if (index !== -1) setViewerIndex(index);
     },
     [items, view, onOpenDay],
+  );
+
+  const lastClickRef = useRef<{ id: string; time: number; x: number; y: number } | null>(null);
+  const openedByClicksAtRef = useRef(-Infinity);
+
+  const handleCellClick = useCallback(
+    (event: React.MouseEvent, item: AssetListItem, index: number) => {
+      if (suppressClickRef.current) return;
+      const plain = !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+      const now = performance.now();
+      const last = lastClickRef.current;
+      if (
+        plain &&
+        last &&
+        now - last.time <= DOUBLE_CLICK_MS &&
+        (last.id === item.id || Math.hypot(event.clientX - last.x, event.clientY - last.y) <= DOUBLE_CLICK_SLOP_PX)
+      ) {
+        lastClickRef.current = null;
+        openedByClicksAtRef.current = now;
+        handleOpen(last.id);
+        return;
+      }
+      lastClickRef.current = plain ? { id: item.id, time: now, x: event.clientX, y: event.clientY } : null;
+      clickFocusIdRef.current = item.id;
+      if (event.shiftKey && anchorIdRef.current) {
+        const anchorIndex = items.findIndex((candidate) => candidate.id === anchorIdRef.current);
+        if (anchorIndex !== -1) {
+          const [lo, hi] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
+          setSelected(new Set(items.slice(lo, hi + 1).map((candidate) => candidate.id)));
+          setFocusedId(item.id);
+          return;
+        }
+      }
+      if (event.metaKey || event.ctrlKey) {
+        setSelected((previous) => {
+          const next = new Set(previous);
+          if (next.has(item.id)) next.delete(item.id);
+          else next.add(item.id);
+          return next;
+        });
+        anchorIdRef.current = item.id;
+        setFocusedId(item.id);
+        return;
+      }
+      selectSingle(item.id);
+    },
+    [items, selectSingle, handleOpen],
+  );
+
+  // The browser's own dblclick still opens (keyboard-less assistive tech,
+  // synthetic events), unless the two clicks above already did.
+  const handleCellDoubleClick = useCallback(
+    (id: string) => {
+      if (performance.now() - openedByClicksAtRef.current <= DOUBLE_CLICK_MS) return;
+      handleOpen(id);
+    },
+    [handleOpen],
   );
 
   const handleGridKeyDown = useCallback(
@@ -865,38 +968,24 @@ export default function DesktopLibrary({
                   }}
                   className="desktop-library__row-grid"
                 >
-                  {row.items.map((item) => {
-                    const index = items.indexOf(item);
-                    return (
-                      <div
-                        key={item.id}
-                        ref={(element) => setCellRef(item.id, element)}
-                        data-asset-id={item.id}
-                        // Focus lands here when the Viewer closes (D59); arrow keys bubble to the grid.
-                        tabIndex={-1}
-                        data-testid="library-cell"
-                        role="option"
-                        aria-selected={selected.has(item.id)}
-                        data-selected={selected.has(item.id)}
-                        className="desktop-library__cell"
-                        style={{ height: row.type === "feature" ? featureHeight(containerWidth, cellSize, gap) : cellSize }}
-                        onClick={(event) => handleCellClick(event, item, index)}
-                        onDoubleClick={() => handleOpen(item.id)}
-                        onContextMenu={(event) => handleCellContextMenu(event, item.id)}
-                      >
-                        <FadeImage
-                          src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${thumbSize}`}
-                          alt={assetAlt(item)}
-                          loading="lazy"
-                          draggable={false}
-                          className="desktop-library__thumb"
-                          style={{ objectFit: squareMode ? "cover" : "contain" }}
-                        />
-                        {row.type === "feature" && <div className="desktop-library__feature-caption">{row.label}</div>}
-                        <TileOverlays item={item} tileWidth={tileWidth} prefix="desktop-library" />
-                      </div>
-                    );
-                  })}
+                  {row.items.map((item) => (
+                    <GridCell
+                      key={item.id}
+                      item={item}
+                      index={items.indexOf(item)}
+                      libraryId={libraryId}
+                      thumbSize={thumbSize}
+                      squareMode={squareMode}
+                      selected={selected.has(item.id)}
+                      height={row.type === "feature" ? featureHeight(containerWidth, cellSize, gap) : cellSize}
+                      tileWidth={tileWidth}
+                      featureLabel={row.type === "feature" ? row.label : null}
+                      onCellClick={handleCellClick}
+                      onCellDoubleClick={handleCellDoubleClick}
+                      onCellContextMenu={handleCellContextMenu}
+                      setCellRef={setCellRef}
+                    />
+                  ))}
                 </div>
               );
             })}

@@ -65,7 +65,8 @@ export default function MobileLibrary({
   nav?: MobileGridNav;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [view, setView] = useState<ViewKey>(album ? "all" : "years");
+  // Opens on All Photos like iOS Photos (#304); Years/Months/Days stay in the switch.
+  const [view, setView] = useState<ViewKey>("all");
   // Set right before drilling Months -> Days (#126): anchors the Days/All
   // Photos feed's first page at that month instead of the top of the whole
   // library. `/assets`'s `to` bound is a string compare on the local-day
