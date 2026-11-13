@@ -7,7 +7,7 @@ import { HELP, type HelpKey } from "./adminHelp";
 // tap pins it open. Escape or a tap outside closes it. The text is portalled to
 // <body> and positioned from the button, so it is never clipped by a card and does
 // not become part of the surrounding <label>'s text.
-export default function InfoButton({ helpKey, name }: { helpKey: HelpKey; name: string }) {
+export default function InfoButton({ helpKey, name, extra }: { helpKey: HelpKey; name: string; extra?: string }) {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
@@ -78,7 +78,7 @@ export default function InfoButton({ helpKey, name }: { helpKey: HelpKey; name: 
           hidden={!open}
           style={pos ? { top: pos.top, left: pos.left } : undefined}
         >
-          {HELP[helpKey]}
+          {extra ? `${HELP[helpKey]} ${extra}` : HELP[helpKey]}
         </span>,
         document.body,
       )}
