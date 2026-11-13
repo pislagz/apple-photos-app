@@ -1102,28 +1102,116 @@ button.admin-switch[aria-checked="true"] {
   }
 }
 
-/* Library picker */
-.library-picker-list,
-.library-picker ul {
-  list-style: none;
-  margin: 0 0 var(--space-12);
-  padding: 0;
+/* Libraries (#311) */
+.admin-row__line {
+  display: block;
 }
 
-.library-picker-list li {
+.admin-row__detail progress,
+.admin-row__text progress {
+  display: block;
+  width: min(100%, 16em);
+  height: var(--space-6);
+  margin-top: var(--space-4);
+}
+
+.admin-actions-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: var(--space-8) 0;
-  border-bottom: 1px solid var(--color-fill-subtle);
+  justify-content: flex-start;
+  gap: var(--space-8);
+  margin: 0 0 var(--space-12);
 }
 
-.library-picker-list li > div {
+.admin-empty {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-24) var(--space-16);
+  text-align: center;
+  color: var(--color-label-secondary);
 }
 
-.library-advanced {
-  margin: var(--space-16) 0;
+.admin-main .admin-empty h2,
+.admin-empty h2 {
+  margin: 0;
+  color: var(--color-label);
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-semibold);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.admin-empty p {
+  margin: 0;
+  max-width: 32em;
+}
+
+.admin-empty .admin-actions-bar {
+  margin: var(--space-8) 0 0;
+}
+
+.admin-row--form {
+  flex-wrap: wrap;
+}
+
+.admin-row--form .admin-row__control {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.admin-subgroup > * + * {
+  border-top: 1px solid var(--color-line);
+}
+
+.admin-subgroup {
+  background: var(--color-fill-subtle);
+}
+
+.admin-help-details {
+  margin: var(--space-8) 0;
+  text-align: left;
+}
+
+.admin-help-details p {
+  margin: 0 var(--space-16);
+  font-size: var(--font-size-caption);
+}
+
+.library-picker .admin-advanced > form {
+  margin: var(--space-8) 0;
+}
+
+.admin-sheet .admin-group {
+  margin-bottom: var(--space-12);
+}
+
+.admin-sheet .admin-row {
+  flex-wrap: wrap;
+}
+
+.admin-sheet .admin-row__text {
+  flex: 1 1 8em;
+}
+
+.admin-sheet .admin-row__control {
+  margin-left: auto;
+}
+
+@media (max-width: 700px) {
+  .admin-libraries .admin-row__control,
+  .admin-sheet .admin-row__control {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .admin-libraries .admin-row,
+  .admin-sheet .admin-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-sheet .admin-row__label {
+    word-break: break-word;
+  }
 }

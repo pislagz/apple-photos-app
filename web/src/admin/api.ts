@@ -28,6 +28,8 @@ export interface LibraryStatusResponse {
   video_count: number | null;
   people_count: number | null;
   total_size_bytes: number | null;
+  // Size of this library's thumbnail cache, when the server reports it.
+  thumb_cache_bytes?: number | null;
   last_indexed_at: string | null;
   index_state?: string | null;
   index_error?: string | null;
