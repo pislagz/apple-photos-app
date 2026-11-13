@@ -42,3 +42,29 @@ export function formatViewerTitle(iso: string | null, place: string, now: Date =
   if (!day) return { primary: place, secondary: "" };
   return { primary: day, secondary };
 }
+
+// #302 desktop bar: "14 June 2026 at 21:08:35 · 70 864 of 71 246". The stored
+// wall-clock is shown as is (see NAIVE above); counts use the locale grouping.
+export function formatViewerDateTime(iso: string | null): string {
+  const match = iso ? NAIVE.exec(iso) : null;
+  if (!match) return "";
+  const [, year, month, day, hour, minute] = match;
+  const second = /^.{16}:(\d{2})/.exec(iso ?? "")?.[1] ?? "00";
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+  return date.toLocaleString(undefined, { dateStyle: "long", timeStyle: "medium", timeZone: "UTC" });
+}
+
+export function formatPosition(index: number, total: number): string {
+  return `${(index + 1).toLocaleString()} of ${total.toLocaleString()}`;
+}
+
+export function formatDesktopTitle(opts: {
+  place: string;
+  filename: string;
+  dateCreated: string | null;
+  index: number;
+  total: number;
+}): ViewerTitle {
+  const secondary = [formatViewerDateTime(opts.dateCreated), formatPosition(opts.index, opts.total)].filter(Boolean).join(" · ");
+  return { primary: opts.place || opts.filename, secondary };
+}

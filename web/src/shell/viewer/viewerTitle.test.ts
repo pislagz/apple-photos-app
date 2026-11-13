@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, formatRelativeDay, formatViewerTitle } from "./viewerTitle";
+import { formatClock, formatDesktopTitle, formatPosition, formatRelativeDay, formatViewerDateTime, formatViewerTitle } from "./viewerTitle";
 
 // The long form is locale ordered (D Month YYYY, or Month D, YYYY in en-US).
 // 2024-05-15 is a Wednesday. `now` is a local-time Date, like the browser's.
@@ -47,5 +47,21 @@ describe("formatViewerTitle", () => {
   it("falls back to the place alone without a date, and to nothing without both", () => {
     expect(formatViewerTitle(null, "Oslo", NOW)).toEqual({ primary: "Oslo", secondary: "" });
     expect(formatViewerTitle(null, "", NOW)).toEqual({ primary: "", secondary: "" });
+  });
+});
+
+describe("desktop title (#302)", () => {
+  it("shows the place, else the file name, with date, time and N of M", () => {
+    const base = { filename: "IMG_1.HEIC", dateCreated: "2026-06-14T21:08:35", index: 70_863, total: 71_246 };
+    const withPlace = formatDesktopTitle({ ...base, place: "Lisbon" });
+    expect(withPlace.primary).toBe("Lisbon");
+    expect(withPlace.secondary).toMatch(/9:08:35|21:08:35/);
+    expect(withPlace.secondary).toContain("2026");
+    expect(withPlace.secondary).toBe(`${formatViewerDateTime(base.dateCreated)} · ${formatPosition(70_863, 71_246)}`);
+    expect(formatDesktopTitle({ ...base, place: "" }).primary).toBe("IMG_1.HEIC");
+  });
+
+  it("drops the date part when there is none", () => {
+    expect(formatDesktopTitle({ place: "", filename: "a.jpg", dateCreated: null, index: 0, total: 2 }).secondary).toBe("1 of 2");
   });
 });

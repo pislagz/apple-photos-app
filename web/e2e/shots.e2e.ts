@@ -1147,7 +1147,7 @@ test.describe("viewer gestures (#214)", () => {
           await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
           await page.waitForTimeout(800);
           if ((await page.locator(".viewer-still").count()) > 0) return;
-          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
           await page.waitForTimeout(400);
         }
         throw new Error("no still photo in the first cells");
@@ -1246,7 +1246,7 @@ test.describe("viewer gestures (#214)", () => {
       await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
       await page.waitForTimeout(500);
       if ((await page.locator(".viewer-still").count()) > 0) break;
-      await page.getByRole("button", { name: "Close" }).first().click();
+      await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
       await page.waitForTimeout(400);
     }
     await page.waitForTimeout(800);
@@ -1308,7 +1308,7 @@ test.describe("viewer chrome (#211)", () => {
           await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
           await page.waitForTimeout(800);
           if ((await page.locator(".viewer-still").count()) > 0) break;
-          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
           await page.waitForTimeout(400);
         }
         await expect(page.locator(".viewer-still")).toHaveCount(1);
@@ -1411,7 +1411,7 @@ test.describe("viewer zoom from and to the tile (#220)", () => {
             await page.keyboard.press("ArrowRight");
             await page.waitForTimeout(500);
           }
-          await page.getByRole("button", { name: "Close" }).first().click();
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
           await page.waitForTimeout(100);
           await scrub(page, 0.5);
           await shot(page, `31-zoom-close-mid-${tag}-${scheme}`, info.project.name);

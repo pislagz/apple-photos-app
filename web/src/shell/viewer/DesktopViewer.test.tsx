@@ -101,13 +101,13 @@ describe("DesktopViewer", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("closes on the toolbar close button", () => {
+  it("closes on the toolbar back button", () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
     const onClose = vi.fn();
 
     render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={onClose} />);
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(screen.getByLabelText("Back"));
 
     expect(onClose).toHaveBeenCalled();
   });
@@ -250,12 +250,15 @@ describe("DesktopViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-panel");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
-    // D41: the title is the date, never the coordinates.
+    // D41: the title is never the coordinates (no place: the file name),
+    // and line 2 is date, time and position.
     const title = document.querySelector(".desktop-viewer__title-primary");
-    expect(title?.textContent).toMatch(/2024/);
+    expect(title?.textContent).toBe("a1.jpg");
     expect(title?.textContent).not.toContain("52.2297");
-    // Line 2 is the time only: no place name, and never the coordinates.
-    expect(document.querySelector(".desktop-viewer__title-secondary")?.textContent).toBe("10:00 AM");
+    const line = document.querySelector(".desktop-viewer__title-secondary")?.textContent;
+    expect(line).toMatch(/2024/);
+    expect(line).toMatch(/ · 1 of 2$/);
+    expect(line).not.toContain("52.2297");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -670,12 +673,69 @@ describe("DesktopViewer chrome (#211)", () => {
     vi.useRealTimers();
   });
 
-  it("the top bar is a 44 px blurred material with the title centred in two lines", () => {
+  it("the top bar is a 52 px blurred material with the title centred in two lines", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const start = css.indexOf("\n.desktop-viewer__topbar {");
     const rule = css.slice(start, css.indexOf("}", start));
-    expect(rule).toContain("height: 44px");
+    expect(rule).toContain("height: 52px");
     expect(rule).toContain("backdrop-filter: blur(20px)");
     expect(rule).toContain("var(--material-viewer-bar)");
+  });
+
+  describe("#302 Mac Photos top bar", () => {
+    const open = (items = [makeItem("a1"), makeItem("a2")], index = 0) =>
+      render(<DesktopViewer libraryId={1} items={items} index={index} onIndexChange={() => {}} onClose={() => {}} />);
+
+    it("titles with the place, then date and time and N of M", async () => {
+      mockDetail({ a1: makeDetail("a1", { date_created: "2026-06-14T21:08:35" }), a2: makeDetail("a2") });
+      open();
+      const title = screen.getByTestId("viewer-title");
+      await waitFor(() => expect(title.textContent).toContain("San Francisco"));
+      expect(title.textContent).toMatch(/9:08:35|21:08:35/);
+      expect(title.textContent).toMatch(/2026/);
+      expect(title.textContent).toMatch(/ · 1 of 2$/);
+    });
+
+    it("falls back to the file name when there is no place", async () => {
+      mockDetail({ a1: makeDetail("a1", { place: null, place_address: null }), a2: makeDetail("a2") });
+      open();
+      await waitFor(() => expect(screen.getByTestId("viewer-title").textContent).toContain("a1.jpg"));
+      expect(screen.getByTestId("viewer-title").textContent).not.toContain("San Francisco");
+    });
+
+    it("has every icon button named", () => {
+      mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+      open();
+      for (const name of ["Back", "Zoom Out", "Zoom In", "Copy Link", "Download", "Info"]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      }
+      expect(screen.getByRole("slider", { name: "Zoom" })).toBeInTheDocument();
+      expect(screen.queryByLabelText("Close")).toBeNull();
+    });
+
+    it("the slider, + and - change the zoom", () => {
+      mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+      open();
+      const slider = screen.getByTestId("viewer-zoom-slider") as HTMLInputElement;
+      expect(slider.value).toBe("1");
+      expect(screen.getByRole("button", { name: "Zoom Out" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+      expect(Number(slider.value)).toBeCloseTo(1.5);
+      fireEvent.change(slider, { target: { value: "3" } });
+      expect(Number(slider.value)).toBeCloseTo(3);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      expect(Number(slider.value)).toBeCloseTo(2.5);
+      fireEvent.change(slider, { target: { value: "1" } });
+      expect(slider.value).toBe("1");
+    });
+
+    it("uses the viewer background token, which differs between light and dark", () => {
+      const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
+      const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+      expect(tokens).toMatch(/--color-viewer-bg:\s*#fff;/);
+      expect(tokens).toMatch(/--color-viewer-bg:\s*#1e1e1e;/);
+      const start = css.indexOf("\n.desktop-viewer {");
+      expect(css.slice(start, css.indexOf("}", start))).toContain("var(--color-viewer-bg)");
+    });
   });
 });
