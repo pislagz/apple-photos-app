@@ -22,10 +22,33 @@ export default function LibrariesScreen() {
   const [replacing, setReplacing] = useState<{ library: LibraryResponse; path: string } | null>(null);
 
   function refresh() {
-    listLibraries().then(setLibraries).catch((err: unknown) => setError(describeError(err)));
+    listLibraries()
+      .then((list) => {
+        setLibraries(list);
+        // #252: every row shows its state straight away, no "Load status".
+        for (const library of list) void handleStatus(library);
+      })
+      .catch((err: unknown) => setError(describeError(err)));
   }
 
   useEffect(refresh, []);
+
+  // Light polling while any library is indexing; stops once none is.
+  const indexingIds = libraries
+    .filter((library) => waitingForIndex(statuses[library.id]))
+    .map((library) => library.id)
+    .join(",");
+  useEffect(() => {
+    if (!indexingIds) return;
+    const timer = window.setInterval(() => {
+      for (const id of indexingIds.split(",").map(Number)) {
+        libraryStatus(id)
+          .then((status) => setStatuses((prev) => ({ ...prev, [id]: status })))
+          .catch(() => {});
+      }
+    }, INDEX_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [indexingIds]);
 
   async function handleAdd(event: React.FormEvent) {
     event.preventDefault();
@@ -130,6 +153,9 @@ export default function LibrariesScreen() {
                   <td>
                     {status ? (
                       <ul>
+                        <li>
+                          <IndexState status={status} />
+                        </li>
                         <li>{status.asset_count ?? "?"} assets</li>
                         <li>{status.video_count ?? "?"} videos</li>
                         <li>{status.last_indexed_at ?? "never indexed"}</li>
@@ -184,9 +210,7 @@ export default function LibrariesScreen() {
                         )}
                       </ul>
                     ) : (
-                      <button type="button" onClick={() => handleStatus(library)}>
-                        Load status
-                      </button>
+                      <span role="status">Checking…</span>
                     )}
                   </td>
                   <td>
@@ -210,6 +234,47 @@ export default function LibrariesScreen() {
         </table>
       </div>
     </section>
+  );
+}
+
+const INDEX_POLL_MS = 2000;
+
+// A just-added library has no state until its background job starts.
+function waitingForIndex(status: LibraryStatusResponse | undefined): boolean {
+  if (!status) return false;
+  return status.index_state === "indexing" || (!status.last_indexed_at && status.index_state !== "error");
+}
+
+// #252: "Indexing… N of M photos" with a bar, then "Ready — N photos", or the
+// failure in plain words.
+export function IndexState({ status }: { status: LibraryStatusResponse }) {
+  if (status.index_state === "indexing") {
+    const progress = status.index_progress;
+    return (
+      <span role="status" className="admin-index-state">
+        {progress && progress.total > 0
+          ? `Indexing… ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} photos`
+          : "Indexing…"}
+        <progress
+          aria-label="Indexing progress"
+          value={progress && progress.total > 0 ? progress.done : undefined}
+          max={progress && progress.total > 0 ? progress.total : undefined}
+        />
+      </span>
+    );
+  }
+  if (status.index_state === "error") {
+    return (
+      <span role="alert" className="admin-index-state">
+        Indexing failed: {status.index_error ?? "unknown error"}. Check that the library is still there and press Re-index.
+      </span>
+    );
+  }
+  if (!status.last_indexed_at) return <span className="admin-index-state">Not indexed yet</span>;
+  return (
+    <span className="admin-index-state">
+      Ready — {(status.asset_count ?? 0).toLocaleString()} photos
+    </span>
   );
 }
 
