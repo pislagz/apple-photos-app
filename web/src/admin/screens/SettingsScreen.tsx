@@ -1,24 +1,246 @@
 import { useEffect, useState } from "react";
+import InfoButton from "../../help/InfoButton";
+import type { HelpKey } from "../../help/adminHelp";
 import { MAP_PLACE_NAMES_ANCHOR, MAP_PLACE_NAMES_TEXT } from "../../shell/PlaceInfoContext";
 import {
   ApiError,
   checkLibrariesNow,
   downloadPlaceNames,
   type PlaceNamesStatus,
+  patchSettings,
   readPlaceNames,
   readSettings,
   readTailnetAllowlist,
   type SettingsResponse,
-  writeSettings,
   writeTailnetAllowlist,
 } from "../api";
-
-// Both library timing fields: 7 days. 0 on the check interval means "Manual only".
-const MAX_MINUTES = 10080;
-const DEFAULT_CHECK_MINUTES = 15;
+import { Footer, GroupedList, Row } from "../ui/GroupedList";
+import SavedStatus, { useSaveStatus } from "../ui/SavedStatus";
+import Switch from "../ui/Switch";
+import { formatBytes } from "../ui/format";
+import {
+  CACHE_SIZE,
+  CHECK_INTERVAL,
+  type Choice,
+  DESKTOP_SESSION,
+  exactNote,
+  matchesPicture,
+  nearestChoice,
+  nearestPicture,
+  PICTURE_QUALITY,
+  PWA_SESSION,
+  REMEMBER_SESSION,
+  STABLE_WAIT,
+  ZIP_LIMIT,
+} from "./settingsChoices";
 
 function describeError(err: unknown): string {
   return err instanceof ApiError ? err.message : "something went wrong";
+}
+
+type Save = (changes: Partial<SettingsResponse>) => Promise<unknown>;
+
+// One row = label, control, inline save status, (i). The row saves by itself.
+function SettingRow({
+  label,
+  help,
+  name,
+  extra,
+  children,
+}: {
+  label: string;
+  help: HelpKey;
+  name: string;
+  extra?: string;
+  children: (run: (save: () => Promise<unknown>) => Promise<boolean>) => React.ReactNode;
+}) {
+  const { state, error, run } = useSaveStatus();
+  return (
+    <Row
+      label={label}
+      control={
+        <>
+          {children(run)}
+          <SavedStatus state={state} message={error} />
+          <InfoButton helpKey={help} name={name} extra={extra} />
+        </>
+      }
+    />
+  );
+}
+
+// A menu of ready choices. A stored value that is not one of them shows as the nearest
+// choice; the exact value goes into the (i) and is left alone until a choice is picked.
+function ChoiceRow({
+  label,
+  help,
+  name,
+  choices,
+  field,
+  kind,
+  settings,
+  save,
+}: {
+  label: string;
+  help: HelpKey;
+  name: string;
+  choices: Choice[];
+  field: Exclude<keyof SettingsResponse, "map_tiles_mode" | "map_tiles_pmtiles_path" | "osm_consent" | "show_library_updated_note">;
+  kind: "seconds" | "bytes" | "minutes";
+  settings: SettingsResponse;
+  save: Save;
+}) {
+  const stored = settings[field];
+  const exact = choices.some((c) => c.value === stored);
+  const shown = nearestChoice(choices, stored);
+  return (
+    <SettingRow label={label} help={help} name={name} extra={exact ? undefined : exactNote(kind, stored)}>
+      {(run) => (
+        <select
+          className="admin-input"
+          aria-label={label}
+          value={shown.value}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            void run(() => save({ [field]: value }));
+          }}
+        >
+          {choices.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </SettingRow>
+  );
+}
+
+function PictureQualityRow({ settings, save }: { settings: SettingsResponse; save: Save }) {
+  const exact = PICTURE_QUALITY.find((p) => matchesPicture(p, settings as unknown as Record<string, number>));
+  const shown = exact ?? nearestPicture(settings);
+  const note = exact
+    ? undefined
+    : `It is currently set to a custom mix (grid ${settings.thumb_size_grid}, sharp screens ${settings.thumb_size_grid2x}, preview ${settings.thumb_size_preview} pixels wide, quality ${settings.thumb_quality} of 100), which is not one of the choices; it stays as it is until you pick a choice.`;
+  return (
+    <SettingRow label="Picture quality" help="pictureQuality" name="picture quality" extra={note}>
+      {(run) => (
+        <select
+          className="admin-input"
+          aria-label="Picture quality"
+          value={shown.label}
+          onChange={(event) => {
+            const pick = PICTURE_QUALITY.find((p) => p.label === event.target.value)!;
+            const { label: _label, ...fields } = pick;
+            void run(() => save(fields));
+          }}
+        >
+          {PICTURE_QUALITY.map((p) => (
+            <option key={p.label} value={p.label}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </SettingRow>
+  );
+}
+
+function SwitchRow({
+  label,
+  help,
+  name,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  help: HelpKey;
+  name: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => Promise<unknown>;
+}) {
+  return (
+    <SettingRow label={label} help={help} name={name}>
+      {(run) => <Switch checked={checked} label={label} disabled={disabled} onChange={(next) => void run(() => onChange(next))} />}
+    </SettingRow>
+  );
+}
+
+function TextRow({
+  label,
+  help,
+  name,
+  value,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  help: HelpKey;
+  name: string;
+  value: string;
+  placeholder?: string;
+  onSave: (next: string) => Promise<unknown>;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <SettingRow label={label} help={help} name={name}>
+      {(run) => (
+        <input
+          className="admin-input"
+          aria-label={label}
+          value={draft}
+          placeholder={placeholder}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            if (draft.trim() !== value) void run(() => onSave(draft.trim()));
+          }}
+        />
+      )}
+    </SettingRow>
+  );
+}
+
+function AllowlistRow({ identities, onSaved }: { identities: string; onSaved: (text: string) => void }) {
+  const [draft, setDraft] = useState(identities);
+  useEffect(() => setDraft(identities), [identities]);
+  const lines = (text: string) =>
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+  const { state, error, run } = useSaveStatus();
+  return (
+    <div role="listitem" className="admin-row admin-row--stacked">
+      <span className="admin-row__text">
+        <label className="admin-row__label" htmlFor="allowlist-text">
+          Who can open the app
+        </label>
+        <span className="admin-row__detail">One name per line. Leave empty to let everyone on your private network in.</span>
+        <textarea
+          id="allowlist-text"
+          className="admin-input admin-input--area"
+          rows={4}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            const next = lines(draft);
+            if (next.join("\n") === lines(identities).join("\n")) return;
+            void run(async () => {
+              const saved = await writeTailnetAllowlist(next);
+              onSaved(saved.identities.join("\n"));
+            });
+          }}
+        />
+      </span>
+      <span className="admin-row__control">
+        <SavedStatus state={state} message={error} />
+        <InfoButton helpKey="allowlist" name="who can open the app" />
+      </span>
+    </div>
+  );
 }
 
 export default function SettingsScreen() {
@@ -29,9 +251,6 @@ export default function SettingsScreen() {
   const [checking, setChecking] = useState(false);
   const [placeNames, setPlaceNames] = useState<PlaceNamesStatus | null>(null);
   const [downloadingPlaces, setDownloadingPlaces] = useState(false);
-  // Text of number fields while typing. An empty field is a draft, never a 0:
-  // it blocks the save instead of silently turning e.g. the library checker off.
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     readSettings().then(setSettings).catch((err: unknown) => setError(describeError(err)));
@@ -49,46 +268,13 @@ export default function SettingsScreen() {
     }
   }, [loaded]);
 
-  function updateField<K extends keyof SettingsResponse>(key: K, value: SettingsResponse[K]) {
-    setSettings((prev) => (prev === null ? prev : { ...prev, [key]: value }));
-  }
-
-  type NumberKey = {
-    [K in keyof SettingsResponse]: SettingsResponse[K] extends number ? K : never;
-  }[keyof SettingsResponse];
-
-  function numberProps(key: NumberKey) {
-    return {
-      type: "number" as const,
-      value: drafts[key] ?? String(settings?.[key] ?? ""),
-      onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-        const text = event.target.value;
-        setDrafts((prev) => ({ ...prev, [key]: text }));
-        if (text.trim() !== "" && Number.isFinite(Number(text))) updateField(key, Number(text) as SettingsResponse[typeof key]);
-      },
-    };
-  }
-
-  async function handleSaveSettings(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setNotice(null);
-    if (settings === null) return;
-    const blank = Object.keys(drafts).find((key) => drafts[key].trim() === "" || !Number.isFinite(Number(drafts[key])));
-    if (blank !== undefined) {
-      setError("Enter a number in every numeric field before saving.");
-      return;
-    }
-    try {
-      const saved = await writeSettings(settings);
-      setSettings(saved);
-      setDrafts({});
-      setNotice("Settings saved.");
-      readPlaceNames().then(setPlaceNames).catch(() => undefined);
-    } catch (err) {
-      setError(describeError(err));
-    }
-  }
+  // Sends only the changed fields. A failure throws to the row's own status and the
+  // control falls back to the stored value, because the value is read from `settings`.
+  const save: Save = async (changes) => {
+    const saved = await patchSettings(changes);
+    setSettings(saved);
+    if ("osm_consent" in changes) readPlaceNames().then(setPlaceNames).catch(() => undefined);
+  };
 
   async function handleDownloadPlaceNames() {
     setError(null);
@@ -110,32 +296,11 @@ export default function SettingsScreen() {
     setChecking(true);
     try {
       const { started } = await checkLibrariesNow();
-      setNotice(
-        started
-          ? "Checking all libraries for changes now. A changed library is re-indexed once it has been unchanged for the wait time above."
-          : "A check is already running.",
-      );
+      setNotice(started ? "Checking all libraries for changes now." : "A check is already running.");
     } catch (err) {
       setError(describeError(err));
     } finally {
       setChecking(false);
-    }
-  }
-
-  async function handleSaveAllowlist(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setNotice(null);
-    const identities = allowlist
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "");
-    try {
-      const saved = await writeTailnetAllowlist(identities);
-      setAllowlist(saved.identities.join("\n"));
-      setNotice("Allow-list saved.");
-    } catch (err) {
-      setError(describeError(err));
     }
   }
 
@@ -148,140 +313,112 @@ export default function SettingsScreen() {
     );
   }
 
+  const choice = { settings, save };
   return (
-    <section>
+    <section className="admin-settings">
       <h1>Settings</h1>
       {error && <p role="alert">{error}</p>}
-      {notice && <p>{notice}</p>}
+      {notice && <p role="status">{notice}</p>}
 
-      <form onSubmit={handleSaveSettings}>
-        <label>
-          Desktop session lifetime (seconds)
-          <input {...numberProps("session_lifetime_desktop_seconds")} />
-        </label>
-        <label>
-          PWA session lifetime (seconds)
-          <input {...numberProps("session_lifetime_pwa_seconds")} />
-        </label>
-        <label>
-          "Remember me" session lifetime (seconds)
-          <input {...numberProps("session_lifetime_remember_me_seconds")} />
-        </label>
-        <label>
-          Thumbnail size, grid
-          <input {...numberProps("thumb_size_grid")} />
-        </label>
-        <label>
-          Thumbnail size, grid 2x
-          <input {...numberProps("thumb_size_grid2x")} />
-        </label>
-        <label>
-          Thumbnail size, preview
-          <input {...numberProps("thumb_size_preview")} />
-        </label>
-        <label>
-          Thumbnail quality
-          <input {...numberProps("thumb_quality")} />
-        </label>
-        <label>
-          Zip size limit (bytes)
-          <input {...numberProps("zip_size_limit_bytes")} />
-        </label>
-        <fieldset className="admin-privacy-options" id={MAP_PLACE_NAMES_ANCHOR} data-testid="map-place-names">
-          <legend>Map &amp; place names</legend>
-          <p className="admin-hint">{MAP_PLACE_NAMES_TEXT}</p>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.osm_consent}
-              onChange={(event) => updateField("osm_consent", event.target.checked)}
-            />
-            Allow
-          </label>
-          <p className="admin-hint">
-            Off until you agree. Agreed: the Map view draws OpenStreetMap tiles, which each person's browser fetches from
-            tile.openstreetmap.org while a map is open (this server never does), and place names come from a city list you
-            download once below. Not agreed: nothing is downloaded and offline place names are off; the map is blank
-            unless a local map file below is set, which is read from this server and needs no internet.
-          </p>
-          <label>
-            Local map file (PMTiles): used when you have not agreed above, and as the fallback if the OpenStreetMap tiles cannot be loaded
-            <input
-              value={settings.map_tiles_pmtiles_path ?? ""}
-              onChange={(event) => updateField("map_tiles_pmtiles_path", event.target.value === "" ? null : event.target.value)}
-            />
-          </label>
-          <div className="admin-place-names" data-testid="place-names-status">
-            <p>
-              {placeNames === null
-                ? "Place-name data: checking…"
-                : placeNames.downloaded
-                  ? `Place-name data: downloaded (${Math.max(1, Math.round(placeNames.size_bytes / 1024))} KB).`
-                  : "Place-name data: not downloaded."}
-            </p>
-            <button type="button" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
-              {placeNames?.downloaded ? "Download again" : "Download place-name data"}
-            </button>
-            <p className="admin-hint">
-              {settings.osm_consent
-                ? "This is the one time the server contacts the internet: it fetches the public GeoNames list of cities (cities15000, about 2 MB) from download.geonames.org. No photo data is sent."
-                : "Agree and save above to enable the download. Nothing is fetched until then."}
-            </p>
-            <p className="admin-hint" data-testid="geonames-attribution">
-              {placeNames?.attribution ?? "Place names from GeoNames (geonames.org), CC BY 4.0."}
-            </p>
+      <GroupedList
+        heading="Signing in"
+        footer="How long people stay signed in before they have to enter their password again. Shorter is safer on shared computers. Changes apply to new sign-ins."
+      >
+        <ChoiceRow label="On computers" help="sessionDesktop" name="sign-in time on computers" choices={DESKTOP_SESSION} field="session_lifetime_desktop_seconds" kind="seconds" {...choice} />
+        <ChoiceRow label="On the Home Screen app" help="sessionPwa" name="sign-in time on the Home Screen app" choices={PWA_SESSION} field="session_lifetime_pwa_seconds" kind="seconds" {...choice} />
+        <ChoiceRow label={"When “Remember me” is ticked"} help="sessionRememberMe" name="sign-in time with Remember me" choices={REMEMBER_SESSION} field="session_lifetime_remember_me_seconds" kind="seconds" {...choice} />
+      </GroupedList>
+
+      <GroupedList heading="Downloads" footer="Limits on what people can download.">
+        <ChoiceRow label="Largest download at once" help="zipLimit" name="largest download" choices={ZIP_LIMIT} field="zip_size_limit_bytes" kind="bytes" {...choice} />
+      </GroupedList>
+
+      <GroupedList
+        heading="Pictures"
+        footer="Pictures are the small previews you scroll through. Better quality looks sharper but takes more space and loads more slowly. When the space is full, the oldest are removed first."
+      >
+        <PictureQualityRow settings={settings} save={save} />
+        <ChoiceRow label="Space for pictures" help="cacheSize" name="space for pictures" choices={CACHE_SIZE} field="media_cache_size_limit_bytes" kind="bytes" {...choice} />
+      </GroupedList>
+
+      <GroupedList heading="Libraries" footer={`The app checks your libraries for changes, for example when you copy new photos into one. A library that is still changing waits for the wait time above.`}>
+        <ChoiceRow label="Check for changes" help="checkInterval" name="how often to check" choices={CHECK_INTERVAL} field="library_check_interval_minutes" kind="minutes" {...choice} />
+        <ChoiceRow label="Wait until a library stops changing" help="stableMinutes" name="wait time" choices={STABLE_WAIT} field="library_stable_minutes" kind="minutes" {...choice} />
+        <SwitchRow
+          label="Tell people when a library was updated"
+          help="updatedNote"
+          name="library updated message"
+          checked={settings.show_library_updated_note}
+          onChange={(next) => save({ show_library_updated_note: next })}
+        />
+        <Row
+          label="Check all libraries now"
+          control={
+            <>
+              <button type="button" className="admin-btn" onClick={handleCheckNow} disabled={checking}>
+                Check Now
+              </button>
+              <InfoButton helpKey="checkNow" name="Check now" />
+            </>
+          }
+        />
+      </GroupedList>
+
+      <div id={MAP_PLACE_NAMES_ANCHOR} data-testid="map-place-names">
+        <GroupedList
+          heading="Map and place names"
+          footer={
+            <>
+              {MAP_PLACE_NAMES_TEXT} Off until you agree.
+            </>
+          }
+        >
+          <SwitchRow
+            label="Show maps and place names"
+            help="mapConsent"
+            name="map and place names"
+            checked={settings.osm_consent}
+            onChange={(next) => save({ osm_consent: next })}
+          />
+          <div role="listitem" data-testid="place-names-status" className="admin-row">
+            <span className="admin-row__text">
+              <span className="admin-row__label">Place-name data</span>
+              <span className="admin-row__detail">
+                {placeNames === null
+                  ? "Checking…"
+                  : placeNames.downloaded
+                    ? placeNames.size_bytes >= 1000 ? `Downloaded (${formatBytes(placeNames.size_bytes)})` : "Downloaded"
+                    : "Not downloaded"}
+                {!settings.osm_consent && " · Turn on maps and place names above first."}
+              </span>
+            </span>
+            <span className="admin-row__control">
+              <button type="button" className="admin-btn" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
+                {placeNames?.downloaded ? "Download Again" : "Download"}
+              </button>
+              <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
+            </span>
           </div>
-        </fieldset>
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.library_check_interval_minutes === 0}
-            onChange={(event) => {
-              setDrafts(({ library_check_interval_minutes: _dropped, ...rest }) => rest);
-              updateField("library_check_interval_minutes", event.target.checked ? 0 : DEFAULT_CHECK_MINUTES);
-            }}
-          />
-          Manual only: don't check libraries for changes automatically
-        </label>
-        {settings.library_check_interval_minutes === 0 ? (
-          <p>Libraries are only checked when you press "Check now".</p>
-        ) : (
-          <label>
-            Check libraries for changes every (minutes)
-            <input min={1} max={MAX_MINUTES} {...numberProps("library_check_interval_minutes")} />
-          </label>
-        )}
-        <label>
-          Library must be unchanged for (minutes) before it is re-indexed
-          <input
-            min={0}
-            max={MAX_MINUTES}
-            {...numberProps("library_stable_minutes")}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={settings.show_library_updated_note}
-            onChange={(event) => updateField("show_library_updated_note", event.target.checked)}
-          />
-          Tell users when their library was updated
-        </label>
-        <button type="submit">Save settings</button>
-        <button type="button" onClick={handleCheckNow} disabled={checking}>
-          Check now
-        </button>
-      </form>
+        </GroupedList>
+        <Footer>
+          <span data-testid="geonames-attribution">{placeNames?.attribution ?? "Place names from GeoNames (geonames.org), CC BY 4.0."}</span>
+        </Footer>
+      </div>
 
-      <h2>Tailnet allow-list</h2>
-      <p>Empty means everyone on the tailnet. A non-empty list that would lock out your own identity is rejected.</p>
-      <form onSubmit={handleSaveAllowlist}>
-        <label>
-          Identities, one per line
-          <textarea value={allowlist} onChange={(event) => setAllowlist(event.target.value)} rows={5} />
-        </label>
-        <button type="submit">Save allow-list</button>
-      </form>
+      <details className="admin-advanced">
+        <summary>Advanced</summary>
+        <GroupedList footer="Most people never need to change these.">
+          <AllowlistRow identities={allowlist} onSaved={setAllowlist} />
+          <TextRow
+            label="Offline map file"
+            help="mapFile"
+            name="offline map file"
+            value={settings.map_tiles_pmtiles_path ?? ""}
+            placeholder="Path on this server"
+            onSave={(next) => save({ map_tiles_pmtiles_path: next === "" ? null : next })}
+          />
+        </GroupedList>
+      </details>
     </section>
   );
 }

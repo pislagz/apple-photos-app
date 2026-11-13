@@ -2935,3 +2935,98 @@ body {
   background: var(--color-warn-bg-on-dark);
   z-index: 3;
 }
+
+/* #268: the shared (i) button and its text. 20px visible, bigger hit area. */
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: -4px 0 -4px var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-label-secondary);
+  vertical-align: middle;
+}
+@media (pointer: coarse) {
+  .info-button {
+    width: 44px;
+    height: 44px;
+    margin: -12px -8px -12px -6px;
+  }
+}
+.info-button:hover,
+.info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}
+.info-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.info-tip {
+  position: fixed;
+  z-index: 60;
+  width: min(280px, calc(100vw - 16px));
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-10);
+  background: var(--surface-dark-raised);
+  color: var(--color-white);
+  font: var(--font-weight-regular) var(--font-size-caption) / 1.4 var(--font-sans);
+  box-shadow: var(--shadow-tip);
+  pointer-events: none;
+  animation: info-tip-in var(--dur-menu) var(--ease-menu);
+}
+.info-tip[hidden] {
+  display: none;
+}
+@keyframes info-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+/* A settings row: the label (with its control) and its (i) at the right edge. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  border-bottom: 1px solid var(--color-line);
+}
+.admin-main .setting-row > label {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: none;
+}
+.setting-row--buttons {
+  border-bottom: none;
+  justify-content: flex-start;
+}
+.info-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.account-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+}
+.account-menu__row .layout-override {
+  flex: 1 1 auto;
+  justify-content: space-between;
+}
+/* Beat the generic admin and account-menu button rules. */
+.admin-main .info-button,
+.account-menu .info-button {
+  padding: 0;
+  background: transparent;
+  color: var(--color-label-secondary);
+}
+.admin-main .info-button:hover,
+.account-menu .info-button:hover,
+.admin-main .info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}

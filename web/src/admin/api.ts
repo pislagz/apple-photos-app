@@ -290,6 +290,7 @@ export interface SettingsResponse {
   thumb_size_grid2x: number;
   thumb_size_preview: number;
   thumb_quality: number;
+  media_cache_size_limit_bytes: number;
   zip_size_limit_bytes: number;
   map_tiles_mode: MapTilesMode;
   map_tiles_pmtiles_path: string | null;
@@ -303,8 +304,9 @@ export function readSettings(): Promise<SettingsResponse> {
   return request<SettingsResponse>("/api/admin/settings");
 }
 
-export function writeSettings(settings: SettingsResponse): Promise<SettingsResponse> {
-  return mutate<SettingsResponse>("PUT", "/api/admin/settings", settings);
+// Each Settings control saves on its own: only the changed field is sent.
+export function patchSettings(changes: Partial<SettingsResponse>): Promise<SettingsResponse> {
+  return mutate<SettingsResponse>("PATCH", "/api/admin/settings", changes);
 }
 
 // Offline place names (GeoNames), gated by the "Map & place names" consent.
