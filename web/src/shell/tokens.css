@@ -166,6 +166,11 @@
   --scrim-medium: rgba(0, 0, 0, 0.55);
   --scrim-strong: rgba(0, 0, 0, 0.6);
   --scrim-badge: rgba(0, 0, 0, 0.35);
+  /* #208 tile overlays: selection dim, click flash, overlay text and badge shadows. */
+  --tile-dim: rgba(255, 255, 255, 0.25);
+  --text-shadow-tile: 0 0 2px rgba(0, 0, 0, 0.55);
+  --filter-tile-shadow: drop-shadow(0 0 2px rgba(0, 0, 0, 0.55));
+  --shadow-check: 0 0 2px rgba(0, 0, 0, 0.4);
   --color-dim-light: rgba(0, 0, 0, 0.25);
   --color-dim: rgba(0, 0, 0, 0.35);
   --color-dim-strong: rgba(0, 0, 0, 0.4);

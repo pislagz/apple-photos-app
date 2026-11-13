@@ -323,27 +323,118 @@ body {
   cursor: pointer;
 }
 
-.mobile-library__cell-wrap {
+.mobile-library__cell-wrap,
+.mobile-library__row-feature {
   position: relative;
 }
 
-.mobile-library__select-badge {
+/* #208 overlays shared by both layouts. Local motion constants (120 ms
+   dim/check fade) until the #206 motion tokens land. */
+.mobile-library__heart,
+.mobile-library__duration,
+.desktop-library__heart,
+.desktop-library__duration {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-white);
-  background: var(--scrim-badge);
-  transition:
-    background-color var(--dur-select) var(--ease-select),
-    border-color var(--dur-select) var(--ease-select);
+  bottom: 4px;
+  color: var(--color-white);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  line-height: 1;
+  text-shadow: var(--text-shadow-tile);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.mobile-library__select-badge[data-selected="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
+.mobile-library__heart,
+.desktop-library__heart {
+  left: 5px;
+  display: flex;
+  filter: var(--filter-tile-shadow);
+}
+
+.mobile-library__duration,
+.desktop-library__duration {
+  right: 5px;
+}
+
+/* A selected video's duration steps left of the check badge (22 px + 5 px
+   inset + 4 px gap) so the two never overlap. */
+.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration {
+  right: 31px;
+}
+
+/* Selected: a 25 % white dim plus a 22 px accent check, bottom-right. */
+.mobile-library__cell-wrap::after,
+.mobile-library__row-feature::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tile-dim);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.mobile-library__cell-wrap[data-selected="true"]::after,
+.mobile-library__row-feature[data-selected="true"]::after {
+  opacity: 1;
+}
+
+/* Desktop (Photos for Mac): a selected tile shows only a blue frame, with no
+   dim and no check badge. The badge is the iPhone selection look. */
+.desktop-library__cell[data-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* F10: the badge is one 22 x 22 SVG on whole pixels (circle, ring and tick all
+   drawn inside it), with no border, margin, transform or opacity transition,
+   so the tick is centred and does not settle by a pixel after appearing. */
+.mobile-library__check {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 22px;
+  height: 22px;
+  line-height: 0;
+  color: var(--color-white);
+  filter: drop-shadow(var(--shadow-check));
+  z-index: 1;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mobile-library__check svg {
+  display: block;
+}
+
+.mobile-library__check__fill {
+  fill: var(--accent);
+}
+
+.mobile-library__check__ring {
+  fill: none;
+  stroke: var(--color-white);
+  stroke-width: 1.5;
+}
+
+.mobile-library__check[data-selected="true"] {
+  visibility: visible;
+}
+
+/* iPhone selection mode: an empty outlined circle on every tile that fills
+   when selected. */
+.mobile-library__check[data-selected="false"] {
+  visibility: visible;
+}
+
+.mobile-library__check[data-selected="false"] .mobile-library__check__fill {
+  fill: var(--scrim-badge);
+}
+
+.mobile-library__check[data-selected="false"] path {
+  stroke: transparent;
 }
 
 /* Bottom action bar for multi-select, replacing the tab bar's role while
@@ -1162,6 +1253,11 @@ body {
 }
 
 .desktop-library__grid {
+  /* F6: reserve the scrollbar's width always. Otherwise it appears when a
+     column-count change adds rows, which narrows the grid, which changes the
+     column count back: an endless resize loop at some zoom steps. */
+  scrollbar-gutter: stable;
+  -webkit-tap-highlight-color: transparent;
   flex: 1 1 auto;
   min-width: 0;
   user-select: none;
@@ -1170,7 +1266,6 @@ body {
   overscroll-behavior: contain;
   position: relative;
   background: var(--color-bg-window);
-  padding: 0 1px;
 }
 
 /* Date-range large title overlaid on the grid's first row, like
@@ -1202,6 +1297,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 var(--space-8);
+  padding-bottom: var(--space-8);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-subhead);
 }
@@ -1209,51 +1305,25 @@ body {
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-tile);
   cursor: default;
 }
 
 .desktop-library__cell {
-  /* A transparent ring at rest so selecting only changes its colour (#206). */
-  box-shadow: 0 0 0 3px transparent;
-  transition: box-shadow var(--dur-select) var(--ease-select);
-}
-
-.desktop-library__cell[data-selected="true"] {
-  border-radius: var(--radius-small);
-  box-shadow: 0 0 0 3px var(--accent);
+  /* F2: no white tap/active/focus flash; the blue frame alone marks selection.
+     The keyboard ring stays on :focus-visible only. */
+  -webkit-tap-highlight-color: transparent;
+  /* A transparent frame at rest so selecting only changes its colour (#206);
+     the selected outline itself comes from the #258 rule above. */
+  outline: 3px solid transparent;
+  outline-offset: -3px;
+  transition: outline-color var(--dur-select) var(--ease-select);
 }
 
 .desktop-library__thumb {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.desktop-library__heart,
-.desktop-library__duration {
-  position: absolute;
-  opacity: 0;
-  color: var(--color-white);
-  font-size: var(--font-size-caption);
-  text-shadow: var(--text-shadow-overlay);
-  transition: opacity var(--dur-tint) var(--ease-tint);
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-library__cell:hover .desktop-library__heart,
-.desktop-library__cell:hover .desktop-library__duration {
-  opacity: 1;
-}
-
-.desktop-library__heart {
-  top: 4px;
-  left: 4px;
-}
-
-.desktop-library__duration {
-  bottom: 4px;
-  right: 4px;
 }
 
 /* Days hero (#127): the same one-photo-per-day row the phone uses, with the
@@ -2651,6 +2721,7 @@ body {
 
 /* Clipped or edge-to-edge containers: draw the ring inside. */
 .desktop-library__grid:focus-visible,
+.desktop-library__cell:focus-visible,
 .desktop-viewer:focus-visible,
 .sidebar__item:focus-visible,
 .tab-bar__item:focus-visible,
