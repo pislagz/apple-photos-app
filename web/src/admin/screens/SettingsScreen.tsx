@@ -58,11 +58,11 @@ function SettingRow({
   return (
     <Row
       label={label}
+      info={<InfoButton helpKey={help} name={name} extra={extra} />}
       control={
         <>
           {children(run)}
           <SavedStatus state={state} message={error} />
-          <InfoButton helpKey={help} name={name} extra={extra} />
         </>
       }
     />
@@ -246,9 +246,12 @@ function AllowlistRow({ identities, onSaved }: { identities: string; onSaved: (t
   return (
     <div role="listitem" className="admin-row admin-row--stacked">
       <span className="admin-row__text">
-        <label className="admin-row__label" htmlFor="allowlist-text">
-          Who can open the app
-        </label>
+        <span className="admin-row__heading">
+          <label className="admin-row__label" htmlFor="allowlist-text">
+            Who can open the app
+          </label>
+          <InfoButton helpKey="allowlist" name="who can open the app" />
+        </span>
         <span className="admin-row__detail">One name per line. Leave empty to let everyone on your private network in.</span>
         <textarea
           id="allowlist-text"
@@ -268,7 +271,6 @@ function AllowlistRow({ identities, onSaved }: { identities: string; onSaved: (t
       </span>
       <span className="admin-row__control">
         <SavedStatus state={state} message={error} />
-        <InfoButton helpKey="allowlist" name="who can open the app" />
       </span>
     </div>
   );

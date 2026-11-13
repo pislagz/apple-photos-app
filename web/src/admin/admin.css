@@ -634,6 +634,19 @@ body:has(.admin-app, .admin-auth) {
   overflow-wrap: anywhere;
 }
 
+/* Label with its (i) right after the text; a long label wraps inside its own box. */
+.admin-row__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.admin-row__heading > .admin-row__label {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .admin-row__detail {
   font-size: var(--font-size-caption);
   color: var(--color-label-secondary);

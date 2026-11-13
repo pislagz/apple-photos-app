@@ -26,6 +26,7 @@ export function GroupedList({
 /** One row: label (and optional small text) on the left, value or control on the right. */
 export function Row({
   label,
+  info,
   detail,
   value,
   control,
@@ -34,6 +35,8 @@ export function Row({
   size,
 }: {
   label: ReactNode;
+  /** An (i) button shown right after the label text. */
+  info?: ReactNode;
   detail?: ReactNode;
   value?: ReactNode;
   /** A Switch, select or button. Not used together with `onClick`. */
@@ -47,7 +50,14 @@ export function Row({
   const body = (
     <>
       <span className="admin-row__text">
-        <span className="admin-row__label">{label}</span>
+        {info === undefined ? (
+          <span className="admin-row__label">{label}</span>
+        ) : (
+          <span className="admin-row__heading">
+            <span className="admin-row__label">{label}</span>
+            {info}
+          </span>
+        )}
         {detail !== undefined && <span className="admin-row__detail">{detail}</span>}
       </span>
       {value !== undefined && <span className="admin-row__value">{value}</span>}

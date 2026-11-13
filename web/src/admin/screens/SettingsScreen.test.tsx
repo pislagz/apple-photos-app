@@ -105,6 +105,30 @@ describe("SettingsScreen words and (i) buttons", () => {
       expect(visible, word).not.toContain(word);
     }
   });
+
+  it("puts the (i) right after the label text, before the control, in every setting row", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<SettingsScreen />);
+    await screen.findByLabelText("On computers");
+    const headings = container.querySelectorAll(".admin-row__heading");
+    expect(headings.length).toBeGreaterThanOrEqual(12);
+    for (const heading of headings) {
+      const kids = Array.from(heading.children);
+      expect(kids[1]).toHaveClass("info-button");
+      // The (i) is outside the label, so the label still names only its control.
+      expect(kids[0].contains(kids[1])).toBe(false);
+      expect(heading.closest(".admin-row")!.querySelector(".admin-row__control .info-button")).toBeNull();
+    }
+    for (const name of ["Check Now", "Download"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.nextElementSibling).toHaveClass("info-button");
+    }
+  });
 });
 
 describe("SettingsScreen instant save", () => {
