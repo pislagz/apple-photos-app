@@ -65,6 +65,7 @@ describe("Libraries: run history and suggestion", () => {
   it("shows the last update and at most ten history entries", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/status") return STATUS;
       throw new Error(`unexpected request: ${url}`);
     });
@@ -78,6 +79,7 @@ describe("Libraries: run history and suggestion", () => {
   it("offers the suggested package as a prefilled Replace", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/status") {
         return {
           ...STATUS,
@@ -110,6 +112,7 @@ describe("Replace library file dialog", () => {
   it("previews, then confirms without an override when there are no warnings", async () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/status") return STATUS;
       if (url === "/api/admin/libraries/1/replace") {
         return JSON.parse(String(init!.body)).confirm ? { ...PREVIEW, confirmed: true } : PREVIEW;
@@ -134,6 +137,7 @@ describe("Replace library file dialog", () => {
   it("requires the Replace anyway checkbox when the preview has warnings", async () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/status") return STATUS;
       if (url === "/api/admin/libraries/1/replace") {
         const body = JSON.parse(String(init!.body));
@@ -168,6 +172,7 @@ describe("Replace library file dialog", () => {
   it("drops the preview and the override when the path is edited after previewing", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/replace") {
         return { ...PREVIEW, warnings: [{ code: "low_overlap", message: "Only 0% of the current photos are in the new file." }] };
       }
@@ -186,6 +191,7 @@ describe("Replace library file dialog", () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [LIBRARY];
       if (url === "/api/admin/libraries/1/status") return STATUS;
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/replace") {
         return new Response(JSON.stringify({ detail: "this path is already registered as another library" }), {
           status: 409,

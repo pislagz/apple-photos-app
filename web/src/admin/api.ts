@@ -353,3 +353,43 @@ export function readTailnetAllowlist(): Promise<TailnetAllowlistResponse> {
 export function writeTailnetAllowlist(identities: string[]): Promise<TailnetAllowlistResponse> {
   return mutate<TailnetAllowlistResponse>("PUT", "/api/admin/settings/tailnet-allowlist", { identities });
 }
+
+// -- Library folders and the picker -----------------------------------------
+
+export interface LibraryFolder {
+  path: string;
+  reachable: boolean;
+}
+
+export interface LibraryCandidate {
+  name: string;
+  path: string;
+  folder: string;
+  registered: boolean;
+  library_id: number | null;
+  library_name: string | null;
+  status: "ready" | "not_added" | "cannot_open";
+  asset_count: number | null;
+  size_bytes: number | null;
+}
+
+export interface LibraryCandidates {
+  folders: LibraryFolder[];
+  candidates: LibraryCandidate[];
+}
+
+export function listLibraryCandidates(): Promise<LibraryCandidates> {
+  return request<LibraryCandidates>("/api/admin/library-candidates");
+}
+
+export function candidateSize(path: string): Promise<{ path: string; size_bytes: number | null }> {
+  return request(`/api/admin/library-candidates/size?path=${encodeURIComponent(path)}`);
+}
+
+export function addLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("POST", "/api/admin/library-folders", { path });
+}
+
+export function removeLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("DELETE", `/api/admin/library-folders?path=${encodeURIComponent(path)}`);
+}
