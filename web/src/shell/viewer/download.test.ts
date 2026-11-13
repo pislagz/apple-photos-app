@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../../testHelpers";
-import { canShareFiles, downloadAsset, downloadVersion, filenameFromDisposition, pickMime, shareAssets, shareFileName, shareOrDownloadAssets } from "./download";
+import { canShareFiles, downloadAsset, downloadVersion, filenameFromDisposition, pickMime, shareAssets, shareFileName, shareOrDownloadAssets, shareReadyFiles } from "./download";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -42,7 +42,7 @@ describe("downloadAsset", () => {
 describe("shareOrDownloadAssets", () => {
   it("fetches files for the share sheet with the download marker", async () => {
     const fetchMock = mockFetch((url) =>
-      url.includes("/assets/") ? { has_edited: false } : new Response(new Blob(["x"]), { status: 200 }),
+      url.includes("/assets/") ? { has_edited: false } : new Response("x", { status: 200 }),
     );
     vi.stubGlobal("navigator", {
       ...navigator,
@@ -67,6 +67,61 @@ describe("shareOrDownloadAssets", () => {
     await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }]);
 
     expect(href).toContain("download=1");
+  });
+
+  it("shares every selected file in one share() call", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/") ? { has_edited: false } : new Response("x", { status: 200 }),
+    );
+    const share = vi.fn(async (_data: { files: File[] }) => {});
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share });
+    const items = Array.from({ length: 7 }, (_, i) => ({ id: `a${i}`, filename: `a${i}.jpg` }));
+
+    const outcome = await shareOrDownloadAssets(1, items);
+
+    expect(outcome.status).toBe("shared");
+    expect(share).toHaveBeenCalledTimes(1);
+    expect(share.mock.calls[0]![0].files.map((f: File) => f.name)).toEqual(items.map((i) => i.filename));
+  });
+
+  it("does not fall back to download links when share() is blocked; hands the files back", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/") ? { has_edited: false } : new Response("x", { status: 200 }),
+    );
+    const share = vi.fn(async (_data: { files: File[] }): Promise<void> => {
+      throw new DOMException("expired", "NotAllowedError");
+    });
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const outcome = await shareOrDownloadAssets(1, [
+      { id: "a1", filename: "a1.jpg" },
+      { id: "a2", filename: "a2.jpg" },
+    ]);
+
+    expect(click).not.toHaveBeenCalled();
+    expect(outcome.status).toBe("ready");
+    if (outcome.status !== "ready") return;
+    expect(outcome.files).toHaveLength(2);
+    share.mockImplementation(async () => {});
+    expect((await shareReadyFiles(outcome.files)).status).toBe("shared");
+  });
+
+  it("treats a dismissed share sheet as cancelled, not a download", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/") ? { has_edited: false } : new Response("x", { status: 200 }),
+    );
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      canShare: () => true,
+      share: vi.fn(async () => {
+        throw new DOMException("dismissed", "AbortError");
+      }),
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    expect((await shareOrDownloadAssets(1, [{ id: "a1", filename: "a1.jpg" }])).status).toBe("cancelled");
+    expect(click).not.toHaveBeenCalled();
   });
 });
 

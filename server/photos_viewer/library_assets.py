@@ -271,6 +271,8 @@ class AssetListItem(BaseModel):
     width: int | None
     height: int | None
     duration: float | None
+    # The original is HEIC/HEIF, so a zip can offer "HEIC as JPEG" (#254).
+    is_heic: bool = False
 
 
 class AssetListResponse(BaseModel):
@@ -293,6 +295,25 @@ def _decode_cursor(cursor: str) -> tuple[str, int]:
         raise HTTPException(status_code=400, detail="invalid cursor") from exc
 
 
+_HEIC_UTIS = {"public.heic", "public.heif", "public.heics", "public.heifs"}
+_HEIC_SUFFIXES = (".heic", ".heif")
+
+
+def _is_heic(row: sqlite3.Row) -> bool:
+    """By the original's UTI (what Photos recorded); rows indexed before the
+    UTI columns existed fall back to the file extension."""
+    keys = row.keys()
+    uti = (row["uti_original"] if "uti_original" in keys else None) or (
+        row["uti"] if "uti" in keys else None
+    )
+    if uti:
+        return uti.lower() in _HEIC_UTIS
+    names = [row["filename"]]
+    if "original_filename" in keys:
+        names.append(row["original_filename"])
+    return any(name and name.lower().endswith(_HEIC_SUFFIXES) for name in names)
+
+
 def _to_list_item(row: sqlite3.Row) -> AssetListItem:
     return AssetListItem(
         id=row["uuid"],
@@ -305,6 +326,7 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
         width=row["width"],
         height=row["height"],
         duration=row["duration"],
+        is_heic=_is_heic(row),
     )
 
 

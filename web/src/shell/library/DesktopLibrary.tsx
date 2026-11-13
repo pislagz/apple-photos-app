@@ -1,7 +1,7 @@
 import { TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
-import { useZipDownload } from "./zipDownload";
+import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
@@ -56,8 +56,6 @@ const LOAD_MORE_ROW_MARGIN = 3;
 // Pointer travel before a press on the grid turns into a rubber-band drag, so
 // a plain click on a cell still just selects it (#97).
 const DRAG_THRESHOLD_PX = 4;
-
-}
 
 // A single selected file downloads directly (a multi-selection goes through
 // the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
@@ -544,12 +542,13 @@ export default function DesktopLibrary({
   }, [dragActive]);
 
   const zip = useZipDownload(libraryId);
+  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selected), [items, selected]);
   const handleDownload = useCallback(() => {
     if (selected.size === 0) return;
     // One file stays a plain download; several become one streamed zip (P3.2).
     if (selected.size === 1) downloadSelection(libraryId, selected);
-    else void zip.start([...selected]);
-  }, [libraryId, selected, zip.start]);
+    else void zip.start([...selected], { forceNative: !selectionHasHeicPhoto });
+  }, [libraryId, selected, zip.start, selectionHasHeicPhoto]);
 
   const shareSupported = canShareFiles();
   const handleShare = useCallback(async () => {
@@ -773,7 +772,12 @@ export default function DesktopLibrary({
           <span className="sr-only">Info</span>
         </button>
         {(selected.size > 1 || zip.state.phase !== "idle") && (
-          <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+          <ZipStatus
+            state={zip.state}
+            jpeg={zip.jpeg}
+            onJpegChange={zip.setJpeg}
+            showHeicOption={selectionHasHeicPhoto}
+          />
         )}
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}

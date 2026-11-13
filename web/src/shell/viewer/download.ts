@@ -1,5 +1,5 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl, originalUrl } from "./mediaUrls";
+import { assetPageUrl, originalJpegFallbackUrl, originalUrl } from "./mediaUrls";
 
 // Phase 1 download is one file at a time (CLAUDE.md), original or edited
 // (P1.17) -- whichever is "the" photo as the library shows it. A single
@@ -37,13 +37,24 @@ export async function downloadAsset(libraryId: number, assetId: string): Promise
   downloadVersion(libraryId, assetId, version);
 }
 
+// Select-bar Download with exactly one item: the plain file under its own
+// name, or its JPEG rendition when "HEIC as JPEG" is on.
+export async function downloadSingleAsset(
+  libraryId: number,
+  assetId: string,
+  options: { asJpeg?: boolean } = {},
+): Promise<void> {
+  const version = await resolveVersion(libraryId, assetId);
+  triggerDownload(
+    options.asJpeg
+      ? originalJpegFallbackUrl(libraryId, assetId, version, true)
+      : originalUrl(libraryId, assetId, version, true),
+  );
+}
+
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {
   await navigator.clipboard.writeText(assetPageUrl(libraryId, assetId));
 }
-
-// iOS Safari's Web Share API caps how many files one `share()` call can
-// carry; this is a conservative batch size, not a number from a spec.
-const SHARE_BATCH_SIZE = 5;
 
 type ShareItem = { id: string; filename: string | null; original_filename?: string | null };
 
@@ -76,8 +87,8 @@ export function shareFileName(item: ShareItem, blobType: string): string {
 async function fetchAsFile(
   libraryId: number,
   item: ShareItem,
-  version: "original" | "edited",
 ): Promise<File> {
+  const version = await resolveVersion(libraryId, item.id);
   const response = await fetch(originalUrl(libraryId, item.id, version, true), { credentials: "same-origin" });
   if (!response.ok) throw new Error(`download failed: ${response.status}`);
   const blob = await response.blob();
@@ -116,31 +127,55 @@ export function filenameFromDisposition(header: string | null): string | null {
   return value || null;
 }
 
-// iPhone multi-select share (P1.17): one `navigator.share({ files })` call
-// per batch, so the native share sheet (or "Save to Photos" via it) sees a
-// manageable number of files at a time. Falls back to plain download links,
-// per item, when the Web Share API or file sharing isn't available --
-// never when the user simply dismisses the share sheet (`AbortError`).
+export type ShareOutcome =
+  | { status: "shared" | "cancelled" | "downloaded" }
+  // The files are fetched but the browser refused `share()` because the tap's
+  // user activation had expired while they downloaded. Share them from the
+  // next tap with `shareReadyFiles`, which calls `share()` synchronously.
+  | { status: "ready"; files: File[] };
+
+// Calls `navigator.share` with no await before it, so it is safe to run
+// straight from a click handler.
+export async function shareReadyFiles(files: File[]): Promise<ShareOutcome> {
+  try {
+    await navigator.share({ files });
+    return { status: "shared" };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return { status: "cancelled" };
+    if (error instanceof DOMException && error.name === "NotAllowedError") return { status: "ready", files };
+    throw error;
+  }
+}
+
+// iPhone multi-select share (P1.17): ONE `navigator.share({ files })` call
+// with every selected file, so the share sheet shows them all. (It used to
+// batch by 5 and fall back to one download link per item on any error; iOS
+// Safari lets only the first programmatic download through, so a share that
+// lost its user activation while the files fetched looked like "only 1
+// photo shared".) Plain download links remain only for browsers with no
+// file-sharing support. Never fall back when the user dismisses the sheet.
 export async function shareOrDownloadAssets(
   libraryId: number,
   items: ShareItem[],
-): Promise<void> {
+): Promise<ShareOutcome> {
   const canShareFiles = typeof navigator.canShare === "function" && typeof navigator.share === "function";
-  for (let start = 0; start < items.length; start += SHARE_BATCH_SIZE) {
-    const batch = items.slice(start, start + SHARE_BATCH_SIZE);
-    const versions = await Promise.all(batch.map((item) => resolveVersion(libraryId, item.id)));
-    if (!canShareFiles) {
-      batch.forEach((item, i) => downloadVersion(libraryId, item.id, versions[i]));
-      continue;
-    }
-    try {
-      const files = await Promise.all(batch.map((item, i) => fetchAsFile(libraryId, item, versions[i])));
-      if (!navigator.canShare({ files })) throw new Error("cannot share these files");
-      await navigator.share({ files });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") continue;
-      batch.forEach((item, i) => downloadVersion(libraryId, item.id, versions[i]));
-    }
+  const downloadAll = async (): Promise<ShareOutcome> => {
+    for (const item of items) await downloadAsset(libraryId, item.id);
+    return { status: "downloaded" };
+  };
+  if (!canShareFiles) return downloadAll();
+  let files: File[];
+  try {
+    // All files in parallel: the shortest possible gap before `share()`.
+    files = await Promise.all(items.map((item) => fetchAsFile(libraryId, item)));
+  } catch {
+    return downloadAll();
+  }
+  if (!navigator.canShare({ files })) return downloadAll();
+  try {
+    return await shareReadyFiles(files);
+  } catch {
+    return downloadAll();
   }
 }
 
@@ -157,8 +192,7 @@ export async function shareAssets(
   items: ShareItem[],
 ): Promise<void> {
   if (!canShareFiles() || items.length === 0) return;
-  const versions = await Promise.all(items.map((item) => resolveVersion(libraryId, item.id)));
-  const files = await Promise.all(items.map((item, i) => fetchAsFile(libraryId, item, versions[i])));
+  const files = await Promise.all(items.map((item) => fetchAsFile(libraryId, item)));
   if (!navigator.canShare({ files })) throw new Error("cannot share these files");
   try {
     await navigator.share({ files });
