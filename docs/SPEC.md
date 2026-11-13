@@ -157,7 +157,7 @@ Every endpoint requires a session, and every request is checked against the libr
 ## Front end
 
 - TypeScript, Vite, and React or Svelte. One codebase with two layouts:
-  - **Mobile layout** (iPhone, iOS 17 style): used on narrow touch screens and when installed as a PWA.
+  - **Mobile layout** (iPhone, iOS 17 style): used on narrow or touch-first screens (width below 768 px, or a primary pointer that is not fine), whether or not the app is installed as a PWA. Auto never looks at the install state, so an installed Mac app in a wide window gets the desktop layout. The install state only picks the session client type.
   - **Desktop layout** (macOS Sequoia style): used on wide screens with a pointer.
   - Detect by viewport width and pointer type, and let users override in settings.
 - Shared: API client, auth, virtualized grid engine (TanStack Virtual or similar) for tens of thousands of items, viewer logic, and Cache Storage for thumbnails.
