@@ -36,6 +36,7 @@ from . import (
     app_db,
     indexer,
     libraries,
+    library_folders,
     library_prewarm,
     library_watch,
     session_auth,
@@ -243,6 +244,11 @@ def _suggest_replacements(
     ]
 
 
+class IndexProgress(BaseModel):
+    done: int
+    total: int
+
+
 class LibraryStatusResponse(BaseModel):
     id: int
     display_name: str
@@ -262,6 +268,8 @@ class LibraryStatusResponse(BaseModel):
     last_indexed_at: str | None = None
     index_state: str | None = None
     index_error: str | None = None
+    # #252: while a walk runs, assets walked so far and the library's total.
+    index_progress: IndexProgress | None = None
     prewarm_progress: float | None = None
     prewarm: library_prewarm.PrewarmStatus | None = None
     warnings: list[LibraryWarning]
@@ -276,7 +284,9 @@ class LibraryStatusResponse(BaseModel):
     alternatives: list[ReplaceSuggestion] = []
 
 
-def _validate_library_path(path: pathlib.Path) -> None:
+def _validate_library_path(
+    path: pathlib.Path, db: sqlite3.Connection | None = None
+) -> None:
     """Raise a 400 with an admin-facing message for a bad path, a missing
     mount, an unsupported Photos version, or an unreadable library. Returns
     normally only when `path` is a readable, supported `.photoslibrary`."""
@@ -286,7 +296,10 @@ def _validate_library_path(path: pathlib.Path) -> None:
                 status_code=400,
                 detail=f"{path.parent} does not exist -- is the drive mounted?",
             )
-        raise HTTPException(status_code=400, detail=f"{path} does not exist")
+        detail = f"{path} does not exist"
+        if db is not None:
+            detail += ". " + library_folders.nearby_hint(db, path)
+        raise HTTPException(status_code=400, detail=detail)
     if path.suffix != ".photoslibrary":
         raise HTTPException(
             status_code=400, detail=f"{path} does not end in .photoslibrary"
@@ -538,6 +551,15 @@ def _index_counts(
     }
 
 
+def _index_progress(row: sqlite3.Row) -> IndexProgress | None:
+    if row["index_state"] != "indexing":
+        return None
+    progress = indexer.index_progress(row["id"])
+    if progress is None:
+        return None
+    return IndexProgress(done=progress[0], total=progress[1])
+
+
 def _build_status(
     db: sqlite3.Connection,
     row: sqlite3.Row,
@@ -586,6 +608,7 @@ def _build_status(
         last_indexed_at=row["last_indexed_at"],
         index_state=row["index_state"],
         index_error=row["index_error"],
+        index_progress=_index_progress(row),
         prewarm_progress=library_prewarm.progress(prewarm),
         prewarm=prewarm,
         warnings=warnings,
@@ -615,7 +638,7 @@ def add_library(
     # Resolve first so `x/../Lib.photoslibrary` and symlinks can't register
     # the same package twice.
     path = pathlib.Path(payload.path).resolve()
-    _validate_library_path(path)
+    _validate_library_path(path, db)
     display_name = payload.display_name or _default_display_name(path)
     if path in _registered_paths(db):
         raise HTTPException(status_code=409, detail="this path is already registered")
@@ -863,7 +886,7 @@ def _preview_replace(
     """Reads the new package on `open_library_readonly`'s temp copy only.
     With `keep_open` the handle is returned (caller closes or hands it to the
     indexer) so a confirm does not copy a big package a second time."""
-    _validate_library_path(new_path)
+    _validate_library_path(new_path, db)
     if new_path in _registered_paths(db, exclude_id=row["id"]):
         raise HTTPException(
             status_code=409, detail="this path is already registered as another library"

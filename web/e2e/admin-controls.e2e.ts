@@ -24,7 +24,7 @@ for (const scheme of ["light", "dark"] as const) {
     expect(await rowHeight("gallery-touch")).toBeGreaterThanOrEqual(44);
 
     // Switch toggles and reports its state.
-    const sw = page.getByTestId("gallery-touch").getByRole("switch", { name: "Show hidden photos" });
+    const sw = page.getByTestId("gallery-touch").getByRole("switch", { name: "Hidden photos" });
     await expect(sw).toHaveAttribute("aria-checked", "true");
     await sw.click();
     await expect(sw).toHaveAttribute("aria-checked", "false");

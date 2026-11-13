@@ -28,7 +28,13 @@ export interface LibraryStatusResponse {
   video_count: number | null;
   people_count: number | null;
   total_size_bytes: number | null;
+  // Size of this library's thumbnail cache, when the server reports it.
+  thumb_cache_bytes?: number | null;
   last_indexed_at: string | null;
+  index_state?: string | null;
+  index_error?: string | null;
+  // #252: while a walk runs, assets walked so far and the library's total.
+  index_progress?: { done: number; total: number } | null;
   prewarm_progress: number | null;
   prewarm?: PrewarmStatus | null;
   warnings: LibraryWarning[];
@@ -363,4 +369,44 @@ export function readTailnetAllowlist(): Promise<TailnetAllowlistResponse> {
 
 export function writeTailnetAllowlist(identities: string[]): Promise<TailnetAllowlistResponse> {
   return mutate<TailnetAllowlistResponse>("PUT", "/api/admin/settings/tailnet-allowlist", { identities });
+}
+
+// -- Library folders and the picker -----------------------------------------
+
+export interface LibraryFolder {
+  path: string;
+  reachable: boolean;
+}
+
+export interface LibraryCandidate {
+  name: string;
+  path: string;
+  folder: string;
+  registered: boolean;
+  library_id: number | null;
+  library_name: string | null;
+  status: "ready" | "not_added" | "cannot_open";
+  asset_count: number | null;
+  size_bytes: number | null;
+}
+
+export interface LibraryCandidates {
+  folders: LibraryFolder[];
+  candidates: LibraryCandidate[];
+}
+
+export function listLibraryCandidates(): Promise<LibraryCandidates> {
+  return request<LibraryCandidates>("/api/admin/library-candidates");
+}
+
+export function candidateSize(path: string): Promise<{ path: string; size_bytes: number | null }> {
+  return request(`/api/admin/library-candidates/size?path=${encodeURIComponent(path)}`);
+}
+
+export function addLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("POST", "/api/admin/library-folders", { path });
+}
+
+export function removeLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("DELETE", `/api/admin/library-folders?path=${encodeURIComponent(path)}`);
 }
