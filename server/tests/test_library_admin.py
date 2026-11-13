@@ -433,7 +433,61 @@ def test_library_status_reports_size_and_no_warnings_for_a_healthy_library(tmp_p
         assert body["people_count"] == 1
         assert body["last_indexed_at"] is not None
         assert body["prewarm_progress"] is None
+        assert body["index_progress"] is None
         assert body["warnings"] == []
+    finally:
+        conn.close()
+
+
+def test_an_index_walk_reports_progress_and_clears_it_when_done(tmp_path, monkeypatch):
+    """#252: walked / total while the walk runs, nothing once it ends."""
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        seen: list[tuple[int, int]] = []
+        real_set = indexer._set_progress
+        monkeypatch.setattr(indexer, "PROGRESS_EVERY", 1)
+
+        def record(library_id, walked, total):
+            real_set(library_id, walked, total)
+            seen.append(indexer.index_progress(library_id))
+
+        monkeypatch.setattr(indexer, "_set_progress", record)
+        indexer.index_library(conn, added["id"], package_path, force=True)
+
+        total = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE library_id = ?", (added["id"],)
+        ).fetchone()[0]
+        assert seen[0] == (0, total)
+        assert seen[-1] == (total, total)
+        assert indexer.index_progress(added["id"]) is None
+    finally:
+        conn.close()
+
+
+def test_library_status_shows_index_progress_only_while_indexing(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        indexer._set_progress(added["id"], 40, 120)
+        try:
+            idle = client.get(f"/api/admin/libraries/{added['id']}/status").json()
+            assert idle["index_progress"] is None
+            conn.execute(
+                "UPDATE libraries SET index_state = 'indexing' WHERE id = ?",
+                (added["id"],),
+            )
+            conn.commit()
+            body = client.get(f"/api/admin/libraries/{added['id']}/status").json()
+            assert body["index_progress"] == {"done": 40, "total": 120}
+        finally:
+            indexer._clear_progress(added["id"])
     finally:
         conn.close()
 

@@ -1,26 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../testHelpers";
 import LibrariesScreen from "./LibrariesScreen";
 
 const LIBRARY = { id: 1, display_name: "Family", path: "/libraries/Family.photoslibrary", created_at: "2026-01-01" };
-
-const RUN = {
-  id: 7,
-  trigger: "auto",
-  started_at: "2026-11-03T14:20:00Z",
-  finished_at: "2026-11-03T14:21:00Z",
-  outcome: "applied",
-  asset_count: 100,
-  added: 12,
-  removed: 3,
-  changed: 1,
-  hidden_changed: 0,
-  originals_missing: 0,
-  originals_missing_pct: 0,
-  error: null,
-  summary: "Updated 3 Nov 14:20: 12 added, 3 removed, 1 changed",
-};
 
 const STATUS = {
   ...LIBRARY,
@@ -32,8 +15,7 @@ const STATUS = {
   prewarm_progress: null,
   warnings: [],
   updating: false,
-  last_update: RUN,
-  runs: Array.from({ length: 12 }, (_, i) => ({ ...RUN, id: 100 - i, summary: `run ${i}` })),
+  runs: [],
   suggestion: null,
 };
 
@@ -51,6 +33,12 @@ const PREVIEW = {
   status: null,
 };
 
+const SUGGESTION = {
+  path: "/libraries/Family 2026.photoslibrary",
+  name: "Family 2026.photoslibrary",
+  message: "A new library appeared next to this one: Family 2026.photoslibrary. Replace?",
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -61,74 +49,68 @@ function replaceBodies(fetchMock: ReturnType<typeof mockFetch>) {
     .map(([, init]) => JSON.parse(String(init!.body)));
 }
 
-describe("Libraries: run history and suggestion", () => {
-  it("shows the last update and at most ten history entries", async () => {
-    mockFetch((url) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
-      if (url === "/api/admin/libraries/1/status") return STATUS;
-      throw new Error(`unexpected request: ${url}`);
-    });
-    render(<LibrariesScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load status" }));
+function baseRoutes(url: string) {
+  if (url === "/api/admin/libraries") return [LIBRARY];
+  if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
+  if (url === "/api/admin/libraries/1/status") return STATUS;
+  throw new Error(`unexpected request: ${url}`);
+}
 
-    expect(await screen.findByText("Updated 3 Nov 14:20: 12 added, 3 removed, 1 changed")).toBeInTheDocument();
-    const history = screen.getByRole("list", { name: "Update history" });
-    expect(history.querySelectorAll("li")).toHaveLength(10);
-  });
-
-  it("offers the suggested package as a prefilled Replace", async () => {
-    mockFetch((url) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
-      if (url === "/api/admin/libraries/1/status") {
-        return {
-          ...STATUS,
-          suggestion: {
-            path: "/libraries/Family 2026.photoslibrary",
-            name: "Family 2026.photoslibrary",
-            message: "A new library appeared next to this one: Family 2026.photoslibrary. Replace?",
-          },
-        };
-      }
-      throw new Error(`unexpected request: ${url}`);
-    });
-    render(<LibrariesScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load status" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Replace with Family 2026.photoslibrary" }));
-
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText("New path")).toHaveValue("/libraries/Family 2026.photoslibrary");
-  });
-});
-
-describe("Replace library file dialog", () => {
+describe("Replace library file", () => {
   async function openDialog() {
-    render(<LibrariesScreen />);
-    await screen.findByText("Family");
-    fireEvent.click(screen.getByRole("button", { name: "Replace library file" }));
-    fireEvent.change(screen.getByLabelText("New path"), { target: { value: PREVIEW.path } });
+    render(<LibrariesScreen selected="1" onSelect={vi.fn()} />);
+    await screen.findByText("Size on disk");
+    fireEvent.click(screen.getByRole("button", { name: "Replace…" }));
+  }
+
+  async function chooseTyped(path: string) {
+    fireEvent.click(await screen.findByText("Advanced"));
+    fireEvent.change(screen.getByLabelText("New path"), { target: { value: path } });
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
   }
 
+  it("offers the suggestion on the page and previews it straight away", async () => {
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/admin/libraries/1/status") return { ...STATUS, suggestion: SUGGESTION };
+      if (url === "/api/admin/libraries/1/replace") return PREVIEW;
+      return baseRoutes(url);
+    });
+    render(<LibrariesScreen selected="1" onSelect={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Replace with Family 2026.photoslibrary" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Will be added")).toBeInTheDocument();
+    expect(replaceBodies(fetchMock)).toEqual([{ path: SUGGESTION.path, confirm: false, replace_anyway: false }]);
+  });
+
+  it("pins the suggestion at the top of the picker when Replace… is chosen", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/libraries/1/status") return { ...STATUS, suggestion: SUGGESTION };
+      return baseRoutes(url);
+    });
+    await openDialog();
+    const suggested = await screen.findByRole("list", { name: "Suggested libraries" });
+    expect(within(suggested).getByRole("button", { name: "Choose Family 2026.photoslibrary" })).toBeInTheDocument();
+  });
+
   it("previews, then confirms without an override when there are no warnings", async () => {
     const fetchMock = mockFetch((url, init) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
-      if (url === "/api/admin/libraries/1/status") return STATUS;
       if (url === "/api/admin/libraries/1/replace") {
         return JSON.parse(String(init!.body)).confirm ? { ...PREVIEW, confirmed: true } : PREVIEW;
       }
-      throw new Error(`unexpected request: ${url}`);
+      return baseRoutes(url);
     });
     await openDialog();
+    await chooseTyped(PREVIEW.path);
 
-    expect(await screen.findByText("12 would be added")).toBeInTheDocument();
-    expect(screen.getByText("2 would be removed")).toBeInTheDocument();
-    expect(screen.getByText("98% of the current photos are in the new file")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Replace anyway")).not.toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "Replace “Family” with “Family 2026”?" });
+    const preview = await within(dialog).findByRole("list", { name: "Replace preview" });
+    expect(within(preview).getByText("Will be added").closest('[role="listitem"]')).toHaveTextContent("12");
+    expect(within(preview).getByText("Will be removed").closest('[role="listitem"]')).toHaveTextContent("2");
+    expect(preview).toHaveTextContent("98%");
+    expect(preview).toHaveTextContent("Yes");
+    expect(screen.queryByRole("button", { name: "Replace Anyway" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(replaceBodies(fetchMock)).toEqual([
       { path: PREVIEW.path, confirm: false, replace_anyway: false },
@@ -136,11 +118,8 @@ describe("Replace library file dialog", () => {
     ]);
   });
 
-  it("requires the Replace anyway checkbox when the preview has warnings", async () => {
+  it("turns the confirm into a red Replace Anyway when the preview has warnings", async () => {
     const fetchMock = mockFetch((url, init) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
-      if (url === "/api/admin/libraries/1/status") return STATUS;
       if (url === "/api/admin/libraries/1/replace") {
         const body = JSON.parse(String(init!.body));
         return body.confirm
@@ -155,53 +134,50 @@ describe("Replace library file dialog", () => {
               ],
             };
       }
-      throw new Error(`unexpected request: ${url}`);
+      return baseRoutes(url);
     });
     await openDialog();
+    await chooseTyped(PREVIEW.path);
 
     expect(await screen.findByText("This looks like a different library.")).toBeInTheDocument();
-    const confirm = screen.getByRole("button", { name: "Replace anyway" });
-    expect(confirm).toBeDisabled();
-
-    fireEvent.click(screen.getByLabelText("Replace anyway"));
-    expect(confirm).toBeEnabled();
+    expect(screen.queryByLabelText("Replace anyway")).not.toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: "Replace Anyway" });
+    expect(confirm).toHaveClass("admin-btn--danger-fill");
     fireEvent.click(confirm);
 
     await waitFor(() => expect(replaceBodies(fetchMock)).toHaveLength(2));
     expect(replaceBodies(fetchMock)[1]).toEqual({ path: PREVIEW.path, confirm: true, replace_anyway: true });
   });
 
-  it("drops the preview and the override when the path is edited after previewing", async () => {
+  it("drops the preview and the override when another file is chosen", async () => {
     mockFetch((url) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/replace") {
         return { ...PREVIEW, warnings: [{ code: "low_overlap", message: "Only 0% of the current photos are in the new file." }] };
       }
-      throw new Error("unexpected request: " + url);
+      return baseRoutes(url);
     });
     await openDialog();
-    fireEvent.click(await screen.findByLabelText("Replace anyway"));
+    await chooseTyped(PREVIEW.path);
+    await screen.findByRole("button", { name: "Replace Anyway" });
 
-    fireEvent.change(screen.getByLabelText("New path"), { target: { value: "/libraries/Other.photoslibrary" } });
+    fireEvent.click(screen.getByRole("button", { name: "Choose a Different File" }));
     expect(screen.queryByRole("list", { name: "Replace preview" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Replace anyway")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Replace( anyway)?$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Replace( Anyway)?$/ })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("New path")).toBeInTheDocument();
   });
 
   it("shows the server's refusal and keeps the dialog open", async () => {
     mockFetch((url) => {
-      if (url === "/api/admin/libraries") return [LIBRARY];
-      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/libraries/1/replace") {
         return new Response(JSON.stringify({ detail: "this path is already registered as another library" }), {
           status: 409,
           headers: { "Content-Type": "application/json" },
         });
       }
-      throw new Error(`unexpected request: ${url}`);
+      return baseRoutes(url);
     });
     await openDialog();
+    await chooseTyped(PREVIEW.path);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("already registered");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
