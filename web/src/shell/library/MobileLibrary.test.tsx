@@ -403,11 +403,11 @@ describe("MobileLibrary", () => {
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(screen.getByText("Jan 2022")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("January 2022")).toBeInTheDocument());
     // Oldest on top: the drill-down lands on 2022's own first month card
     // instead of the default newest-at-the-bottom position.
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01");
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
   });
 
   it("tapping a Month card lands Days on that month's first day; a Day card opens All Photos at that day (#301)", async () => {
@@ -422,9 +422,10 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await screen.findByText("Jan 2022");
+    await screen.findByText("January 2022");
 
-    fireEvent.click(screen.getByText("Jan 2022"));
+    // Months lists Day cards under month headers; a Day card goes to Days at that day.
+    fireEvent.click(screen.getByText(/Jan 1, 2022/));
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
@@ -432,7 +433,7 @@ describe("MobileLibrary", () => {
     expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
 
     // The anchor (`to=2022-01-20`) excludes "recent" and starts All Photos at that day.
-    fireEvent.click(screen.getByText("Jan 20, 2022"));
+    fireEvent.click(screen.getByText(/Jan 20, 2022/));
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
     expect(queryThumb("recent")).toBeNull();
@@ -448,8 +449,8 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("Jan 2022"));
-    fireEvent.click(await screen.findByText("Jan 20, 2022"));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
     expect(queryThumb("recent")).toBeNull();
 
@@ -473,8 +474,8 @@ describe("MobileLibrary", () => {
     const { rerender } = render(<MobileLibrary libraryId={1} resetSignal={0} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("Jan 2022"));
-    fireEvent.click(await screen.findByText("Jan 20, 2022"));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(queryThumb("recent")).toBeNull());
 

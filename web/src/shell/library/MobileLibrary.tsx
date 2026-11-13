@@ -263,7 +263,7 @@ export default function MobileLibrary({
   // over the cursor-paged `items`; Days and All Photos use the virtualized rows.
   const periodCards = useMemo(() => {
     if (!isTileView) return [];
-    return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view) : [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.days, view === "months" ? "days" : view) : [];
   }, [view, summary]);
   const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns)), [isTileView, view, items, columns]);
   // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
@@ -452,6 +452,7 @@ export default function MobileLibrary({
             key={view}
             libraryId={libraryId}
             view={view}
+            phone
             cards={periodCards}
             scrollRef={scrollRef}
             landOnKey={view !== "years" ? pendingScrollKey : null}

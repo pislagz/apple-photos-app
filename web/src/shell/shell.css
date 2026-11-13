@@ -630,6 +630,119 @@ body {
   }
 }
 
+/* #219 iPhone cards: one column of rounded cards at a fixed final size, so
+   placeholders never shift the layout when thumbnails arrive. */
+.period-grid--phone {
+  --period-card-min: 100%;
+  grid-template-columns: 1fr;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+}
+
+.period-grid--phone.period-grid--years {
+  gap: var(--space-16);
+}
+
+.period-grid--phone .period-grid__header {
+  padding: var(--space-8) var(--space-4) var(--space-4);
+}
+
+.period-grid__month {
+  margin: 0;
+  padding: var(--space-14) var(--space-4) var(--space-4);
+  font-size: 24px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.3px;
+  color: var(--color-label);
+}
+
+.period-card--phone {
+  aspect-ratio: auto;
+  height: 230px;
+  border-radius: 24px;
+  /* Continuous corners where the browser has them; radius is the fallback. */
+  corner-shape: squircle;
+}
+
+.period-grid--years .period-card--phone {
+  height: 300px;
+  border-radius: 28px;
+}
+
+.period-grid--years .period-card--phone .period-card__caption {
+  top: var(--space-20);
+  left: var(--space-20);
+}
+
+.period-grid--years .period-card--phone .period-card__label {
+  font-size: 30px;
+}
+
+.period-card--phone.period-card--days .period-card__caption {
+  left: var(--space-18);
+  right: var(--space-18);
+  bottom: var(--space-18);
+}
+
+.period-card--phone.period-card--days .period-card__label {
+  font-size: var(--font-size-title-2);
+  font-weight: var(--font-weight-bold);
+}
+
+.period-card--phone.period-card--days .period-card__count {
+  display: block;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.85;
+}
+
+.period-card--phone.period-card--days .period-card__pill {
+  top: var(--space-12);
+  right: var(--space-12);
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+/* The key photo fills the left; two small photos stack on the right. */
+.period-card--mosaic .period-card__image {
+  right: 120px;
+  width: calc(100% - 120px);
+}
+
+.period-card--mosaic .period-card__scrim {
+  right: 120px;
+}
+
+.period-card--mosaic .period-card__pill {
+  right: 132px;
+}
+
+.period-card__mosaic {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 118px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.period-card__mosaic-image {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+  background: var(--color-placeholder);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .period-card--phone:active {
+    transform: none;
+  }
+}
+
 .mobile-library__empty {
   text-align: center;
   padding: var(--space-24);
