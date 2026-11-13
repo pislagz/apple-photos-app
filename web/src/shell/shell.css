@@ -1118,6 +1118,35 @@ body {
   cursor: default;
 }
 
+/* "Keep me signed in": box and label on one line, box vertically centred. */
+.login-card label.login-card__keep {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-8);
+  color: var(--color-label);
+}
+
+.login-card label.login-card__keep input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+/* Passkey availability footnote: small secondary text under the Sign in button,
+   as wide as the form (the card's own padding sets the width). */
+.login-card .login-card__passkey-note {
+  margin: var(--space-12) 0 0;
+  text-align: center;
+  font-size: var(--font-size-footnote);
+  line-height: 1.4;
+  color: var(--color-label-secondary);
+  text-wrap: balance;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Desktop shell (macOS Sequoia Photos)                                   */
 /* ---------------------------------------------------------------------- */
