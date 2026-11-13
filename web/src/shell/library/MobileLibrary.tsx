@@ -411,6 +411,15 @@ export default function MobileLibrary({
                 // clear any stale Month -> Days anchor so tapping Days here
                 // starts at the top of the library, not back at the last
                 // drilled-into month.
+                // Re-tapping "All" glides to the newest photo (instant when
+                // the user asked for reduced motion).
+                if (item.key === "all" && view === "all" && scrollRef.current) {
+                  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                  setDaysAnchor(null);
+                  setPendingScrollKey(null);
+                  scrollRef.current.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+                  return;
+                }
                 backToNewest(item.key);
                 setView(item.key);
               }}
