@@ -677,15 +677,20 @@ def asset_detail(
     # media (#151).
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     response.headers.update(_media_cache_headers(asset))
-    people = [
-        row["display_name"] or row["name"]
-        for row in db.execute(
-            "SELECT people.name, people.display_name FROM asset_people "
-            "JOIN people ON people.id = asset_people.person_id WHERE asset_people.asset_id = ? "
-            "ORDER BY people.display_name, people.name",
-            (asset["id"],),
-        ).fetchall()
-    ]
+    # An unnamed face group has neither name nor display_name (NULL or ""); it
+    # has no string to list, and a None in `people: list[str]` fails response
+    # validation (HTTP 500), so it is skipped.
+    people = sorted(
+        {
+            label
+            for row in db.execute(
+                "SELECT people.name, people.display_name FROM asset_people "
+                "JOIN people ON people.id = asset_people.person_id WHERE asset_people.asset_id = ?",
+                (asset["id"],),
+            ).fetchall()
+            if (label := row["display_name"] or row["name"])
+        }
+    )
     albums = [
         row["title"]
         for row in db.execute(
