@@ -51,23 +51,21 @@ function AccountMenuItems({
 // Desktop (Sequoia sidebar footer): a tidy row -- avatar glyph, username,
 // a disclosure chevron -- that opens the same popover upward into the
 // sidebar, instead of the plain stack of controls it used to be.
-// Mobile (iOS large-title header): the same controls behind a round "..."
-// trigger, like the overflow button in ios17-library-days.png, so they
-// don't eat a row of the overlaid title.
+// The iPhone layout has no account menu: those actions live in the More tab (#303).
 export default function AccountMenu({
   me,
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
   compact = false,
-  variant = "overlay",
+  variant = "row",
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   compact?: boolean;
-  variant?: "overlay" | "row";
+  variant?: "row";
 }) {
   const [open, setOpen] = useState(false);
 
@@ -114,29 +112,4 @@ export default function AccountMenu({
       </div>
     );
   }
-
-  return (
-    <div className="account-menu account-menu--compact">
-      <button
-        type="button"
-        className="account-menu__trigger"
-        aria-label="Account menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <Icon name="more" className="account-menu__trigger-icon" />
-      </button>
-      {open && (
-        <div className="account-menu__popover">
-          <AccountMenuItems
-            me={me}
-            layoutOverride={layoutOverride}
-            onLayoutOverrideChange={onLayoutOverrideChange}
-            onLogout={onLogout}
-            onPasswordDialogClosed={() => setOpen(false)}
-          />
-        </div>
-      )}
-    </div>
-  );
 }

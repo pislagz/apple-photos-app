@@ -16,6 +16,7 @@ describe("AccountMenu (#189)", () => {
         onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
         compact
+        variant="row"
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Account menu" }));

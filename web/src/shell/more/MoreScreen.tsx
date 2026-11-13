@@ -1,4 +1,9 @@
-import type { LibrarySummary } from "../../api";
+import { useState } from "react";
+import type { LibrarySummary, MeResponse } from "../../api";
+import ChangePasswordDialog from "../ChangePasswordDialog";
+import LayoutOverrideControl from "../LayoutOverrideControl";
+import PasskeysDialog from "../PasskeysDialog";
+import type { LayoutOverride } from "../useLayout";
 import { Icon } from "../icons";
 import LibrarySwitcher from "../LibrarySwitcher";
 import { MEDIA_TYPES } from "./mediaTypes";
@@ -13,12 +18,22 @@ export default function MoreScreen({
   activeLibraryId,
   onActiveLibraryChange,
   onNavigate,
+  me,
+  layoutOverride,
+  onLayoutOverrideChange,
+  onLogout,
 }: {
   libraries: LibrarySummary[];
   activeLibraryId: number | undefined;
   onActiveLibraryChange: (id: number) => void;
   onNavigate: (path: "/people" | "/places" | `/media/${string}` | "/hidden") => void;
+  me: MeResponse;
+  layoutOverride: LayoutOverride;
+  onLayoutOverrideChange: (value: LayoutOverride) => void;
+  onLogout: () => void;
 }) {
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [managingPasskeys, setManagingPasskeys] = useState(false);
   return (
     <div className="more-screen">
       <header className="mobile-screen__header mobile-screen__header--root">
@@ -63,7 +78,46 @@ export default function MoreScreen({
             </button>
           </li>
         </ul>
+        {/* #303: everything the old top-right "..." menu offered. */}
+        <ul className="more-screen__group">
+          <li className="more-screen__group-label">Account</li>
+          <li>
+            <p className="more-screen__item more-screen__item--static">Signed in as {me.username}</p>
+          </li>
+          <li>
+            <button type="button" className="more-screen__item" onClick={() => setChangingPassword(true)}>
+              Change password
+            </button>
+          </li>
+          <li>
+            <button type="button" className="more-screen__item" onClick={() => setManagingPasskeys(true)}>
+              Passkeys
+            </button>
+          </li>
+          <li>
+            <button type="button" className="more-screen__item more-screen__item--danger" onClick={onLogout}>
+              Log out
+            </button>
+          </li>
+        </ul>
+        <ul className="more-screen__group">
+          <li className="more-screen__group-label">Settings</li>
+          <li>
+            <div className="more-screen__item">
+              <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
+            </div>
+          </li>
+          {me.role === "admin" && (
+            <li>
+              <a href="/admin" className="more-screen__item more-screen__item--link">
+                Admin
+              </a>
+            </li>
+          )}
+        </ul>
       </div>
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+      {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
       <LibrarySwitcher
         libraries={libraries}
         activeLibraryId={activeLibraryId}
