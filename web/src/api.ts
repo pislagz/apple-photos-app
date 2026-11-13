@@ -305,6 +305,8 @@ export interface Person {
   label: string;
   count: number;
   cover: FaceCrop | null;
+  // Optional: the server does not send it yet. When it does, the face wears a heart.
+  favorite?: boolean;
 }
 
 export function getPeople(libraryId: number): Promise<{ people: Person[] }> {
