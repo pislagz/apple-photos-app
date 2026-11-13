@@ -271,7 +271,7 @@ describe("#223 Albums screens", () => {
     expect(tile.querySelector(".album-tile__name")).toHaveTextContent("Loose");
     fireEvent.click(tile);
     expect(await screen.findByRole("heading", { name: "Loose" })).toBeInTheDocument();
-    expect(document.querySelector(".toolbar__count")).toHaveTextContent("1");
+    expect(document.querySelector(".page-heading__subtitle")).toHaveTextContent("1 item");
     fireEvent.keyDown(window, { key: "[", metaKey: true });
     await waitFor(() => expect(document.querySelector(".albums-overview__grid")).not.toBeNull());
     expect(screen.queryByRole("heading", { name: "Loose" })).not.toBeInTheDocument();

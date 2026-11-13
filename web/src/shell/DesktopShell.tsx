@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../api";
 import MapView, { boundsParam } from "./map/MapView";
 import AlbumsOverview from "./albums/AlbumsOverview";
@@ -101,6 +101,18 @@ function SidebarAlbumGroups({
   );
 }
 
+function PageHeading({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="page-heading">
+      <div className="page-heading__text">
+        <h1 className="page-heading__title">{title}</h1>
+        <p className="page-heading__subtitle">{"\u00a0"}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export default function DesktopShell({
   me,
   activeLibraryId,
@@ -141,6 +153,7 @@ export default function DesktopShell({
   // results as a `search:` album; emptying the field goes back to Library.
   const search = useSearchModel(activeLibraryId ?? -1);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null);
   const showingSearchRef = useRef(false);
   showingSearchRef.current = !!showingSearch;
   const [searchCount, setSearchCount] = useState<{ count: number; done: boolean } | null>(null);
@@ -196,6 +209,13 @@ export default function DesktopShell({
     search.clear();
     setView("album");
   }
+  const itemsLabel = (n: number, more = false) => `${n.toLocaleString()}${more ? "+" : ""} ${n === 1 && !more ? "item" : "items"}`;
+  const headingSubtitle =
+    view === "album" && !showingSearch && album?.count != null
+      ? itemsLabel(album.count)
+      : showingSearch && searchCount && (searchCount.done || searchCount.count > 0)
+        ? itemsLabel(searchCount.count, !searchCount.done)
+        : undefined;
   const backToAlbums = view === "album" && !!album?.fromOverview;
   // Cmd [ (Ctrl [ elsewhere) goes back from an album opened on the Albums screen.
   useEffect(() => {
@@ -368,70 +388,51 @@ export default function DesktopShell({
         />
       </aside>
       <div className="shell__main">
-        {/* #291: one stable slot at the right end of the toolbar row (every
-            view's toolbar reserves room for it), so the input keeps focus
-            while typing swaps the view underneath. */}
-        <div className="shell__search">
-          <DesktopSearch ref={searchRef} model={search} onRun={applyQuery} />
-        </div>
+        {/* #296: ONE fixed toolbar row for every view, like Photos for Mac:
+            back button and the view's controls on the left (DesktopLibrary
+            portals its controls into the slot), search at the right end, so
+            the field keeps the same box everywhere and keeps focus while
+            typing swaps the view underneath. The page title is a heading
+            below this row, never inside it. */}
+        <header className="shell__toolbar" data-testid="shell-toolbar">
+          <div className="shell__toolbar-nav">
+            {view === "album" && showingPlace && (
+              <button type="button" className="toolbar-button" onClick={() => selectView("map")}>
+                <Icon name="chevron" className="toolbar-button__back-icon" />
+                Map
+              </button>
+            )}
+            {view === "album" && backToAlbums && (
+              <button type="button" className="toolbar-button" onClick={() => selectView("albums")} title="Back (⌘[)">
+                <Icon name="chevron" className="toolbar-button__back-icon" />
+                Albums
+              </button>
+            )}
+            {view === "album" && showingPerson && (
+              <button type="button" className="toolbar-button" onClick={() => selectView("people")}>
+                <Icon name="chevron" className="toolbar-button__back-icon" />
+                People & Pets
+              </button>
+            )}
+          </div>
+          <div className="shell__toolbar-controls" ref={setToolbarSlot} />
+          <div className="shell__search">
+            <DesktopSearch ref={searchRef} model={search} onRun={applyQuery} />
+          </div>
+        </header>
         {view === "hidden" ? (
           <HiddenSession>
-            <header className="toolbar">
-              <h1>Hidden</h1>
-            </header>
+            <PageHeading title="Hidden" />
             <main className="shell__content">
               {activeLibraryId !== undefined && <HiddenView libraryId={activeLibraryId} variant="desktop" onCancel={() => setView("library")} />}
             </main>
           </HiddenSession>
         ) : (
           <>
-            {view === "album" && album && (
-              <header className="toolbar">
-                {showingPlace && (
-                  <button type="button" className="toolbar-button" onClick={() => selectView("map")}>
-                    <Icon name="chevron" className="toolbar-button__back-icon" />
-                    Map
-                  </button>
-                )}
-                {backToAlbums && (
-                  <button type="button" className="toolbar-button" onClick={() => selectView("albums")} title="Back (⌘[)">
-                    <Icon name="chevron" className="toolbar-button__back-icon" />
-                    Albums
-                  </button>
-                )}
-                {showingPerson && (
-                  <button type="button" className="toolbar-button" onClick={() => selectView("people")}>
-                    <Icon name="chevron" className="toolbar-button__back-icon" />
-                    People & Pets
-                  </button>
-                )}
-                <h1>{album.title}</h1>
-                {album.count != null && <span className="toolbar__count">{album.count.toLocaleString()}</span>}
-                {showingSearch && searchCount && (searchCount.done || searchCount.count > 0) && (
-                  <span className="toolbar__count">
-                    {searchCount.count.toLocaleString()}
-                    {searchCount.done ? "" : "+"} {searchCount.count === 1 && searchCount.done ? "item" : "items"}
-                  </span>
-                )}
-              </header>
-            )}
-            {view === "albums" && (
-              <header className="toolbar">
-                <h1>Albums</h1>
-              </header>
-            )}
-            {view === "people" && (
-              <header className="toolbar">
-                <h1>People & Pets</h1>
-              </header>
-            )}
-            {view === "map" && (
-              <header className="toolbar">
-                <h1>Map</h1>
-              </header>
-            )}
+            {view === "albums" && <PageHeading title="Albums" />}
+            {view === "people" && <PageHeading title="People & Pets" />}
+            {view === "map" && <PageHeading title="Map" />}
           <main className="shell__content">
-            {(view === "library" || view === "days") && <h1 className="sr-only">{view === "days" ? "Days" : "Library"}</h1>}
             {activeLibrary?.updating ? (
               <LibraryUpdating name={activeLibrary.display_name} reason={activeLibrary.updating_reason} />
             ) : activeLibraryId !== undefined && view === "map" ? (
@@ -465,6 +466,9 @@ export default function DesktopShell({
                 key={`${activeLibraryId}-${view}-${album?.id ?? ""}-${selectNonce}`}
                 album={view === "album" ? album?.id : undefined}
                 isAdmin={me.role === "admin"}
+                title={view === "album" ? album?.title : view === "days" ? "Days" : "Library"}
+                subtitle={headingSubtitle}
+                toolbarSlot={toolbarSlot}
                 fixedView={view === "days" ? "days" : view === "album" ? "all" : undefined}
                 onOpenDay={
                   view === "days"
