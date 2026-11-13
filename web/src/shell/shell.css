@@ -1595,7 +1595,7 @@ body {
 .mobile-viewer__title-secondary {
   font-size: var(--font-size-caption);
   opacity: 0.8;
-  white-space: nowrap;
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
@@ -1843,8 +1843,8 @@ body {
   inset: 0;
   z-index: 10;
   display: flex;
-  background: var(--surface-dark);
-  color: var(--color-white);
+  background: var(--color-viewer-bg);
+  color: var(--color-label);
 }
 
 .desktop-viewer__main {
@@ -1859,7 +1859,7 @@ body {
   align-items: center;
   gap: var(--space-8);
   box-sizing: border-box;
-  height: 44px;
+  height: 52px;
   padding: 0 var(--space-14);
   background: var(--material-viewer-bar);
   -webkit-backdrop-filter: blur(20px);
@@ -1879,10 +1879,39 @@ body {
     visibility 0s linear 200ms;
 }
 
-/* Sequoia's viewer title: date/place centered in the top bar, like the
-   grid's own date-range title. */
+/* #302 Mac Photos top bar: back + zoom on the left, the title block centred
+   on the window (the side groups are equal-width), actions on the right. */
+.desktop-viewer__topbar-left,
+.desktop-viewer__topbar-right {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.desktop-viewer__topbar-right {
+  justify-content: flex-end;
+}
+
+.desktop-viewer__zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: var(--space-8);
+}
+
+.desktop-viewer__zoom-slider {
+  width: 96px;
+  accent-color: var(--accent);
+}
+
+.desktop-viewer__back .icon-flip {
+  transform: scaleX(-1);
+}
+
 .desktop-viewer__title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1902,19 +1931,11 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
-  opacity: 0.8;
+  color: var(--color-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-
-.desktop-viewer__topbar .toolbar-button {
-  color: var(--color-white);
-}
-
-.desktop-viewer__topbar .toolbar-button:hover:not(:disabled) {
-  background: var(--color-on-dark-line);
 }
 
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
@@ -1991,7 +2012,7 @@ body {
 
 .desktop-viewer__info-rows__row dt {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  color: var(--color-label-secondary);
 }
 
 .desktop-viewer__info-rows__row dd {
@@ -2604,7 +2625,7 @@ body {
 }
 
 .desktop-viewer :focus-visible {
-  outline-color: var(--color-white);
+  outline-color: var(--accent);
 }
 
 .mobile-viewer :focus-visible {

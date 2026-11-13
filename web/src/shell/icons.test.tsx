@@ -29,7 +29,7 @@ describe("icon set", () => {
       "library", "days", "albums", "people", "map", "favorite", "added", "folder", "hidden", "tray",
       "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "rotate",
       "more", "play", "close", "livephoto", "video", "camera", "portrait", "panorama", "screenshot",
-      "document", "link", "original", "slomo",
+      "document", "link", "original", "slomo", "minus", "plus",
     ];
     expect([...ICON_NAMES].sort()).toEqual([...used].sort());
   });

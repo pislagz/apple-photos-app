@@ -14,8 +14,8 @@ import { useZoomTransition } from "./useZoomTransition";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
-import { buildInfoRows, formatPlaceName } from "./viewerInfo";
-import { formatViewerTitle } from "./viewerTitle";
+import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
+import { formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
 
@@ -35,6 +35,8 @@ export interface ViewerProps {
 // of the fields the mobile sheet shows). `items` is the Library view's own
 // array -- Esc/arrows only ever move within it, so a hidden asset (P1.13)
 // stays unreachable here exactly like it is from the grid.
+const ZOOM_STEP = 0.5;
+
 export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -148,6 +150,14 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     const centre = { x: (rect?.left ?? 0) + box.w / 2, y: (rect?.top ?? 0) + box.h / 2 };
     const fit = g.fitSize({ w: item?.width ?? 0, h: item?.height ?? 0 }, box);
     return { box, centre, fit };
+  }
+
+  // Top-bar zoom: about the stage centre, through the same zoomView the wheel uses.
+  function setZoom(next: number) {
+    const { box, fit } = geometry();
+    const scaleTo = g.clampZoom(next);
+    setAnimating(false);
+    setView(scaleTo <= g.ZOOM_MIN ? g.FIT : g.zoomView(viewRef.current, scaleTo, { x: 0, y: 0 }, fit, box));
   }
 
   function toggleZoom(event: MouseEvent) {
@@ -270,7 +280,12 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const alt = assetAlt({ ...item, title: detail?.title });
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
-  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
+  const title = formatDesktopTitle({
+    place: detail ? formatShortPlaceName(detail) : "",
+    dateCreated: detail?.date_created ?? item.date ?? null,
+    index,
+    total: items.length,
+  });
 
   return (
     <div
@@ -283,44 +298,79 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     >
       <div className="desktop-viewer__main">
         <div className={`desktop-viewer__topbar${chrome.hidden ? " is-chrome-hidden" : ""}`}>
-          <button type="button" className="toolbar-button" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={16} />
-          </button>
-          <div className="desktop-viewer__title">
-            {title.primary && <span className="desktop-viewer__title-primary">{title.primary}</span>}
+          <div className="desktop-viewer__topbar-left">
+            <button type="button" className="toolbar-button desktop-viewer__back" onClick={onClose} aria-label="Back">
+              <Icon name="chevron" size={16} className="icon-flip" />
+            </button>
+            <div className="desktop-viewer__zoom">
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => setZoom(scale - ZOOM_STEP)}
+                disabled={scale <= g.ZOOM_MIN}
+                aria-label="Zoom Out"
+              >
+                <Icon name="minus" size={16} />
+              </button>
+              <input
+                type="range"
+                className="desktop-viewer__zoom-slider"
+                min={g.ZOOM_MIN}
+                max={g.ZOOM_MAX}
+                step={0.01}
+                value={scale}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                aria-label="Zoom"
+                data-testid="viewer-zoom-slider"
+              />
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => setZoom(scale + ZOOM_STEP)}
+                disabled={scale >= g.ZOOM_MAX}
+                aria-label="Zoom In"
+              >
+                <Icon name="plus" size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="desktop-viewer__title" data-testid="viewer-title">
+            <span className="desktop-viewer__title-primary">{title.primary}</span>
             {title.secondary && <span className="desktop-viewer__title-secondary">{title.secondary}</span>}
           </div>
-          <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
-            <Icon name="link" size={16} />
-          </button>
-          <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
-            <Icon name="download" size={16} />
-          </button>
-          {detail?.has_edited && (
-            <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
-              <Icon name="document" size={16} />
+          <div className="desktop-viewer__topbar-right">
+            <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
+              <Icon name="link" size={16} />
             </button>
-          )}
-          {detail?.has_edited && (
+            <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
+              <Icon name="download" size={16} />
+            </button>
+            {detail?.has_edited && (
+              <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
+                <Icon name="document" size={16} />
+              </button>
+            )}
+            {detail?.has_edited && (
+              <button
+                type="button"
+                className="toolbar-button"
+                aria-pressed={media.showingOriginal}
+                onClick={() => media.toggleShowOriginal()}
+                aria-label="Show Original"
+              >
+                <Icon name="original" size={16} filled={media.showingOriginal} />
+              </button>
+            )}
             <button
               type="button"
               className="toolbar-button"
-              aria-pressed={media.showingOriginal}
-              onClick={() => media.toggleShowOriginal()}
-              aria-label="Show Original"
+              aria-pressed={infoOpen}
+              onClick={() => setInfoOpen((value) => !value)}
+              aria-label="Info"
             >
-              <Icon name="original" size={16} filled={media.showingOriginal} />
+              <Icon name="info" size={16} filled={infoOpen} />
             </button>
-          )}
-          <button
-            type="button"
-            className="toolbar-button"
-            aria-pressed={infoOpen}
-            onClick={() => setInfoOpen((value) => !value)}
-            aria-label="Info"
-          >
-            <Icon name="info" size={16} filled={infoOpen} />
-          </button>
+          </div>
         </div>
         <div
           className="desktop-viewer__stage"

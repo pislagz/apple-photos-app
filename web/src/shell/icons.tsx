@@ -265,6 +265,8 @@ export const ICONS = {
       [circle(8, 14, 2.2), "fs"],
     ],
   },
+  minus: { parts: [["M4.5 10h11", "s"]] },
+  plus: { parts: [["M4.5 10h11 M10 4.5v11", "s"]] },
   chevron: { parts: [["M7.5 4.5 13 10l-5.5 5.5", "s"]] },
   rotate: {
     parts: [
