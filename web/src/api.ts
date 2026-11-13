@@ -220,7 +220,17 @@ export function getHidden(libraryId: number, cursor: string | null = null, limit
 // that month instead of from the top of the whole library.
 // `filter` (#132, desktop Filter By) maps onto the server's `type` and
 // `favorite` query params; "all" sends neither.
-export type AssetFilter = "all" | "favorites" | "photos" | "videos";
+export type AssetFilter =
+  | "all"
+  | "favorites"
+  | "edited"
+  | "photos"
+  | "videos"
+  | "screenshots"
+  | "shared"
+  | "not-in-album";
+// Kinds the "Show" toggles can hide from any view (`?hide=`).
+export type AssetHide = "screenshots" | "shared";
 
 export const PERSON_PREFIX = "person:";
 // P2.3: `place:<west,south,east,north>` selects the photos inside a map
@@ -236,6 +246,7 @@ export function getAssets(
   to: string | null = null,
   filter: AssetFilter = "all",
   album: string | null = null,
+  hide: readonly AssetHide[] = [],
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (album?.startsWith(SEARCH_PREFIX)) {
@@ -253,6 +264,8 @@ export function getAssets(
   if (filter === "favorites") params.set("favorite", "true");
   else if (filter === "photos") params.set("type", "photo");
   else if (filter === "videos") params.set("type", "video");
+  else if (filter !== "all") params.set("filter", filter);
+  if (hide.length > 0) params.set("hide", hide.join(","));
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
 }
 

@@ -16,6 +16,8 @@ import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import PeriodCardGrid from "./PeriodCards";
 import { buildPeriodCards, buildRows, type LibraryRow } from "./rows";
+import FilterMenu from "./FilterMenu";
+import { useLibraryFilter } from "./useLibraryFilter";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { useLibrarySummary } from "./useLibrarySummary";
@@ -71,16 +73,20 @@ export default function MobileLibrary({
   // column, so "-31" is always a safe upper bound regardless of the real
   // month length.
   const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
+  const filterState = useLibraryFilter();
+  // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
+  const [wholePhotos, setWholePhotos] = useState(false);
   const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
     daysAnchor,
-    "all",
+    filterState.filter,
     album ?? null,
+    filterState.hide,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
   const libraryEmpty = summary !== null && summary.years.length === 0;
   const pinchAnchor = useRef<PinchAnchor | null>(null);
-  const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
+  const { columns, zoomBy, canZoomIn, canZoomOut, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
     // scrolls it back into place once the new column count has reflowed.
     const element = scrollRef.current;
@@ -101,6 +107,14 @@ export default function MobileLibrary({
     const element = scrollRef.current;
     if (element) element.scrollTop = target !== "all" ? element.scrollHeight : 0;
   }, []);
+  // A new filter lists different photos: start at the top, not mid-library.
+  const filterKey = `${filterState.filter}|${filterState.hide.join(",")}`;
+  const lastFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+    backToNewest(view);
+  }, [filterKey, backToNewest, view]);
   const lastResetSignal = useRef(resetSignal);
   useEffect(() => {
     if (lastResetSignal.current === resetSignal) return;
@@ -314,6 +328,22 @@ export default function MobileLibrary({
           nav={nav}
           scrim={view === "all" ? titleScrimProgress(scrollOffset) : 1}
           showSelect={!isTileView}
+          actions={
+            !isTileView && !selectMode ? (
+              <FilterMenu
+                state={filterState}
+                variant="mobile"
+                viewOptions={{
+                  canZoomIn,
+                  canZoomOut,
+                  onZoomIn: () => zoomBy(1),
+                  onZoomOut: () => zoomBy(-1),
+                  wholePhotos,
+                  onToggleWholePhotos: () => setWholePhotos((value) => !value),
+                }}
+              />
+            ) : undefined
+          }
           selectMode={selectMode}
           onToggleSelect={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
         >
@@ -462,7 +492,7 @@ export default function MobileLibrary({
                         tabIndex={-1}
                         loading="lazy"
                         className="mobile-library__cell"
-                        style={{ width: cellSize, height: cellSize }}
+                        style={{ width: cellSize, height: cellSize, objectFit: wholePhotos ? "contain" : "cover" }}
                         onClick={() => openItem(item)}
                       />
                       <TileOverlays item={item} tileWidth={cellSize} prefix="mobile-library" />

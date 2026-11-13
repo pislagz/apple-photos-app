@@ -1808,3 +1808,63 @@ def test_list_items_expose_original_filename(tmp_path):
         assert items[0]["original_filename"] == "IMG_1234.HEIC"
     finally:
         conn.close()
+
+
+def test_filter_menu_kinds_and_hide_toggles(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        plain = _insert_asset(
+            conn, library_id, "plain", date_created="2024-01-05T00:00:00"
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "edited",
+            path_edited="e.jpg",
+            date_created="2024-01-04T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "shot",
+            is_screenshot=1,
+            date_created="2024-01-03T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "shared",
+            is_syndicated=1,
+            date_created="2024-01-02T00:00:00",
+        )
+        cur = conn.execute(
+            "INSERT INTO albums (library_id, uuid, title) VALUES (?, 'a1', 'A')",
+            (library_id,),
+        )
+        conn.execute(
+            "INSERT INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
+            (plain, cur.lastrowid),
+        )
+        conn.commit()
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/assets"
+
+        def ids(**params):
+            response = client.get(url, params=params)
+            assert response.status_code == 200, response.text
+            return [item["id"] for item in response.json()["items"]]
+
+        assert ids(filter="edited") == ["edited"]
+        assert ids(filter="screenshots") == ["shot"]
+        assert ids(filter="shared") == ["shared"]
+        assert ids(filter="not-in-album") == ["edited", "shot", "shared"]
+        assert ids(hide="screenshots") == ["plain", "edited", "shared"]
+        assert ids(hide="screenshots,shared") == ["plain", "edited"]
+        assert ids(filter="screenshots", hide="shared") == ["shot"]
+        assert client.get(url, params={"hide": "bogus"}).status_code == 422
+        assert client.get(url, params={"filter": "bogus"}).status_code == 422
+    finally:
+        conn.close()

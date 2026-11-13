@@ -524,6 +524,12 @@ _MIGRATIONS: list[list[str]] = [
     [
         "ALTER TABLE users ADD COLUMN avatar_version INTEGER",
     ],
+    # 27: "Shared with You" (Photos 7+ syndication), for the Filter menu.
+    # Filled by the indexer, so existing libraries re-index once.
+    [
+        "ALTER TABLE assets ADD COLUMN is_syndicated INTEGER NOT NULL DEFAULT 0",
+        "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
+    ],
 ]
 
 

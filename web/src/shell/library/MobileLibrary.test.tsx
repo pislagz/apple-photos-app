@@ -178,11 +178,11 @@ describe("MobileLibrary", () => {
     expect(title).toHaveTextContent("Library");
     // The title block (large title + subtitle) and Select share the bar.
     expect(title.closest(".mobile-library__title-block")?.parentElement).toBe(bar);
-    expect(select.parentElement).toBe(bar);
+    expect(bar.contains(select)).toBe(true);
     // Select follows the title in flow, so the two cannot overlap.
     expect(title.closest(".mobile-library__title-block")!.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(select);
-    expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
+    expect(bar.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
   });
 
   it("puts a pushed grid's back button, Select and title in the same one top bar (#260)", async () => {

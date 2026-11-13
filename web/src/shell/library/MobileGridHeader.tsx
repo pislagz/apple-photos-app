@@ -12,6 +12,7 @@ export default function MobileGridHeader({
   scrim = 1,
   children,
   showSelect,
+  actions,
   selectMode,
   onToggleSelect,
 }: {
@@ -21,26 +22,12 @@ export default function MobileGridHeader({
   // The Library's date title block; unused when `nav` is given.
   children?: ReactNode;
   showSelect: boolean;
+  // The Filter menu, left of Select (hidden while selecting).
+  actions?: ReactNode;
   selectMode: boolean;
   onToggleSelect: () => void;
 }) {
-  return (
-    <div
-      className={nav ? "mobile-library__top-bar mobile-library__top-bar--nav" : "mobile-library__top-bar"}
-      data-testid="top-bar"
-      data-scrim={nav ? undefined : "true"}
-      style={nav ? undefined : ({ "--title-scrim": scrim } as CSSProperties)}
-    >
-      {nav ? (
-        <button type="button" className="mobile-screen__back mobile-library__back" onClick={nav.onBack}>
-          <Icon name="chevron" className="mobile-screen__back-icon" />
-          {nav.backLabel}
-        </button>
-      ) : (
-        children
-      )}
-      {showSelect &&
-        (nav ? (
+  const selectControl = (nav ? (
           <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>
             {selectMode ? "Cancel" : "Select"}
           </button>
@@ -57,7 +44,30 @@ export default function MobileGridHeader({
           <button type="button" className="mobile-library__glass-button mobile-library__select-button" onClick={onToggleSelect}>
             Select
           </button>
-        ))}
+        ));
+  return (
+    <div
+      className={nav ? "mobile-library__top-bar mobile-library__top-bar--nav" : "mobile-library__top-bar"}
+      data-testid="top-bar"
+      data-scrim={nav ? undefined : "true"}
+      style={nav ? undefined : ({ "--title-scrim": scrim } as CSSProperties)}
+    >
+      {nav ? (
+        <button type="button" className="mobile-screen__back mobile-library__back" onClick={nav.onBack}>
+          <Icon name="chevron" className="mobile-screen__back-icon" />
+          {nav.backLabel}
+        </button>
+      ) : (
+        children
+      )}
+      {showSelect && actions ? (
+        <div className="mobile-library__top-actions">
+          {actions}
+          {selectControl}
+        </div>
+      ) : (
+        showSelect && selectControl
+      )}
       {nav && <h1 className="mobile-screen__title mobile-library__nav-title">{nav.title}</h1>}
     </div>
   );

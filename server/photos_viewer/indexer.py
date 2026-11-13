@@ -72,6 +72,7 @@ _ASSET_COLUMNS = (
     "camera_model",
     "score",
     "original_missing",
+    "is_syndicated",
 )
 
 
@@ -599,6 +600,8 @@ def _write_index(
                     exif_info.camera_model if exif_info else None,
                     photo.score.overall if photo.score else None,
                     int(original_missing),
+                    # None below Photos 7: the library has no such concept.
+                    int(bool(photo.syndicated)),
                 ),
             )
             asset_id = db.execute(
