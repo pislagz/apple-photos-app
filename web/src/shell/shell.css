@@ -1433,34 +1433,6 @@ body {
   background: var(--color-card);
 }
 
-/* Mobile: the same controls behind a round "..." trigger, overlaid
-   top-right like the overflow button in ios17-library-days.png. */
-.account-menu--compact {
-  display: block;
-  padding: 0;
-  border-top: none;
-  position: relative;
-}
-
-.account-menu__trigger {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: var(--color-fill-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  color: var(--color-label);
-  cursor: pointer;
-}
-
-.account-menu__trigger-icon {
-  display: block;
-}
-
 .account-menu__popover {
   position: absolute;
   top: 38px;
@@ -2934,4 +2906,28 @@ body {
   color: var(--color-warn-text-on-dark);
   background: var(--color-warn-bg-on-dark);
   z-index: 3;
+}
+
+/* #303: account actions in the More tab (the old iPhone "..." menu). */
+.more-screen__item--static {
+  margin: 0;
+  color: var(--color-label-secondary);
+}
+
+.more-screen__item--link {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.more-screen__item--danger {
+  color: var(--color-danger-text);
+}
+
+.more-screen__item .layout-override {
+  font-size: var(--font-size-body-lg);
+  color: var(--color-label);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
