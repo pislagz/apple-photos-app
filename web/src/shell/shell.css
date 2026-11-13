@@ -2206,7 +2206,7 @@ body {
   vertical-align: -2px;
 }
 
-.shell--desktop .toolbar .toolbar-button {
+.shell--desktop .shell__toolbar-nav .toolbar-button {
   margin-right: var(--space-12);
 }
 
@@ -2394,21 +2394,72 @@ body {
   cursor: pointer;
 }
 
-/* #291: the desktop field lives at the right end of the toolbar row. */
-.shell--desktop .shell__main {
-  position: relative;
+/* #296: one fixed toolbar row above every desktop view; the page heading
+   sits below it. Search is a normal flex item at the row's right end, so its
+   box is identical in every view. */
+.shell__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-hairline);
+  background: var(--material-toolbar);
+}
+
+.shell__toolbar-nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.shell__toolbar-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.shell__toolbar-controls > * {
+  flex: 0 0 auto;
+}
+
+.shell__toolbar-controls > .desktop-library__spacer {
+  flex: 1 1 auto;
 }
 
 .shell__search {
-  position: absolute;
-  top: var(--space-8);
-  right: var(--space-16);
-  z-index: 5;
+  flex: 0 0 auto;
 }
 
-.shell--desktop .toolbar,
-.shell--desktop .desktop-library__toolbar {
-  padding-right: calc(var(--space-16) + 190px + var(--space-10));
+.page-heading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16) var(--space-8);
+}
+
+.page-heading__text {
+  min-width: 0;
+}
+
+.page-heading__title {
+  margin: 0;
+  font-size: var(--font-size-title-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.15;
+}
+
+.page-heading__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  min-height: 1.3em;
 }
 
 .search-box--desktop {
@@ -2428,14 +2479,8 @@ body {
 
 /* Narrow windows: just the magnifier until the field is focused. */
 @media (max-width: 1100px) {
-  .shell--desktop .toolbar,
-  .shell--desktop .desktop-library__toolbar {
-    padding-right: calc(var(--space-16) + 28px + var(--space-10));
-  }
-
   .search-box--desktop {
     width: 28px;
-    margin-left: auto;
   }
 
   .search-box--desktop .search-box__input {
@@ -2448,16 +2493,9 @@ body {
     color: transparent;
   }
 
-  /* Expanded: the field takes its real 190px, and the toolbar reserves the
-     same room (icons shift left, the spacer shrinks) so nothing overlaps. */
+  /* Expanded: the field takes its real 190px; the controls slot shrinks. */
   .search-box--desktop:has(.search-box__input:focus, .search-box__input:not(:placeholder-shown)) {
     width: 190px;
-  }
-
-  .shell--desktop .shell__main:has(.search-box--desktop .search-box__input:focus, .search-box--desktop .search-box__input:not(:placeholder-shown))
-    :is(.toolbar, .desktop-library__toolbar) {
-    padding-right: calc(var(--space-16) + 190px + var(--space-10));
-    overflow: hidden;
   }
 
   .search-box--desktop .search-box__input:focus,
@@ -2596,7 +2634,7 @@ body {
   position: relative;
 }
 
-.shell--desktop .toolbar,
+.shell--desktop .shell__toolbar,
 .shell--desktop .desktop-library__toolbar {
   transition: padding-left 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 }
@@ -2611,7 +2649,7 @@ body {
 }
 
 /* Room for the floating sidebar toggle in the toolbar row. */
-.shell--sidebar-collapsed .toolbar,
+.shell--sidebar-collapsed .shell__toolbar,
 .shell--sidebar-collapsed .desktop-library__toolbar {
   padding-left: 48px;
 }

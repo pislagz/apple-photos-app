@@ -2,6 +2,7 @@ import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
 import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { createPortal } from "react-dom";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetFilter, AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
@@ -105,6 +106,8 @@ export default function DesktopLibrary({
   initialView,
   initialScrollAssetId,
   album,
+  title = "Library",
+  toolbarSlot,
 }: {
   libraryId: number;
   initialAssetId?: string;
@@ -120,6 +123,10 @@ export default function DesktopLibrary({
   initialScrollAssetId?: string;
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
+  // #296: the page heading's title, and the shell's fixed toolbar row that
+  // the view controls render into (inline above the heading when absent).
+  title?: string;
+  toolbarSlot?: HTMLElement | null;
 }) {
   const [switchedView, setView] = useState<ViewKey>(initialView ?? "years");
   const view = fixedView ?? switchedView;
@@ -601,9 +608,8 @@ export default function DesktopLibrary({
     setFilter(next);
   }
 
-  return (
-    <div className="desktop-library" data-testid="desktop-library">
-      <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
+  const controlsBar = (
+    <>
         <div className="desktop-library__zoom-slider">
           <button
             type="button"
@@ -662,36 +668,6 @@ export default function DesktopLibrary({
           ))}
         </div>
         )}
-        <div ref={filterMenuRef} className="desktop-library__filter">
-          <button
-            type="button"
-            className="toolbar-button"
-            aria-haspopup="menu"
-            aria-expanded={filterMenuOpen}
-            aria-pressed={filter !== "all"}
-            aria-label="Filter By"
-            title="Filter By"
-            onClick={() => setFilterMenuOpen((value) => !value)}
-          >
-            <Icon name="filter" size={16} filled={filter !== "all"} />
-          </button>
-          {filterMenuOpen && (
-            <div className="desktop-library__filter-menu" role="menu" aria-label="Filter By">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={filter === option.key}
-                  onClick={() => chooseFilter(option.key)}
-                >
-                  <span className="desktop-library__filter-check">{filter === option.key ? "✓" : ""}</span>
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
         {/* No dead button: sharing needs a secure (https) context, so it is
             hidden where unavailable, like macOS toolbars omit unusable items. */}
         {shareSupported && (
@@ -732,6 +708,53 @@ export default function DesktopLibrary({
         <span className="desktop-library__selection-count" data-testid="selection-count">
           {selected.size > 0 ? `${selected.size} selected` : ""}
         </span>
+    </>
+  );
+
+  return (
+    <div className="desktop-library" data-testid="desktop-library">
+      {toolbarSlot ? (
+        createPortal(controlsBar, toolbarSlot)
+      ) : (
+        <div className="desktop-library__toolbar" data-testid="desktop-library-toolbar">
+          {controlsBar}
+        </div>
+      )}
+      <div className="page-heading" data-testid="page-heading">
+        <div className="page-heading__text">
+          <h1 className="page-heading__title">{title}</h1>
+          <p className="page-heading__subtitle">{view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"}</p>
+        </div>
+        <div ref={filterMenuRef} className="desktop-library__filter">
+          <button
+            type="button"
+            className="toolbar-button"
+            aria-haspopup="menu"
+            aria-expanded={filterMenuOpen}
+            aria-pressed={filter !== "all"}
+            aria-label="Filter By"
+            title="Filter By"
+            onClick={() => setFilterMenuOpen((value) => !value)}
+          >
+            <Icon name="filter" size={16} filled={filter !== "all"} />
+          </button>
+          {filterMenuOpen && (
+            <div className="desktop-library__filter-menu" role="menu" aria-label="Filter By">
+              {FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={filter === option.key}
+                  onClick={() => chooseFilter(option.key)}
+                >
+                  <span className="desktop-library__filter-check">{filter === option.key ? "✓" : ""}</span>
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="desktop-library__body">
       <div
