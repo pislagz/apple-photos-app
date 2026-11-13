@@ -40,8 +40,8 @@ describe("AdminApp", () => {
     render(<AdminApp />);
 
     expect(await screen.findByRole("heading", { name: "Libraries" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Users" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Access" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "People" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sharing" })).toBeInTheDocument();
   });
 
   it("logs in and then shows the admin sidebar", async () => {
