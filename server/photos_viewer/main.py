@@ -42,6 +42,7 @@ from .session_auth import (
 )
 from .session_auth import router as auth_router
 from .session_passkeys import router as passkeys_router
+from .user_avatar import router as user_avatar_router
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +240,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.include_router(library_assets_router)
     app.include_router(library_zip_router)
     app.include_router(library_prewarm_router)
+    app.include_router(user_avatar_router)
     app.include_router(admin_panel_router)
 
     @app.get("/api/health")

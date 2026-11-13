@@ -318,6 +318,7 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE library_index_runs DROP COLUMN removed_visible")
         db.execute("ALTER TABLE assets DROP COLUMN original_missing")
         db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
+        db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("DROP TRIGGER assets_fts_delete")  # D36
         db.execute("DROP TABLE assets_fts")
         db.execute(
@@ -502,9 +503,10 @@ def test_month_needs_three_letters_and_filenames_split_on_underscore(tmp_path):
 def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
     db = app_db.connect(tmp_path / "data")
     try:
+        db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("DROP TRIGGER assets_fts_delete")
         db.execute("DROP TABLE assets_fts")
-        db.execute(f"PRAGMA user_version = {len(app_db._MIGRATIONS) - 1}")
+        db.execute("PRAGMA user_version = 25")
         db.execute(
             "INSERT INTO libraries (display_name, path, last_indexed_signature) VALUES ('A', 'a', 's')"
         )

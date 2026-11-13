@@ -4,14 +4,13 @@ import MapView, { boundsParam } from "./map/MapView";
 import PeopleGrid from "./people/PeopleGrid";
 import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
 import { useAlbums } from "./albums/useAlbums";
-import AccountMenu from "./AccountMenu";
+import MacAccountMenu from "./MacAccountMenu";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryUpdating from "./LibraryUpdating";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
-import LibrarySwitcher from "./LibrarySwitcher";
 import SearchField from "./search/SearchField";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
@@ -109,6 +108,7 @@ export default function DesktopShell({
   deepLinkAssetId,
   onDeepLinkConsumed,
   onNoteDismissed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
@@ -119,6 +119,7 @@ export default function DesktopShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
   onNoteDismissed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
   const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
@@ -321,19 +322,15 @@ export default function DesktopShell({
             ))}
           </ul>
         </details>
-        <AccountMenu
+        <MacAccountMenu
+          onAvatarChanged={onAvatarChanged}
           me={me}
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
-          compact
-          variant="row"
-        />
-        <LibrarySwitcher
           libraries={me.libraries}
           activeLibraryId={activeLibraryId}
-          onChange={onActiveLibraryChange}
-          className="sidebar__library-switcher"
+          onActiveLibraryChange={onActiveLibraryChange}
         />
       </aside>
       <div className="shell__main">

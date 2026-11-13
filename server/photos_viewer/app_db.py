@@ -519,6 +519,11 @@ _MIGRATIONS: list[list[str]] = [
         """,
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 26 (#256): a user's own avatar. The picture is a small JPEG under the
+    # data dir (never in a library); this is its version, NULL = no avatar.
+    [
+        "ALTER TABLE users ADD COLUMN avatar_version INTEGER",
+    ],
 ]
 
 

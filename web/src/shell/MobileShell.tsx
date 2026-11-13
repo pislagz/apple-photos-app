@@ -40,6 +40,7 @@ export default function MobileShell({
   deepLinkAssetId,
   onDeepLinkConsumed,
   onNoteDismissed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
@@ -50,6 +51,7 @@ export default function MobileShell({
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
   onNoteDismissed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
   const [route, setRoute] = useState<MobileRoute>(() => parseMobileRoute(window.location.pathname));
   // Resets on every navigation (including browser back/forward into
@@ -206,6 +208,7 @@ export default function MobileShell({
       <header className="shell__header">
         <h1 className="sr-only">{TABS.find((tab) => tab.key === route.tab)?.label ?? "Library"}</h1>
         <AccountMenu
+          onAvatarChanged={onAvatarChanged}
           me={me}
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}

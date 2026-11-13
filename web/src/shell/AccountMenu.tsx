@@ -1,5 +1,7 @@
 import { useState } from "react";
-import type { MeResponse } from "../api";
+import { type MeResponse, removeAvatar } from "../api";
+import Avatar from "./Avatar";
+import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import InfoButton from "../help/InfoButton";
 import { Icon } from "./icons";
@@ -13,20 +15,44 @@ function AccountMenuItems({
   onLayoutOverrideChange,
   onLogout,
   onPasswordDialogClosed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   onPasswordDialogClosed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
+  const [choosingAvatar, setChoosingAvatar] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   return (
     <>
-      <p className="account-menu__username">{me.username}</p>
+      <div className="account-menu__identity">
+        <button
+          type="button"
+          className="account-menu__avatar-button"
+          aria-label="Choose avatar"
+          disabled={me.libraries.length === 0}
+          onClick={() => setChoosingAvatar(true)}
+        >
+          <Avatar username={me.username} version={me.avatar_version} className="account-menu__avatar account-menu__avatar--large" />
+        </button>
+        <p className="account-menu__username">{me.username}</p>
+      </div>
       {me.role === "admin" && <a href="/admin">Admin</a>}
       <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
+      {me.libraries.length > 0 && (
+        <button type="button" onClick={() => setChoosingAvatar(true)}>
+          Choose avatar…
+        </button>
+      )}
+      {me.avatar_version != null && (
+        <button type="button" onClick={() => removeAvatar().then(() => onAvatarChanged?.(), () => {})}>
+          Remove avatar
+        </button>
+      )}
       <div className="account-menu__row">
         <button type="button" onClick={() => setChangingPassword(true)}>
           Change password
@@ -42,6 +68,16 @@ function AccountMenuItems({
       <button type="button" onClick={onLogout}>
         Log out
       </button>
+      {choosingAvatar && (
+        <AvatarPicker
+          libraries={me.libraries}
+          onClose={() => {
+            setChoosingAvatar(false);
+            onPasswordDialogClosed?.();
+          }}
+          onSaved={() => onAvatarChanged?.()}
+        />
+      )}
       {changingPassword && (
         <ChangePasswordDialog
           onClose={() => {
@@ -55,9 +91,7 @@ function AccountMenuItems({
   );
 }
 
-// Desktop (Sequoia sidebar footer): a tidy row -- avatar glyph, username,
-// a disclosure chevron -- that opens the same popover upward into the
-// sidebar, instead of the plain stack of controls it used to be.
+// The desktop sidebar uses MacAccountMenu (#292).
 // Mobile (iOS large-title header): the same controls behind a round "..."
 // trigger, like the overflow button in ios17-library-days.png, so they
 // don't eat a row of the overlaid title.
@@ -66,15 +100,15 @@ export default function AccountMenu({
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
+  onAvatarChanged,
   compact = false,
-  variant = "overlay",
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
+  onAvatarChanged?: () => void;
   compact?: boolean;
-  variant?: "overlay" | "row";
 }) {
   const [open, setOpen] = useState(false);
 
@@ -86,38 +120,8 @@ export default function AccountMenu({
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
+          onAvatarChanged={onAvatarChanged}
         />
-      </div>
-    );
-  }
-
-  if (variant === "row") {
-    return (
-      <div className="account-menu account-menu--row">
-        <button
-          type="button"
-          className="account-menu__row-trigger"
-          aria-label="Account menu"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <span className="account-menu__avatar" aria-hidden="true">
-            {me.username.slice(0, 1).toUpperCase()}
-          </span>
-          <span className="account-menu__row-username">{me.username}</span>
-          <Icon name="chevron" size={14} className="account-menu__row-chevron" />
-        </button>
-        {open && (
-          <div className="account-menu__popover account-menu__popover--row">
-            <AccountMenuItems
-              me={me}
-              layoutOverride={layoutOverride}
-              onLayoutOverrideChange={onLayoutOverrideChange}
-              onLogout={onLogout}
-              onPasswordDialogClosed={() => setOpen(false)}
-            />
-          </div>
-        )}
       </div>
     );
   }
@@ -141,6 +145,7 @@ export default function AccountMenu({
             onLayoutOverrideChange={onLayoutOverrideChange}
             onLogout={onLogout}
             onPasswordDialogClosed={() => setOpen(false)}
+            onAvatarChanged={onAvatarChanged}
           />
         </div>
       )}

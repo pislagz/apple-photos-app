@@ -78,6 +78,28 @@ export interface MeResponse {
   layout_override: "desktop" | "mobile" | null;
   // The admin agreed to "Map & place names" (OpenStreetMap data, GeoNames).
   osm_consent?: boolean;
+  // #256: set while the user has an avatar; changes with every new one.
+  avatar_version?: number | null;
+}
+
+export function avatarUrl(username: string, version: number): string {
+  return `/api/users/${encodeURIComponent(username)}/avatar?v=${version}`;
+}
+
+// The crop is the square the user framed, as fractions of the preview image.
+export interface AvatarCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function setAvatar(libraryId: number, assetId: string, crop: AvatarCrop): Promise<{ avatar_version: number }> {
+  return mutate("PUT", "/api/me/avatar", { library_id: libraryId, asset_id: assetId, ...crop });
+}
+
+export function removeAvatar(): Promise<void> {
+  return mutate("DELETE", "/api/me/avatar");
 }
 
 export interface AuthUserResponse {

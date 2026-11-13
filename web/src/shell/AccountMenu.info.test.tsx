@@ -6,7 +6,7 @@ describe("AccountMenu info buttons", () => {
   it("explains Layout, Change password and Passkeys", () => {
     render(
       <AccountMenu
-        me={{ id: 1, username: "anna", role: "user" } as never}
+        me={{ id: 1, username: "anna", role: "user", libraries: [] } as never}
         layoutOverride="auto"
         onLayoutOverrideChange={() => undefined}
         onLogout={() => undefined}
