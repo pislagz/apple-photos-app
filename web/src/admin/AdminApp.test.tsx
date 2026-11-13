@@ -34,6 +34,7 @@ describe("AdminApp", () => {
     mockFetch((url) => {
       if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
       if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       throw new Error(`unexpected request: ${url}`);
     });
 
@@ -55,6 +56,7 @@ describe("AdminApp", () => {
         return { username: "alice", role: "admin" };
       }
       if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       throw new Error(`unexpected request: ${url} ${init?.method ?? "GET"}`);
     });
 
@@ -84,6 +86,7 @@ describe("AdminApp", () => {
     mockFetch((url) => {
       if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
       if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/place-names") return status(reviewed);
       throw new Error(`unexpected request: ${url}`);
     });
@@ -108,6 +111,7 @@ describe("AdminApp", () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/api/me") return jsonResponse({ username: "alice", role: "admin", libraries: [] });
         if (url === "/api/admin/libraries") return jsonResponse([]);
+        if (url === "/api/admin/library-candidates") return jsonResponse({ folders: [], candidates: [] });
         if (url === "/api/admin/place-names") return jsonResponse(status(false));
         calls.push(`${init?.method} ${url}`);
         if (url === "/api/admin/place-names/consent") return jsonResponse(status(true, true));
@@ -133,6 +137,7 @@ describe("AdminApp", () => {
     mockFetch((url) => {
       if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
       if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/place-names") return status(false);
       if (url === "/api/admin/place-names/consent") return status(true, true);
       if (url === "/api/admin/place-names/download") {
@@ -153,6 +158,7 @@ describe("AdminApp", () => {
     mockFetch((url, init) => {
       if (url === "/api/me") return { username: "alice", role: "admin", libraries: [] };
       if (url === "/api/admin/libraries") return [];
+      if (url === "/api/admin/library-candidates") return { folders: [], candidates: [] };
       if (url === "/api/admin/place-names") return status(false);
       calls.push(`${init?.method} ${url} ${init?.body ?? ""}`);
       if (url === "/api/admin/place-names/consent") return status(true, false);
