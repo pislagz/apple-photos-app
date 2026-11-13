@@ -897,15 +897,15 @@ describe("MobileLibrary person grid text (#193)", () => {
           top: Number(/translateY\(([\d.]+)px\)/.exec(r.style.transform)?.[1]),
           height: parseFloat(r.style.height),
         }));
-      // 800px wide, 4 columns -> 200px square rows, back to back.
-      expect(rowTops()[0].height).toBe(200);
+      // 800px wide, 4 columns -> 199.25px square rows (1px gap between cells), back to back.
+      expect(rowTops()[0].height).toBe(199.25);
 
       const narrow = () =>
         ({ width: 400, height: 600, top: 0, left: 0, right: 400, bottom: 600, x: 0, y: 0, toJSON() {} }) as DOMRect;
       Element.prototype.getBoundingClientRect = narrow;
       act(() => callbacks.forEach((cb) => cb([], {} as ResizeObserver)));
 
-      await waitFor(() => expect(rowTops()[0].height).toBe(100));
+      await waitFor(() => expect(rowTops()[0].height).toBe(99.25));
       const rows = rowTops();
       rows.slice(1).forEach((row, n) => expect(row.top).toBe(rows[n].top + rows[n].height));
     } finally {
