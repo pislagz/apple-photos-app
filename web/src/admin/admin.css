@@ -602,7 +602,7 @@ body:has(.admin-app, .admin-auth) {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-12);
+  gap: var(--space-8);
   width: 100%;
   min-height: var(--admin-row-h);
   padding: var(--space-6) var(--space-16);
@@ -627,7 +627,7 @@ body:has(.admin-app, .admin-auth) {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  min-width: 0;
+  min-width: 5em;
 }
 
 .admin-row__label {
@@ -662,9 +662,15 @@ body:has(.admin-app, .admin-auth) {
 
 .admin-row__control {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   align-items: center;
   gap: var(--space-8);
+}
+
+.admin-row__control > .admin-input {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .admin-row__chevron {
@@ -743,7 +749,8 @@ button.admin-switch[aria-checked="true"] {
 
 /* Inline "Saved" */
 .admin-saved {
-  min-width: 4.5em;
+  min-width: 0;
+  text-align: right;
   font-size: var(--font-size-caption);
   color: var(--color-label-secondary);
   transition: opacity var(--dur-chrome) var(--ease-chrome);
