@@ -124,7 +124,29 @@ test.describe("reduced motion", () => {
     await open();
     await expect(viewer).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(viewer).toHaveClass(/is-closing/);
+    // #220: closing zooms back into the tile (data-zoom), or plays the fade
+    // (is-closing) when no tile is on screen; either way it is not instant.
+    await expect
+      .poll(() => viewer.evaluate((el) => el.getAttribute("data-zoom") === "1" || el.classList.contains("is-closing")))
+      .toBe(true);
+    // #286: the closing photo stays on its tile until the viewer unmounts, it
+    // never snaps back to full screen over the grid. Sample every frame.
+    const flashed = await page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          const el = document.querySelector(".desktop-viewer, .mobile-viewer");
+          let flash = false;
+          const tick = () => {
+            const root = document.querySelector(".desktop-viewer, .mobile-viewer");
+            if (!root || root !== el) return resolve(flash);
+            const stage = root.querySelector<HTMLElement>("[data-testid$='-stage']");
+            if (root.getAttribute("data-zoom") !== "1" && !root.classList.contains("is-closing") && stage) flash = true;
+            requestAnimationFrame(tick);
+          };
+          tick();
+        }),
+    );
+    expect(flashed).toBe(false);
     await expect(viewer).toHaveCount(0);
 
     await page.emulateMedia({ reducedMotion: "reduce" });

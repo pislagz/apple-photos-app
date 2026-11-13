@@ -499,7 +499,7 @@ describe("DesktopLibrary", () => {
     const viewer = await screen.findByTestId("desktop-viewer");
     expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(screen.getByLabelText("Back"));
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
   });

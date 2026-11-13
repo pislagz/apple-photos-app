@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -99,13 +101,13 @@ describe("DesktopViewer", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("closes on the toolbar close button", () => {
+  it("closes on the toolbar back button", () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
     const onClose = vi.fn();
 
     render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={onClose} />);
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(screen.getByLabelText("Back"));
 
     expect(onClose).toHaveBeenCalled();
   });
@@ -248,11 +250,15 @@ describe("DesktopViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-panel");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
-    // D41: the title is the date, never the coordinates.
+    // D41: the title is never the coordinates (no place: the file name),
+    // and line 2 is date, time and position.
     const title = document.querySelector(".desktop-viewer__title-primary");
-    expect(title?.textContent).toMatch(/2024/);
+    expect(title?.textContent).toBe("a1.jpg");
     expect(title?.textContent).not.toContain("52.2297");
-    expect(document.querySelector(".desktop-viewer__title-secondary")).toBeNull();
+    const line = document.querySelector(".desktop-viewer__title-secondary")?.textContent;
+    expect(line).toMatch(/2024/);
+    expect(line).toMatch(/ · 1 of 2$/);
+    expect(line).not.toContain("52.2297");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -455,5 +461,281 @@ describe("DesktopViewer", () => {
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
     expect(media().src).toContain("version=edited");
+  });
+
+  it("zooms with ctrl+wheel (clamped to 6x), double-click goes to 2.5x, and drag pans within bounds", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={[makeItem("a1", { width: 1000, height: 1000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+
+    // A plain wheel scrolls/does nothing; only ctrl+wheel (trackpad pinch) zooms.
+    fireEvent.wheel(stage, { deltaY: -50 });
+    expect(still.style.transform).toContain("scale(1)");
+    fireEvent.wheel(stage, { deltaY: -10_000, ctrlKey: true });
+    expect(still.style.transform).toContain("scale(6)");
+    fireEvent.wheel(stage, { deltaY: 10_000, ctrlKey: true });
+    expect(still.style.transform).toContain("scale(1)");
+
+    fireEvent.doubleClick(still);
+    expect(still.style.transform).toContain("scale(2.5)");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(stage, { clientX: -9000, clientY: 400 });
+    fireEvent.mouseUp(stage);
+    const x = Number(/translate\((-?[\d.]+)px/.exec(still.style.transform)?.[1]);
+    const fit = Math.min(window.innerWidth, window.innerHeight); // square photo, no layout in jsdom
+    expect(x).toBeCloseTo(-(fit * 2.5 - window.innerWidth) / 2);
+    fireEvent.doubleClick(still);
+    expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+});
+
+describe("DesktopViewer fit, zoom and pan (#267)", () => {
+  const items = [makeItem("a1", { width: 4000, height: 3000 }), makeItem("a2"), makeItem("a3")];
+  function setup(index = 1) {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2"), a3: makeDetail("a3") });
+    const onIndexChange = vi.fn();
+    const onClose = vi.fn();
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={items} index={index} onIndexChange={onIndexChange} onClose={onClose} />,
+    );
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    return { still, onIndexChange, onClose };
+  }
+  function drag(still: HTMLElement, from: [number, number], to: [number, number]) {
+    fireEvent.mouseDown(still, { clientX: from[0], clientY: from[1] });
+    fireEvent.mouseMove(window, { clientX: (from[0] + to[0]) / 2, clientY: (from[1] + to[1]) / 2 });
+    fireEvent.mouseMove(window, { clientX: to[0], clientY: to[1] });
+    fireEvent.mouseUp(window, { clientX: to[0], clientY: to[1] });
+  }
+
+  it("lays the still out in a 0-min grid track so it cannot outgrow the stage", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = /\.viewer-still \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toContain("grid-template: minmax(0, 1fr) / minmax(0, 1fr)");
+    expect(rule).toContain("min-height: 0");
+  });
+
+  it("at fit, a horizontal drag pages and a drag down closes", () => {
+    const { still, onIndexChange, onClose } = setup();
+    drag(still, [500, 400], [300, 410]);
+    expect(onIndexChange).toHaveBeenLastCalledWith(2);
+    drag(still, [300, 400], [500, 390]);
+    expect(onIndexChange).toHaveBeenLastCalledWith(0);
+    drag(still, [500, 300], [505, 500]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the neighbours beside the photo and moves them with the drag (#286)", () => {
+    const { still } = setup();
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    const neighbours = () => [...stage.querySelectorAll<HTMLElement>(".desktop-viewer__neighbour")];
+    expect(neighbours()).toHaveLength(2);
+    expect(neighbours()[0].querySelector("img")?.getAttribute("src")).toContain("/thumb/a1?size=preview");
+    expect(neighbours()[1].querySelector("img")?.getAttribute("src")).toContain("/thumb/a3?size=preview");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(window, { clientX: 440, clientY: 400 });
+    expect(neighbours()[1].style.transform).toBe("translateX(calc(100% + 16px + -60px))");
+    expect(still.style.transform).toBe("translate(-60px, 0px) scale(1)");
+    fireEvent.mouseUp(window, { clientX: 440, clientY: 400 });
+  });
+
+  it("has no neighbour past the ends and rubber-bands the drag there (#286)", () => {
+    const { still } = setup(0);
+    const stage = screen.getByTestId("desktop-viewer-stage");
+    expect(stage.querySelectorAll(".desktop-viewer__neighbour")).toHaveLength(1);
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+    const x = Number(/translate\((-?[\d.]+)px/.exec(still.style.transform)![1]);
+    expect(x).toBeGreaterThan(0);
+    expect(x).toBeLessThan(200 * 0.6);
+    fireEvent.mouseUp(window, { clientX: 700, clientY: 400 });
+  });
+
+  it("slides to the next photo before the index moves when motion is allowed (#286)", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const { still, onIndexChange } = setup();
+    drag(still, [500, 400], [300, 400]);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    expect(still.style.transform).toMatch(/^translate\(-\d+px, 0px\) scale\(1\)$/);
+    expect(still.style.transition).toContain("transform");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(onIndexChange).toHaveBeenCalledWith(2);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("at fit, a short drag or a drag up snaps back without paging or closing", () => {
+    const { still, onIndexChange, onClose } = setup();
+    drag(still, [500, 400], [460, 400]);
+    drag(still, [500, 400], [500, 200]);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("follows the drag on the window, so panning past the stage still reaches the edge in both axes", () => {
+    const { still, onIndexChange } = setup(0);
+    fireEvent.doubleClick(still, { clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+    expect(still.style.transform).toContain("scale(2.5)");
+    drag(still, [500, 400], [9000, 9000]);
+    const [x, y] = (/translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(still.style.transform) ?? []).slice(1).map(Number);
+    // jsdom has no layout, so the stage is the window.
+    const { innerWidth: W, innerHeight: H } = window;
+    const ratio = Math.min(W / 4000, H / 3000);
+    const bound = { x: Math.max(0, (4000 * ratio * 2.5 - W) / 2), y: Math.max(0, (3000 * ratio * 2.5 - H) / 2) };
+    expect(bound.x).toBeGreaterThan(0);
+    expect(bound.y).toBeGreaterThan(0);
+    expect(x).toBeCloseTo(bound.x);
+    expect(y).toBeCloseTo(bound.y);
+    expect(onIndexChange).not.toHaveBeenCalled();
+    drag(still, [500, 400], [-9000, -9000]);
+    expect(still.style.transform).toBe(`translate(${-bound.x}px, ${-bound.y}px) scale(2.5)`);
+  });
+});
+
+describe("DesktopViewer cursor (#257)", () => {
+  function setup() {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    const { container } = render(
+      <DesktopViewer libraryId={1} items={[makeItem("a1", { width: 4000, height: 3000 }), makeItem("a2")]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    return { still, root: screen.getByTestId("desktop-viewer") };
+  }
+
+  it("is the plain arrow at fit, never the zoom cursor", () => {
+    const { still } = setup();
+    expect(still.style.cursor).toBe("default");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("default"); // a click or double-click does not flash the hand
+    fireEvent.mouseMove(window, { clientX: 400, clientY: 400 });
+    expect(still.style.cursor).toBe("grabbing"); // dragging to page
+    fireEvent.mouseUp(window, { clientX: 400, clientY: 400 });
+    expect(still.style.cursor).toBe("default");
+  });
+
+  it("is an open hand when zoomed and a closed hand while the button is held, everywhere in the viewer", () => {
+    const { still, root } = setup();
+    fireEvent.doubleClick(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("grab");
+    fireEvent.mouseDown(still, { clientX: 500, clientY: 400 });
+    expect(still.style.cursor).toBe("grabbing");
+    expect(root.className).toContain("is-dragging");
+    fireEvent.mouseMove(window, { clientX: 450, clientY: 380 });
+    expect(still.style.cursor).toBe("grabbing");
+    fireEvent.mouseUp(window);
+    expect(still.style.cursor).toBe("grab");
+    expect(root.className).not.toContain("is-dragging");
+  });
+
+  it("keeps the closed hand over the bars while dragging", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    expect(css).toMatch(/\.desktop-viewer\.is-dragging,\s*\.desktop-viewer\.is-dragging \* \{\s*cursor: grabbing;/);
+    expect(readFileSync(join(__dirname, "DesktopViewer.tsx"), "utf-8")).not.toContain("zoom-in");
+  });
+});
+
+describe("DesktopViewer filmstrip (F14)", () => {
+  it("has no filmstrip, as in macOS Photos", () => {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    render(<DesktopViewer libraryId={1} items={[makeItem("a1"), makeItem("a2")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    expect(screen.queryByTestId("viewer-filmstrip")).toBeNull();
+  });
+});
+
+describe("DesktopViewer chrome (#211)", () => {
+  it("fades the top bar 2.5 s after the last pointer move while a video plays, and shows it on move", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    mockDetail({ v1: makeDetail("v1", { is_video: true }) });
+    render(
+      <DesktopViewer libraryId={1} items={[makeItem("v1", { is_video: true })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const bar = () => document.querySelector(".desktop-viewer__topbar") as HTMLElement;
+    fireEvent.click(screen.getByLabelText("Play video"));
+    fireEvent.play(screen.getByTestId("viewer-video"));
+    act(() => void vi.advanceTimersByTime(2000));
+    fireEvent.mouseMove(screen.getByTestId("desktop-viewer"));
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    act(() => void vi.advanceTimersByTime(500));
+    expect(bar().className).toContain("is-chrome-hidden");
+    fireEvent.mouseMove(screen.getByTestId("desktop-viewer"));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    fireEvent.pause(screen.getByTestId("viewer-video"));
+    act(() => void vi.advanceTimersByTime(10_000));
+    expect(bar().className).not.toContain("is-chrome-hidden");
+    vi.useRealTimers();
+  });
+
+  it("the top bar is a 52 px blurred material with the title centred in two lines", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const start = css.indexOf("\n.desktop-viewer__topbar {");
+    const rule = css.slice(start, css.indexOf("}", start));
+    expect(rule).toContain("height: 52px");
+    expect(rule).toContain("backdrop-filter: blur(20px)");
+    expect(rule).toContain("var(--material-viewer-bar)");
+  });
+
+  describe("#302 Mac Photos top bar", () => {
+    const open = (items = [makeItem("a1"), makeItem("a2")], index = 0) =>
+      render(<DesktopViewer libraryId={1} items={items} index={index} onIndexChange={() => {}} onClose={() => {}} />);
+
+    it("titles with the place, then date and time and N of M", async () => {
+      mockDetail({ a1: makeDetail("a1", { date_created: "2026-06-14T21:08:35" }), a2: makeDetail("a2") });
+      open();
+      const title = screen.getByTestId("viewer-title");
+      await waitFor(() => expect(title.textContent).toContain("San Francisco"));
+      expect(title.textContent).toMatch(/9:08:35|21:08:35/);
+      expect(title.textContent).toMatch(/2026/);
+      expect(title.textContent).toMatch(/ · 1 of 2$/);
+    });
+
+    it("falls back to the file name when there is no place", async () => {
+      mockDetail({ a1: makeDetail("a1", { place: null, place_address: null }), a2: makeDetail("a2") });
+      open();
+      await waitFor(() => expect(screen.getByTestId("viewer-title").textContent).toContain("a1.jpg"));
+      expect(screen.getByTestId("viewer-title").textContent).not.toContain("San Francisco");
+    });
+
+    it("has every icon button named", () => {
+      mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+      open();
+      for (const name of ["Back", "Zoom Out", "Zoom In", "Copy Link", "Download", "Info"]) {
+        expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      }
+      expect(screen.getByRole("slider", { name: "Zoom" })).toBeInTheDocument();
+      expect(screen.queryByLabelText("Close")).toBeNull();
+    });
+
+    it("the slider, + and - change the zoom", () => {
+      mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+      open();
+      const slider = screen.getByTestId("viewer-zoom-slider") as HTMLInputElement;
+      expect(slider.value).toBe("1");
+      expect(screen.getByRole("button", { name: "Zoom Out" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+      expect(Number(slider.value)).toBeCloseTo(1.5);
+      fireEvent.change(slider, { target: { value: "3" } });
+      expect(Number(slider.value)).toBeCloseTo(3);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      expect(Number(slider.value)).toBeCloseTo(2.5);
+      fireEvent.change(slider, { target: { value: "1" } });
+      expect(slider.value).toBe("1");
+    });
+
+    it("uses the viewer background token, which differs between light and dark", () => {
+      const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
+      const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+      expect(tokens).toMatch(/--color-viewer-bg:\s*#fff;/);
+      expect(tokens).toMatch(/--color-viewer-bg:\s*#1e1e1e;/);
+      const start = css.indexOf("\n.desktop-viewer {");
+      expect(css.slice(start, css.indexOf("}", start))).toContain("var(--color-viewer-bg)");
+    });
   });
 });
