@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatClock, formatDesktopTitle, formatPosition, formatRelativeDay, formatViewerDateTime, formatViewerTitle } from "./viewerTitle";
+import { formatClock, formatDesktopTitle, formatPosition, formatRelativeDay, formatViewerTitle } from "./viewerTitle";
 
 // The long form is locale ordered (D Month YYYY, or Month D, YYYY in en-US).
 // 2024-05-15 is a Wednesday. `now` is a local-time Date, like the browser's.
@@ -51,17 +51,22 @@ describe("formatViewerTitle", () => {
 });
 
 describe("desktop title (#302)", () => {
-  it("shows the place, else the file name, with date, time and N of M", () => {
-    const base = { filename: "IMG_1.HEIC", dateCreated: "2026-06-14T21:08:35", index: 70_863, total: 71_246 };
-    const withPlace = formatDesktopTitle({ ...base, place: "Lisbon" });
-    expect(withPlace.primary).toBe("Lisbon");
-    expect(withPlace.secondary).toMatch(/9:08:35|21:08:35/);
-    expect(withPlace.secondary).toContain("2026");
-    expect(withPlace.secondary).toBe(`${formatViewerDateTime(base.dateCreated)} · ${formatPosition(70_863, 71_246)}`);
-    expect(formatDesktopTitle({ ...base, place: "" }).primary).toBe("IMG_1.HEIC");
+  const now = new Date(2026, 5, 20, 12, 0, 0);
+  const base = { dateCreated: "2026-06-14T21:08:35", index: 70_863, total: 71_246, now };
+
+  it("shows the date, then time, place and N of M", () => {
+    const title = formatDesktopTitle({ ...base, place: "Lisbon" });
+    expect(title.primary).toBe(formatRelativeDay(base.dateCreated, now));
+    expect(title.secondary).toBe(`${formatClock(base.dateCreated)} · Lisbon · ${formatPosition(70_863, 71_246)}`);
   });
 
-  it("drops the date part when there is none", () => {
-    expect(formatDesktopTitle({ place: "", filename: "a.jpg", dateCreated: null, index: 0, total: 2 }).secondary).toBe("1 of 2");
+  it("has no file name at all, whatever the place", () => {
+    const title = formatDesktopTitle({ ...base, place: "" });
+    expect(title.primary).not.toMatch(/IMG_|\.jpg|\.HEIC/i);
+    expect(title.secondary).toBe(`${formatClock(base.dateCreated)} · ${formatPosition(70_863, 71_246)}`);
+  });
+
+  it("shows nothing but the position when there is no date and no place", () => {
+    expect(formatDesktopTitle({ place: "", dateCreated: null, index: 0, total: 2 })).toEqual({ primary: "", secondary: "1 of 2" });
   });
 });
