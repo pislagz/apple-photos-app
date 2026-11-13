@@ -937,3 +937,113 @@ button.admin-switch[aria-checked="true"] {
 .admin-settings .admin-row__label {
   overflow-wrap: break-word;
 }
+
+/* People and Sharing (#314) */
+.admin-back {
+  margin: 0 0 var(--space-8);
+  padding-left: 0;
+  background: transparent;
+}
+
+.admin-tag {
+  margin-left: var(--space-8);
+  padding: 1px var(--space-6);
+  border-radius: var(--radius-8);
+  background: var(--color-fill-subtle);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+}
+
+.admin-hint--error {
+  color: var(--color-danger-text);
+  opacity: 1;
+}
+
+.admin-hint--warn {
+  color: var(--color-warn-text);
+  opacity: 1;
+}
+
+.admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  color: var(--color-label);
+  font-size: var(--font-size-subhead);
+}
+
+.admin-field .admin-input {
+  width: 100%;
+}
+
+.admin-sheet__error {
+  margin: 0;
+  color: var(--color-danger-text);
+}
+
+.admin-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  min-height: var(--admin-control-h-touch);
+  color: var(--color-label);
+}
+
+.admin-choice input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.admin-choice > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-sharing-matrix .admin-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-card);
+  color: var(--color-label);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  white-space: nowrap;
+}
+
+.admin-sharing-matrix thead .admin-sticky-col {
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label-secondary);
+}
+
+.admin-sharing-matrix td {
+  vertical-align: middle;
+}
+
+.admin-matrix-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* The person list uses the shared 44px rows; keep the control and its "Saved" on one line */
+.admin-people .admin-row__control,
+.admin-sharing .admin-row__control {
+  flex-wrap: nowrap;
+}
+
+.admin-sharing-matrix tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.admin-sharing-matrix :is(td, th[scope="row"]) {
+  vertical-align: middle;
+}

@@ -12,19 +12,19 @@ import {
 } from "./api";
 import { Icon } from "../shell/icons";
 import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
-import AccessScreen from "./screens/AccessScreen";
 import AuditLogScreen from "./screens/AuditLogScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
 import SessionsScreen from "./screens/SessionsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
-import UsersScreen from "./screens/UsersScreen";
+import PeopleScreen from "./screens/PeopleScreen";
+import SharingScreen from "./screens/SharingScreen";
 
 type Screen = "libraries" | "users" | "access" | "sessions" | "audit-log" | "settings";
 
 const SCREENS: { key: Screen; label: string }[] = [
   { key: "libraries", label: "Libraries" },
-  { key: "users", label: "Users" },
-  { key: "access", label: "Access" },
+  { key: "users", label: "People" },
+  { key: "access", label: "Sharing" },
   { key: "sessions", label: "Sessions" },
   { key: "audit-log", label: "Audit log" },
   { key: "settings", label: "Settings" },
@@ -225,8 +225,8 @@ export default function AdminApp() {
           </p>
         )}
         {screen === "libraries" && <LibrariesScreen />}
-        {screen === "users" && <UsersScreen />}
-        {screen === "access" && <AccessScreen />}
+        {screen === "users" && <PeopleScreen currentUsername={me.username} />}
+        {screen === "access" && <SharingScreen />}
         {screen === "sessions" && <SessionsScreen />}
         {screen === "audit-log" && <AuditLogScreen />}
         {screen === "settings" && <SettingsScreen />}

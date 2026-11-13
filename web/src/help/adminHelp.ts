@@ -10,6 +10,20 @@ export const HELP = {
   passkeys:
     "A passkey lets you sign in with your fingerprint, face or device lock instead of typing a password. Add one on each device you use; you can remove it here later.",
 
+  // Admin People and Sharing
+  personRole:
+    "An administrator can change everything in this panel. Everyone else can only look at the libraries you share with them. An administrator still has to share a library with themselves to see its photos.",
+  personSignIn:
+    "Turn off to stop this person using the app. Their sharing choices are kept, and you can turn it back on any time. Use it instead of deleting when someone is away.",
+  personPassword:
+    "Sets a new password. They need it the next time they sign in, and they are signed out everywhere else.",
+  personUnlock:
+    "After too many wrong passwords an account is locked for a while. This lets the person try again right away. Use it when someone cannot sign in even with the right password.",
+  personDelete:
+    "Removes the account for good. Your libraries and photos are not touched. Use Allowed to sign in instead if you may want the account back.",
+  invitation:
+    "An invitation is a one-time link. Send it to the person and they pick their own name and password. It stops working after 7 days or once it has been used.",
+
   // Admin settings
   sessionDesktop:
     "How long someone stays signed in on a computer's web browser before they have to enter their password again. Shorter is safer on shared computers; changing it applies to new sign-ins.",
