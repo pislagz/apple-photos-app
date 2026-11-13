@@ -95,7 +95,8 @@ describe("desktop People & Pets", () => {
     // An unnamed face group comes after the named people, with a muted
     // generated label instead of a name.
     const buttons = screen.getAllByRole("button", { name: /Ann|Ben|Person A/ });
-    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Person A"]);
+    expect(buttons.map((b) => b.querySelector(".people-grid__name")?.textContent)).toEqual(["Ann", "Ben", "Add NamePerson A"]);
+    expect(screen.getByText("Add Name")).toHaveAttribute("aria-hidden", "true");
     expect(buttons[2].querySelector(".people-grid__name--unnamed")).not.toBeNull();
     expect(buttons[0].querySelector(".people-grid__name--unnamed")).toBeNull();
 
@@ -130,7 +131,7 @@ describe("desktop People & Pets", () => {
     renderDesktop();
     fireEvent.click(screen.getByRole("button", { name: "People & Pets" }));
     const names = (await screen.findAllByRole("button", { name: /Person/ })).map(
-      (b) => b.querySelector(".people-grid__name")?.textContent,
+      (b) => b.querySelector(".sr-only")?.textContent,
     );
     expect(names).toEqual(["Person A", "Person B"]);
     fireEvent.click(screen.getByRole("button", { name: /Person B/ }));
@@ -229,5 +230,22 @@ describe("FaceCircle size (#193)", () => {
     expect(srcFor(0.3, 2)).toBe(grid2x); // 180 px >= 156
     expect(srcFor(0.3, 3)).toBe(preview); // 180 px < 233
     expect(srcFor(0.4, 3)).toBe(grid2x); // 240 px >= 233
+  });
+});
+
+describe("#223 person heart", () => {
+  it("shows the heart outside the clipped circle only for favourites", async () => {
+    const { default: PeopleGrid } = await import("./PeopleGrid");
+    mockFetch(() => ({
+      people: [
+        { id: "P1", name: "Ann", label: "Ann", count: 3, cover: null, favorite: true },
+        { id: "P2", name: "Ben", label: "Ben", count: 1, cover: null },
+      ],
+    }));
+    render(<PeopleGrid libraryId={1} onOpen={() => {}} />);
+    expect(await screen.findAllByTestId("person-heart")).toHaveLength(1);
+    const heart = screen.getByTestId("person-heart");
+    expect(heart.closest(".people-face")).toBeNull();
+    expect(heart.closest(".people-grid__face")).not.toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../api";
 import MapView, { boundsParam } from "./map/MapView";
+import AlbumsOverview from "./albums/AlbumsOverview";
 import PeopleGrid from "./people/PeopleGrid";
 import AlbumsSidebarGroup from "./albums/AlbumsSidebarGroup";
 import { useAlbums } from "./albums/useAlbums";
@@ -34,11 +35,12 @@ function readSidebarCollapsed(): boolean {
 // P2.2: "People & Pets" opens the People grid (`view` "people").
 // P2.3: "Map" opens the map (`view` "map"); a pin opens its photos as a
 // `place:` album with a Back button, like a person.
-const SECTIONS: { label: string; icon: IconName; smart?: string; people?: boolean; map?: boolean }[] = [
+const SECTIONS: { label: string; icon: IconName; smart?: string; people?: boolean; map?: boolean; albums?: boolean }[] = [
   { label: "Favorites", icon: "favorite", smart: "favorites" },
   { label: "Recently Added", icon: "added", smart: "recently-added" },
   { label: "Map", icon: "map", map: true },
   { label: "People & Pets", icon: "people", people: true },
+  { label: "Albums", icon: "albums", albums: true },
 ];
 const MEDIA_TYPES: { label: string; icon: IconName; smart: string }[] = [
   { label: "Videos", icon: "video", smart: "videos" },
@@ -120,9 +122,11 @@ export default function DesktopShell({
   onDeepLinkConsumed?: () => void;
   onNoteDismissed?: () => void;
 }) {
-  const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map">("library");
+  const [view, setView] = useState<"library" | "days" | "hidden" | "album" | "people" | "map" | "albums">("library");
   // P2.1: the album (user album uuid or `smart:<slug>`) shown when view is "album".
-  const [album, setAlbum] = useState<{ id: string; title: string } | null>(null);
+  const [album, setAlbum] = useState<{ id: string; title: string; count?: number | null; fromOverview?: boolean } | null>(
+    null,
+  );
   // #130: Hidden opens only after a password prompt; cancel stays on `view`.
   // #152: one-shot start state for the Library opened from a Days double-click.
   // Cleared on the next sidebar choice; tied to a library so a switch drops it.
@@ -166,19 +170,32 @@ export default function DesktopShell({
   // Bumped by every sidebar choice so clicking "Library" while already on
   // Library > All Photos (from a Days double-click) remounts it back to Years (#167).
   const [selectNonce, setSelectNonce] = useState(0);
-  function selectView(next: "library" | "days" | "hidden" | "people" | "map") {
+  function selectView(next: "library" | "days" | "hidden" | "people" | "map" | "albums") {
     setSelectNonce((n) => n + 1);
     setDayStart(null);
     setAlbum(null);
     setSearchText("");
     setView(next);
   }
-  function openAlbum(id: string, title: string) {
+  function openAlbum(id: string, title: string, extra?: { count?: number | null; fromOverview?: boolean }) {
     setDayStart(null);
-    setAlbum({ id, title });
+    setAlbum({ id, title, ...extra });
     setSearchText("");
     setView("album");
   }
+  const backToAlbums = view === "album" && !!album?.fromOverview;
+  // Cmd [ (Ctrl [ elsewhere) goes back from an album opened on the Albums screen.
+  useEffect(() => {
+    if (!backToAlbums) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "[") {
+        event.preventDefault();
+        selectView("albums");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [backToAlbums]);
   const currentAlbumId =
     view === "album" && !showingPerson && !showingPlace && !showingSearch ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
@@ -240,9 +257,13 @@ export default function DesktopShell({
               <li key={section.label}>
                 <button
                   type="button"
-                  disabled={!section.smart && !section.people && !section.map}
+                  disabled={!section.smart && !section.people && !section.map && !section.albums}
                   aria-current={
-                    section.map
+                    section.albums
+                      ? view === "albums" || backToAlbums
+                        ? "page"
+                        : undefined
+                      : section.map
                       ? view === "map" || showingPlace
                         ? "page"
                         : undefined
@@ -256,7 +277,9 @@ export default function DesktopShell({
                   }
                   className="sidebar__item"
                   onClick={
-                    section.map
+                    section.albums
+                      ? () => selectView("albums")
+                      : section.map
                       ? () => selectView("map")
                       : section.people
                       ? () => selectView("people")
@@ -269,7 +292,9 @@ export default function DesktopShell({
                     name={section.icon}
                     className="sidebar__icon"
                     filled={
-                      section.map
+                      section.albums
+                        ? view === "albums" || backToAlbums
+                        : section.map
                         ? view === "map" || showingPlace
                         : section.people
                           ? view === "people" || showingPerson
@@ -354,6 +379,12 @@ export default function DesktopShell({
                     Map
                   </button>
                 )}
+                {backToAlbums && (
+                  <button type="button" className="toolbar-button" onClick={() => selectView("albums")} title="Back (⌘[)">
+                    <Icon name="chevron" className="toolbar-button__back-icon" />
+                    Albums
+                  </button>
+                )}
                 {showingPerson && (
                   <button type="button" className="toolbar-button" onClick={() => selectView("people")}>
                     <Icon name="chevron" className="toolbar-button__back-icon" />
@@ -361,6 +392,12 @@ export default function DesktopShell({
                   </button>
                 )}
                 <h1>{album.title}</h1>
+                {album.count != null && <span className="toolbar__count">{album.count.toLocaleString()}</span>}
+              </header>
+            )}
+            {view === "albums" && (
+              <header className="toolbar">
+                <h1>Albums</h1>
               </header>
             )}
             {view === "people" && (
@@ -382,6 +419,12 @@ export default function DesktopShell({
                 key={activeLibraryId}
                 libraryId={activeLibraryId}
                 onOpenPlace={(b) => openAlbum(`${PLACE_PREFIX}${boundsParam(b)}`, "Photos here")}
+              />
+            ) : activeLibraryId !== undefined && view === "albums" ? (
+              <AlbumsOverview
+                key={activeLibraryId}
+                libraryId={activeLibraryId}
+                onOpen={(node) => openAlbum(node.id, node.title, { count: node.count, fromOverview: true })}
               />
             ) : activeLibraryId !== undefined && view === "people" ? (
               <div className="people-desktop">

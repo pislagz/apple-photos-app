@@ -320,6 +320,7 @@ body {
 
 .mobile-library__cell-wrap {
   position: relative;
+  background: var(--color-placeholder);
 }
 
 .mobile-library__select-badge {
@@ -1170,6 +1171,8 @@ body {
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
+  /* Shown while the thumbnail fades in, so a slow thumb is a grey tile, not a hole. */
+  background: var(--color-placeholder);
   border-radius: var(--radius-xs);
   cursor: default;
 }
@@ -2113,6 +2116,7 @@ body {
 
 .albums-list__item {
   display: flex;
+  min-height: 44px;
   align-items: center;
   gap: var(--space-12);
   width: 100%;
@@ -2172,7 +2176,8 @@ body {
 }
 
 
-/* P2.2: People & Pets -- circular faces with names underneath. */
+/* P2.2: People & Pets -- circular faces with names underneath.
+   Desktop metrics from #223: 120px cells, 18/22 gaps, 110px faces. */
 .people-grid {
   list-style: none;
   margin: 0;
@@ -2182,25 +2187,56 @@ body {
   gap: var(--space-16) var(--space-12);
 }
 
+.shell--desktop .people-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 22px 18px;
+}
+
 .people-grid__item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-6);
   width: 100%;
+  min-height: 44px;
   border: none;
   background: transparent;
   padding: 0;
   font: inherit;
   color: inherit;
-  cursor: pointer;
+}
+
+/* The wrapper is not clipped, so the heart can sit inside the circle's edge
+   without the circle's overflow:hidden cutting it. */
+.people-grid__face {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 140px;
+  transition: transform var(--dur-tint) var(--ease-tint);
+}
+
+.shell--desktop .people-grid__face {
+  max-width: 110px;
+}
+
+.shell--desktop .people-grid__item:hover .people-grid__face {
+  transform: scale(1.04);
+}
+
+.people-grid__heart {
+  position: absolute;
+  right: 12%;
+  bottom: 12%;
+  display: flex;
+  color: var(--color-white);
+  filter: drop-shadow(0 1px 2px var(--scrim-strong));
 }
 
 .people-face {
   position: relative;
   display: block;
   width: 100%;
-  max-width: 140px;
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
@@ -2225,19 +2261,20 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-size-body-sm);
+  font-size: var(--font-size-subhead);
   font-weight: var(--font-weight-medium);
+  color: var(--color-label);
 }
 
 .people-grid__name--unnamed {
   font-weight: var(--font-weight-regular);
-  color: var(--color-label-tertiary);
+  color: var(--accent);
 }
 
 .people-grid__count {
   margin-top: -4px;
-  font-size: var(--font-size-caption);
-  color: var(--color-label-tertiary);
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2934,4 +2971,239 @@ body {
   color: var(--color-warn-text-on-dark);
   background: var(--color-warn-bg-on-dark);
   z-index: 3;
+}
+
+/* #223: Albums. Covers are square; mosaics use 2px gaps. */
+.album-cover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-card-raised);
+}
+
+.album-cover--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-label-tertiary);
+}
+
+.album-cover--mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+}
+
+.album-cover__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-cover__blank {
+  background: var(--color-separator);
+}
+
+/* Desktop overview. */
+.albums-overview {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-20);
+}
+
+.albums-overview__crumb {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-16);
+}
+
+.albums-overview__crumb h2 {
+  margin: 0;
+  font-size: var(--font-size-headline);
+}
+
+.albums-overview__note {
+  padding: var(--space-16);
+  color: var(--color-label-secondary);
+}
+
+.albums-overview__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 22px 18px;
+}
+
+.album-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--color-label);
+  text-align: left;
+}
+
+.album-tile .album-cover {
+  border-radius: var(--radius-8);
+  margin-bottom: var(--space-6);
+}
+
+.album-tile:hover .album-cover {
+  filter: brightness(0.95);
+}
+
+.album-tile:focus-visible .album-cover {
+  outline: 3px solid var(--accent);
+}
+
+.album-tile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-subhead);
+}
+
+.album-tile__count {
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.shell--desktop .toolbar__count {
+  margin-left: var(--space-8);
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
+}
+
+/* iPhone Albums tab. */
+.albums-home {
+  padding: 0 0 var(--space-24);
+  color: var(--color-label);
+}
+
+.albums-home section {
+  margin-bottom: var(--space-20);
+}
+
+.albums-home .albums-list {
+  margin: 0 20px;
+}
+
+.albums-home__heading {
+  margin: 0;
+  padding: 0 20px var(--space-8);
+  font-size: 22px;
+  font-weight: var(--font-weight-bold);
+}
+
+.albums-home__heading-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 44px;
+  margin: -10px 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.albums-home__chevron {
+  color: var(--color-label-tertiary);
+}
+
+.albums-home__empty {
+  margin: 0;
+  padding: 0 20px;
+  color: var(--color-label-secondary);
+}
+
+.albums-home__row {
+  display: flex;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0 20px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 20px;
+}
+
+.albums-home__row > li {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.albums-home__row--people > li {
+  width: 76px;
+}
+
+.albums-home__row--people .people-grid__face {
+  max-width: 76px;
+  margin: 0 auto;
+}
+
+.albums-home__row--people .people-grid__name {
+  font-size: var(--font-size-subhead);
+}
+
+.album-card {
+  position: relative;
+  display: block;
+  width: 168px;
+  height: 168px;
+  border: none;
+  border-radius: 22px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--color-card-raised);
+  color: var(--color-white);
+}
+
+.album-card .album-cover {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.album-card--places .album-cover {
+  color: var(--accent);
+}
+
+.album-card__title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 12px 12px;
+  background: linear-gradient(var(--scrim-clear), var(--scrim-soft));
+  text-align: left;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+  text-shadow: var(--text-shadow-overlay);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-card--places .album-card__title {
+  color: var(--color-label);
+  background: none;
+  text-shadow: none;
+}
+
+.albums-list__type-icon {
+  color: var(--accent);
 }
