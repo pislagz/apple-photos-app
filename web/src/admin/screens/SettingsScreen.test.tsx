@@ -73,6 +73,35 @@ describe("SettingsScreen info buttons", () => {
     }
     expect(screen.getByRole("button", { name: "About manual checks only" })).toBeInTheDocument();
   });
+
+  it("puts the (i) right after the label and before the control in every row", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/settings") return SETTINGS;
+      if (url === "/api/admin/place-names") return PLACE_NAMES;
+      if (url === "/api/admin/settings/tailnet-allowlist") return { identities: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<SettingsScreen />);
+    await screen.findByDisplayValue("3600");
+    const rows = container.querySelectorAll(".setting-row:not(.setting-row--buttons)");
+    expect(rows.length).toBeGreaterThanOrEqual(12);
+    for (const row of rows) {
+      const kids = Array.from(row.children);
+      expect(kids[0].tagName).toBe("LABEL");
+      expect(kids[1]).toHaveClass("info-button");
+      expect(kids[2]).toHaveClass("setting-row__control");
+      // The (i) is outside the label, and the label still names its control.
+      expect(kids[0].contains(kids[1])).toBe(false);
+      const control = kids[2].querySelector("input")!;
+      expect(control.id).toBe((kids[0] as HTMLLabelElement).htmlFor);
+    }
+    for (const name of ["Check now", "Download place-name data"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.nextElementSibling).toHaveClass("info-button");
+    }
+    const heading = screen.getByRole("heading", { name: /Tailnet allow-list/ });
+    expect(heading.lastElementChild).toHaveClass("info-button");
+  });
 });
 
 describe("SettingsScreen", () => {
