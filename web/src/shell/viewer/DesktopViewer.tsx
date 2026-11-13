@@ -14,7 +14,7 @@ import { useZoomTransition } from "./useZoomTransition";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
-import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
@@ -281,7 +281,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const title = formatDesktopTitle({
-    place: detail ? formatPlaceName(detail) : "",
+    place: detail ? formatShortPlaceName(detail) : "",
     dateCreated: detail?.date_created ?? item.date ?? null,
     index,
     total: items.length,

@@ -250,15 +250,14 @@ describe("DesktopViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-panel");
     expect(panel).toHaveTextContent("52.2297° N, 21.0122° E");
-    // D41: the title is never the coordinates nor a file name; line 1 is the date,
-    // line 2 is time and position.
+    // D41: the title is never the coordinates nor a file name; line 1 is
+    // "date at time", line 2 the position.
     const title = document.querySelector(".desktop-viewer__title-primary");
     expect(title?.textContent).toMatch(/2024/);
     expect(title?.textContent).not.toContain("a1.jpg");
     expect(title?.textContent).not.toContain("52.2297");
     const line = document.querySelector(".desktop-viewer__title-secondary")?.textContent;
-    expect(line).toMatch(/ · 1 of 2$/);
-    expect(line).not.toContain("52.2297");
+    expect(line).toBe("1 of 2");
     expect(global.fetch).toHaveBeenCalled();
     for (const call of (global.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls) {
       expect(String(call[0])).toMatch(/^\/api\//);
@@ -691,9 +690,8 @@ describe("DesktopViewer chrome (#211)", () => {
       open();
       const title = screen.getByTestId("viewer-title");
       await waitFor(() => expect(title.textContent).toContain("San Francisco"));
-      expect(title.textContent).toMatch(/9:08|21:08/);
-      expect(title.textContent).toMatch(/2026/);
-      expect(title.textContent).toMatch(/ · 1 of 2$/);
+      expect(title.querySelector(".desktop-viewer__title-primary")?.textContent).toBe("San Francisco");
+      expect(title.textContent).toMatch(/2026 at 21:08:35 · 1 of 2$/);
     });
 
     it("never shows a file name, stored or original, in the title", async () => {
