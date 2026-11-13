@@ -156,7 +156,9 @@ def test_demoting_one_of_two_admins_is_allowed(tmp_path):
             "/api/admin/users",
             json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"},
         )
-        response = client.patch("/api/admin/users/admin", json={"role": "user"})
+        # Another admin's demotion is fine; your own is refused (see the
+        # self-protection tests below).
+        response = client.patch("/api/admin/users/carol", json={"role": "user"})
         assert response.status_code == 200
     finally:
         conn.close()
@@ -736,3 +738,262 @@ def test_settings_default_quality_matches_the_media_default():
     from photos_viewer import admin_panel, media
 
     assert admin_panel._SETTINGS_DEFAULTS["thumb_quality"] == media.DEFAULT_QUALITY
+
+
+# --------------------------------------------------------------------------
+# #313: small admin API additions
+# --------------------------------------------------------------------------
+
+_JSON = {"content-type": "application/json"}
+
+
+def test_sessions_mark_the_current_one(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        other = TestClient(client.app, base_url="https://testserver")
+        other.post(
+            "/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        sessions = client.get("/api/admin/sessions").json()
+        assert {s["username"]: s["is_current"] for s in sessions} == {
+            "admin": True,
+            "carol": False,
+        }
+    finally:
+        conn.close()
+
+
+def test_admin_cannot_revoke_own_current_session(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        current = client.get("/api/admin/sessions").json()[0]
+        response = client.delete(f"/api/admin/sessions/{current['id']}", headers=_JSON)
+        assert response.status_code == 400
+        assert "Sign out" in response.json()["detail"]
+        assert client.get("/api/me").status_code == 200
+    finally:
+        conn.close()
+
+
+def test_admin_cannot_demote_or_disable_self_even_with_another_admin(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users",
+            json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"},
+        )
+        for body in ({"role": "user"}, {"disabled": True}):
+            response = client.patch("/api/admin/users/admin", json=body)
+            assert response.status_code == 400
+            assert "your own" in response.json()["detail"]
+        # Harmless self-edits still work.
+        assert (
+            client.patch("/api/admin/users/admin", json={"role": "admin"}).status_code
+            == 200
+        )
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["admin"]["role"] == "admin" and not users["admin"]["disabled"]
+    finally:
+        conn.close()
+
+
+def test_users_report_locked(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["carol"]["locked"] is False
+        for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+            session_auth.record_login_failure(conn, "carol", user_exists=True)
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["carol"]["locked"] is True
+        assert users["admin"]["locked"] is False
+        matrix = client.get("/api/admin/access-matrix").json()
+        assert {u["username"]: u["locked"] for u in matrix["users"]}["carol"] is True
+    finally:
+        conn.close()
+
+
+def test_cancel_invite(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        code = client.post("/api/admin/invites", json={}).json()["code"]
+        invite_id = client.get("/api/admin/invites").json()[0]["id"]
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 204
+        )
+        assert client.get("/api/admin/invites").json() == []
+        assert client.get(f"/api/invites/{code}").status_code == 404
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 404
+        )
+        audit = client.get("/api/admin/audit-log").json()["entries"]
+        assert any(e["action"] == "cancel_invite" for e in audit)
+    finally:
+        conn.close()
+
+
+def test_cancel_used_invite_is_409_and_kept(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        code = client.post("/api/admin/invites", json={}).json()["code"]
+        anon = TestClient(client.app, base_url="https://testserver")
+        anon.post(
+            f"/api/invites/{code}/accept",
+            json={"username": "dave", "password": VALID_PASSWORD},
+        )
+        invite_id = client.get("/api/admin/invites").json()[0]["id"]
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 409
+        )
+        assert len(client.get("/api/admin/invites").json()) == 1
+    finally:
+        conn.close()
+
+
+def test_new_admin_routes_are_admin_only(tmp_path):
+    conn, client = _non_admin_client(tmp_path)
+    try:
+        assert (
+            client.patch(
+                "/api/admin/settings", json={"thumb_quality": 80}, headers=_JSON
+            ).status_code
+            == 403
+        )
+        assert client.delete("/api/admin/invites/x", headers=_JSON).status_code == 403
+        assert client.get("/api/admin/libraries/status").status_code == 403
+        assert client.get("/api/admin/audit-log?username=bob").status_code == 403
+    finally:
+        conn.close()
+
+
+def test_audit_log_filters_by_names(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        lib = _create_library(conn, "Family")
+        client.post(
+            "/api/admin/users", json={"username": "Carol", "password": VALID_PASSWORD}
+        )
+        carol = next(
+            u for u in client.get("/api/admin/users").json() if u["username"] == "carol"
+        )
+        client.put(f"/api/admin/users/{carol['id']}/libraries/{lib}", headers=_JSON)
+        by_user = client.get("/api/admin/audit-log?username=Carol").json()["entries"]
+        assert by_user and all(e["username"] == "carol" for e in by_user)
+        by_lib = client.get("/api/admin/audit-log?library_name=Family").json()[
+            "entries"
+        ]
+        assert by_lib and all(e["library_display_name"] == "Family" for e in by_lib)
+        assert (
+            client.get("/api/admin/audit-log?username=nobody").json()["entries"] == []
+        )
+        csv_resp = client.get("/api/admin/audit-log.csv?library_name=Family")
+        assert csv_resp.text.count("Family") >= 1
+    finally:
+        conn.close()
+
+
+def test_patch_settings_changes_only_sent_fields(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        before = client.get("/api/admin/settings").json()
+        response = client.patch(
+            "/api/admin/settings", json={"thumb_quality": 70}, headers=_JSON
+        )
+        assert response.status_code == 200, response.text
+        after = response.json()
+        assert after["thumb_quality"] == 70
+        assert {k: v for k, v in after.items() if k != "thumb_quality"} == {
+            k: v for k, v in before.items() if k != "thumb_quality"
+        }
+        assert client.get("/api/admin/settings").json() == after
+        # Empty body is a no-op.
+        assert (
+            client.patch("/api/admin/settings", json={}, headers=_JSON).json() == after
+        )
+        # Consent and the path go through the same handling as PUT.
+        patched = client.patch(
+            "/api/admin/settings",
+            json={"osm_consent": True, "map_tiles_pmtiles_path": " /d/w.pmtiles "},
+            headers=_JSON,
+        ).json()
+        assert patched["map_tiles_mode"] == "online"
+        assert patched["map_tiles_pmtiles_path"] == "/d/w.pmtiles"
+        assert patched["thumb_quality"] == 70
+        cleared = client.patch(
+            "/api/admin/settings", json={"map_tiles_pmtiles_path": None}, headers=_JSON
+        ).json()
+        assert cleared["map_tiles_pmtiles_path"] is None
+        actions = [
+            e["action"] for e in client.get("/api/admin/audit-log").json()["entries"]
+        ]
+        assert "set_settings" in actions and "osm_consent_agreed" in actions
+    finally:
+        conn.close()
+
+
+def test_patch_settings_validates_like_put(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        before = client.get("/api/admin/settings").json()
+        for body in (
+            {"thumb_quality": 0},
+            {"thumb_quality": 101},
+            {"thumb_size_grid": 10},
+            {"session_lifetime_pwa_seconds": 5},
+            {"zip_size_limit_bytes": 0},
+            {"library_check_interval_minutes": -1},
+            {"thumb_quality": None},
+            {"no_such_setting": 1},
+            {"map_tiles_mode": "off"},
+        ):
+            response = client.patch("/api/admin/settings", json=body, headers=_JSON)
+            assert response.status_code == 422, body
+        assert client.get("/api/admin/settings").json() == before
+    finally:
+        conn.close()
+
+
+def test_library_status_has_sizes_and_batch_route(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_DATA_DIR", str(tmp_path))
+    conn, client = _admin_client(tmp_path)
+    try:
+        pkg = tmp_path / "Fam.photoslibrary"
+        (pkg / "database").mkdir(parents=True)
+        (pkg / "database" / "a.bin").write_bytes(b"x" * 1000)
+        (pkg / "b.bin").write_bytes(b"y" * 234)
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Fam', ?)", (str(pkg),)
+        )
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Gone', '/nope/x.photoslibrary')"
+        )
+        conn.commit()
+        lib_id = conn.execute(
+            "SELECT id FROM libraries WHERE display_name='Fam'"
+        ).fetchone()["id"]
+        cache = app_db.media_cache_dir(tmp_path) / str(lib_id) / "ab"
+        cache.mkdir(parents=True)
+        (cache / "t.jpg").write_bytes(b"z" * 500)
+
+        single = client.get(f"/api/admin/libraries/{lib_id}/status").json()
+        assert single["disk_size_bytes"] == 1234
+        assert single["disk_size_estimated"] is False
+        assert single["thumb_cache_bytes"] == 500
+        batch = client.get("/api/admin/libraries/status").json()
+        assert [b["display_name"] for b in batch] == ["Fam", "Gone"]
+        assert batch[0]["disk_size_bytes"] == 1234
+        assert batch[1]["disk_size_bytes"] is None
+        assert batch[1]["thumb_cache_bytes"] == 0
+        # The old fields are still there.
+        assert "total_size_bytes" in single and "warnings" in single
+    finally:
+        conn.close()
