@@ -10,6 +10,8 @@ import { shareOrDownloadAssets } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import { buildRows, buildTileRows, type LibraryRow } from "./rows";
+import FilterMenu from "./FilterMenu";
+import { useLibraryFilter } from "./useLibraryFilter";
 import SummaryTile from "./SummaryTile";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
@@ -55,15 +57,19 @@ export default function MobileLibrary({
   // column, so "-31" is always a safe upper bound regardless of the real
   // month length.
   const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
+  const filterState = useLibraryFilter();
+  // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
+  const [wholePhotos, setWholePhotos] = useState(false);
   const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
     daysAnchor,
-    "all",
+    filterState.filter,
     album ?? null,
+    filterState.hide,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
   const pinchAnchor = useRef<PinchAnchor | null>(null);
-  const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
+  const { columns, zoomBy, canZoomIn, canZoomOut, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
     // #93: remember the asset under the fingers; the layout effect below
     // scrolls it back into place once the new column count has reflowed.
     const element = scrollRef.current;
@@ -81,6 +87,14 @@ export default function MobileLibrary({
     setDaysAnchor(null);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, []);
+  // A new filter lists different photos: start at the top, not mid-library.
+  const filterKey = `${filterState.filter}|${filterState.hide.join(",")}`;
+  const lastFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+    backToNewest();
+  }, [filterKey, backToNewest]);
   const lastResetSignal = useRef(resetSignal);
   useEffect(() => {
     if (lastResetSignal.current === resetSignal) return;
@@ -257,13 +271,29 @@ export default function MobileLibrary({
             </div>
           )}
           {!isTileView && (
-            <button
-              type="button"
-              className="mobile-library__select-button"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            >
-              {selectMode ? "Cancel" : "Select"}
-            </button>
+            <div className="mobile-library__top-actions">
+              {!selectMode && (
+                <FilterMenu
+                  state={filterState}
+                  variant="mobile"
+                  viewOptions={{
+                    canZoomIn,
+                    canZoomOut,
+                    onZoomIn: () => zoomBy(1),
+                    onZoomOut: () => zoomBy(-1),
+                    wholePhotos,
+                    onToggleWholePhotos: () => setWholePhotos((value) => !value),
+                  }}
+                />
+              )}
+              <button
+                type="button"
+                className="mobile-library__select-button"
+                onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              >
+                {selectMode ? "Cancel" : "Select"}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -383,7 +413,7 @@ export default function MobileLibrary({
                         tabIndex={-1}
                         loading="lazy"
                         className="mobile-library__cell"
-                        style={{ width: cellSize, height: cellSize }}
+                        style={{ width: cellSize, height: cellSize, objectFit: wholePhotos ? "contain" : "cover" }}
                         onClick={() => openItem(item)}
                       />
                       {selectMode && (

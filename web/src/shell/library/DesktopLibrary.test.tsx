@@ -643,26 +643,30 @@ describe("DesktopLibrary", () => {
         .map((url) => new URLSearchParams(url.split("?")[1]));
     }
 
-    it("offers the four options and reloads the grid with the matching params", async () => {
+    it("offers every option and reloads the grid with the matching params", async () => {
       const fetchMock = mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
       render(<DesktopLibrary libraryId={1} />);
       await screen.findAllByRole("img");
 
       const button = screen.getByRole("button", { name: "Filter By" });
-      expect(button).toHaveAttribute("aria-pressed", "false");
+      expect(button).toHaveAttribute("data-active", "false");
       fireEvent.click(button);
       const menu = screen.getByRole("menu", { name: "Filter By" });
       expect(within(menu).getAllByRole("menuitemradio").map((el) => el.textContent?.replace("✓", ""))).toEqual([
         "All Items",
         "Favorites",
+        "Edited",
         "Photos",
         "Videos",
+        "Screenshots",
+        "Shared with You",
+        "Not in an Album",
       ]);
 
       fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Videos/ }));
       expect(screen.queryByRole("menu")).toBeNull();
       await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("type")).toBe("video"));
-      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("data-active", "true");
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
       fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
@@ -673,7 +677,19 @@ describe("DesktopLibrary", () => {
       fireEvent.click(screen.getByRole("menuitemradio", { name: /All Items/ }));
       await waitFor(() => expect(assetCalls(fetchMock).length).toBe(4));
       expect(assetCalls(fetchMock).at(-1)?.get("favorite")).toBeNull();
-      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("data-active", "false");
+    });
+
+    it("sends filter and hide params for the new options", async () => {
+      const fetchMock = mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Not in an Album/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("filter")).toBe("not-in-album"));
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Screenshots/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("hide")).toBe("screenshots"));
     });
 
     it("closes on Escape and on outside click", async () => {
@@ -683,7 +699,7 @@ describe("DesktopLibrary", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
       expect(screen.getByRole("menu")).toBeInTheDocument();
-      fireEvent.keyDown(window, { key: "Escape" });
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.queryByRole("menu")).toBeNull();
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));

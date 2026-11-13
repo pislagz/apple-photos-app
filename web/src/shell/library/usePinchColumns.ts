@@ -18,6 +18,11 @@ const STEP_RATIO = 1.25;
 
 export interface PinchColumnsResult {
   columns: number;
+  // Same one-column step as a pinch, for the View Options menu. Positive
+  // zooms in (fewer, larger columns).
+  zoomBy: (steps: number) => void;
+  canZoomIn: boolean;
+  canZoomOut: boolean;
   touchHandlers: {
     onTouchStart: (event: TouchEvent) => void;
     onTouchMove: (event: TouchEvent) => void;
@@ -68,5 +73,10 @@ export function usePinchColumns(
     if (event.touches.length < 2) startDistance.current = null;
   }
 
-  return { columns, touchHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
+  const zoomBy = (steps: number) => {
+    onBeforeChange?.({ clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+    setColumns((value) => Math.min(max, Math.max(min, value - steps)));
+  };
+
+  return { columns, zoomBy, canZoomIn: columns > min, canZoomOut: columns < max, touchHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
 }

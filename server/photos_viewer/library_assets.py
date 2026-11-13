@@ -264,6 +264,27 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
     )
 
 
+# Filter menu: `filter=` picks one of these, `hide=` drops kinds from any view.
+# "Not in an Album" means no user album; smart albums are not in `asset_albums`.
+_KIND_SQL = {
+    "edited": "path_edited IS NOT NULL",
+    "screenshots": "is_screenshot = 1",
+    "shared": "is_syndicated = 1",
+    "not-in-album": "NOT EXISTS (SELECT 1 FROM asset_albums aa WHERE aa.asset_id = assets.id)",
+}
+_HIDE_SQL = {
+    "screenshots": "is_screenshot = 0",
+    "shared": "is_syndicated = 0",
+}
+
+
+def _parse_hide(hide: str | None) -> frozenset[str]:
+    names = frozenset(part for part in (hide or "").split(",") if part)
+    if not names <= _HIDE_SQL.keys():
+        raise HTTPException(status_code=422, detail="unknown hide value")
+    return names
+
+
 def _list_assets(
     db: sqlite3.Connection,
     library_id: int,
@@ -275,6 +296,8 @@ def _list_assets(
     from_: str | None,
     to: str | None,
     favorite: bool | None = None,
+    kind: str | None = None,
+    hide: frozenset[str] = frozenset(),
     extra: tuple[str, list[object]] | None = None,
 ) -> AssetListResponse:
     clauses = ["library_id = ?", "hidden = ?"]
@@ -288,6 +311,9 @@ def _list_assets(
         clauses.append("is_video = 1")
     if favorite:
         clauses.append("favorite = 1")
+    if kind:
+        clauses.append(_KIND_SQL[kind])
+    clauses.extend(_HIDE_SQL[name] for name in sorted(hide))
     if from_:
         clauses.append(f"{_LOCAL_DAY_SQL} >= ?")
         params.append(from_)
@@ -330,6 +356,10 @@ def list_assets(
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
     favorite: bool | None = None,
+    filter_: Literal["edited", "screenshots", "shared", "not-in-album"] | None = Query(
+        None, alias="filter"
+    ),
+    hide: str | None = None,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
@@ -360,6 +390,8 @@ def list_assets(
         from_=from_,
         to=to,
         favorite=favorite,
+        kind=filter_,
+        hide=_parse_hide(hide),
         extra=extra,
     )
 

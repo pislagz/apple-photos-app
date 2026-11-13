@@ -4,7 +4,9 @@ import { useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPortal } from "react-dom";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { AssetFilter, AssetListItem } from "../../api";
+import type { AssetListItem } from "../../api";
+import FilterMenu from "./FilterMenu";
+import { useLibraryFilter } from "./useLibraryFilter";
 import { assetAlt } from "../assetAlt";
 import { albumMessages } from "./albumText";
 import { Icon } from "../icons";
@@ -40,12 +42,6 @@ const ZOOM_STEPS: { columns: number; thumbSize: "grid" | "grid2x" }[] = [
 ];
 const DEFAULT_ZOOM_INDEX = 2;
 const MAX_ZOOM_INDEX = ZOOM_STEPS.length - 1;
-const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
-  { key: "all", label: "All Items" },
-  { key: "favorites", label: "Favorites" },
-  { key: "photos", label: "Photos" },
-  { key: "videos", label: "Videos" },
-];
 
 // The toolbar's segmented control is Years/Months/All Photos. Days is its
 // own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
@@ -132,9 +128,8 @@ export default function DesktopLibrary({
   const view = fixedView ?? switchedView;
   const [zoomIndex, setZoomIndex] = useState(DEFAULT_ZOOM_INDEX);
   const [squareMode, setSquareMode] = useState(true);
-  const [filter, setFilter] = useState<AssetFilter>("all");
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const filterMenuRef = useRef<HTMLDivElement | null>(null);
+  const filterState = useLibraryFilter();
+  const { filter, hide } = filterState;
   const [infoOpen, setInfoOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -158,7 +153,7 @@ export default function DesktopLibrary({
   // `count` Down presses are owed (more arrive while the page loads).
   const pendingDownRef = useRef<{ id: string; column: number; count: number } | null>(null);
 
-  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
+  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
@@ -582,31 +577,16 @@ export default function DesktopLibrary({
     };
   }, [contextMenu]);
 
+  // A filtered selection or focus would point at items that just left the grid.
+  const filterKey = `${filter}|${hide.join(",")}`;
+  const lastFilterKey = useRef(filterKey);
   useEffect(() => {
-    if (!filterMenuOpen) return;
-    function onPointerDown(event: MouseEvent) {
-      if (!filterMenuRef.current?.contains(event.target as Node)) setFilterMenuOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setFilterMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [filterMenuOpen]);
-
-  function chooseFilter(next: AssetFilter) {
-    setFilterMenuOpen(false);
-    if (next === filter) return;
-    // A filtered selection or focus would point at items that just left the grid.
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
     setSelected(new Set());
     setFocusedId(null);
     setViewerIndex(null);
-    setFilter(next);
-  }
+  }, [filterKey]);
 
   const controlsBar = (
     <>
@@ -725,36 +705,7 @@ export default function DesktopLibrary({
           <h1 className="page-heading__title">{title}</h1>
           <p className="page-heading__subtitle">{view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"}</p>
         </div>
-        <div ref={filterMenuRef} className="desktop-library__filter">
-          <button
-            type="button"
-            className="toolbar-button"
-            aria-haspopup="menu"
-            aria-expanded={filterMenuOpen}
-            aria-pressed={filter !== "all"}
-            aria-label="Filter By"
-            title="Filter By"
-            onClick={() => setFilterMenuOpen((value) => !value)}
-          >
-            <Icon name="filter" size={16} filled={filter !== "all"} />
-          </button>
-          {filterMenuOpen && (
-            <div className="desktop-library__filter-menu" role="menu" aria-label="Filter By">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={filter === option.key}
-                  onClick={() => chooseFilter(option.key)}
-                >
-                  <span className="desktop-library__filter-check">{filter === option.key ? "✓" : ""}</span>
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <FilterMenu state={filterState} variant="desktop" label="Filter By" />
       </div>
       <div className="desktop-library__body">
       <div
