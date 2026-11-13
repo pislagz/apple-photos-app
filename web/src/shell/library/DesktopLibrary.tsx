@@ -27,7 +27,9 @@ import {
 } from "./gridMetrics";
 import DateTitle from "./DateTitle";
 import { desktopTitle, titleScrimProgress } from "./libraryTitle";
-import { buildRows, columnOf, verticalTarget } from "./rows";
+import PeriodCardGrid from "./PeriodCards";
+import { buildPeriodCards, buildRows, columnOf, verticalTarget } from "./rows";
+import { useLibrarySummary } from "./useLibrarySummary";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
 import { InfoRows } from "../viewer/InfoRows";
@@ -240,7 +242,17 @@ export default function DesktopLibrary({
   const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
   const thumbSize = thumbSizeFor(edge, dpr);
   const columns = columnsForEdge(containerWidth, edge, gap);
-  const rows = useMemo(() => buildRows(items, view, columns), [items, view, columns]);
+  const isPeriodView = view === "years" || view === "months";
+  // #307: Years/Months are cards from `/summary`, fetched on first use. They
+  // have no photo rows, so the virtualizer has nothing to do in those views.
+  const summaryWanted = useRef(false);
+  if (isPeriodView) summaryWanted.current = true;
+  const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, summaryWanted.current && !album);
+  const periodCards = useMemo(() => {
+    if (view !== "years" && view !== "months") return [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.months, view) : [];
+  }, [view, summary]);
+  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns)), [isPeriodView, items, view, columns]);
   const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
   const cellSize = squareEdge(containerWidth, columns, gap, dpr);
   const tileWidth = widths.length ? Math.min(...widths) : cellSize;
@@ -391,6 +403,10 @@ export default function DesktopLibrary({
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(initialScrollAssetId ?? null);
+  // Years -> Months: the year whose first month card to land on.
+  const [pendingYearKey, setPendingYearKey] = useState<string | null>(null);
+  // Months -> All Photos: the month ("2022-01") whose newest photo goes to the top.
+  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(null);
 
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
 
@@ -405,23 +421,51 @@ export default function DesktopLibrary({
     }
   }, [pendingScrollId, rows, rowVirtualizer]);
 
-  // A double-click (or Enter/Space on the focused cell) drills Years ->
-  // Months -> All Photos (R3, #126), scrolled to this id's own date; only
-  // All Photos opens the Viewer, at this id's position in `items` -- the
+  // Years/Months sit scrolled to the bottom (newest); a photo view must not
+  // inherit that offset.
+  const previousViewRef = useRef(view);
+  useLayoutEffect(() => {
+    const previous = previousViewRef.current;
+    previousViewRef.current = view;
+    if ((previous === "years" || previous === "months") && !isPeriodView && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [view, isPeriodView]);
+
+  // All Photos is newest first and paged: keep loading until the requested
+  // month's first photo is there, then scroll it to the top.
+  useEffect(() => {
+    if (!pendingMonthKey || view !== "all") return;
+    const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.date?.startsWith(pendingMonthKey)));
+    if (rowIndex !== -1) {
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
+      setPendingMonthKey(null);
+    } else if (done) {
+      setPendingMonthKey(null);
+    } else if (!loading) {
+      loadMore();
+    }
+  }, [pendingMonthKey, view, rows, done, loading, loadMore, rowVirtualizer]);
+
+  // Years and Months cards drill one level down (#307); Years -> Months
+  // lands on that year's first month, Months -> All Photos on that month.
+  const handleOpenPeriod = useCallback(
+    (key: string) => {
+      if (view === "years") {
+        setPendingYearKey(key);
+        setView("months");
+      } else {
+        setPendingMonthKey(key);
+        setView("all");
+      }
+    },
+    [view],
+  );
+
+  // A double-click (or Enter/Space on the focused cell) opens the Viewer at
+  // this id's position in `items` (Days hands off to the shell) -- the
   // current Library view's own array, never `/hidden` (P1.13), so the
   // Viewer can only ever page through what the grid itself shows.
   const handleOpen = useCallback(
     (id: string) => {
-      if (view === "years") {
-        setPendingScrollId(id);
-        setView("months");
-        return;
-      }
-      if (view === "months") {
-        setPendingScrollId(id);
-        setView("all");
-        return;
-      }
       // Sequoia opens the whole day, not one photo (#152).
       if (view === "days" && onOpenDay) {
         onOpenDay(id);
@@ -492,6 +536,8 @@ export default function DesktopLibrary({
 
   const handleGridKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // Period cards are buttons that handle their own Enter/Space.
+      if (isPeriodView) return;
       const meta = event.metaKey || event.ctrlKey;
       if (meta && event.key.toLowerCase() === "a") {
         event.preventDefault();
@@ -588,13 +634,14 @@ export default function DesktopLibrary({
   const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   const handleGridMouseDown = useCallback((event: React.MouseEvent) => {
+    if (isPeriodView) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     const grid = scrollRef.current;
     // Presses on the scrollbar (right of the content box) are not drags.
     if (grid && event.clientX >= grid.getBoundingClientRect().left + grid.clientWidth) return;
     dragStartRef.current = { x: event.clientX, y: event.clientY };
     setDragActive(true);
-  }, []);
+  }, [isPeriodView]);
 
   useEffect(() => {
     if (!dragActive) return;
@@ -912,7 +959,7 @@ export default function DesktopLibrary({
       >
         {/* #157: Days labels each card with its own day (feature caption);
             the loaded-library range would sit on top of the first card. */}
-        {dateRangeLabel && view !== "days" && (
+        {dateRangeLabel && view !== "days" && !isPeriodView && (
           <div
             className="desktop-library__date-range"
             data-hidden={headerInBand || undefined}
@@ -922,7 +969,29 @@ export default function DesktopLibrary({
             <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
           </div>
         )}
-        {items.length === 0 && error ? (
+        {isPeriodView && summaryError ? (
+          <div className="desktop-library__empty" role="alert">
+            <p>{albumMessages(album).error}</p>
+            <button type="button" className="desktop-library__retry" onClick={retrySummary}>
+              Retry
+            </button>
+          </div>
+        ) : isPeriodView ? (
+          summary !== null && periodCards.length === 0 ? (
+            <p className="desktop-library__empty">{albumMessages(album).empty}</p>
+          ) : (
+            <PeriodCardGrid
+              key={view}
+              libraryId={libraryId}
+              view={view as "years" | "months"}
+              cards={periodCards}
+              scrollRef={scrollRef}
+              landOnKey={view === "months" ? pendingYearKey : null}
+              onLanded={() => setPendingYearKey(null)}
+              onOpen={handleOpenPeriod}
+            />
+          )
+        ) : items.length === 0 && error ? (
           <div className="desktop-library__empty" role="alert">
             <p>{albumMessages(album).error}</p>
             <button type="button" className="desktop-library__retry" onClick={retry}>
@@ -991,7 +1060,7 @@ export default function DesktopLibrary({
             })}
           </div>
         )}
-        {items.length > 0 && error && (
+        {!isPeriodView && items.length > 0 && error && (
           <div className="desktop-library__load-error" role="alert">
             <span>Couldn't load more photos.</span>
             <button type="button" className="desktop-library__retry" onClick={retry}>

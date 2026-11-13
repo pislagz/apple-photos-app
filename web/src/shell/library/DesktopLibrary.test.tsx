@@ -25,11 +25,38 @@ function makeItem(id: string, date: string, overrides: Partial<AssetListItem> = 
 }
 
 afterEach(() => {
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
 
+// Mirrors the server's `/summary` buckets (oldest first, up to 5 key photos).
+function computeSummary(items: AssetListItem[]) {
+  const bucket = (length: number) => {
+    const byKey = new Map<string, { count: number; ids: string[] }>();
+    for (const item of items) {
+      if (!item.date) continue;
+      const key = item.date.slice(0, length);
+      const entry = byKey.get(key) ?? { count: 0, ids: [] };
+      entry.count += 1;
+      if (entry.ids.length < 5) entry.ids.push(item.id);
+      byKey.set(key, entry);
+    }
+    return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+  };
+  return {
+    years: bucket(4).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
+    months: bucket(7).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
+    days: bucket(10).map(([key, { count }]) => ({ key, count })),
+  };
+}
+
+function periodCards(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll('[data-testid="period-card"]'));
+}
+
 function mockAssets(items: AssetListItem[]) {
   return mockFetch((url) => {
+    if (url === "/api/libraries/1/summary") return computeSummary(items);
     const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
     if (match) {
       const params = new URLSearchParams(match[1]);
@@ -69,7 +96,7 @@ describe("DesktopLibrary", () => {
     }
   });
 
-  it("switches between Years, Months, and All Photos (no Days tab); only Months keeps inline headers (#209)", async () => {
+  it("switches between Years, Months, and All Photos (no Days tab); Years and Months are card grids, not photo grids", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
     mockAssets(items);
 
@@ -79,15 +106,48 @@ describe("DesktopLibrary", () => {
     // Opens on All Photos so a double-click on a tile opens the photo (#265).
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("tab", { name: "Days" })).toBeNull();
-    expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0);
+    expect(periodCards(container)).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "Years" }));
-    await waitFor(() => expect(screen.getByTestId("desktop-library-title")).toHaveTextContent("2024"));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    // Oldest on top; no photo cells in this view.
+    expect(periodCards(container).map((c) => c.getAttribute("data-period-key"))).toEqual(["2023", "2024"]);
+    expect(cells(container)).toHaveLength(0);
+
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(0));
+    expect(cells(container).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0));
+    await waitFor(() => expect(periodCards(container).map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-02", "2024-05"]));
+    expect(screen.getByText("Feb 2023")).toBeInTheDocument();
+  });
+
+  it("Years and Months open scrolled to the newest card, also when switching in (#307)", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    expect(grid.scrollTop).toBe(1_000_000);
+
+    grid.scrollTop = 0;
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    await waitFor(() => expect(screen.getByText("Feb 2023")).toBeInTheDocument());
+    expect(grid.scrollTop).toBe(1_000_000);
+  });
+
+  it("requests only the summary and key-photo thumbnails for Years, never the full photo list again", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
+    const fetchMock = mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="years" />);
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((u) => u.includes("/summary"))).toHaveLength(1);
+    expect(urls.some((u) => u.includes("/original/"))).toBe(false);
   });
 
   it("shows a favorite heart and video duration from asset data", async () => {
@@ -450,7 +510,7 @@ describe("DesktopLibrary", () => {
       fireEvent.click(target);
       fireEvent.click(target);
       await screen.findByTestId("desktop-viewer");
-      fireEvent.click(screen.getByLabelText("Close"));
+      fireEvent.click(screen.getByLabelText("Back"));
       fireEvent.doubleClick(target);
       expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     });
@@ -528,31 +588,30 @@ describe("DesktopLibrary", () => {
     expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
   });
 
-  it("double-clicking a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+  it("clicking a Year card drills into Months, landing on that year's first month, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
     const { container } = render(<DesktopLibrary libraryId={1} initialView="years" />);
-    await screen.findAllByRole("img");
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
-    const grid = screen.getByTestId("desktop-library-grid");
 
-    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
-    fireEvent.doubleClick(oldestCell);
+    fireEvent.click(periodCards(container)[0]);
 
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
-    // Overscan keeps every row mounted for a list this small, so DOM order
-    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
-    await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01");
   });
 
-  it("double-clicking a Month tile drills into All Photos scrolled to that tile's date, without opening the Viewer", async () => {
+  it("clicking a Month card drills into All Photos at that month's newest photo, without opening the Viewer", async () => {
     const items = [
-      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 60 }, (_, i) => makeItem(`recent-${i}`, "2024-05-10T10:00:00")),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
@@ -560,16 +619,16 @@ describe("DesktopLibrary", () => {
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await screen.findAllByRole("img");
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
     const grid = screen.getByTestId("desktop-library-grid");
+    grid.scrollTop = 0;
 
-    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
-    fireEvent.doubleClick(oldestCell);
+    fireEvent.click(periodCards(container)[0]);
 
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-    // Overscan keeps every row mounted for a list this small, so DOM order
-    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
+    // The photo list is paged; the landing waits for it, then scrolls past the
+    // newer "recent" row. `scrollTop` is the real signal in jsdom.
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
   });
 
@@ -953,8 +1012,31 @@ describe("DesktopLibrary", () => {
   });
 });
 
-describe("DesktopLibrary assets failure (#147)", () => {
+describe("DesktopLibrary summary failure (#147)", () => {
   it.each(["Years", "Months"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    let fail = true;
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return fail ? new Response("boom", { status: 500 }) : computeSummary(items);
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    fireEvent.click(screen.getByRole("tab", { name }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+    await waitFor(() => expect(periodCards(container)).toHaveLength(1));
+  });
+});
+
+describe("DesktopLibrary assets failure (#147)", () => {
+  it("shows an error and Retry in All Photos instead of 'No photos yet.', then recovers", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     let fail = true;
     mockFetch((url) => {
@@ -964,7 +1046,6 @@ describe("DesktopLibrary assets failure (#147)", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<DesktopLibrary libraryId={1} />);
-    if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
     expect(screen.queryByText("No Photos or Videos")).toBeNull();

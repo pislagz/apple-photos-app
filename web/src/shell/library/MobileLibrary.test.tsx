@@ -25,6 +25,7 @@ function makeItem(id: string, date: string): AssetListItem {
 }
 
 afterEach(() => {
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
 
@@ -122,13 +123,21 @@ describe("MobileLibrary", () => {
 
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
     expect(container.querySelectorAll(".mobile-library__tile").length).toBe(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBe(0));
     expect(container.querySelectorAll(".mobile-library__row-grid").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "Years" }));
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
     await waitFor(() => expect(container.querySelectorAll(".mobile-library__row-feature").length).toBeGreaterThan(0));
@@ -341,12 +350,30 @@ describe("MobileLibrary", () => {
     expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a2"]'));
   });
 
-  it("tapping a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+  it("opens Years as a multi-card grid, oldest first, scrolled to the newest (#307)", async () => {
+    mockAssets([
+      makeItem("a1", "2024-05-10T10:00:00"),
+      makeItem("a2", "2023-02-02T10:00:00"),
+      makeItem("a3", "2021-02-02T10:00:00"),
+    ]);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBe(3));
+    const cards = Array.from(container.querySelectorAll(".period-card"));
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2021", "2023", "2024"]);
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(1_000_000);
+    expect(container.querySelector(".period-grid--years")).not.toBeNull();
+  });
+
+  it("tapping a Year card drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
@@ -354,19 +381,17 @@ describe("MobileLibrary", () => {
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
 
     // Tapping anywhere in the tile (its label text bubbles up to the
-    // SummaryTile button) drills in -- not an individual photo, since Years
+    // period card button) drills in -- not an individual photo, since Years
     // tiles no longer render a per-asset grid.
     fireEvent.click(screen.getByText("2022"));
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(screen.getByText("January 2022")).toBeInTheDocument());
-    // 2022's own tile is the older (second, since newest sorts first) of
-    // the two Month tiles -- scrolled past the top only if the drill-down
-    // actually scrolled Months to it instead of leaving it at the default
-    // top-of-list position.
-    const scrollEl = screen.getByTestId("library-scroll");
-    await waitFor(() => expect(scrollEl.scrollTop).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText("Jan 2022")).toBeInTheDocument());
+    // Oldest on top: the drill-down lands on 2022's own first month card
+    // instead of the default newest-at-the-bottom position.
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01");
   });
 
   it("tapping a Month tile anchors Days to that tile's month, without opening the Viewer", async () => {
@@ -379,14 +404,14 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await screen.findByText("January 2022");
+    await screen.findByText("Jan 2022");
 
-    fireEvent.click(screen.getByText("January 2022"));
+    fireEvent.click(screen.getByText("Jan 2022"));
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
     // The anchor (`to=2022-01-31`) must exclude "recent" (2024-05-10) and
-    // land Days at the top of January 2022 -- its newest day
+    // land Days at the top of Jan 2022 -- its newest day
     // (2022-01-20, "jan22-0"), not scrolled to a specific older day.
     await waitFor(() => expect(screen.getByText("January 20, 2022")).toBeInTheDocument());
     expect(getThumb("jan22-0")).toBeInTheDocument();
@@ -403,7 +428,7 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("January 2022"));
+    fireEvent.click(await screen.findByText("Jan 2022"));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
     expect(queryThumb("recent")).toBeNull();
 
@@ -427,7 +452,7 @@ describe("MobileLibrary", () => {
     const { rerender } = render(<MobileLibrary libraryId={1} resetSignal={0} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("January 2022"));
+    fireEvent.click(await screen.findByText("Jan 2022"));
     await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(queryThumb("recent")).toBeNull());
 
