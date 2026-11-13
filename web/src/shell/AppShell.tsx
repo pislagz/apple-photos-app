@@ -197,6 +197,7 @@ export default function AppShell() {
           deepLinkAssetId={deepLinkAssetId}
           onDeepLinkConsumed={consumeDeepLink}
           onNoteDismissed={refreshMe}
+          onAvatarChanged={refreshMe}
         />
       </PlaceInfoContext.Provider>
     );
@@ -214,6 +215,7 @@ export default function AppShell() {
         deepLinkAssetId={deepLinkAssetId}
         onDeepLinkConsumed={consumeDeepLink}
         onNoteDismissed={refreshMe}
+          onAvatarChanged={refreshMe}
       />
     </PlaceInfoContext.Provider>
   );

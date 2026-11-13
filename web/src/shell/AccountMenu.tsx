@@ -1,5 +1,7 @@
 import { useState } from "react";
-import type { MeResponse } from "../api";
+import { type MeResponse, removeAvatar } from "../api";
+import Avatar from "./Avatar";
+import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import { Icon } from "./icons";
 import PasskeysDialog from "./PasskeysDialog";
@@ -12,20 +14,44 @@ function AccountMenuItems({
   onLayoutOverrideChange,
   onLogout,
   onPasswordDialogClosed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   onPasswordDialogClosed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
+  const [choosingAvatar, setChoosingAvatar] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   return (
     <>
-      <p className="account-menu__username">{me.username}</p>
+      <div className="account-menu__identity">
+        <button
+          type="button"
+          className="account-menu__avatar-button"
+          aria-label="Choose avatar"
+          disabled={me.libraries.length === 0}
+          onClick={() => setChoosingAvatar(true)}
+        >
+          <Avatar username={me.username} version={me.avatar_version} className="account-menu__avatar account-menu__avatar--large" />
+        </button>
+        <p className="account-menu__username">{me.username}</p>
+      </div>
       {me.role === "admin" && <a href="/admin">Admin</a>}
       <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
+      {me.libraries.length > 0 && (
+        <button type="button" onClick={() => setChoosingAvatar(true)}>
+          Choose avatar…
+        </button>
+      )}
+      {me.avatar_version != null && (
+        <button type="button" onClick={() => removeAvatar().then(() => onAvatarChanged?.(), () => {})}>
+          Remove avatar
+        </button>
+      )}
       <button type="button" onClick={() => setChangingPassword(true)}>
         Change password
       </button>
@@ -35,6 +61,16 @@ function AccountMenuItems({
       <button type="button" onClick={onLogout}>
         Log out
       </button>
+      {choosingAvatar && (
+        <AvatarPicker
+          libraries={me.libraries}
+          onClose={() => {
+            setChoosingAvatar(false);
+            onPasswordDialogClosed?.();
+          }}
+          onSaved={() => onAvatarChanged?.()}
+        />
+      )}
       {changingPassword && (
         <ChangePasswordDialog
           onClose={() => {
@@ -57,12 +93,14 @@ export default function AccountMenu({
   layoutOverride,
   onLayoutOverrideChange,
   onLogout,
+  onAvatarChanged,
   compact = false,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
   onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
+  onAvatarChanged?: () => void;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -75,6 +113,7 @@ export default function AccountMenu({
           layoutOverride={layoutOverride}
           onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
+          onAvatarChanged={onAvatarChanged}
         />
       </div>
     );
@@ -99,6 +138,7 @@ export default function AccountMenu({
             onLayoutOverrideChange={onLayoutOverrideChange}
             onLogout={onLogout}
             onPasswordDialogClosed={() => setOpen(false)}
+            onAvatarChanged={onAvatarChanged}
           />
         </div>
       )}

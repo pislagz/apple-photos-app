@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { LibrarySummary, MeResponse } from "../api";
+import { type LibrarySummary, type MeResponse, removeAvatar } from "../api";
+import Avatar from "./Avatar";
+import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import PasskeysDialog from "./PasskeysDialog";
 import type { LayoutOverride } from "./useLayout";
@@ -58,6 +60,7 @@ export default function MacAccountMenu({
   libraries,
   activeLibraryId,
   onActiveLibraryChange,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   layoutOverride: LayoutOverride;
@@ -66,12 +69,14 @@ export default function MacAccountMenu({
   libraries?: LibrarySummary[];
   activeLibraryId?: number;
   onActiveLibraryChange?: (id: number) => void;
+  onAvatarChanged?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [sub, setSub] = useState<SubmenuKey | null>(null);
   const [pos, setPos] = useState({ left: 0, bottom: 0 });
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
+  const [choosingAvatar, setChoosingAvatar] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const focusFirstOf = useRef<HTMLElement | null>(null);
@@ -309,9 +314,7 @@ export default function MacAccountMenu({
           }
         }}
       >
-        <span className="account-menu__avatar" aria-hidden="true">
-          {me.username.slice(0, 1).toUpperCase()}
-        </span>
+        <Avatar username={me.username} version={me.avatar_version} />
         <span className="account-menu__row-username">{me.username}</span>
       </button>
       {open &&
@@ -352,6 +355,14 @@ export default function MacAccountMenu({
               )),
             )}
             <div role="separator" className="mac-menu__separator" />
+            {me.libraries.length > 0 && item("Choose Avatar…", act(() => setChoosingAvatar(true)))}
+            {me.avatar_version != null &&
+              item(
+                "Remove Avatar",
+                act(() => {
+                  removeAvatar().then(() => onAvatarChanged?.(), () => {});
+                }),
+              )}
             {item("Change Password…", act(() => setChangingPassword(true)))}
             {item("Passkeys…", act(() => setManagingPasskeys(true)))}
             <div role="separator" className="mac-menu__separator" />
@@ -359,6 +370,14 @@ export default function MacAccountMenu({
           </div>,
           document.body,
         )}
+      {choosingAvatar && (
+        <AvatarPicker
+          libraries={me.libraries}
+          initialLibraryId={activeLibraryId}
+          onClose={() => setChoosingAvatar(false)}
+          onSaved={() => onAvatarChanged?.()}
+        />
+      )}
       {changingPassword && (
         <ChangePasswordDialog
           onClose={() => {
