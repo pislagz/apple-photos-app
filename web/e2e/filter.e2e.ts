@@ -39,7 +39,6 @@ test("iPhone Filter menu", async ({ page }, info) => {
   await page.getByRole("button", { name: "Filter", exact: true }).click();
   await page.getByRole("menuitem", { name: /^Filter/ }).click();
   await expect(page.getByRole("menuitemradio")).toHaveCount(8);
-  await page.getByRole("menuitem", { name: /View Options/ }).click();
   await page.screenshot({ path: `${SHOTS}/iphone-filter-menu.png` });
   await page.getByRole("menuitemradio", { name: /Favorites/ }).click();
   await expect(page.getByRole("button", { name: "Filter", exact: true })).toHaveAttribute("data-active", "true");

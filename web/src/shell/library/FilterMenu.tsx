@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Icon } from "../icons";
+import { Icon, type IconName } from "../icons";
 import { FILTER_OPTIONS, type LibraryFilterState } from "./useLibraryFilter";
 
 // What the iPhone menu adds above "Show": View Options (zoom + aspect).
@@ -13,6 +13,27 @@ export interface ViewOptions {
 }
 
 type Section = "filter" | "view" | null;
+
+// Only the filters the app supports (FILTER_OPTIONS), each with its row icon.
+const FILTER_ICONS: Record<(typeof FILTER_OPTIONS)[number]["key"], IconName> = {
+  all: "grid",
+  favorites: "favorite",
+  edited: "edited",
+  photos: "original",
+  videos: "video",
+  screenshots: "screenshot",
+  shared: "shared",
+  "not-in-album": "notInAlbum",
+};
+
+// iOS-style tick for the leading column of the iPhone menu.
+function Tick() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false" className="filter-menu__tick">
+      <path d="M4.5 10.5l3.6 3.6 7.4-8.2" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const ITEM_SELECTOR = '[role^="menuitem"]:not([disabled])';
 
@@ -44,7 +65,10 @@ export default function FilterMenu({
   }
 
   useEffect(() => {
-    if (!open) return;
+    // The iPhone menu closes through its own backdrop (below), which also
+    // swallows the tap so it cannot reach the grid. The desktop menu keeps
+    // the document listeners below.
+    if (!open || nested) return;
     function onPointerDown(event: Event) {
       if (!rootRef.current?.contains(event.target as Node)) close(false);
     }
@@ -54,7 +78,7 @@ export default function FilterMenu({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("touchstart", onPointerDown);
     };
-  }, [open]);
+  }, [open, nested]);
 
   // Focus the first item (or the checked filter) when the menu opens.
   useEffect(() => {
@@ -63,6 +87,22 @@ export default function FilterMenu({
     const checked = menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"]');
     (!nested && checked ? checked : items?.[0])?.focus();
   }, [open, nested]);
+
+  // Moving into or out of a submenu card keeps focus inside the menu: the
+  // card header when it opens, the row that opened it when it closes.
+  const lastSection = useRef<Section>(null);
+  useEffect(() => {
+    if (!open || !nested) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    if (section) {
+      lastSection.current = section;
+      menu.querySelector<HTMLElement>(ITEM_SELECTOR)?.focus();
+    } else if (lastSection.current) {
+      menu.querySelector<HTMLElement>(`[data-section="${lastSection.current}"]`)?.focus();
+      lastSection.current = null;
+    }
+  }, [open, nested, section]);
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
@@ -142,63 +182,149 @@ export default function FilterMenu({
     </>
   );
 
-  function trigger(name: Exclude<Section, null>, text: string, children: ReactNode) {
-    const expanded = section === name;
+  // iPhone: two rows that open a card in place, like the iOS Photos menu.
+  // The card swaps with the rows (header with a down chevron, then the items).
+  function row(
+    role: "menuitem" | "menuitemradio" | "menuitemcheckbox",
+    text: string,
+    icon: IconName | null,
+    options: { checked?: boolean; disabled?: boolean; onClick: () => void },
+  ) {
+    const checkable = role !== "menuitem";
     return (
-      <>
-        <button
-          type="button"
-          role="menuitem"
-          aria-haspopup="menu"
-          aria-expanded={expanded}
-          className="filter-menu__submenu-trigger"
-          onClick={() => setSection(expanded ? null : name)}
-        >
-          <span className="filter-menu__check" aria-hidden="true" />
-          {text}
-          <span className="filter-menu__chevron" data-open={expanded} aria-hidden="true">
-            <Icon name="chevron" size={12} />
+      <button
+        key={text}
+        type="button"
+        role={role}
+        aria-checked={checkable ? !!options.checked : undefined}
+        disabled={options.disabled}
+        className="filter-menu__row"
+        onClick={options.onClick}
+      >
+        <span className="filter-menu__lead" aria-hidden="true">
+          {options.checked ? <Tick /> : null}
+        </span>
+        {icon && (
+          <span className="filter-menu__icon" aria-hidden="true">
+            <Icon name={icon} size={22} />
           </span>
-        </button>
-        {expanded && (
-          <div role="group" aria-label={text} className="filter-menu__submenu">
-            {children}
-          </div>
         )}
-      </>
+        <span className="filter-menu__text">{text}</span>
+      </button>
     );
   }
 
-  const viewItems = viewOptions && (
-    <>
-      <button type="button" role="menuitem" disabled={!viewOptions.canZoomIn} onClick={viewOptions.onZoomIn}>
-        <span className="filter-menu__check" aria-hidden="true" />
-        Zoom In
-      </button>
-      <button type="button" role="menuitem" disabled={!viewOptions.canZoomOut} onClick={viewOptions.onZoomOut}>
-        <span className="filter-menu__check" aria-hidden="true" />
-        Zoom Out
-      </button>
+  function sectionTrigger(name: Exclude<Section, null>, text: string) {
+    return (
       <button
         type="button"
-        role="menuitemcheckbox"
-        aria-checked={viewOptions.wholePhotos}
-        onClick={viewOptions.onToggleWholePhotos}
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={false}
+        data-section={name}
+        className="filter-menu__row filter-menu__row--parent"
+        onClick={() => setSection(name)}
       >
-        <span className="filter-menu__check" aria-hidden="true">
-          {viewOptions.wholePhotos ? "✓" : ""}
+        <span className="filter-menu__text">{text}</span>
+        <span className="filter-menu__chevron" aria-hidden="true">
+          <Icon name="chevron" size={14} />
         </span>
-        Aspect Ratio Grid
       </button>
+    );
+  }
+
+  function card(name: Exclude<Section, null>, text: string, children: ReactNode) {
+    return (
+      <div role="group" aria-label={text} className="filter-menu__card">
+        <button
+          type="button"
+          role="menuitem"
+          aria-expanded={true}
+          data-section={name}
+          className="filter-menu__row filter-menu__card-header"
+          onClick={() => setSection(null)}
+        >
+          <span className="filter-menu__text">{text}</span>
+          <span className="filter-menu__chevron" data-open="true" aria-hidden="true">
+            <Icon name="chevron" size={14} />
+          </span>
+        </button>
+        <div role="separator" className="filter-menu__separator" />
+        {children}
+      </div>
+    );
+  }
+
+  const mobileBody = (
+    <>
+      {section === null && (
+        <>
+          {sectionTrigger("filter", "Filter")}
+          {viewOptions && sectionTrigger("view", "View Options")}
+        </>
+      )}
+      {section === "filter" &&
+        card(
+          "filter",
+          "Filter",
+          FILTER_OPTIONS.map((option, i) => (
+            <Fragment key={option.key}>
+              {i === 1 && <div role="separator" className="filter-menu__separator" />}
+              {row("menuitemradio", option.label, FILTER_ICONS[option.key], {
+                checked: state.filter === option.key,
+                onClick: () => choose(option.key),
+              })}
+            </Fragment>
+          )),
+        )}
+      {section === "view" &&
+        viewOptions &&
+        card(
+          "view",
+          "View Options",
+          <>
+            {row("menuitem", "Zoom In", "zoomIn", { disabled: !viewOptions.canZoomIn, onClick: viewOptions.onZoomIn })}
+            {row("menuitem", "Zoom Out", "zoomOut", { disabled: !viewOptions.canZoomOut, onClick: viewOptions.onZoomOut })}
+            {row("menuitemcheckbox", "Aspect Ratio Grid", "aspect", {
+              checked: viewOptions.wholePhotos,
+              onClick: viewOptions.onToggleWholePhotos,
+            })}
+            <div role="separator" className="filter-menu__separator" />
+            <div role="presentation" className="filter-menu__heading">
+              Show:
+            </div>
+            {row("menuitemcheckbox", "Screenshots", "screenshot", {
+              checked: state.show.screenshots,
+              onClick: () => state.setShow("screenshots", !state.show.screenshots),
+            })}
+            {row("menuitemcheckbox", "Shared with You", "shared", {
+              checked: state.show.shared,
+              onClick: () => state.setShow("shared", !state.show.shared),
+            })}
+          </>,
+        )}
     </>
   );
 
   return (
     <div ref={rootRef} className={`filter-menu filter-menu--${variant}`}>
+      {open && nested && (
+        // Covers the whole screen under the popup and the button: a tap
+        // outside closes the menu and goes no further, so it never opens a photo.
+        <div
+          className="filter-menu__backdrop"
+          data-testid="filter-menu-backdrop"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            close(false);
+          }}
+        />
+      )}
       <button
         ref={buttonRef}
         type="button"
-        className={variant === "desktop" ? "toolbar-button" : "filter-menu__button"}
+        className={variant === "desktop" ? "toolbar-button" : "filter-menu__button mobile-library__glass-button"}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -219,14 +345,13 @@ export default function FilterMenu({
           onKeyDown={onMenuKeyDown}
         >
           {nested ? (
-            <>
-              {trigger("filter", "Filter", filterItems)}
-              {viewItems && trigger("view", "View Options", viewItems)}
-            </>
+            mobileBody
           ) : (
-            filterItems
+            <>
+              {filterItems}
+              {showItems}
+            </>
           )}
-          {showItems}
         </div>
       )}
     </div>

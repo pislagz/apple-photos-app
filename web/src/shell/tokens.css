@@ -166,6 +166,7 @@
   --material-sidebar: rgba(246, 246, 246, 0.82);
   --material-toolbar: rgba(246, 246, 246, 0.92);
   --material-popover: rgba(255, 255, 255, 0.95);
+  --glass-menu: rgba(250, 250, 252, 0.84); /* iPhone Library menu (#352) */
   --material-pill: rgba(255, 255, 255, 0.75);
   --material-pill-selected: #fff;
   --material-overlay: rgba(255, 255, 255, 0.92);
@@ -260,6 +261,7 @@
     --material-sidebar: rgba(30, 30, 30, 0.82);
     --material-toolbar: rgba(30, 30, 30, 0.92);
     --material-popover: rgba(44, 44, 46, 0.95);
+    --glass-menu: rgba(44, 44, 46, 0.8);
     --material-pill: rgba(60, 60, 67, 0.72);
     --material-pill-selected: rgba(255, 255, 255, 0.95);
     --material-overlay: rgba(28, 28, 30, 0.92);

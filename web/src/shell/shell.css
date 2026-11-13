@@ -97,8 +97,8 @@ body {
    underneath. The grid fills the full height behind it (no top padding),
    so this must stay position:absolute rather than taking flex space. */
 /* Title block (left) and Select (right) share one flex row. The right padding
-   keeps the row clear of the account button that .shell__header floats at
-   the top-right (44px wide + 20px inset + 10px gap). Height is the safe-area
+   is the iOS trailing inset (16pt, or the notch side in landscape); the phone
+   header no longer floats an account button there (#351). Height is the safe-area
    top + 8px + the 62px title block + a 30px fade (#212). */
 .mobile-library__top-bar {
   position: absolute;
@@ -111,7 +111,8 @@ body {
   gap: var(--space-10);
   box-sizing: border-box;
   pointer-events: none;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) 74px 30px var(--space-20);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) max(var(--space-16), env(safe-area-inset-right, 0px)) 30px
+    max(var(--space-20), env(safe-area-inset-left, 0px));
 }
 
 /* #209 scrim: a blur that is fully strong over the top 45 % and fades to clear
@@ -380,6 +381,10 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* #351: with overflow-y set, overflow-x computes to auto, so a sub-pixel of
+     row width was enough to let iOS Safari pan the grid sideways. */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   overscroll-behavior: contain;
   /* Room below the last row so the floating view-switch pill (about 44px
      tall, 14px off the bottom) never covers the last Days hero caption. */
@@ -1872,17 +1877,7 @@ body {
 }
 
 .filter-menu__button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
   padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-white);
-  cursor: default;
 }
 
 .filter-menu__button[data-active="true"] {
@@ -1912,8 +1907,90 @@ body {
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
+.filter-menu--mobile {
+  position: static;
+}
+
+.filter-menu--mobile .filter-menu__button {
+  position: relative;
+  z-index: 1;
+}
+
+/* Transparent layer under the popup and button. It takes the closing tap so
+   the photo underneath never gets it, and stops the grid scrolling behind. */
+.filter-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* Glass card, like the iOS Photos menu. */
 .filter-menu--mobile .filter-menu__popup {
-  min-width: 240px;
+  z-index: 2;
+  top: calc(100% + var(--space-8));
+  width: min(300px, calc(100vw - 32px));
+  min-width: 0;
+  padding: var(--space-8) 0;
+  border-radius: 26px;
+  background: var(--glass-menu);
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  transform-origin: top right;
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-18) 0 0;
+  border-radius: 0;
+  font-size: var(--font-size-body);
+  white-space: normal;
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__row--parent,
+.filter-menu--mobile .filter-menu__popup .filter-menu__card-header {
+  padding-left: var(--space-20);
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__card-header {
+  min-height: 52px;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Leading column for the tick, then the icon, like iOS. */
+.filter-menu__lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex: 0 0 auto;
+  color: var(--color-label);
+}
+
+.filter-menu__icon {
+  display: flex;
+  width: 30px;
+  flex: 0 0 auto;
+  margin-right: var(--space-8);
+  color: var(--color-label);
+}
+
+.filter-menu__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filter-menu--mobile .filter-menu__separator {
+  margin: var(--space-4) var(--space-20);
+}
+
+.filter-menu--mobile .filter-menu__heading {
+  padding: var(--space-8) var(--space-20) var(--space-4);
+  font-size: var(--font-size-subhead);
 }
 
 .filter-menu__popup button {
@@ -1937,6 +2014,15 @@ body {
 
 .filter-menu__popup button:hover,
 .filter-menu__popup button:focus-visible {
+  background: var(--color-hover);
+}
+
+.filter-menu--mobile .filter-menu__popup button:hover {
+  background: transparent;
+}
+
+.filter-menu--mobile .filter-menu__popup button:active,
+.filter-menu--mobile .filter-menu__popup button:focus-visible {
   background: var(--color-hover);
 }
 
@@ -1973,17 +2059,19 @@ body {
   display: inline-flex;
   margin-left: auto;
   padding-left: var(--space-10);
+  color: var(--color-label-secondary);
+}
+
+/* Points right on a row that opens a card, down on the open card's header. */
+.filter-menu__chevron[data-open="true"] {
   transform: rotate(90deg);
 }
 
-.filter-menu__chevron[data-open="true"] {
-  transform: rotate(-90deg);
-}
-
 .mobile-library__top-actions {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-8);
   margin-left: auto;
   flex: 0 0 auto;
 }

@@ -29,7 +29,7 @@ describe("icon set", () => {
       "library", "days", "albums", "people", "map", "favorite", "added", "folder", "hidden", "tray",
       "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "aspect", "plus", "minus",
       "more", "play", "close", "livephoto", "video", "camera", "portrait", "panorama", "screenshot",
-      "document", "link", "original", "slomo",
+      "document", "link", "original", "slomo", "edited", "zoomIn", "zoomOut", "shared", "notInAlbum",
     ];
     expect([...ICON_NAMES].sort()).toEqual([...used].sort());
   });

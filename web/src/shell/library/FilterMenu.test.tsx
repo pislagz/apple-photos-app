@@ -75,23 +75,97 @@ describe("FilterMenu desktop", () => {
 });
 
 describe("FilterMenu mobile", () => {
-  const viewOptions = {
+  const viewOptions = () => ({
     canZoomIn: true, canZoomOut: false, onZoomIn: vi.fn(), onZoomOut: vi.fn(), wholePhotos: false, onToggleWholePhotos: vi.fn(),
-  };
+  });
+  const open = () => fireEvent.click(screen.getByRole("button", { name: "Filter" }));
 
-  it("nests the filters under Filter and the zoom/aspect items under View Options", () => {
-    const state = makeState();
-    render(<FilterMenu state={state} variant="mobile" viewOptions={viewOptions} />);
-    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  it("opens with two rows, Filter and View Options, and no sort options", () => {
+    render(<FilterMenu state={makeState()} variant="mobile" viewOptions={viewOptions()} />);
+    open();
+    expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual(["Filter", "View Options"]);
+    expect(screen.queryByText(/sort/i)).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Filter/ }));
-    expect(screen.getAllByRole("menuitemradio")).toHaveLength(8);
-    fireEvent.click(screen.getByRole("menuitem", { name: /View Options/ }));
+  });
+
+  it("expands Filter in place with a collapsing header and the active row ticked", () => {
+    const state = makeState({ filter: "videos" });
+    render(<FilterMenu state={state} variant="mobile" viewOptions={viewOptions()} />);
+    open();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter" }));
+    expect(screen.getAllByRole("menuitemradio").map((r) => r.textContent)).toEqual([
+      "All Items", "Favorites", "Edited", "Photos", "Videos", "Screenshots", "Shared with You", "Not in an Album",
+    ]);
+    expect(screen.getByRole("menuitemradio", { name: "Videos" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "Videos" }).querySelector(".filter-menu__tick")).not.toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "All Items" }).querySelector(".filter-menu__tick")).toBeNull();
+    // Header collapses the card back to the two rows.
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter" }));
+    expect(screen.queryByRole("menuitemradio")).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "View Options" })).toBeInTheDocument();
+  });
+
+  it("picking a filter applies it and closes the menu", () => {
+    const state = makeState();
+    render(<FilterMenu state={state} variant="mobile" viewOptions={viewOptions()} />);
+    open();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Filter" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Favorites" }));
+    expect(state.setFilter).toHaveBeenCalledWith("favorites");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("View Options has zoom, aspect ratio and the Show: toggles", () => {
+    const view = viewOptions();
+    const state = makeState({ show: { screenshots: true, shared: false } });
+    render(<FilterMenu state={state} variant="mobile" viewOptions={view} />);
+    open();
+    fireEvent.click(screen.getByRole("menuitem", { name: "View Options" }));
     expect(screen.getByRole("menuitem", { name: "Zoom Out" })).toBeDisabled();
     fireEvent.click(screen.getByRole("menuitem", { name: "Zoom In" }));
-    expect(viewOptions.onZoomIn).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Aspect Ratio Grid/ }));
-    expect(viewOptions.onToggleWholePhotos).toHaveBeenCalled();
-    expect(screen.getByRole("menuitemcheckbox", { name: /Shared with You/ })).toBeInTheDocument();
+    expect(view.onZoomIn).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Aspect Ratio Grid" }));
+    expect(view.onToggleWholePhotos).toHaveBeenCalled();
+    expect(screen.getByText("Show:")).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Screenshots" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "Shared with You" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Shared with You" }));
+    expect(state.setShow).toHaveBeenCalledWith("shared", true);
+  });
+
+  it("opens on one tap and closes on the button, the backdrop or Escape, without double toggles", () => {
+    render(<FilterMenu state={makeState()} variant="mobile" viewOptions={viewOptions()} />);
+    const button = screen.getByRole("button", { name: "Filter" });
+    fireEvent.pointerDown(button);
+    fireEvent.touchStart(button);
+    fireEvent.click(button);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(button);
+    const backdrop = screen.getByTestId("filter-menu-backdrop");
+    const outside = vi.fn();
+    document.addEventListener("click", outside);
+    fireEvent.click(backdrop);
+    document.removeEventListener("click", outside);
+    expect(screen.queryByRole("menu")).toBeNull();
+    // The closing tap stopped at the backdrop: nothing behind it got the click.
+    expect(outside).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getAllByRole("menuitem")[0], { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(button).toHaveFocus();
+  });
+
+  it("keeps focus in the menu: first row on open, card header on expand, trigger on collapse", () => {
+    render(<FilterMenu state={makeState()} variant="mobile" viewOptions={viewOptions()} />);
+    open();
+    expect(screen.getByRole("menuitem", { name: "Filter" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("menuitem", { name: "View Options" }));
+    expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "View Options" }));
+    expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveAttribute("aria-expanded", "false");
   });
 });
