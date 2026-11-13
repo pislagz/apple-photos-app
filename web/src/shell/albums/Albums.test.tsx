@@ -255,3 +255,43 @@ describe("mobile Albums tab", () => {
     await waitFor(() => expect(requested.some((url) => url.includes("album=smart%3Avideos"))).toBe(true));
   });
 });
+
+describe("#223 Albums screens", () => {
+  it("desktop: Albums opens the cover grid, an album shows Back and its count, Cmd [ goes back", async () => {
+    mockFetch(handler([]));
+    renderDesktop();
+    const nav = (await screen.findAllByRole("button", { name: "Albums" }))[0];
+    fireEvent.click(nav);
+    const grid = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>(".albums-overview__grid");
+      if (!found) throw new Error("no overview yet");
+      return found;
+    });
+    const tile = within(grid).getByRole("button", { name: /Loose/ });
+    expect(tile.querySelector(".album-tile__name")).toHaveTextContent("Loose");
+    fireEvent.click(tile);
+    expect(await screen.findByRole("heading", { name: "Loose" })).toBeInTheDocument();
+    expect(document.querySelector(".toolbar__count")).toHaveTextContent("1");
+    fireEvent.keyDown(window, { key: "[", metaKey: true });
+    await waitFor(() => expect(document.querySelector(".albums-overview__grid")).not.toBeNull());
+    expect(screen.queryByRole("heading", { name: "Loose" })).not.toBeInTheDocument();
+  });
+
+  it("phone: the Albums tab shows section rows, cards and Media Types", async () => {
+    window.history.replaceState({}, "", "/albums");
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/people") return { people: [] };
+      return handler([])(url);
+    });
+    renderMobile();
+    const mine = await screen.findByRole("region", { name: "My Albums" });
+    expect(mine.querySelectorAll(".album-card")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Places" })).toBeInTheDocument();
+    // No People section while there is nobody to show.
+    expect(screen.queryByRole("region", { name: "People & Pets" })).not.toBeInTheDocument();
+    // Only media types the library has.
+    expect(screen.queryByRole("region", { name: "Media Types" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Places" }));
+    expect(window.location.pathname).toBe("/places");
+  });
+});

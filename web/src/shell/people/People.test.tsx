@@ -231,3 +231,20 @@ describe("FaceCircle size (#193)", () => {
     expect(srcFor(0.4, 3)).toBe(grid2x); // 240 px >= 233
   });
 });
+
+describe("#223 person heart", () => {
+  it("shows the heart outside the clipped circle only for favourites", async () => {
+    const { default: PeopleGrid } = await import("./PeopleGrid");
+    mockFetch(() => ({
+      people: [
+        { id: "P1", name: "Ann", label: "Ann", count: 3, cover: null, favorite: true },
+        { id: "P2", name: "Ben", label: "Ben", count: 1, cover: null },
+      ],
+    }));
+    render(<PeopleGrid libraryId={1} onOpen={() => {}} />);
+    expect(await screen.findAllByTestId("person-heart")).toHaveLength(1);
+    const heart = screen.getByTestId("person-heart");
+    expect(heart.closest(".people-face")).toBeNull();
+    expect(heart.closest(".people-grid__face")).not.toBeNull();
+  });
+});
