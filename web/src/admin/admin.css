@@ -964,3 +964,62 @@ button.admin-switch[aria-checked="true"] {
 .admin-sharing-matrix :is(td, th[scope="row"]) {
   vertical-align: middle;
 }
+
+/* Devices and Activity (#315) */
+.admin-badge {
+  margin-left: var(--space-6);
+  padding: 1px var(--space-6);
+  border-radius: var(--radius-8);
+  background: var(--color-fill-subtle);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.admin-devices .admin-row__detail,
+.admin-activity .admin-row__detail {
+  display: block;
+}
+
+.admin-activity .admin-row__label {
+  overflow-wrap: anywhere;
+}
+
+.admin-activity .admin-row__value {
+  flex: none;
+  white-space: nowrap;
+  color: var(--color-label-secondary);
+}
+
+.admin-activity--unknown {
+  color: var(--color-label-secondary);
+}
+
+.admin-activity__details summary {
+  min-height: 24px;
+  color: var(--color-label-secondary);
+}
+
+.admin-activity__details span {
+  display: block;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}
+
+.admin-activity__more {
+  margin: 0 0 var(--space-20);
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .admin-activity .admin-group:first-of-type .admin-row__control,
+  .admin-activity .admin-group:first-of-type .admin-input {
+    min-width: 0;
+    max-width: 60vw;
+  }
+
+  .admin-devices .admin-row {
+    flex-wrap: wrap;
+  }
+}

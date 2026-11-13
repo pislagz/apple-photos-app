@@ -214,7 +214,7 @@ test("admin panel", async ({ page }, info) => {
   // #158: styled, and no page-level horizontal overflow on any screen.
   await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  for (const [i, label] of ["Libraries", "People", "Sharing", "Sessions", "Audit log", "Settings"].entries()) {
+  for (const [i, label] of ["Libraries", "People", "Sharing", "Devices", "Activity", "Settings"].entries()) {
     await nav.getByRole("button", { name: label }).click();
     await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
     await page.waitForLoadState("networkidle");

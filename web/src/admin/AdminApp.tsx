@@ -11,9 +11,9 @@ import {
   readPlaceNames,
 } from "./api";
 import { MAP_PLACE_NAMES_ANCHOR } from "../shell/PlaceInfoContext";
-import AuditLogScreen from "./screens/AuditLogScreen";
+import ActivityScreen from "./screens/ActivityScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
-import SessionsScreen from "./screens/SessionsScreen";
+import DevicesScreen from "./screens/DevicesScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import PeopleScreen from "./screens/PeopleScreen";
 import SharingScreen from "./screens/SharingScreen";
@@ -24,8 +24,8 @@ const SCREENS: { key: Screen; label: string }[] = [
   { key: "libraries", label: "Libraries" },
   { key: "users", label: "People" },
   { key: "access", label: "Sharing" },
-  { key: "sessions", label: "Sessions" },
-  { key: "audit-log", label: "Audit log" },
+  { key: "sessions", label: "Devices" },
+  { key: "audit-log", label: "Activity" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -185,8 +185,8 @@ export default function AdminApp() {
         {screen === "libraries" && <LibrariesScreen />}
         {screen === "users" && <PeopleScreen currentUsername={me.username} />}
         {screen === "access" && <SharingScreen />}
-        {screen === "sessions" && <SessionsScreen />}
-        {screen === "audit-log" && <AuditLogScreen />}
+        {screen === "sessions" && <DevicesScreen />}
+        {screen === "audit-log" && <ActivityScreen />}
         {screen === "settings" && <SettingsScreen />}
       </main>
     </div>

@@ -233,6 +233,8 @@ export interface SessionResponse {
   last_seen_at: string;
   expires_at: string;
   remember_me: boolean;
+  /** The session making this request. Optional for older servers. */
+  is_current?: boolean;
 }
 
 export function listSessions(): Promise<SessionResponse[]> {
@@ -263,6 +265,9 @@ export interface AuditLogFilters {
   libraryId?: number;
   dateFrom?: string;
   dateTo?: string;
+  /** How many newest entries to skip, for "Load more". */
+  offset?: number;
+  limit?: number;
 }
 
 function auditLogQuery(filters: AuditLogFilters): string {
@@ -271,6 +276,8 @@ function auditLogQuery(filters: AuditLogFilters): string {
   if (filters.libraryId !== undefined) params.set("library_id", String(filters.libraryId));
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -281,7 +288,8 @@ export async function readAuditLog(filters: AuditLogFilters = {}): Promise<Audit
 }
 
 export function auditLogCsvUrl(filters: AuditLogFilters = {}): string {
-  return `/api/admin/audit-log.csv${auditLogQuery(filters)}`;
+  // The export always covers the whole filtered list, not just the pages shown.
+  return `/api/admin/audit-log.csv${auditLogQuery({ ...filters, offset: undefined, limit: undefined })}`;
 }
 
 // -- Settings ------------------------------------------------------------------
