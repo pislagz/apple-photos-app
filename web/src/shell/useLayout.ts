@@ -20,10 +20,10 @@ function safeMatchMedia(query: string): boolean {
   }
 }
 
-// The installed PWA gets the mobile chrome regardless of width or pointer
-// (SPEC.md "Mobile layout": "used on narrow touch screens and when
-// installed as a PWA"); it also picks the longer-lived session client type
-// (`session_auth.py`'s `client` field), so `AppShell` reuses this export.
+// Only picks the longer-lived session client type (`session_auth.py`'s
+// `client` field); `AppShell` reuses this export. It does not affect the
+// layout: an installed Mac PWA is a wide fine-pointer window and gets desktop,
+// while the installed iPhone app is narrow/touch and gets mobile anyway.
 export function isStandalone(): boolean {
   return safeMatchMedia("(display-mode: standalone)");
 }
@@ -31,7 +31,7 @@ export function isStandalone(): boolean {
 function detectLayout(): Layout {
   const narrow = window.innerWidth < MOBILE_BREAKPOINT_PX;
   const finePointer = safeMatchMedia("(pointer: fine)");
-  return narrow || !finePointer || isStandalone() ? "mobile" : "desktop";
+  return narrow || !finePointer ? "mobile" : "desktop";
 }
 
 function readOverride(): LayoutOverride {

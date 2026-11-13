@@ -39,8 +39,20 @@ describe("useLayout", () => {
     expect(result.current.layout).toBe("mobile");
   });
 
-  it("detects mobile when installed as a standalone PWA, even on a wide screen", () => {
+  it("detects desktop for a standalone PWA in a wide fine-pointer window", () => {
     setViewport(1200, { finePointer: true, standalone: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("desktop");
+  });
+
+  it("detects mobile for a standalone PWA on a touch phone", () => {
+    setViewport(390, { finePointer: false, standalone: true });
+    const { result } = renderHook(() => useLayout());
+    expect(result.current.layout).toBe("mobile");
+  });
+
+  it("detects mobile for a narrow standalone PWA window", () => {
+    setViewport(400, { finePointer: true, standalone: true });
     const { result } = renderHook(() => useLayout());
     expect(result.current.layout).toBe("mobile");
   });
