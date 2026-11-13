@@ -44,11 +44,23 @@ function isOpen(invite: InviteResponse): boolean {
   return invite.used_at === null && expires.getTime() > Date.now();
 }
 
-export default function PeopleScreen({ currentUsername }: { currentUsername: string }) {
+export default function PeopleScreen({
+  currentUsername,
+  selected: controlled,
+  onSelect: onControlledSelect,
+}: {
+  currentUsername: string;
+  /** The open person, from the #people/<name> hash. */
+  selected?: string | null;
+  onSelect?: (username: string | null) => void;
+}) {
   const [matrix, setMatrix] = useState<AccessMatrixResponse | null>(null);
   const [invites, setInvites] = useState<InviteResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Driven by the #people/<name> hash inside the admin app; local state when used alone.
+  const [local, setLocal] = useState<string | null>(null);
+  const selected = controlled === undefined ? local : controlled;
+  const onSelect = onControlledSelect ?? setLocal;
   const [sheet, setSheet] = useState<SheetState>(null);
 
   const refresh = useCallback(() => {
@@ -84,7 +96,7 @@ export default function PeopleScreen({ currentUsername }: { currentUsername: str
             matrix={matrix}
             invites={invites.filter(isOpen)}
             currentUsername={currentUsername}
-            onOpen={setSelected}
+            onOpen={onSelect}
             onAdd={() => setSheet({ kind: "add" })}
             onInvite={() => setSheet({ kind: "invite" })}
             onCancelInvite={async (invite) => {
@@ -99,7 +111,7 @@ export default function PeopleScreen({ currentUsername }: { currentUsername: str
         </>
       ) : (
         <>
-          <button type="button" className="admin-btn admin-back" onClick={() => setSelected(null)}>
+          <button type="button" className="admin-btn admin-back" onClick={() => onSelect(null)}>
             ‹ People
           </button>
           <h1>{user.username}</h1>
@@ -128,7 +140,7 @@ export default function PeopleScreen({ currentUsername }: { currentUsername: str
           onClose={closeSheet}
           onDone={() => {
             setSheet(null);
-            setSelected(null);
+            onSelect(null);
             refresh();
           }}
         />
