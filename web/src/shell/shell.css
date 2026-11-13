@@ -3323,6 +3323,8 @@ body {
    sits below it. Search is a normal flex item at the row's right end, so its
    box is identical in every view. */
 .shell__toolbar {
+  position: relative;
+  z-index: 10; /* the search popover hangs over the content below */
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -3447,8 +3449,18 @@ body {
     justify-content: center;
   }
 
+  /* The input stays in the page (an invisible overlay) so the field can be focused,
+     and tapping the magnifier focuses it, which expands the box. */
+  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) {
+    position: relative;
+  }
+
   .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) .search-box__input {
-    display: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    padding: 0;
+    opacity: 0;
   }
 
 }

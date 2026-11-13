@@ -65,7 +65,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.locator(".token")).toHaveCount(1);
       await expect(page.locator('img[src*="/thumb/"]').first()).toBeVisible();
       if (!mobile) await expect(page.getByRole("heading", { name: /Results for/ })).toBeVisible();
-      if (!mobile) await expect(page.locator(".toolbar__count")).toContainText("item");
+      if (!mobile) await expect(page.locator(".page-heading__subtitle")).toContainText("item");
       await field.blur();
       await page.waitForFunction(
         () => [...document.querySelectorAll<HTMLImageElement>('img[src*="/thumb/"]')].filter((i) => i.naturalWidth > 0).length >= 3,
