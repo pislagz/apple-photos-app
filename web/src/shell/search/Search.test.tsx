@@ -119,6 +119,28 @@ describe("desktop search", () => {
     fireEvent.keyDown(window, { key: "f", metaKey: true });
     expect(screen.getByRole("searchbox")).toHaveFocus();
   });
+
+  it("focuses the field on /, but not while typing in another input", () => {
+    mockFetch(handler([], found));
+    renderDesktop();
+    fireEvent.keyDown(window, { key: "/" });
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    const other = document.createElement("input");
+    document.body.appendChild(other);
+    other.focus();
+    fireEvent.keyDown(other, { key: "/" });
+    expect(other).toHaveFocus();
+    other.remove();
+  });
+
+  it("puts search in the toolbar slot, not in the sidebar", () => {
+    mockFetch(handler([], found));
+    renderDesktop();
+    const field = screen.getByRole("searchbox");
+    expect(screen.getByRole("complementary", { name: "Sidebar" })).not.toContainElement(field);
+    expect(field.closest(".shell__search")).not.toBeNull();
+  });
 });
 
 describe("mobile search", () => {

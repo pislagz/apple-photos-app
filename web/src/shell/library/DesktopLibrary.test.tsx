@@ -620,6 +620,66 @@ describe("DesktopLibrary", () => {
     expect(screen.queryByTestId("context-menu")).toBeNull();
   });
 
+  describe("toolbar icons and placement (#264)", () => {
+    it("puts the whole-photos toggle right next to the size slider, with a tooltip and label", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+
+      const slider = screen.getByRole("slider", { name: "Zoom" });
+      const toggle = screen.getByRole("button", { name: "Show Whole Photos" });
+      expect(slider.nextElementSibling?.nextElementSibling).toBe(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(toggle).toHaveAttribute("title", "Show Whole Photos");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(toggle).toHaveAttribute("title", "Show Square Tiles");
+    });
+
+    it("steps zoom with the minus and plus buttons next to the slider", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const slider = screen.getByRole("slider", { name: "Zoom" }) as HTMLInputElement;
+      const start = Number(slider.value);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+      expect(Number(slider.value)).toBe(start + 1);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      expect(Number(slider.value)).toBe(start - 1);
+    });
+
+    it("hides Share when the browser can't share files (e.g. plain http)", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+      vi.unstubAllGlobals();
+    });
+
+    it("enables Share only with a selection when file sharing is supported", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      const cell = (await screen.findAllByRole("img"))[0];
+      expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+      fireEvent.click(cell);
+      expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
+      vi.unstubAllGlobals();
+    });
+
+    it("labels the Filter By button and gives it a tooltip", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const filter = screen.getByRole("button", { name: "Filter By" });
+      expect(filter).toHaveAttribute("aria-label", "Filter By");
+      expect(filter).toHaveAttribute("title", "Filter By");
+    });
+  });
+
   describe("Filter By menu", () => {
     function assetCalls(fetchMock: ReturnType<typeof vi.fn>): URLSearchParams[] {
       return fetchMock.mock.calls

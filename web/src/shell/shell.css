@@ -1090,6 +1090,11 @@ body {
   cursor: pointer;
 }
 
+.toolbar-button--small {
+  width: 22px;
+  color: var(--color-label-secondary);
+}
+
 .toolbar-button:hover:not(:disabled) {
   background: var(--color-hover);
 }
@@ -2483,8 +2488,25 @@ body {
   cursor: pointer;
 }
 
+/* #291: the desktop field lives at the right end of the toolbar row. */
+.shell--desktop .shell__main {
+  position: relative;
+}
+
+.shell__search {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-16);
+  z-index: 5;
+}
+
+.shell--desktop .toolbar,
+.shell--desktop .desktop-library__toolbar {
+  padding-right: calc(var(--space-16) + 190px + var(--space-10));
+}
+
 .search-box--desktop {
-  margin: 0 var(--space-4) var(--space-10);
+  width: 190px;
 }
 
 .search-box--desktop .search-box__input {
@@ -2496,6 +2518,56 @@ body {
 
 .search-box--desktop .search-box__input:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Narrow windows: just the magnifier until the field is focused. */
+@media (max-width: 1100px) {
+  .shell--desktop .toolbar,
+  .shell--desktop .desktop-library__toolbar {
+    padding-right: calc(var(--space-16) + 28px + var(--space-10));
+  }
+
+  .search-box--desktop {
+    width: 28px;
+    margin-left: auto;
+  }
+
+  .search-box--desktop .search-box__input {
+    width: 28px;
+    padding: 0;
+    color: transparent;
+  }
+
+  .search-box--desktop .search-box__input::placeholder {
+    color: transparent;
+  }
+
+  /* Expanded: the field takes its real 190px, and the toolbar reserves the
+     same room (icons shift left, the spacer shrinks) so nothing overlaps. */
+  .search-box--desktop:has(.search-box__input:focus, .search-box__input:not(:placeholder-shown)) {
+    width: 190px;
+  }
+
+  .shell--desktop .shell__main:has(.search-box--desktop .search-box__input:focus, .search-box--desktop .search-box__input:not(:placeholder-shown))
+    :is(.toolbar, .desktop-library__toolbar) {
+    padding-right: calc(var(--space-16) + 190px + var(--space-10));
+    overflow: hidden;
+  }
+
+  .search-box--desktop .search-box__input:focus,
+  .search-box--desktop .search-box__input:not(:placeholder-shown) {
+    width: 190px;
+    padding: 0 26px 0 28px;
+    color: inherit;
+  }
+
+  .search-box--desktop .search-box__input:focus::placeholder {
+    color: var(--color-label-secondary);
+  }
+
+  .search-box--desktop .search-box__icon {
+    z-index: 1;
+  }
 }
 
 .search-box--mobile {

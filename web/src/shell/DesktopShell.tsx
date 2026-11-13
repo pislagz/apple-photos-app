@@ -131,7 +131,7 @@ export default function DesktopShell({
   const showingPerson = view === "album" && album?.id.startsWith(PERSON_PREFIX);
   const showingPlace = view === "album" && album?.id.startsWith(PLACE_PREFIX);
   const showingSearch = view === "album" && album?.id.startsWith(SEARCH_PREFIX);
-  // P2.4: the sidebar search field. A settled, non-empty query shows its
+  // P2.4: the toolbar search field. A settled, non-empty query shows its
   // results as a `search:` album; emptying the field goes back to Library.
   const [searchText, setSearchText] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -154,7 +154,10 @@ export default function DesktopShell({
   }, [settledQuery]);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      const target = event.target as HTMLElement | null;
+      const typing = !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      const slash = event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !typing;
+      if (slash || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f")) {
         event.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
@@ -211,7 +214,6 @@ export default function DesktopShell({
       {/* inert while collapsed: the width animates to 0 but the links must
           leave the Tab order and the accessibility tree. */}
       <aside className="sidebar" id="app-sidebar" aria-label="Sidebar" inert={sidebarCollapsed}>
-        <SearchField ref={searchRef} variant="desktop" value={searchText} onChange={setSearchText} />
         <nav aria-label="Sections">
           <ul>
             <li>
@@ -335,6 +337,12 @@ export default function DesktopShell({
         />
       </aside>
       <div className="shell__main">
+        {/* #291: one stable slot at the right end of the toolbar row (every
+            view's toolbar reserves room for it), so the input keeps focus
+            while typing swaps the view underneath. */}
+        <div className="shell__search">
+          <SearchField ref={searchRef} variant="desktop" value={searchText} onChange={setSearchText} />
+        </div>
         {view === "hidden" ? (
           <HiddenSession>
             <header className="toolbar">
