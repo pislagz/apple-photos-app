@@ -3193,32 +3193,45 @@ body {
   box-shadow: var(--shadow-banner);
 }
 
-/* P2.4 Search: one field on both layouts. */
+/* P2.4 / #225 Search: one field on both layouts. The field is a rounded box;
+   token chips, the input and the clear button sit inside it. */
 .search-box {
   position: relative;
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--color-fill-subtle);
 }
 
 .search-box__icon {
-  position: absolute;
-  left: 8px;
-  width: 15px;
-  height: 15px;
+  flex: 0 0 auto;
   pointer-events: none;
   color: var(--color-label-secondary);
 }
 
 .search-box__input {
+  flex: 1 1 16px;
+  min-width: 0;
   width: 100%;
-  box-sizing: border-box;
+  height: 100%;
   border: none;
   outline: none;
+  padding: 0;
   font: inherit;
   color: inherit;
-  background: var(--color-fill-subtle);
+  background: transparent;
   -webkit-appearance: none;
   appearance: none;
+}
+
+.search-box__input:focus-visible {
+  /* The ring is drawn around the whole field (:focus-within), not the input. */
+  outline: none;
+}
+
+.search-box--mobile:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .search-box__input::-webkit-search-cancel-button {
@@ -3226,18 +3239,86 @@ body {
 }
 
 .search-box__clear {
-  position: absolute;
-  right: 6px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+}
+
+.search-box__clear svg {
+  width: 10px;
+  height: 10px;
+  padding: 3px;
+  box-sizing: content-box;
   border-radius: 50%;
   background: var(--color-fill-clear);
   color: var(--color-white);
   font-size: var(--font-size-subhead);
   line-height: 18px;
   cursor: default;
+}
+
+.search-box__tokens {
+  display: flex;
+  flex: 0 1 auto;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* A chosen suggestion: blue pill, 30px tall (24px in the toolbar). */
+.token {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-4);
+  height: 30px;
+  max-width: 180px;
+  padding: 0 var(--space-4) 0 var(--space-10);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--color-label);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.token__icon {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.token__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token__remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+
+.token__remove svg {
+  width: 10px;
+  height: 10px;
 }
 
 /* #291: the desktop field lives at the right end of the toolbar row. */
@@ -3252,93 +3333,323 @@ body {
   z-index: 5;
 }
 
+/* The toolbar keeps room for the widest the field gets on focus (220px). */
 .shell--desktop .toolbar,
 .shell--desktop .desktop-library__toolbar {
-  padding-right: calc(var(--space-16) + 190px + var(--space-10));
+  padding-right: calc(var(--space-16) + 220px + var(--space-10));
+}
+
+.desktop-search {
+  position: relative;
 }
 
 .search-box--desktop {
   width: 190px;
-}
-
-.search-box--desktop .search-box__input {
   height: 28px;
-  padding: 0 26px 0 28px;
+  gap: var(--space-4);
+  padding: 0 var(--space-4) 0 var(--space-8);
   border-radius: var(--radius-small-2);
   font-size: var(--font-size-subhead);
+  margin-left: auto;
+  transition: width var(--duration-fast) ease;
 }
 
-.search-box--desktop .search-box__input:focus-visible {
+.search-box--desktop:focus-within {
+  width: 220px;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* With chips in it the field stays wider (the toolbar makes room for it) and,
+   while focused, grows left over the toolbar on a solid base. */
+.search-box--desktop.search-box--has-tokens {
+  width: 260px;
+}
+
+.shell--desktop .shell__main:has(.search-box--has-tokens) :is(.toolbar, .desktop-library__toolbar) {
+  padding-right: calc(var(--space-16) + 260px + var(--space-10));
+}
+
+.search-box--desktop.search-box--has-tokens:focus-within {
+  width: 340px;
+  background: linear-gradient(var(--color-fill-subtle), var(--color-fill-subtle)), var(--color-bg-window);
+}
+
+.search-box--desktop .search-box__icon {
+  width: 15px;
+  height: 15px;
+}
+
+.search-box--desktop .token {
+  height: 22px;
+  padding-left: var(--space-8);
+  font-size: var(--font-size-caption);
+}
+
+.search-box--desktop .token__remove {
+  width: 18px;
+  height: 18px;
+}
+
+.search-box--desktop .search-box__clear {
+  width: 22px;
+  height: 22px;
 }
 
 /* Narrow windows: just the magnifier until the field is focused. */
 @media (max-width: 1100px) {
-  .shell--desktop .toolbar,
-  .shell--desktop .desktop-library__toolbar {
-    padding-right: calc(var(--space-16) + 28px + var(--space-10));
-  }
-
-  .search-box--desktop {
-    width: 28px;
-    margin-left: auto;
-  }
-
-  .search-box--desktop .search-box__input {
+  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) {
     width: 28px;
     padding: 0;
-    color: transparent;
+    justify-content: center;
   }
 
-  .search-box--desktop .search-box__input::placeholder {
-    color: transparent;
+  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) .search-box__input {
+    display: none;
   }
 
-  /* Expanded: the field takes its real 190px, and the toolbar reserves the
-     same room (icons shift left, the spacer shrinks) so nothing overlaps. */
-  .search-box--desktop:has(.search-box__input:focus, .search-box__input:not(:placeholder-shown)) {
-    width: 190px;
-  }
-
-  .shell--desktop .shell__main:has(.search-box--desktop .search-box__input:focus, .search-box--desktop .search-box__input:not(:placeholder-shown))
-    :is(.toolbar, .desktop-library__toolbar) {
-    padding-right: calc(var(--space-16) + 190px + var(--space-10));
+  .shell--desktop .shell__main:has(.search-box--desktop .search-box__input:not(:placeholder-shown)) :is(.toolbar, .desktop-library__toolbar) {
     overflow: hidden;
   }
+}
 
-  .search-box--desktop .search-box__input:focus,
-  .search-box--desktop .search-box__input:not(:placeholder-shown) {
-    width: 190px;
-    padding: 0 26px 0 28px;
-    color: inherit;
-  }
+.toolbar__count {
+  margin-left: var(--space-8);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-subhead);
+  white-space: nowrap;
+}
 
-  .search-box--desktop .search-box__input:focus::placeholder {
-    color: var(--color-label-secondary);
-  }
+/* Popover under the field: suggestions, or recents while it is empty. */
+.search-popover {
+  position: absolute;
+  top: calc(100% + var(--space-6));
+  right: 0;
+  width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  box-sizing: border-box;
+  border-radius: var(--radius-10);
+  background: var(--material-popover);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--shadow-menu);
+  border: 0.5px solid var(--color-hairline);
+}
 
-  .search-box--desktop .search-box__icon {
-    z-index: 1;
-  }
+.search-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Suggestion rows: 46px, 18px icon in a 26px column. */
+.suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestions__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 46px;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-8);
+  color: var(--color-label);
+}
+
+.suggestions__row[aria-selected="true"],
+.suggestions__row:hover {
+  background: var(--color-accent-soft);
+}
+
+.suggestions__icon {
+  display: flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  color: var(--color-label-secondary);
+}
+
+.suggestions__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.suggestions__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-headline-sm);
+}
+
+.suggestions__detail {
+  flex: 0 0 auto;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+/* iPhone: 20px side padding, 34px bold title, 44-54px pill field. */
+.search-screen__header {
+  padding-left: var(--space-20);
+  padding-right: var(--space-20);
+}
+
+.search-screen__title {
+  font-size: var(--font-size-title-large);
+  font-weight: var(--font-weight-bold);
+}
+
+.search-screen__body {
+  padding-left: var(--space-20);
+  padding-right: var(--space-20);
+  color: var(--color-label);
+}
+
+.search-screen__hint {
+  margin: var(--space-20) 0 0;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: 1.4;
 }
 
 .search-box--mobile {
+  height: 44px;
   margin-top: var(--space-10);
+  gap: var(--space-6);
+  padding: 0 0 0 var(--space-12);
+  border-radius: var(--radius-pill);
 }
 
 .search-box--mobile .search-box__icon {
-  left: 10px;
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   color: var(--color-label-tertiary);
 }
 
 .search-box--mobile .search-box__input {
-  height: 36px;
-  padding: 0 30px 0 34px;
-  border-radius: var(--radius-10);
   /* 16px stops iOS Safari from zooming the page when the field is focused. */
   font-size: var(--font-size-headline);
+}
+
+.search-box--mobile .search-box__clear {
+  width: 44px;
+  height: 44px;
+}
+
+.search-box--mobile .token {
+  max-width: 260px;
+}
+
+.search-box--mobile .token__remove {
+  width: 30px;
+  height: 30px;
+}
+
+.search-section {
+  margin-top: var(--space-16);
+}
+
+.search-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.search-section__title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-bold);
+}
+
+.search-section__action {
+  min-height: 44px;
+  padding: 0 var(--space-8);
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-body);
+}
+
+.search-popover__head .search-section__action {
+  min-height: 24px;
+  font-size: var(--font-size-subhead);
+}
+
+.recent-cards,
+.people-row {
+  display: flex;
+  gap: var(--space-10);
+  margin: 0 calc(-1 * var(--space-20));
+  padding: 0 var(--space-20) var(--space-4);
+  list-style: none;
+  overflow-x: auto;
+}
+
+.recent-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 128px;
+  height: 128px;
+  box-sizing: border-box;
+  padding: var(--space-12);
+  border: none;
+  border-radius: 22px;
+  background: var(--color-card);
+  color: var(--color-label);
+  text-align: left;
+}
+
+.recent-card__icon {
+  width: 20px;
+  height: 20px;
+  color: var(--color-label-secondary);
+}
+
+.recent-card__title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+}
+
+.people-row__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 80px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-label);
+}
+
+.people-row__item .people-face {
+  width: 76px;
+}
+
+.people-row__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-medium);
 }
 
 

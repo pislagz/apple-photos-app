@@ -86,6 +86,7 @@
   --scale-viewer: 0.97; /* viewer opens from and closes to this scale */
 
   /* Grid gaps between thumbnails. */
+  --duration-fast: 150ms;
   --grid-gap: 2px;
   --grid-gap-dense: 1px;
 

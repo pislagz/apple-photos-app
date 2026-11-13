@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type MeResponse, PERSON_PREFIX, PLACE_PREFIX, SEARCH_PREFIX } from "../api";
 import MapView, { boundsParam } from "./map/MapView";
 import AlbumsOverview from "./albums/AlbumsOverview";
@@ -12,7 +12,8 @@ import { Icon, type IconName } from "./icons";
 import DesktopLibrary from "./library/DesktopLibrary";
 import LibraryUpdating from "./LibraryUpdating";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
-import SearchField from "./search/SearchField";
+import DesktopSearch from "./search/DesktopSearch";
+import { useSearchModel } from "./search/useSearchModel";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
 import WelcomeScreen from "./WelcomeScreen";
@@ -138,25 +139,33 @@ export default function DesktopShell({
   const showingSearch = view === "album" && album?.id.startsWith(SEARCH_PREFIX);
   // P2.4: the toolbar search field. A settled, non-empty query shows its
   // results as a `search:` album; emptying the field goes back to Library.
-  const [searchText, setSearchText] = useState("");
+  const search = useSearchModel(activeLibraryId ?? -1);
   const searchRef = useRef<HTMLInputElement>(null);
   const showingSearchRef = useRef(false);
   showingSearchRef.current = !!showingSearch;
-  const settledQuery = useDebounced(searchText.trim());
-  useEffect(() => {
-    if (settledQuery) {
+  const [searchCount, setSearchCount] = useState<{ count: number; done: boolean } | null>(null);
+  const onSearchCount = useCallback(
+    (count: number, done: boolean) =>
+      setSearchCount((c) => (c && c.count === count && c.done === done ? c : { count, done })),
+    [],
+  );
+  const applyQuery = useCallback((query: string) => {
+    if (query) {
       setDayStart(null);
       setAlbum((current) =>
-        current?.id === `${SEARCH_PREFIX}${settledQuery}`
+        current?.id === `${SEARCH_PREFIX}${query}`
           ? current
-          : { id: `${SEARCH_PREFIX}${settledQuery}`, title: `Results for \u201c${settledQuery}\u201d` },
+          : { id: `${SEARCH_PREFIX}${query}`, title: `Results for \u201c${query}\u201d` },
       );
       setView("album");
     } else if (showingSearchRef.current) {
       setAlbum(null);
       setView("library");
     }
-  }, [settledQuery]);
+  }, []);
+  // The field settles after a short pause; Enter and a chosen row run at once.
+  const settledQuery = useDebounced(search.query);
+  useEffect(() => applyQuery(settledQuery), [settledQuery, applyQuery]);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -178,13 +187,13 @@ export default function DesktopShell({
     setSelectNonce((n) => n + 1);
     setDayStart(null);
     setAlbum(null);
-    setSearchText("");
+    search.clear();
     setView(next);
   }
   function openAlbum(id: string, title: string, extra?: { count?: number | null; fromOverview?: boolean }) {
     setDayStart(null);
     setAlbum({ id, title, ...extra });
-    setSearchText("");
+    search.clear();
     setView("album");
   }
   const backToAlbums = view === "album" && !!album?.fromOverview;
@@ -363,7 +372,7 @@ export default function DesktopShell({
             view's toolbar reserves room for it), so the input keeps focus
             while typing swaps the view underneath. */}
         <div className="shell__search">
-          <SearchField ref={searchRef} variant="desktop" value={searchText} onChange={setSearchText} />
+          <DesktopSearch ref={searchRef} model={search} onRun={applyQuery} />
         </div>
         {view === "hidden" ? (
           <HiddenSession>
@@ -398,6 +407,12 @@ export default function DesktopShell({
                 )}
                 <h1>{album.title}</h1>
                 {album.count != null && <span className="toolbar__count">{album.count.toLocaleString()}</span>}
+                {showingSearch && searchCount && (searchCount.done || searchCount.count > 0) && (
+                  <span className="toolbar__count">
+                    {searchCount.count.toLocaleString()}
+                    {searchCount.done ? "" : "+"} {searchCount.count === 1 && searchCount.done ? "item" : "items"}
+                  </span>
+                )}
               </header>
             )}
             {view === "albums" && (
@@ -464,6 +479,7 @@ export default function DesktopShell({
                 libraryId={activeLibraryId}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
+                onCount={showingSearch ? onSearchCount : undefined}
               />
               </LibraryNoteFrame>
             ) : (

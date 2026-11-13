@@ -122,10 +122,11 @@ describe("keyboard", () => {
 describe("focus ring and motion CSS", () => {
   it("has a global :focus-visible ring and never removes outlines on controls", () => {
     expect(css).toMatch(/:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\)/);
-    // Only the search input (own ring) and the programmatically focused viewer may set outline: none.
+    // Only the search input (the ring is drawn around the whole field) and the programmatically focused viewer may set outline: none.
     const nones = css.match(/[^{}]+{[^}]*outline:\s*none/g) ?? [];
     expect(nones.map((rule) => rule.trim().split("\n")[0])).toEqual([
       ".search-box__input {",
+      ".search-box__input:focus-visible {",
       ".desktop-viewer:focus {",
     ]);
   });

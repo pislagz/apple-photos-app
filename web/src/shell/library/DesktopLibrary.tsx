@@ -157,6 +157,7 @@ export default function DesktopLibrary({
   initialScrollDayKey,
   album,
   isAdmin = false,
+  onCount,
 }: {
   libraryId: number;
   isAdmin?: boolean;
@@ -173,6 +174,9 @@ export default function DesktopLibrary({
   initialScrollDayKey?: string;
   // P2.1: an album's id (or `smart:<slug>`); pair with `fixedView="all"`.
   album?: string;
+  // #225: reports how many items are loaded and whether that is all of them
+  // (the Search heading shows "N items").
+  onCount?: (count: number, done: boolean) => void;
 }) {
   const [switchedView, setView] = useState<ViewKey>(initialView ?? "all");
   const view = fixedView ?? switchedView;
@@ -207,6 +211,9 @@ export default function DesktopLibrary({
 
   const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null);
   const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
+  useEffect(() => {
+    if (!loading || items.length > 0) onCount?.(items.length, done);
+  }, [items.length, done, loading, onCount]);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
