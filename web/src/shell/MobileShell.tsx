@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { MeResponse } from "../api";
-import AccountMenu from "./AccountMenu";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
@@ -125,6 +124,11 @@ export default function MobileShell({
           activeLibraryId={activeLibraryId}
           onActiveLibraryChange={onActiveLibraryChange}
           onNavigate={navigate}
+          me={me}
+          layoutOverride={layoutOverride}
+          onLayoutOverrideChange={onLayoutOverrideChange}
+          onLogout={onLogout}
+          onAvatarChanged={onAvatarChanged}
         />
       );
     }
@@ -207,14 +211,6 @@ export default function MobileShell({
     <div className="shell shell--mobile">
       <header className="shell__header">
         <h1 className="sr-only">{TABS.find((tab) => tab.key === route.tab)?.label ?? "Library"}</h1>
-        <AccountMenu
-          onAvatarChanged={onAvatarChanged}
-          me={me}
-          layoutOverride={layoutOverride}
-          onLayoutOverrideChange={onLayoutOverrideChange}
-          onLogout={onLogout}
-          compact
-        />
       </header>
       <main className="shell__content">
         {/* Stays mounted across tab switches so the grid's segment and scroll

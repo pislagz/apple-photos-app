@@ -1180,9 +1180,10 @@ for (const scheme of ["light", "dark"] as const) {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Filter By" }).click().catch(() => {});
     } else {
-      await page.getByRole("button", { name: "Account menu" }).click();
+      await page.getByRole("button", { name: "More" }).click();
+      await expect(page.getByRole("button", { name: "Change password" })).toBeVisible();
       await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-menu`);
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Library" }).click();
     }
     await page.reload();
     await openZoom(page, "All Photos");

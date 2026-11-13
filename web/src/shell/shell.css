@@ -3851,4 +3851,26 @@ body {
 
 .avatar-picker__actions .avatar-picker__save {
   font-weight: var(--font-weight-semibold);
+/* #303: account actions in the More tab (the old iPhone "..." menu). */
+.more-screen__item--static {
+  margin: 0;
+  color: var(--color-label-secondary);
+}
+
+.more-screen__item--link {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.more-screen__item--danger {
+  color: var(--color-danger-text);
+}
+
+.more-screen__item .layout-override {
+  font-size: var(--font-size-body-lg);
+  color: var(--color-label);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }

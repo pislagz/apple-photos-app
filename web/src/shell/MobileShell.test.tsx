@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem, MeResponse } from "../api";
 import { getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
@@ -415,5 +415,67 @@ describe("MobileShell with no library (#263)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Albums" }));
     expect(await screen.findByText(/Photos appear once a library has been added/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/later phase/i);
+  });
+});
+
+describe("MobileShell more menu moved into More (#303)", () => {
+  function renderAt(path: string, role: "user" | "admin") {
+    window.history.replaceState({}, "", path);
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    return render(
+      <MobileShell
+        me={{ ...ME_RESPONSE, role }}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+  }
+
+  it("has no Account menu (...) button on Library or More", async () => {
+    renderAt("/", "user");
+    expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
+    cleanup();
+    renderAt("/more", "user");
+    expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
+  });
+
+  it("lists the former menu actions in More", () => {
+    renderAt("/more", "user");
+    expect(screen.getByText("Signed in as alice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change password" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Passkeys" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Layout")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Admin link in More only for admins", () => {
+    renderAt("/more", "admin");
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
+  });
+
+  it("opens the Change password dialog from More and logs out", () => {
+    const onLogout = vi.fn();
+    window.history.replaceState({}, "", "/more");
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(
+      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={onLogout} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    expect(onLogout).toHaveBeenCalled();
   });
 });
