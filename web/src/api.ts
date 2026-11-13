@@ -294,7 +294,7 @@ export interface SummaryPeriodBucket extends SummaryBucket {
 export interface SummaryResponse {
   years: SummaryPeriodBucket[];
   months: SummaryPeriodBucket[];
-  days: SummaryBucket[];
+  days: SummaryPeriodBucket[];
 }
 
 // #91: the mobile Years/Months tiles -- counts and a few key-photo

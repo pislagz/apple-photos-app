@@ -45,7 +45,7 @@ function computeSummary(items: AssetListItem[]) {
   return {
     years: bucket(4).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
     months: bucket(7).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
-    days: bucket(10).map(([key, { count }]) => ({ key, count })),
+    days: bucket(10).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
   };
 }
 
@@ -521,7 +521,7 @@ describe("DesktopLibrary", () => {
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
   });
 
-  it("in the Days view, double-click and Enter hand the day to onOpenDay instead of opening the Viewer (#152)", async () => {
+  it("in the Days view a day card hands its day key to onOpenDay instead of opening the Viewer (#301)", async () => {
     const items = [makeItem("recent", "2024-05-10T10:00:00"), makeItem("old", "2022-01-08T10:00:00")];
     mockAssets(items);
     const onOpenDay = vi.fn();
@@ -530,17 +530,13 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
     expect(screen.queryByRole("tab")).toBeNull();
 
-    const cell = cells(container).find((c) => c.getAttribute("data-asset-id") === "old") as HTMLElement;
-    fireEvent.doubleClick(cell);
-    expect(onOpenDay).toHaveBeenLastCalledWith("old");
-
-    fireEvent.click(cell);
-    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "Enter" });
-    expect(onOpenDay).toHaveBeenCalledTimes(2);
+    const card = periodCards(container).find((c) => c.getAttribute("data-period-key") === "2022-01-08") as HTMLElement;
+    fireEvent.click(card);
+    expect(onOpenDay).toHaveBeenCalledWith("2022-01-08");
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
   });
 
-  it("in the Days view every card is labelled with its own single day, never a range (#157)", async () => {
+  it("in the Days view every day is one card with its own date label, oldest first, under a Days header (#301)", async () => {
     const items = [
       makeItem("d1a", "2025-09-19T10:00:00"),
       makeItem("d1b", "2025-09-19T09:00:00"),
@@ -553,15 +549,13 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
 
     expect(container.querySelector(".desktop-library__date-range")).toBeNull();
-    const captions = Array.from(container.querySelectorAll(".desktop-library__feature-caption")).map(
-      (el) => el.textContent ?? "",
-    );
-    expect(captions).toHaveLength(3);
-    expect(new Set(captions).size).toBe(3);
-    for (const text of captions) expect(text).not.toMatch(/[–-]\s/);
-    expect(captions[0]).toContain("19");
-    expect(captions[0]).toContain("2025");
-    expect(captions[2]).toContain("2023");
+    const cards = periodCards(container);
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-09-05", "2024-01-02", "2025-09-19"]);
+    expect(cards[0].textContent).toContain("Sep 5, 2023");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("Days");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("4 Items");
+    // Each card uses the key photo thumbnail, never a full-size request per asset.
+    expect(container.querySelector('img[src*="/thumb/"]')).not.toBeNull();
   });
 
   it("keeps the date-range title in All Photos", async () => {
@@ -571,14 +565,14 @@ describe("DesktopLibrary", () => {
     expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–");
   });
 
-  it("starts on initialView and scrolls to initialScrollAssetId (#152)", async () => {
+  it("starts on initialView and scrolls to initialScrollDayKey (#152, #301)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 8 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(8 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
 
-    render(<DesktopLibrary libraryId={1} initialView="all" initialScrollAssetId="jan22-7" />);
+    render(<DesktopLibrary libraryId={1} initialView="all" initialScrollDayKey="2022-01-01" />);
     await screen.findAllByRole("img");
 
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
