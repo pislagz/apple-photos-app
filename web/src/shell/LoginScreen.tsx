@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { passkeysSupported } from "../passkeys";
+import { passkeyConnectionNote, passkeysSupported } from "../passkeys";
 import type { Layout } from "./useLayout";
 
 export type LoginErrorKind = "lockout" | "invalid" | "generic";
@@ -61,7 +61,10 @@ export default function LoginScreen({
           </label>
           <button type="submit">Sign in</button>
         </form>
-        {onPasskey && passkeysSupported() && (
+        {onPasskey && passkeyConnectionNote() && (
+          <p className="login-card__passkey-note">{passkeyConnectionNote()}</p>
+        )}
+        {onPasskey && !passkeyConnectionNote() && passkeysSupported() && (
           <button type="button" className="login-card__passkey" onClick={onPasskey}>
             Sign in with a passkey
           </button>

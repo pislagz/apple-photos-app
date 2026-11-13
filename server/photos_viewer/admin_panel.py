@@ -14,7 +14,7 @@ import secrets
 import sqlite3
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from . import (
@@ -351,6 +351,7 @@ def read_invite(
 def accept_invite(
     code: str,
     payload: InviteAcceptRequest,
+    request: Request,
     response: Response,
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> InviteAcceptResponse:
@@ -392,7 +393,7 @@ def accept_invite(
         value=raw_token,
         max_age=max_age,
         httponly=True,
-        secure=session_auth._cookie_secure(),
+        secure=session_auth._cookie_secure(request),
         samesite="strict",
         path="/",
     )
