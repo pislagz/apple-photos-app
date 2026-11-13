@@ -156,6 +156,19 @@ describe("shareAssets", () => {
     expect(arg.files.map((f) => f.name)).toEqual(["IMG_0001.HEIC"]);
   });
 
+  it("names the File from original_filename, not the internal filename, when the response has no disposition", async () => {
+    mockFetch((url) =>
+      url.includes("/assets/")
+        ? { has_edited: false }
+        : new Response("x", { status: 200, headers: { "content-type": "image/jpeg" } }),
+    );
+    const share = vi.fn(async (_data?: ShareData) => {});
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share });
+    await shareAssets(1, [{ id: "a3", filename: "9F3A-UUID.heic", original_filename: "IMG_1234.HEIC" }]);
+    const file = (share.mock.calls[0][0] as { files: File[] }).files[0];
+    expect(file.name).toBe("IMG_1234.jpg");
+  });
+
   it("uses the server's Content-Disposition name and a real MIME type", async () => {
     mockFetch((url) =>
       url.includes("/assets/")
