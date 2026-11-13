@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DISMISS_MS, useDismiss } from "./useDismiss";
+import { DISMISS_MS, ZOOM_RELEASE_MS, useDismiss } from "./useDismiss";
 
 function mockMotion(reduce: boolean) {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: reduce && query.includes("reduce") }));
@@ -61,5 +61,30 @@ describe("useDismiss", () => {
     const { result } = renderHook(() => useDismiss(onClose, zoomOut), { wrapper: StrictMode });
     await act(async () => result.current.dismiss());
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the close zoom's last frame until the Viewer unmounts, so no full-screen flash (#286)", async () => {
+    mockMotion(false);
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const zoomOut = () => ({ finished: Promise.resolve(), cancel });
+    const { result, unmount } = renderHook(() => useDismiss(() => {}, zoomOut));
+    await act(async () => result.current.dismiss());
+    expect(cancel).not.toHaveBeenCalled();
+    unmount();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the zoom after a short hold when the Viewer stays mounted (#286)", async () => {
+    mockMotion(false);
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    const zoomOut = () => ({ finished: Promise.resolve(), cancel });
+    const { result } = renderHook(() => useDismiss(() => {}, zoomOut));
+    await act(async () => result.current.dismiss());
+    act(() => {
+      vi.advanceTimersByTime(ZOOM_RELEASE_MS);
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });

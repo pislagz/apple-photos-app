@@ -10,13 +10,14 @@ import { useAssetDetail } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
+import { usePreloadNeighbours } from "./usePreloadNeighbours";
 import { useZoomTransition } from "./useZoomTransition";
 import { type ZoomFrame, dragFrame } from "./zoomTransition";
 import { ViewerStill } from "./ViewerStill";
-import { previewThumbUrl } from "./mediaUrls";
+import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
 import { viewerKeyAction } from "./viewerKeys";
-import { buildInfoRows, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { formatViewerTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 
@@ -81,6 +82,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
+  usePreloadNeighbours(libraryId, items, index, scrubbing);
   const scrubVideo = useCallback((fraction: number) => {
     const video = videoRef.current;
     if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
@@ -439,7 +441,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
   // #211: line 1 relative day, line 2 "time . place"; Info keeps the full date.
-  const title = detail ? formatViewerTitle(detail.date_created, formatPlaceName(detail)) : { primary: "", secondary: "" };
+  const title = detail ? formatViewerTitle(detail.date_created, formatShortPlaceName(detail)) : { primary: "", secondary: "" };
 
   return (
     <div
@@ -517,6 +519,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
                 imgClassName="mobile-viewer__media"
                 stillSrc={stillSrc}
                 previewSrc={media.previewSrc}
+                placeholderSrc={gridThumbUrl(libraryId, item.id)}
                 isFull={isFull}
                 alt={alt}
                 transform={zoomStyle}
@@ -531,6 +534,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             imgClassName="mobile-viewer__media"
             stillSrc={stillSrc}
             previewSrc={media.previewSrc}
+            placeholderSrc={gridThumbUrl(libraryId, item.id)}
             isFull={isFull}
             alt={alt}
             transform={zoomStyle}

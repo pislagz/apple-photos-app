@@ -51,9 +51,9 @@ function drag(dxs: number[]) {
 }
 
 describe("Filmstrip scrubber (#221)", () => {
-  it("is 30 px tall and mounts only a bounded window of 50k items", () => {
+  it("is 44 px tall and mounts only a bounded window of 50k items", () => {
     render(<Filmstrip libraryId={1} items={items} index={25000} onSelect={() => {}} className="strip" />);
-    expect(strip().style.height).toBe("30px");
+    expect(strip().style.height).toBe("44px");
     expect(buttons().length).toBe(81);
     expect(buttons().length).toBeLessThan(100);
   });
@@ -62,11 +62,11 @@ describe("Filmstrip scrubber (#221)", () => {
     render(<Filmstrip libraryId={1} items={items} index={3000} onSelect={() => {}} className="strip" />);
     const current = buttons().find((b) => b.getAttribute("aria-current") === "true")!;
     expect(current.querySelector("img")?.getAttribute("src")).toContain("/thumb/a3000?");
-    expect(current.style.width).toBe("40px");
-    expect(translateX(current)).toBe(-20);
+    expect(current.style.width).toBe("44px");
+    expect(translateX(current)).toBe(-22);
     const next = buttons().find((b) => b.dataset.index === "3001")!;
-    expect(next.style.width).toBe("18px");
-    expect(translateX(next)).toBe(22);
+    expect(next.style.width).toBe("34px");
+    expect(translateX(next)).toBe(27);
   });
 
   it("windows around the current item when it changes", () => {

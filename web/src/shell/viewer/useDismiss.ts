@@ -2,6 +2,8 @@ import type { ZoomOut } from "./useZoomTransition";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export const DISMISS_MS = 180;
+// How long a finished close zoom is held for the Viewer to unmount.
+export const ZOOM_RELEASE_MS = 250;
 
 // No matchMedia (jsdom) counts as "no animation" so unit tests close at once.
 export function prefersReducedMotion(): boolean {
@@ -57,9 +59,17 @@ export function useDismiss<From = undefined>(
       const finish = () => {
         if (!alive.current) return;
         onCloseRef.current();
-        zoom.cancel();
-        zoomRef.current = null;
-        closingRef.current = false;
+        // #286: the animations hold the last frame (the photo on its tile,
+        // backdrop transparent). Cancelling them now would snap the stage back
+        // to full screen for the frames before React unmounts the Viewer: a
+        // flash of the photo over the grid. The unmount cleanup above cancels
+        // them; this timer only covers a Viewer that stays mounted.
+        timer.current = window.setTimeout(() => {
+          timer.current = null;
+          zoom.cancel();
+          if (zoomRef.current === zoom) zoomRef.current = null;
+          closingRef.current = false;
+        }, ZOOM_RELEASE_MS);
       };
       zoom.finished.then(finish, finish);
       return;

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, render } from "@testing-library/react";
 import { type RefObject, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,6 +93,19 @@ describe("open", () => {
     // The chrome fades with it.
     expect(calls.some((c) => (c.el as HTMLElement).className === "mobile-viewer__topbar")).toBe(true);
     act(() => finish());
+  });
+
+  it("keeps the CSS fade-up off once the open zoom is over (#286)", async () => {
+    // Removing data-zoom alone re-enabled `animation: viewer-in` (opacity 0),
+    // which drew the grid over the freshly opened photo.
+    addTile("a", rect(20, 40, 100, 100));
+    const { getByTestId } = render(<Harness id="a" />);
+    await act(async () => finish());
+    const root = getByTestId("root");
+    expect(root.dataset.zoom).toBeUndefined();
+    expect(root.dataset.zoomed).toBe("1");
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    expect(css).toMatch(/\.mobile-viewer\[data-zoomed\],\s*\.desktop-viewer\[data-zoomed\] \{\s*animation: none;/);
   });
 
   it("falls back to the CSS fade when the tile is not rendered", () => {

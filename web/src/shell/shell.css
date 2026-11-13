@@ -1595,7 +1595,7 @@ body {
 .mobile-viewer__title-secondary {
   font-size: var(--font-size-caption);
   opacity: 0.8;
-  white-space: nowrap;
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
@@ -1697,6 +1697,7 @@ body {
   min-width: 0;
   min-height: 0;
   will-change: transform;
+  background: center / contain no-repeat;
 }
 
 .viewer-still > img {
@@ -1842,8 +1843,8 @@ body {
   inset: 0;
   z-index: 10;
   display: flex;
-  background: var(--surface-dark);
-  color: var(--color-white);
+  background: var(--color-viewer-bg);
+  color: var(--color-label);
 }
 
 .desktop-viewer__main {
@@ -1858,7 +1859,7 @@ body {
   align-items: center;
   gap: var(--space-8);
   box-sizing: border-box;
-  height: 44px;
+  height: 52px;
   padding: 0 var(--space-14);
   background: var(--material-viewer-bar);
   -webkit-backdrop-filter: blur(20px);
@@ -1878,10 +1879,39 @@ body {
     visibility 0s linear 200ms;
 }
 
-/* Sequoia's viewer title: date/place centered in the top bar, like the
-   grid's own date-range title. */
+/* #302 Mac Photos top bar: back + zoom on the left, the title block centred
+   on the window (the side groups are equal-width), actions on the right. */
+.desktop-viewer__topbar-left,
+.desktop-viewer__topbar-right {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.desktop-viewer__topbar-right {
+  justify-content: flex-end;
+}
+
+.desktop-viewer__zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: var(--space-8);
+}
+
+.desktop-viewer__zoom-slider {
+  width: 96px;
+  accent-color: var(--accent);
+}
+
+.desktop-viewer__back .icon-flip {
+  transform: scaleX(-1);
+}
+
 .desktop-viewer__title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1901,19 +1931,11 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
-  opacity: 0.8;
+  color: var(--color-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-
-.desktop-viewer__topbar .toolbar-button {
-  color: var(--color-white);
-}
-
-.desktop-viewer__topbar .toolbar-button:hover:not(:disabled) {
-  background: var(--color-on-dark-line);
 }
 
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
@@ -1933,6 +1955,18 @@ body {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* #286: the photos either side of the current one, parked a page away (plus
+   the gap) and moved with it while dragging. */
+.desktop-viewer__neighbour {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  will-change: transform;
 }
 
 /* #257: a pan or fit drag follows the mouse over the bars and filmstrip too;
@@ -1962,14 +1996,6 @@ body {
   cursor: pointer;
 }
 
-.desktop-viewer__filmstrip {
-  --filmstrip-slit-bg: var(--color-slit-bg-on-dark);
-  --filmstrip-playhead: var(--color-white);
-  padding: var(--space-8) 0;
-  box-sizing: content-box;
-  background: var(--color-filmstrip-bg);
-}
-
 .desktop-viewer__info-panel {
   width: 280px;
   flex: 0 0 280px;
@@ -1986,7 +2012,7 @@ body {
 
 .desktop-viewer__info-rows__row dt {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  color: var(--color-label-secondary);
 }
 
 .desktop-viewer__info-rows__row dd {
@@ -2599,7 +2625,7 @@ body {
 }
 
 .desktop-viewer :focus-visible {
-  outline-color: var(--color-white);
+  outline-color: var(--accent);
 }
 
 .mobile-viewer :focus-visible {
@@ -2610,8 +2636,7 @@ body {
    centre (filmstripGeometry.ts); 250 ms ease-out is the snap/expand time from
    the issue, a local constant until the #206 motion tokens land. No transition
    while a finger or mouse is dragging so the strip tracks it one-to-one. */
-.mobile-viewer__filmstrip,
-.desktop-viewer__filmstrip {
+.mobile-viewer__filmstrip {
   position: relative;
   overflow: hidden;
   touch-action: none;
@@ -2620,21 +2645,18 @@ body {
   cursor: grab;
 }
 
-.mobile-viewer__filmstrip[data-dragging="true"],
-.desktop-viewer__filmstrip[data-dragging="true"] {
+.mobile-viewer__filmstrip[data-dragging="true"] {
   cursor: grabbing;
 }
 
-.mobile-viewer__filmstrip__track,
-.desktop-viewer__filmstrip__track {
+.mobile-viewer__filmstrip__track {
   position: absolute;
   top: 0;
   left: 50%;
   height: 100%;
 }
 
-.mobile-viewer__filmstrip__item,
-.desktop-viewer__filmstrip__item {
+.mobile-viewer__filmstrip__item {
   position: absolute;
   top: 0;
   left: 0;
@@ -2650,15 +2672,12 @@ body {
     width 250ms ease-out;
 }
 
-[data-dragging="true"] > * > .mobile-viewer__filmstrip__item,
-[data-dragging="true"] > * > .desktop-viewer__filmstrip__item {
+[data-dragging="true"] > * > .mobile-viewer__filmstrip__item {
   transition: none;
 }
 
 .mobile-viewer__filmstrip__item img,
-.desktop-viewer__filmstrip__item img,
-.mobile-viewer__filmstrip__frames,
-.desktop-viewer__filmstrip__frames {
+.mobile-viewer__filmstrip__frames {
   display: block;
   width: 100%;
   height: 100%;
@@ -2666,14 +2685,12 @@ body {
 }
 
 /* Video cell: the thumbnail repeated side by side as frames. */
-.mobile-viewer__filmstrip__frames,
-.desktop-viewer__filmstrip__frames {
+.mobile-viewer__filmstrip__frames {
   background-repeat: repeat-x;
   background-size: auto 100%;
 }
 
-.mobile-viewer__filmstrip__playhead,
-.desktop-viewer__filmstrip__playhead {
+.mobile-viewer__filmstrip__playhead {
   position: absolute;
   top: -2px;
   bottom: -2px;
@@ -2694,7 +2711,6 @@ body {
 .tab-bar__item:focus-visible,
 .hidden-view__cell:focus-visible,
 .mobile-library__tile:focus-visible,
-.desktop-viewer__filmstrip__item:focus-visible,
 .mobile-viewer__filmstrip__item:focus-visible {
   outline-offset: -2px;
 }
@@ -2790,7 +2806,9 @@ body {
 
 /* #220: the zoom from / to the tile (useZoomTransition) replaces the fade. */
 .mobile-viewer[data-zoom],
-.desktop-viewer[data-zoom] {
+.desktop-viewer[data-zoom],
+.mobile-viewer[data-zoomed],
+.desktop-viewer[data-zoomed] {
   animation: none;
 }
 

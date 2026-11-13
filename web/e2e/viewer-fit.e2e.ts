@@ -76,7 +76,7 @@ async function openCell(page: Page, n: number, mobile: boolean): Promise<boolean
 }
 
 const currentIndex = (page: Page) =>
-  page.locator('[data-testid="viewer-filmstrip"] [aria-current="true"]').getAttribute("data-index");
+  page.locator('[data-testid="desktop-viewer"]').getAttribute("data-index");
 
 async function close(page: Page) {
   await page.keyboard.press("Escape");
@@ -259,5 +259,14 @@ test("desktop: at fit a horizontal drag pages to the next and previous photo", a
   await expect.poll(src).not.toBe(first);
   await drag(200);
   await expect.poll(src).toBe(first);
+  await close(page);
+});
+
+test("F14: desktop viewer has no filmstrip, the iPhone viewer keeps it", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  await openAllPhotos(page);
+  expect(await openCell(page, 3, false)).toBe(true);
+  await expect(page.getByTestId("viewer-filmstrip")).toHaveCount(info.project.name === "desktop" ? 0 : 1);
   await close(page);
 });
