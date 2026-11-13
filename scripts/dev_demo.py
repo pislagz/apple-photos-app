@@ -437,7 +437,10 @@ def _build_web(force: bool) -> None:
         return
     if not (WEB_DIR / "node_modules").exists():
         subprocess.run(["npm", "install"], cwd=WEB_DIR, check=True)
-    subprocess.run(["npm", "run", "build"], cwd=WEB_DIR, check=True)
+    # The demo build also includes the dev-only /admin/controls page that the
+    # #308 screenshot spec visits; a production build leaves it out.
+    env = {**os.environ, "VITE_ADMIN_GALLERY": "1"}
+    subprocess.run(["npm", "run", "build"], cwd=WEB_DIR, check=True, env=env)
 
 
 # A four-row stand-in for the GeoNames download (the demo never goes online):
