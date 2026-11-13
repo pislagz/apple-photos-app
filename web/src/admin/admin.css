@@ -38,6 +38,10 @@ body:has(.admin-app, .admin-auth) {
 }
 
 .admin-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 32px;
   width: 100%;
   padding: 7px var(--space-12);
   border: 0;
@@ -52,6 +56,23 @@ body:has(.admin-app, .admin-auth) {
 .admin-nav button[aria-current="true"] {
   background: var(--accent);
   color: var(--color-white);
+}
+
+.admin-nav__exit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 32px;
+  margin-bottom: var(--space-10);
+  padding: 0 var(--space-12);
+  border-radius: var(--radius-8);
+  color: var(--accent);
+  text-decoration: none;
+}
+.admin-nav__exit:focus-visible,
+.admin-nav button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Content */
@@ -290,9 +311,40 @@ body:has(.admin-app, .admin-auth) {
     gap: var(--space-6);
   }
 
+  .admin-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+
+  .admin-nav__exit {
+    flex: none;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 var(--space-8);
+  }
+
   .admin-nav button {
     width: auto;
+    min-height: 44px;
     white-space: nowrap;
+  }
+
+  /* iOS-style push: a detail page replaces the whole screen; its own back link returns. */
+  .admin-app[data-detail="true"] {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .admin-app[data-detail="true"] .admin-nav {
+    display: none;
+  }
+  .admin-main[data-nav="forward"] {
+    animation: admin-push-in var(--dur-slide) var(--ease-slide);
+  }
+  .admin-main[data-nav="back"] {
+    animation: admin-pop-in var(--dur-slide) var(--ease-slide);
+  }
+  .admin-back {
+    min-height: 44px;
   }
 
   .admin-main {
@@ -393,6 +445,25 @@ body:has(.admin-app, .admin-auth) {
 }
 .admin-privacy-options {
   margin: var(--space-12) 0;
+}
+@keyframes admin-push-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes admin-pop-in {
+  from {
+    transform: translateX(-30%);
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-main[data-nav] {
+    animation: none;
+  }
+}
+.admin-notice-group {
+  margin-bottom: var(--space-12);
 }
 .admin-notice {
   margin: 0 0 var(--space-12);
