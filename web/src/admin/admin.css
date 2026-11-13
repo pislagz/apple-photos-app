@@ -857,6 +857,8 @@ button.admin-switch[aria-checked="true"] {
   flex-wrap: wrap;
   gap: var(--space-8);
   padding: var(--space-12) var(--space-16);
+}
+
 /* Library picker */
 .library-picker-list,
 .library-picker ul {
@@ -909,7 +911,7 @@ button.admin-switch[aria-checked="true"] {
   align-items: center;
   min-height: var(--admin-row-h);
   padding: 0 var(--space-16);
-  cursor: pointer;
+  cursor: default;
   font-size: var(--font-size-subhead);
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;

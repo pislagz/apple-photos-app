@@ -204,7 +204,7 @@ body {
 /* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
    in data-prev, fades out over it. 150 ms is --motion-fast once #206 lands. */
 .date-title__text {
-  animation: date-title-in 150ms ease-out;
+  animation: date-title-in var(--dur-fade-open) ease-out;
 }
 
 [data-prev]::after {
@@ -214,7 +214,7 @@ body {
   top: 0;
   pointer-events: none;
   white-space: nowrap;
-  animation: date-title-out 150ms ease-out forwards;
+  animation: date-title-out var(--dur-fade-open) ease-out forwards;
 }
 
 @keyframes date-title-in {
@@ -725,7 +725,7 @@ body {
   inset: 0;
   background: var(--tile-dim);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-select) ease;
   pointer-events: none;
 }
 
@@ -1673,7 +1673,7 @@ body {
   height: 0;
   z-index: 1;
   pointer-events: none;
-  transition: opacity 150ms ease-out;
+  transition: opacity var(--dur-tint) ease-out;
 }
 
 /* A month header sits where the title would be: the title and its scrim step
@@ -2200,14 +2200,14 @@ body {
    land. visibility drops after the fade so hidden controls cannot be tapped
    or focused. */
 .mobile-viewer {
-  transition: background-color 200ms ease-in-out;
+  transition: background-color var(--dur-chrome) ease-in-out;
 }
 
 .mobile-viewer__topbar,
 .mobile-viewer__bottombar {
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 0s;
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear 0s; /* motion-allow: visibility flips instantly, nothing animates */
 }
 
 .mobile-viewer.is-chrome-hidden {
@@ -2220,8 +2220,8 @@ body {
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 200ms;
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear var(--dur-chrome); /* motion-allow: delay, not a duration */
 }
 
 /* Blurred bar material; the safe-area insets keep the controls off the notch,
@@ -2532,8 +2532,8 @@ body {
   backdrop-filter: blur(20px);
   /* 200 ms is local until the #206 motion tokens land. */
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 0s;
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear 0s; /* motion-allow: visibility flips instantly, nothing animates */
 }
 
 /* Video playback: fades after 2.5 s without pointer movement (#211). */
@@ -2541,8 +2541,8 @@ body {
   opacity: 0;
   visibility: hidden;
   transition:
-    opacity 200ms ease-in-out,
-    visibility 0s linear 200ms;
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear var(--dur-chrome); /* motion-allow: delay, not a duration */
 }
 
 /* #302 Mac Photos top bar: back + zoom on the left, the title block centred
@@ -3719,7 +3719,7 @@ body {
     radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
     var(--color-fill-strong);
   cursor: default;
-  transition: background 0.2s;
+  transition: background var(--dur-chrome);
 }
 .zip-status__option--row input[role="switch"]:checked {
   background:
@@ -3789,8 +3789,8 @@ body {
   background: var(--filmstrip-slit-bg);
   cursor: inherit;
   transition:
-    transform 250ms ease-out,
-    width 250ms ease-out;
+    transform var(--dur-slide) ease-out,
+    width var(--dur-slide) ease-out;
 }
 
 [data-dragging="true"] > * > .mobile-viewer__filmstrip__item {
@@ -4443,6 +4443,8 @@ body {
 .account-menu .info-button:hover,
 .admin-main .info-button[aria-expanded="true"] {
   color: var(--color-label);
+}
+
 /* #256: avatar picture, the phone popover's identity row, the picker. */
 .account-menu__avatar-img {
   width: 100%;
@@ -4604,6 +4606,8 @@ body {
 
 .avatar-picker__actions .avatar-picker__save {
   font-weight: var(--font-weight-semibold);
+}
+
 /* #303: account actions in the More tab (the old iPhone "..." menu). */
 .more-screen__item--static {
   margin: 0;
@@ -4626,6 +4630,8 @@ body {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+}
+
 /* #223: Albums. Covers are square; mosaics use 2px gaps. */
 .album-cover {
   position: relative;
