@@ -70,8 +70,24 @@ body,
   height: 100%;
 }
 
+/* #407: one name for the home-indicator inset so it can be simulated in tests
+   (Playwright has no real safe area). iOS standalone sizes `100%` of html
+   from the layout viewport, which can stop short of the screen bottom;
+   -webkit-fill-available makes the chain match the visible height. */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 html {
   background: var(--color-bg);
+}
+
+@supports (-webkit-touch-callout: none) {
+  html,
+  body,
+  #root {
+    height: -webkit-fill-available;
+  }
 }
 
 body {
@@ -115,7 +131,7 @@ body {
 
 .shell--mobile {
   /* Tab row height; the Library's zoom pill and scroll padding stack on it. */
-  --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  --tab-bar-h: calc(56px + var(--safe-bottom));
 }
 
 .shell--mobile .tab-bar {
@@ -1058,7 +1074,7 @@ body {
   -webkit-backdrop-filter: var(--blur-bar);
   backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
-  padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  padding: var(--space-6) var(--space-4) calc(var(--space-6) + var(--safe-bottom));
 }
 
 .tab-bar__item {
@@ -2820,6 +2836,19 @@ body {
   flex-direction: column;
   background: var(--color-bg);
   color: var(--color-label);
+}
+
+/* #407: iOS home-screen apps get a viewport short by about the status-bar
+   height, which left a black strip under the tab bar and the viewer bar.
+   --standalone-gap (set by standaloneGap.ts, 0 everywhere else) pins the
+   full-screen surfaces to the physical bottom edge. */
+:root {
+  --standalone-gap: 0px;
+}
+
+.shell--mobile,
+.mobile-viewer {
+  bottom: calc(-1 * var(--standalone-gap));
 }
 
 /* #214: while a swipe-down dismiss drag runs, the chrome fades with the

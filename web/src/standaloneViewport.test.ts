@@ -34,8 +34,18 @@ describe("standalone viewport", () => {
   });
 
   it("keeps the home-indicator inset on the tab bar and the notch inset on headers", () => {
-    expect(rule(".tab-bar")).toMatch(/env\(safe-area-inset-bottom/);
+    expect(rule(":root")).toMatch(/--safe-bottom:\s*env\(safe-area-inset-bottom/);
+    expect(rule(".tab-bar")).toMatch(/var\(--safe-bottom\)/);
     expect(rule(".mobile-screen__header")).toMatch(/env\(safe-area-inset-top/);
+  });
+});
+
+// #407: no black strip under the tab bar.
+describe("tab bar reaches the physical bottom (#407)", () => {
+  it("fills the root chain on iOS and keeps the tab bar background translucent material, not transparent", () => {
+    expect(css).toMatch(/-webkit-touch-callout: none\)\s*\{[^}]*height:\s*-webkit-fill-available/);
+    expect(rule(".tab-bar")).toMatch(/background:\s*var\(--material-bar\)/);
+    expect(html).toMatch(/theme-color/);
   });
 });
 
