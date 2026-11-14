@@ -27,6 +27,7 @@ import { phoneTitle, titleScrimProgress } from "./libraryTitle";
 import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
 import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
 import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
+import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
 
@@ -204,6 +205,9 @@ export default function MobileLibrary({
   const [readyFiles, setReadyFiles] = useState<File[] | null>(null);
   const selectBarRef = useRef<HTMLDivElement | null>(null);
   const [selectBarHeight, setSelectBarHeight] = useState(0);
+
+  const itemOrder = useMemo(() => items.map((item) => item.id), [items]);
+  useSwipeSelect(selectMode && !isTileView, scrollRef, itemOrder, selectedIds, setSelectedIds);
 
   const toggleSelected = useCallback((id: string) => {
     setReadyFiles(null);
@@ -574,6 +578,7 @@ export default function MobileLibrary({
                     <FadeImage
                       src={`/api/libraries/${libraryId}/thumb/${hero.id}?size=grid2x`}
                       alt={assetAlt(hero)}
+                      data-asset-id={hero.id}
                       loading="lazy"
                       className="mobile-library__feature-image"
                       onClick={() => openItem(hero)}
