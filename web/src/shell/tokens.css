@@ -26,6 +26,14 @@
   --font-size-caption: 12px;
   --font-size-footnote: 11px;
   --font-size-micro: 10px;
+  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font-sans);
+  /* Apple tracking per size (#236); the large sizes tighten, body stays near 0. */
+  --tracking-title-large: -0.4px;
+  --tracking-title: -0.3px;
+  --tracking-title-2: -0.2px;
+  --tracking-title-3: -0.2px;
+  --tracking-headline: -0.2px;
+  --tracking-body: -0.2px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
