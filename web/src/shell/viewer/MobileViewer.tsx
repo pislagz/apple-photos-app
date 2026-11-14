@@ -569,7 +569,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         />
         {/* Four fixed slots so a missing control never shifts the others. */}
         <div className="mobile-viewer__icon-row">
-          <button type="button" className="mobile-viewer__icon-button mobile-viewer__icon-button--bar" onClick={handleShare} aria-label="Share">
+          <button type="button" className="mobile-library__glass-button mobile-viewer__bar-button" onClick={handleShare} aria-label="Share">
             <Icon name="share" size={20} />
           </button>
           {/* #131: read-only status (the library is view-only), not a button. */}
@@ -583,7 +583,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           {detail?.has_edited ? (
             <button
               type="button"
-              className="mobile-viewer__icon-button mobile-viewer__icon-button--bar"
+              className="mobile-library__glass-button mobile-viewer__bar-button"
               onClick={handleDownloadOriginal}
               aria-label="Download Original"
             >
@@ -594,7 +594,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           )}
           <button
             type="button"
-            className="mobile-viewer__icon-button mobile-viewer__icon-button--bar"
+            className="mobile-library__glass-button mobile-viewer__bar-button"
             aria-pressed={infoOpen}
             onClick={() => setInfoOpen((value) => !value)}
             aria-label="Info"

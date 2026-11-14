@@ -829,7 +829,7 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
     expect(document.querySelector(".mobile-viewer__title-secondary")?.textContent).toBe("14:07");
   });
 
-  it("every icon button is at least 44 x 44, and the bar buttons 44 x 52 (shell.css)", () => {
+  it("every icon button is at least 44 x 44, and the bar buttons 44 x 44 glass (shell.css)", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const block = (selector: string) => {
       const start = css.indexOf(`\n${selector} {`);
@@ -839,8 +839,22 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
     const size = (b: string) => [/width:\s*(\d+)px/.exec(b)?.[1], /height:\s*(\d+)px/.exec(b)?.[1]].map(Number);
     expect(size(block(".mobile-viewer__icon-button"))).toEqual([44, 44]);
     expect(size(block(".mobile-viewer__status"))).toEqual([44, 52]);
-    const grouped = css.slice(css.indexOf(".mobile-viewer__icon-button--bar,"), css.indexOf(".mobile-viewer__status {"));
-    expect(size(grouped)).toEqual([44, 52]);
+    // #394: the bar buttons are round glass buttons, 44 wide (height from the glass class).
+    expect(/width:\s*44px/.test(block(".mobile-viewer__bar-button"))).toBe(true);
+    expect(/height:\s*44px/.test(block(".mobile-library__glass-button"))).toBe(true);
+  });
+
+  it("styles the bottom buttons as the shared glass buttons without duplicating the glass CSS (#394)", async () => {
+    setup({ favorite: true }, { has_edited: true });
+    await screen.findByLabelText("Download Original");
+    for (const label of ["Share", "Download Original", "Info"]) {
+      const b = screen.getByLabelText(label);
+      expect(b.className).toContain("mobile-library__glass-button");
+      expect(b.className).toContain("mobile-viewer__bar-button");
+    }
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const start = css.indexOf("\n.mobile-viewer__bar-button {");
+    expect(css.slice(start, css.indexOf("}", start))).not.toMatch(/background|backdrop-filter/);
   });
 
   it("the bar has fixed slots in the order Share, Favorite, Download Original, Info", async () => {

@@ -2924,11 +2924,18 @@ body {
 /* #131: read-only status (the library is view-only), not a tappable control:
    no pointer cursor, no button chrome. #190: a solid secondary-label tint
    (not an opacity fade) so the heart keeps its contrast on light chrome. */
-.mobile-viewer__icon-button--bar,
 .mobile-viewer__status,
 .mobile-viewer__slot {
   width: 44px;
   height: 52px;
+}
+
+/* #394: the bottom buttons are the shared round glass buttons (#382); the
+   glass look comes from .mobile-library__glass-button, this only sets the
+   size. The 44 px hit area is the button itself. */
+.mobile-viewer__bar-button {
+  width: 44px;
+  padding: 0;
 }
 
 .mobile-viewer__status {
