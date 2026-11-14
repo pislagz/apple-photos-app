@@ -3109,10 +3109,12 @@ body {
   gap: var(--space-8);
   box-sizing: border-box;
   height: 52px;
-  padding: 0 var(--space-14);
+  padding: 0 var(--space-12);
   background: var(--material-viewer-bar);
   -webkit-backdrop-filter: var(--blur-bar);
   backdrop-filter: var(--blur-bar);
+  /* #372: the unified window toolbar ends in a hairline, like Mac Photos. */
+  border-bottom: 0.5px solid var(--color-viewer-bar-line);
   /* 200 ms is local until the #206 motion tokens land. */
   transition:
     opacity var(--dur-chrome) ease-in-out,
@@ -3135,7 +3137,7 @@ body {
   flex: 1 1 0;
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -3146,8 +3148,8 @@ body {
 .desktop-viewer__zoom {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  margin-left: var(--space-8);
+  gap: var(--space-2);
+  margin-left: var(--space-14);
 }
 
 .desktop-viewer__zoom-slider {
@@ -3171,7 +3173,8 @@ body {
 
 .desktop-viewer__title-primary {
   font-size: var(--font-size-subhead);
-  font-weight: var(--font-weight-semibold);
+  line-height: 16px;
+  font-weight: var(--font-weight-bold, 700);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3180,6 +3183,8 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
+  line-height: 13px;
+  font-weight: 400;
   color: var(--color-label-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -3187,8 +3192,27 @@ body {
   max-width: 100%;
 }
 
+/* #372: Mac toolbar buttons are plain glyphs in the secondary label colour
+   that darken on hover, with a soft rounded-rect hover and pressed state. */
+.desktop-viewer__topbar .toolbar-button {
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-6, 6px);
+  color: var(--color-label-secondary);
+}
+
+.desktop-viewer__topbar .toolbar-button:hover:not(:disabled) {
+  color: var(--color-label);
+}
+
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
+  background: transparent;
   color: var(--accent);
+}
+
+/* Info sits apart from the other actions, as in Photos. */
+.desktop-viewer__topbar-right .toolbar-button:last-child {
+  margin-left: var(--space-8);
 }
 
 .desktop-viewer__stage {

@@ -213,7 +213,8 @@
   /* #302: the desktop viewer follows the appearance like macOS Photos: a
      white canvas in light mode, the near-black #1e1e1e one in dark mode. */
   --color-viewer-bg: #fff;
-  --material-viewer-bar: rgba(246, 246, 246, 0.86);
+  --material-viewer-bar: rgba(236, 236, 236, 0.88);
+  --color-viewer-bar-line: rgba(0, 0, 0, 0.12);
   --material-sidebar: rgba(246, 246, 246, 0.82);
   --material-toolbar: rgba(246, 246, 246, 0.92);
   --material-popover: rgba(255, 255, 255, 0.95);
@@ -320,7 +321,8 @@
     --color-focus-viewer: #fff;
 
     --color-viewer-bg: #1e1e1e;
-    --material-viewer-bar: rgba(40, 40, 40, 0.86);
+    --material-viewer-bar: rgba(50, 50, 50, 0.88);
+    --color-viewer-bar-line: rgba(0, 0, 0, 0.5);
     --material-bar: rgba(22, 22, 24, 0.86);
     --material-bar-strong: rgba(22, 22, 24, 0.92);
     --material-sidebar: rgba(30, 30, 30, 0.82);
