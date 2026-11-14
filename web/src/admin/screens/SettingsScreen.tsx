@@ -164,8 +164,19 @@ export default function SettingsScreen() {
           <input {...numberProps("session_lifetime_pwa_seconds")} />
         </label>
         <label>
-          "Remember me" session lifetime (seconds)
+          "Keep me signed in" session lifetime (seconds)
           <input {...numberProps("session_lifetime_remember_me_seconds")} />
+        </label>
+        <label>
+          "Keep me signed in" on the sign-in screen
+          <select
+            value={settings.keep_signed_in_mode}
+            onChange={(event) => updateField("keep_signed_in_mode", event.target.value as SettingsResponse["keep_signed_in_mode"])}
+          >
+            <option value="default_on">Offered, ticked by default</option>
+            <option value="default_off">Offered, unticked by default</option>
+            <option value="disabled">Not offered (sign-in ends when the browser closes)</option>
+          </select>
         </label>
         <label>
           Thumbnail size, grid
