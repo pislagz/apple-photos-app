@@ -137,6 +137,13 @@ describe("focus ring and motion CSS", () => {
     ]);
   });
 
+  it("keeps a forced-colors-visible outline on fields whose ring is a box-shadow", () => {
+    // Apple-style field rings use box-shadow, which forced-colors mode removes; a transparent outline stays visible there.
+    const adminCss = readFileSync(join(__dirname, "../admin/admin.css"), "utf-8");
+    expect(css).toMatch(/\.login-card input:focus-visible\s*{\s*outline:\s*2px solid transparent/);
+    expect(adminCss).toMatch(/\.admin-input:focus-visible\s*{[^}]*outline:\s*2px solid transparent/);
+  });
+
   it("switches motion off under prefers-reduced-motion", () => {
     const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(block).toMatch(/animation-duration:\s*0\.001ms !important/);
