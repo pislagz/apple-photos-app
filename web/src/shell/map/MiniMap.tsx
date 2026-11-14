@@ -11,7 +11,7 @@ export default function MiniMap({ latitude, longitude }: { latitude: number; lon
 
   useEffect(() => {
     const element = container.current;
-    if (!element || !config) return;
+    if (!element || !config || config.mode === "off") return;
     let disposed = false;
     let dispose = () => {};
     createMap(element, config, {
@@ -38,6 +38,15 @@ export default function MiniMap({ latitude, longitude }: { latitude: number; lon
       dispose();
     };
   }, [config, latitude, longitude]);
+
+  // Off draws no tiles, so a pin on a blank grey box says nothing: say why.
+  if (config?.mode === "off") {
+    return (
+      <p className="map-mini__off-note" role="note" data-testid="mini-map-off-note">
+        The map is off. An admin can turn it on in Settings by agreeing to “Map &amp; place names”.
+      </p>
+    );
+  }
 
   return (
     <div className="map-mini" data-testid="mini-map">
