@@ -892,19 +892,22 @@ button.admin-switch[aria-checked="true"] {
   align-items: center;
   justify-content: center;
   padding: var(--space-16);
-  background: var(--color-dim);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--sheet-blur, var(--blur-material));
+  backdrop-filter: var(--sheet-blur, var(--blur-material));
+  animation: admin-backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 
 .admin-sheet {
   box-sizing: border-box;
   width: 100%;
   max-width: 400px;
-  padding: var(--space-20);
-  border-radius: var(--radius-large);
+  padding: var(--space-10) var(--space-20) var(--space-20);
+  border-radius: var(--radius-popup);
   background: var(--color-card-raised);
   color: var(--color-label);
-  box-shadow: var(--shadow-modal);
-  animation: admin-sheet-in var(--dur-fade-open) var(--ease-fade-open);
+  box-shadow: var(--shadow-popup);
+  animation: admin-sheet-in var(--dur-dialog) var(--ease-slide);
 }
 
 .admin-sheet .admin-sheet__title {
@@ -927,8 +930,19 @@ button.admin-switch[aria-checked="true"] {
 }
 
 @media (max-width: 700px) {
+  /* iOS action sheet: dim backdrop, a card sliding up from the bottom edge. */
   .admin-sheet-backdrop {
     align-items: flex-end;
+    padding: 0;
+    background: var(--backdrop-dim);
+    --sheet-blur: none;
+  }
+
+  .admin-sheet {
+    max-width: none;
+    padding-bottom: calc(var(--space-20) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--radius-large);
+    animation-name: admin-sheet-up;
   }
 
   .admin-sheet__actions {
@@ -937,6 +951,20 @@ button.admin-switch[aria-checked="true"] {
 }
 
 @keyframes admin-sheet-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-dialog));
+  }
+}
+
+@keyframes admin-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes admin-backdrop-in {
   from {
     opacity: 0;
   }
