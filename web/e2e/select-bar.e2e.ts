@@ -105,3 +105,44 @@ test("select bar Share passes all selected photos to one share()", async ({ page
   await page.getByRole("button", { name: "Share" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __shared: number[] }).__shared)).toEqual([3]);
 });
+
+// #371: glass buttons like the grid's Select/filter, no overlap at 320 and 390.
+for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`select bar glass layout ${size.width}px ${scheme}`, async ({ page }, info) => {
+      test.skip(info.project.name === "desktop", "phone layout only");
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize(size);
+      await signIn(page);
+      await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+      await page.getByRole("button", { name: "Select", exact: true }).click();
+      const cells = page.locator("img.mobile-library__cell");
+      await cells.nth(0).click();
+      await cells.nth(1).click();
+      const bar = page.getByTestId("select-bar");
+      await expect(bar).toContainText(/Selected/);
+      await page.screenshot({ path: `e2e/screenshots/371/select-${size.width}-${scheme}.png` });
+      const share = page.getByRole("button", { name: "Share" });
+      const download = page.getByRole("button", { name: "Download" });
+      await expect(share).toHaveClass(/mobile-library__glass-button/);
+      const bg = await share.evaluate((el) => getComputedStyle(el).backgroundColor);
+      const selectBg = await page.evaluate(() => {
+        const probe = document.createElement("button");
+        probe.className = "mobile-library__glass-button";
+        document.body.appendChild(probe);
+        const v = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return v;
+      });
+      expect(bg).toBe(selectBg);
+      const s = (await share.boundingBox())!;
+      const d = (await download.boundingBox())!;
+      const c = (await bar.locator(".mobile-library__select-count").boundingBox())!;
+      expect(s.x).toBeLessThan(c.x);
+      expect(s.x + s.width).toBeLessThanOrEqual(c.x + 1);
+      expect(d.x).toBeGreaterThanOrEqual(c.x + c.width - 1);
+      expect(d.x + d.width).toBeLessThanOrEqual(size.width);
+      expect(s.x).toBeGreaterThanOrEqual(0);
+    });
+  }
+}

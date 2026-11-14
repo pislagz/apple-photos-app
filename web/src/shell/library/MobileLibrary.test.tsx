@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
 import { getThumb, mockFetch, queryThumb } from "../../testHelpers";
@@ -764,6 +764,23 @@ describe("MobileLibrary", () => {
     click.mockRestore();
   });
 
+  it("styles the select bar buttons as the shared glass buttons (#371)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const bar = screen.getByTestId("select-bar");
+    const share = within(bar).getByRole("button", { name: "Share" });
+    const download = within(bar).getByRole("button", { name: "Download" });
+    expect(share.className).toContain("mobile-library__glass-button");
+    expect(download.className).toContain("mobile-library__glass-button");
+    // Order in the DOM is Share, count, actions.
+    const row = bar.querySelector(".mobile-library__select-row")!;
+    expect(row.children[0]).toBe(share);
+    expect(row.children[1].className).toContain("select-count");
+    expect(row.children[2]).toBe(download);
+  });
+
   it("gives every select bar control a 44pt target (#259)", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const rule = (selector: string) => {
@@ -771,8 +788,8 @@ describe("MobileLibrary", () => {
       return match?.[1] ?? "";
     };
     expect(rule(".mobile-library__select-row")).toMatch(/min-height: 49px/);
-    expect(rule(".mobile-library__bar-button")).toMatch(/min-width: 44px/);
-    expect(rule(".mobile-library__bar-button")).toMatch(/min-height: 44px/);
+    expect(rule(".mobile-library__bar-button")).toMatch(/width: 44px/);
+    expect(rule(".mobile-library__glass-button")).toMatch(/height: 44px/);
     expect(rule(".zip-status__option--row")).toMatch(/min-height: 44px/);
   });
 
