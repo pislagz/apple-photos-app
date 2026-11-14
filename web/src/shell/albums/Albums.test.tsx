@@ -182,7 +182,7 @@ describe("desktop Albums sidebar group", () => {
     await waitFor(() => expect(within(group).getByRole("button", { name: "Videos" })).toBeInTheDocument());
     expect(within(group).getByRole("button", { name: "Panoramas" })).toBeInTheDocument();
     for (const empty of ["Selfies", "Live Photos", "Portrait", "Screenshots", "RAW"]) {
-      expect(within(group).queryByRole("button", { name: empty })).not.toBeInTheDocument();
+      expect(within(group).getByRole("button", { name: empty })).toBeDisabled();
     }
     expect(requested.filter((url) => url === "/api/libraries/1/albums")).toHaveLength(1);
 
@@ -190,14 +190,15 @@ describe("desktop Albums sidebar group", () => {
     await waitFor(() => expect(requested.some((url) => url.includes("album=smart%3Avideos"))).toBe(true));
   });
 
-  it("hides the Media Types group when no type has items, and while albums load or fail", async () => {
+  it("keeps the Media Types group, all disabled, when no type has items", async () => {
     mockFetch(handler([], () => ALBUMS)); // only Favorites
     renderDesktop();
     expect(await screen.findByText("Trips")).toBeInTheDocument();
-    expect(screen.queryByText("Media types")).not.toBeInTheDocument();
+    const group = screen.getByText("Media types").closest("details") as HTMLElement;
+    for (const button of within(group).getAllByRole("button")) expect(button).toBeDisabled();
   });
 
-  it("holds the Media Types group's height while albums load, then drops the placeholders", async () => {
+  it("lists every media type from the first paint, enabling the ones with items", async () => {
     mockFetch(
       handler([], () => ({
         ...ALBUMS,
@@ -205,13 +206,14 @@ describe("desktop Albums sidebar group", () => {
       })),
     );
     renderDesktop();
-    // Before /albums answers: seven invisible rows, nothing to click or read.
-    const placeholder = screen.getByTestId("media-types-placeholder");
-    expect(placeholder).toHaveAttribute("aria-hidden", "true");
-    expect(placeholder.querySelectorAll("li")).toHaveLength(7);
-    expect(within(placeholder).queryByRole("button")).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Videos" })).toBeInTheDocument();
-    expect(screen.queryByTestId("media-types-placeholder")).not.toBeInTheDocument();
+    // Before /albums answers the rows are already there (so nothing below
+    // them moves later), but nothing can be opened yet.
+    const group = screen.getByText("Media types").closest("details") as HTMLElement;
+    expect(within(group).getAllByRole("button")).toHaveLength(7);
+    expect(within(group).getByRole("button", { name: "Videos" })).toBeDisabled();
+    await waitFor(() => expect(within(group).getByRole("button", { name: "Videos" })).toBeEnabled());
+    expect(within(group).getByRole("button", { name: "Selfies" })).toBeDisabled();
+    expect(within(group).getAllByRole("button")).toHaveLength(7);
   });
 
   it("says albums could not be loaded and retries", async () => {

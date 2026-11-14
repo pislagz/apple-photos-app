@@ -80,10 +80,9 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
-// Media types are not listed when empty, and on failure none is (the Albums
-// group shows the failure with Retry). While /albums loads the group holds its
-// full height with invisible placeholder rows, so the groups below do not jump
-// once when the list arrives.
+// Every media type is always listed, so the groups below never move when
+// /albums arrives. A type with no items (and every type while albums load or
+// failed; the Albums group shows the failure with Retry) is disabled.
 function MediaTypesGroup({
   state,
   currentId,
@@ -93,38 +92,27 @@ function MediaTypesGroup({
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
-  if (!state.albums && !state.error) {
-    return (
-      <SidebarSection title="Media types">
-        <ul aria-hidden="true" data-testid="media-types-placeholder">
-          {MEDIA_TYPES.map((type) => (
-            <li key={type.label}>
-              <span className="sidebar__item sidebar__item--placeholder">{type.label}</span>
-            </li>
-          ))}
-        </ul>
-      </SidebarSection>
-    );
-  }
   const present = new Set(state.albums?.smart.map((album) => album.id));
-  const types = MEDIA_TYPES.filter((type) => present.has(`smart:${type.smart}`));
-  if (types.length === 0) return null;
   return (
     <SidebarSection title="Media types">
       <ul>
-        {types.map((type) => (
-          <li key={type.label}>
-            <button
-              type="button"
-              aria-current={currentId === `smart:${type.smart}` ? "page" : undefined}
-              className="sidebar__item"
-              onClick={() => onOpen(`smart:${type.smart}`, type.label)}
-            >
-              <Icon name={type.icon} className="sidebar__icon" filled={currentId === `smart:${type.smart}`} />
-              {type.label}
-            </button>
-          </li>
-        ))}
+        {MEDIA_TYPES.map((type) => {
+          const id = `smart:${type.smart}`;
+          return (
+            <li key={type.label}>
+              <button
+                type="button"
+                disabled={!present.has(id)}
+                aria-current={currentId === id ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => onOpen(id, type.label)}
+              >
+                <Icon name={type.icon} className="sidebar__icon" filled={currentId === id} />
+                {type.label}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </SidebarSection>
   );
