@@ -2292,7 +2292,9 @@ body {
 .desktop-library__filter-pill {
   position: absolute;
   top: var(--space-8);
-  right: var(--space-20);
+  /* #405: the toolbar's own side padding, so the pill and the search box
+     share one right edge. */
+  right: var(--space-16);
   z-index: 6;
 }
 
