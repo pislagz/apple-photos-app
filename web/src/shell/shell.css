@@ -76,8 +76,8 @@ body {
   z-index: 4;
   border-top: none;
   background: transparent;
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   transition: transform var(--dur-chrome) var(--ease-slide);
 }
 
@@ -91,8 +91,8 @@ body {
   z-index: -1;
   pointer-events: none;
   background: linear-gradient(to top, var(--material-bar-strong) 45%, var(--scrim-clear));
-  backdrop-filter: var(--blur-material);
   -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
   mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
   -webkit-mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
 }
@@ -220,8 +220,8 @@ body {
    reaches full strength with the blur. Scroll-linked, so no transition. */
 .mobile-library__top-bar[data-scrim="true"]::before,
 .desktop-library__title-scrim::before {
-  backdrop-filter: var(--blur-thin);
   -webkit-backdrop-filter: var(--blur-thin);
+  backdrop-filter: var(--blur-thin);
   mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
   opacity: var(--title-scrim, 1);
@@ -237,8 +237,8 @@ body {
 @media (prefers-reduced-transparency: reduce) {
   .mobile-library__top-bar[data-scrim="true"]::before,
   .desktop-library__title-scrim::before {
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 
   .mobile-library__top-bar[data-scrim="true"]::after,
@@ -320,8 +320,8 @@ body {
   padding: 6px 16px;
   border-radius: var(--radius-pill);
   background: var(--material-pill);
-  backdrop-filter: var(--blur-material);
   -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
   color: var(--color-label-pill);
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
@@ -348,8 +348,8 @@ body {
   border: none;
   border-radius: var(--radius-pill);
   background: var(--glass-button);
-  backdrop-filter: var(--blur-bar);
   -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   color: var(--color-on-glass);
   cursor: default;
   transition: opacity var(--dur-press) var(--ease-press);
@@ -373,8 +373,8 @@ body {
   box-sizing: border-box;
   border-radius: var(--radius-16);
   background: var(--material-pill);
-  backdrop-filter: var(--blur-material);
   -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
   box-shadow: var(--shadow-pill);
 }
 
@@ -965,8 +965,8 @@ body {
   flex-direction: column;
   padding: var(--space-4) var(--space-8) calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
   background: var(--material-bar-strong);
-  backdrop-filter: var(--blur-bar);
   -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
 }
 
@@ -1035,8 +1035,8 @@ body {
 .tab-bar {
   display: flex;
   background: var(--material-bar);
-  backdrop-filter: var(--blur-bar);
   -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
   padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 }
@@ -1286,15 +1286,19 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: var(--color-dim-light);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 
 .hidden-unlock--desktop .hidden-unlock__card {
   width: 300px;
   padding: var(--space-24);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-popup);
   background: var(--color-card-raised);
-  box-shadow: var(--shadow-sheet);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
 }
 
 .hidden-unlock--desktop .hidden-unlock__input {
@@ -1540,8 +1544,8 @@ body {
     padding var(--dur-zoom) var(--ease-zoom),
     opacity var(--dur-chrome) var(--ease-chrome);
   background: var(--material-sidebar);
-  backdrop-filter: var(--blur-thick);
   -webkit-backdrop-filter: var(--blur-thick);
+  backdrop-filter: var(--blur-thick);
   border-right: 1px solid var(--color-hairline);
   padding: 44px var(--space-8) var(--space-12);
   display: flex;
@@ -2155,13 +2159,13 @@ body {
   z-index: 8;
   display: flex;
   flex-direction: column;
-  min-width: 160px;
-  padding: var(--space-6);
-  border-radius: var(--radius-10);
+  min-width: 180px;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: var(--blur-bar);
-  -webkit-backdrop-filter: var(--blur-bar);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
@@ -2169,15 +2173,27 @@ body {
   border: none;
   background: transparent;
   text-align: left;
-  padding: var(--space-6) var(--space-10);
-  border-radius: var(--radius-small);
-  font-size: var(--font-size-subhead);
+  min-height: 28px;
+  padding: var(--space-5) var(--space-10);
+  border-radius: var(--radius-10);
+  font-size: var(--font-size-body-sm);
+  line-height: 20px;
   color: var(--color-label);
   cursor: default;
 }
 
 .desktop-library__context-menu button:hover {
   background: var(--color-hover);
+}
+
+.desktop-library__context-menu button:active {
+  background: var(--color-pressed);
+}
+
+/* Keyboard focus is an inset accent ring, as in the measured menu. */
+.desktop-library__context-menu button:focus-visible {
+  outline-color: transparent; /* the inset ring is the indicator; keeps a ring in forced-colours */
+  box-shadow: var(--ring-menu-item);
 }
 
 /* Filter menu (FilterMenu.tsx): Filter By on desktop, Filter on iPhone. */
@@ -2208,12 +2224,12 @@ body {
   min-width: 200px;
   max-height: 80vh;
   overflow-y: auto;
-  padding: var(--space-6);
-  border-radius: var(--radius-10);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: var(--blur-bar);
-  -webkit-backdrop-filter: var(--blur-bar);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
@@ -2245,8 +2261,8 @@ body {
   padding: var(--space-8) 0;
   border-radius: var(--radius-26);
   background: var(--glass-menu);
-  backdrop-filter: var(--blur-glass);
   -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
   transform-origin: top right;
 }
 
@@ -2453,8 +2469,8 @@ body {
   border: none;
   border-radius: 50%;
   background: var(--glass-button);
-  backdrop-filter: var(--blur-bar);
   -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   color: var(--color-on-glass);
   box-shadow: var(--shadow-segment);
   cursor: default;
@@ -2476,11 +2492,12 @@ body {
   padding: var(--space-12) var(--space-14);
   border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: var(--blur-bar);
-  -webkit-backdrop-filter: var(--blur-bar);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   color: var(--color-label);
   font-size: var(--font-size-subhead);
+  animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
 .account-menu__popover .account-menu__username {
@@ -2554,18 +2571,19 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 180px;
-  padding: 5px;
-  border-radius: var(--radius-small);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: var(--blur-bar);
-  -webkit-backdrop-filter: var(--blur-bar);
-  box-shadow: var(--shadow-menu), 0 0 0 0.5px var(--color-hairline);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   color: var(--color-label);
   font-size: var(--font-size-subhead);
   box-sizing: border-box;
 }
 
 .mac-menu--root {
+  animation: menu-in var(--dur-menu) var(--ease-menu);
   position: fixed;
   z-index: 50;
   min-width: 200px;
@@ -3171,7 +3189,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-dim);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 
 .change-password__card {
@@ -3181,9 +3202,11 @@ body {
   width: min(360px, calc(100vw - 48px));
   box-sizing: border-box;
   padding: var(--space-20);
-  border-radius: var(--radius-14);
+  border-radius: var(--radius-popup);
   background: var(--color-card-raised);
   color: var(--color-label-tertiary);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
 }
 
 .change-password h2 {
@@ -4469,6 +4492,19 @@ body {
   }
 }
 
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-dialog));
+  }
+}
+
 @keyframes sheet-in {
   from {
     opacity: 0;
@@ -4627,16 +4663,20 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--space-16);
-  background: var(--color-dim-strong);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 .heic-fallback__card {
   max-width: 420px;
   width: 100%;
   padding: var(--space-16);
-  border-radius: var(--radius-card);
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: var(--shadow-modal);
+  border-radius: var(--radius-popup);
+  background: var(--color-card-raised);
+  color: var(--color-label);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
   overflow-wrap: anywhere;
 }
 .heic-fallback__card p {

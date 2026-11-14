@@ -55,6 +55,7 @@
   --radius-8: 8px;
   --radius-10: 10px;
   --radius-card: 12px;
+  --radius-popup: 11px; /* #234 modal and popover */
   --radius-13: 13px;
   --radius-14: 14px;
   --radius-16: 16px;
@@ -84,6 +85,8 @@
   --dur-fade-open: 150ms; /* viewer open and close */
   --ease-fade-open: ease-out;
   --dur-menu: 120ms; /* context and filter menus */
+  --dur-dialog: 250ms; /* modal and alert in, sheet slide */
+  --dur-chosen: 100ms; /* menu item chosen flash */
   --ease-menu: ease-out;
   --dur-tint: 150ms; /* tab-bar icon tint, hover badges */
   --ease-tint: ease-out;
@@ -92,6 +95,7 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* tab icon settle */
   --shift-menu: 4px; /* menu enters this far above its resting place */
   --shift-panel: 24px; /* info panel enters from this far right */
+  --scale-dialog: 1.08; /* alerts and modals settle from slightly larger */
   --scale-viewer: 0.97; /* viewer opens from and closes to this scale */
 
   /* Grid gaps between thumbnails. */
@@ -229,11 +233,17 @@
   --glass-button: rgba(255, 255, 255, 0.55);
   --color-on-glass: #000;
   --color-dim-light: rgba(0, 0, 0, 0.25);
+  /* #234 backdrops: the material one sits behind desktop modals, the plain dim
+     behind iPhone sheets and alerts. */
+  --backdrop-material: rgba(245, 245, 247, 0.85);
+  --backdrop-dim: rgba(10, 10, 20, 0.43);
+  --ring-menu-item: inset 0 0 0 3px var(--accent);
   --color-dim: rgba(0, 0, 0, 0.35);
   --color-dim-strong: rgba(0, 0, 0, 0.4);
 
   /* Shadows. */
   --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-popup: 0 11px 34px rgba(0, 0, 0, 0.16); /* #234 measured */
   --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.3);
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.15);
@@ -312,6 +322,8 @@
     --material-banner: rgba(44, 44, 46, 0.94);
     --color-on-overlay: #f5f5f7;
 
+    --backdrop-material: rgba(10, 10, 10, 0.8);
+    --backdrop-dim: rgba(10, 10, 20, 0.6);
     --glass-button: rgba(60, 60, 67, 0.45);
     --color-on-glass: #fff;
 
@@ -320,6 +332,7 @@
     --color-dim-strong: rgba(0, 0, 0, 0.6);
 
     --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-popup: 0 11px 34px rgba(0, 0, 0, 0.65);
     --shadow-sheet: 0 12px 40px rgba(0, 0, 0, 0.55);
     --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
     --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -342,10 +355,13 @@
     --dur-zoom: 0.01ms;
     --dur-fade-open: 0.01ms;
     --dur-menu: 0.01ms;
+    --dur-dialog: 0.01ms;
+    --dur-chosen: 0.01ms;
     --dur-tint: 0.01ms;
     --dur-press: 0.01ms;
     --shift-menu: 0px;
     --shift-panel: 0px;
+    --scale-dialog: 1;
     --scale-viewer: 1;
   }
 }
