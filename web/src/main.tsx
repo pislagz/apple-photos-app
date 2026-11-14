@@ -4,6 +4,7 @@ import AdminApp from "./admin/AdminApp";
 import ControlsGallery from "./admin/ui/ControlsGallery";
 import AppShell from "./shell/AppShell";
 import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler";
+import { installBlockPageZoom } from "./shell/blockPageZoom";
 import { installSelectAllGuard } from "./shell/shortcuts";
 import "./shell/tokens.css";
 import "./shell/shell.css";
@@ -29,6 +30,7 @@ createRoot(root).render(
 );
 
 installSelectAllGuard();
+installBlockPageZoom();
 
 // #215: no new thumbnail loads while the grid is flying past.
 watchScrollSpeed(thumbScheduler);
