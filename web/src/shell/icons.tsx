@@ -248,12 +248,13 @@ export const ICONS = {
       [rr(11, 11, 5.5, 5.5, 1.6), "fs"],
     ],
   },
-  // Own drawing in the spirit of icloud.and.arrow.down: an outline cloud open
-  // at the bottom, with a down arrow running through the gap.
+  // Own drawing in the spirit of icloud.and.arrow.down: a closed outline cloud
+  // with a flat base, the arrow inside it and its tip passing through a gap in
+  // the base. Same 1.5 stroke as the rest of the set.
   download: {
     parts: [
-      ["M6.6 15.4H6a3.5 3.5 0 0 1-.7-6.93 4.7 4.7 0 0 1 8.9-.9A3.9 3.9 0 0 1 14 15.4h-.6", "s"],
-      ["M10 9v8.2 M7.3 14.6 10 17.3l2.7-2.7", "s"],
+      ["M7.7 16H5.6a3.1 3.1 0 0 1-.55-6.15 4.9 4.9 0 0 1 9.4-.7A3.5 3.5 0 0 1 14.4 16h-2.1", "s"],
+      ["M10 8.6v7.4M7.5 13.6l2.5 2.5 2.5-2.5", "s"],
     ],
   },
   // Photos' "Filter By": a circle with three lines of decreasing length.

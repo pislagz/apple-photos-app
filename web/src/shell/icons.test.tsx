@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { render } from "@testing-library/react";
 import IconGallery from "./IconGallery";
 import { ICONS, ICON_NAMES, Icon, hasFilledVariant } from "./icons";
@@ -32,7 +33,24 @@ describe("icon set", () => {
       expect(path.getAttribute("stroke")).toBe("currentColor");
       expect(path.getAttribute("fill")).toBe("none");
     }
-    expect(paths[0].getAttribute("d")).toMatch(/a3\.5 3\.5/); // cloud arcs
+    expect(paths[0].getAttribute("d")).toMatch(/a3\.1 3\.1/); // cloud arcs
+  });
+
+  it("is the only drawing of the download icon: every download button uses it (#363)", () => {
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : [`${dir}/${e.name}`],
+      );
+    const needle = 'name="download"';
+    const out = walk("src")
+      .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx") && readFileSync(f, "utf8").includes(needle))
+      .join("\n");
+    expect(out.split("\n").filter(Boolean).sort()).toEqual([
+      "src/shell/library/DesktopLibrary.tsx",
+      "src/shell/library/MobileLibrary.tsx",
+      "src/shell/viewer/DesktopViewer.tsx",
+      "src/shell/viewer/MobileViewer.tsx",
+    ]);
   });
 
   it("covers every icon name the app uses", () => {
