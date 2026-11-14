@@ -51,3 +51,11 @@ describe("selection summary rows (D21)", () => {
     expect(buildSelectionRows({ ...base, count: 2, photos: 0, videos: 2 })[0].value).toBe("2 videos");
   });
 });
+
+describe("people row with unnamed faces", () => {
+  it("skips null/empty names and drops the row when none are named", () => {
+    const base = { ...none, albums: [], date_created: null };
+    expect(buildInfoRows({ ...base, people: [null, "", "Bob"] } as never)).toEqual([{ label: "People", value: "Bob" }]);
+    expect(buildInfoRows({ ...base, people: [null, ""] } as never)).toEqual([]);
+  });
+});

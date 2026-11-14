@@ -661,6 +661,46 @@ def test_asset_detail_includes_people_and_albums(tmp_path):
         conn.close()
 
 
+def _detail_people(tmp_path, people):
+    """people: [(name, display_name), ...] tagged on asset "a"; returns the response."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        asset_row_id = _insert_asset(conn, library_id, "a")
+        for index, (name, display_name) in enumerate(people):
+            cursor = conn.execute(
+                "INSERT INTO people (library_id, uuid, name, display_name) VALUES (?, ?, ?, ?)",
+                (library_id, f"p{index}", name, display_name),
+            )
+            conn.execute(
+                "INSERT INTO asset_people (asset_id, person_id) VALUES (?, ?)",
+                (asset_row_id, cursor.lastrowid),
+            )
+        conn.commit()
+        _login(client, "alice")
+        return client.get(f"/api/libraries/{library_id}/assets/a")
+    finally:
+        conn.close()
+
+
+def test_asset_detail_with_only_an_unnamed_face_does_not_500(tmp_path):
+    response = _detail_people(tmp_path, [(None, None)])
+
+    assert response.status_code == 200
+    assert response.json()["people"] == []
+
+
+def test_asset_detail_skips_unnamed_faces_among_named_ones(tmp_path):
+    response = _detail_people(
+        tmp_path, [(None, None), ("Bob", None), ("", ""), (None, "Carol")]
+    )
+
+    assert response.status_code == 200
+    assert response.json()["people"] == ["Bob", "Carol"]
+
+
 def test_asset_detail_includes_camera_make_and_model(tmp_path):
     conn, client = _client(tmp_path)
     try:

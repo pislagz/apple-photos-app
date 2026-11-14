@@ -93,7 +93,9 @@ export function buildInfoRows(detail: AssetDetailResponse, options: { includeFil
   if (date) rows.push({ label: "Date", value: date });
   const camera = formatCameraLine(detail);
   if (camera) rows.push({ label: "Camera", value: camera });
-  if (detail.people.length > 0) rows.push({ label: "People", value: detail.people.join(", ") });
+  // Unnamed faces must not render as "null"/"undefined" or an empty entry.
+  const people = (detail.people ?? []).filter((name): name is string => typeof name === "string" && name.trim() !== "");
+  if (people.length > 0) rows.push({ label: "People", value: people.join(", ") });
   if (detail.albums.length > 0) rows.push({ label: "Albums", value: detail.albums.join(", ") });
   const location = formatLocationLine(detail);
   if (location) {
