@@ -4,6 +4,7 @@ import AdminApp from "./admin/AdminApp";
 import ControlsGallery from "./admin/ui/ControlsGallery";
 import AppShell from "./shell/AppShell";
 import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler";
+import { installSelectAllGuard } from "./shell/shortcuts";
 import "./shell/tokens.css";
 import "./shell/shell.css";
 
@@ -26,6 +27,8 @@ const isAdmin = window.location.pathname.startsWith("/admin");
 createRoot(root).render(
   <StrictMode>{showGallery ? <ControlsGallery /> : isAdmin ? <AdminApp /> : <AppShell />}</StrictMode>,
 );
+
+installSelectAllGuard();
 
 // #215: no new thumbnail loads while the grid is flying past.
 watchScrollSpeed(thumbScheduler);

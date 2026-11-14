@@ -44,3 +44,23 @@ export function shortcutAction(event: KeyLike): ShortcutAction {
       return null;
   }
 }
+
+// #366: the page is an app, not a document. Cmd/Ctrl+A never starts the
+// browser's own text selection except in fields and in text marked
+// data-selectable-text (the Info panel); views that own a selection model
+// handle the same key themselves.
+export function blocksBrowserSelectAll(event: KeyLike & { target: EventTarget | null }): boolean {
+  if (shortcutAction(event) !== "selectAll") return false;
+  if (isTypingTarget(event.target)) return false;
+  const el = event.target as HTMLElement | null;
+  return !el?.closest?.("[data-selectable-text]");
+}
+
+export function installSelectAllGuard(target: Window = window): () => void {
+  function onKeyDown(event: KeyboardEvent) {
+    if (blocksBrowserSelectAll(event)) event.preventDefault();
+  }
+  // Capture, so it runs before any view handler and nothing can miss it.
+  target.addEventListener("keydown", onKeyDown, true);
+  return () => target.removeEventListener("keydown", onKeyDown, true);
+}

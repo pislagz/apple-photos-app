@@ -90,6 +90,9 @@ body {
   flex-direction: column;
   height: 100dvh;
   min-height: 0;
+  /* #364: the tab bar slides 100% below the shell while selecting; without
+     this that transform grew the document and added a page scrollbar. */
+  overflow: hidden;
   background: var(--color-bg);
 }
 
@@ -1535,11 +1538,11 @@ body {
   cursor: default;
 }
 
-/* "Keep me signed in": box and label on one line, box vertically centred. */
+/* "Keep me signed in": box and label on one line, box vertically centred, row centred under the fields (#373). */
 .login-card label.login-card__keep {
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: var(--space-8);
   color: var(--color-label);
 }
@@ -5598,4 +5601,23 @@ body {
     animation: none;
     transition: none;
   }
+}
+
+/* #366: no browser text/element selection anywhere in the app, like a native
+   app. Fields and the Info panel's metadata keep it so text can be copied. */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable-text],
+[data-selectable-text] * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }

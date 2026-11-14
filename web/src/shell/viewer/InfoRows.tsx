@@ -3,7 +3,7 @@ import { PlaceNamesHint } from "./PlaceNamesHint";
 
 export function InfoRows({ rows, className }: { rows: InfoRow[]; className: string }) {
   return (
-    <dl className={className}>
+    <dl className={className} data-selectable-text>
       {rows.map((row) => (
         <div key={row.label} className={`${className}__row`}>
           <dt>{row.label}</dt>
