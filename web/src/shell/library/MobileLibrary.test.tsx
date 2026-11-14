@@ -162,13 +162,13 @@ describe("MobileLibrary", () => {
     fireEvent.scroll(scrollEl);
     await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Apr 2024"));
 
-    // Eight rows of 3 (the top one holds the odd photo), ~267 px each (cellSize
-    // 265px with the mocked 800px-wide container, 2 px gap): scrolled to the
-    // last row, the title names the newest photos' day range start (20 Apr).
+    // Eight rows of 3 (#365: the last one holds the odd photo, 10 May), ~267 px
+    // each (cellSize 265px with the mocked 800px-wide container, 2 px gap):
+    // scrolled to the last row, the title names the newest photo's day.
     scrollEl.scrollTop = 1900;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("20 Apr 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {

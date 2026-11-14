@@ -87,3 +87,79 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+// #365: rows fill left to right from the OLDEST photo; only the last (newest) row is short,
+// with its empty space at the bottom right -- at every window size.
+for (const scheme of ["light", "dark"] as const) {
+  test(`Library rows start full at the oldest photo, short row last at the bottom right, ${scheme} (#365)`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone");
+    const phone = info.project.name === "iphone";
+    const scroller = page.locator(phone ? '[data-testid="library-scroll"]' : '[data-testid="desktop-library-grid"]');
+    const shot = (name: string) => page.screenshot({ path: `e2e/screenshots/p365/${info.project.name}-${scheme}-${name}.png` });
+    await signIn(page, scheme);
+    const newest = await newestFromApi(page);
+    const { total, oldestId } = await page.evaluate(async (lib) => {
+      const first = (await (await fetch(`/api/libraries/${lib}/assets?limit=1`)).json()) as { total: number };
+      let cursor: string | null = null;
+      let last = "";
+      do {
+        const r = (await (await fetch(`/api/libraries/${lib}/assets?limit=500${cursor ? `&cursor=${cursor}` : ""}`)).json()) as {
+          items: { id: string }[];
+          next_cursor: string | null;
+        };
+        last = r.items[r.items.length - 1].id;
+        cursor = r.next_cursor;
+      } while (cursor);
+      return { total: first.total, oldestId: last };
+    }, newest.libraryId);
+
+    // Rendered cells grouped into visual rows by their top edge.
+    const rowsOnScreen = () =>
+      scroller.evaluate((el) => {
+        const cells = [...el.querySelectorAll<HTMLElement>("[data-asset-id]")].map((c) => {
+          const b = c.getBoundingClientRect();
+          return { id: c.dataset.assetId!, top: Math.round(b.top), left: Math.round(b.left) };
+        });
+        const tops = [...new Set(cells.map((c) => c.top))].sort((a, b) => a - b);
+        return tops.map((top) => cells.filter((c) => c.top === top).sort((a, b) => a.left - b.left));
+      });
+    const loadEverything = async () => {
+      let previous = -1;
+      for (let i = 0; i < 40; i++) {
+        await scroller.evaluate((el) => (el.scrollTop = 0));
+        await page.waitForTimeout(250);
+        const height = await scroller.evaluate((el) => el.scrollHeight);
+        if (height === previous) break;
+        previous = height;
+      }
+    };
+
+    const sizes = phone ? [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 320, height: 568 }] : [{ width: 1440, height: 900 }, { width: 1100, height: 800 }, { width: 900, height: 700 }];
+    let shortLastRows = 0;
+    for (const size of sizes) {
+      await page.setViewportSize(size);
+      await page.waitForTimeout(300);
+      await loadEverything();
+      const top = await rowsOnScreen();
+      const columns = top[0].length;
+      // First row: full, starting at the oldest photo, left-aligned like every row below it.
+      expect(top[0][0].id).toBe(oldestId);
+      for (const row of top.slice(0, -1)) {
+        expect(row).toHaveLength(columns);
+        expect(row[0].left).toBe(top[0][0].left);
+      }
+      await shot(`library-oldest-row-${size.width}x${size.height}`);
+
+      await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await page.waitForTimeout(300);
+      const bottom = await rowsOnScreen();
+      const last = bottom[bottom.length - 1];
+      expect(last.map((c) => c.id)).toContain(newest.id);
+      expect(last[0].left).toBe(bottom[0][0].left); // left-aligned: empty space on the right
+      expect(last).toHaveLength(total % columns || columns);
+      if (total % columns) shortLastRows++;
+      await shot(`library-newest-row-${size.width}x${size.height}`);
+    }
+    expect(shortLastRows).toBeGreaterThan(0); // the demo count is not divisible by every column count
+  });
+}
