@@ -897,6 +897,7 @@ export default function DesktopLibrary({
             min={0}
             max={MAX_ZOOM_INDEX}
             value={zoomIndex}
+            style={{ "--range-fill": `${(zoomIndex / MAX_ZOOM_INDEX) * 100}%` } as CSSProperties}
             onChange={(event) => changeZoom(Number(event.target.value))}
           />
           <button

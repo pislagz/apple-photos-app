@@ -836,6 +836,14 @@ body {
   font-weight: var(--font-weight-semibold);
 }
 
+/* The close button hugs the top of the bar (8px below the safe area) instead of
+   centring on the title block: on a narrow phone the title block is tall, and a
+   centred 44pt button then sits over the centre of the first row's right-hand
+   cell, so that cell cannot be tapped in Select mode. */
+.mobile-library__close-button {
+  align-self: flex-start;
+}
+
 .mobile-library__cell-wrap,
 .mobile-library__row-feature {
   position: relative;
@@ -1443,10 +1451,32 @@ body {
   cursor: default;
 }
 
+.login-card button[type="submit"]:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.login-card button[type="submit"]:active:not(:disabled) {
+  background: var(--color-accent-pressed);
+}
+
+.login-card button[type="submit"]:disabled {
+  opacity: 0.5;
+}
+
+.login-card input:focus-visible {
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
+  border-color: var(--accent);
+  box-shadow: var(--ring-field);
+}
+
+.login-card input:disabled {
+  opacity: 0.5;
+}
+
 /* Phone: the width of the fields group, iOS's 44pt minimum height. */
 .login-screen--mobile .login-card button[type="submit"] {
   margin: var(--space-20) 0 0;
-  min-height: 44px;
+  min-height: var(--size-control-touch);
   border-radius: var(--radius-10);
   font-size: var(--font-size-headline);
 }
@@ -1732,29 +1762,44 @@ body {
 .desktop-library__zoom-slider input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  width: 110px;
-  height: 18px;
-  margin: 0;
+  width: var(--size-zoom-slider-w);
+  height: var(--size-zoom-slider-h);
+  margin: 0 var(--space-2);
   background: transparent;
 }
 
+.desktop-library__zoom-slider input[type="range"]:focus-visible {
+  outline-offset: 0;
+}
+
+.desktop-library__zoom-slider input[type="range"]:disabled {
+  opacity: 0.5;
+}
+
 .desktop-library__zoom-slider input[type="range"]::-webkit-slider-runnable-track {
-  height: 3px;
+  height: var(--size-slider-track);
   border-radius: var(--radius-2);
-  background: var(--color-fill-strong);
+  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--range-fill, 0%) 100% no-repeat,
+    var(--color-slider-track);
 }
 
 .desktop-library__zoom-slider input[type="range"]::-moz-range-track {
-  height: 3px;
+  height: var(--size-slider-track);
   border-radius: var(--radius-2);
-  background: var(--color-fill-strong);
+  background: var(--color-slider-track);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-progress {
+  height: var(--size-slider-track);
+  border-radius: var(--radius-2);
+  background: var(--accent);
 }
 
 .desktop-library__zoom-slider input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: var(--size-slider-thumb);
+  height: var(--size-slider-thumb);
   margin-top: -7.5px;
   border: none;
   border-radius: 50%;
@@ -1777,6 +1822,10 @@ body {
   background: var(--color-hover);
   border-radius: var(--radius-small-2);
   padding: var(--space-2);
+}
+
+.segmented-control__item:not(:disabled):not([aria-selected="true"]):active {
+  background: var(--color-hover);
 }
 
 .segmented-control__item {
@@ -1839,13 +1888,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--size-toolbar-button-w);
+  height: var(--size-toolbar-button);
   border: none;
   background: transparent;
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-8);
   color: var(--color-label);
   cursor: default;
+  transition: background-color var(--dur-press) var(--ease-press);
 }
 
 .toolbar-button--small {
@@ -1857,8 +1907,13 @@ body {
   background: var(--color-hover);
 }
 
+.toolbar-button:active:not(:disabled) {
+  background: var(--color-pressed);
+}
+
 .toolbar-button:disabled {
-  color: var(--color-label-secondary);
+  color: var(--color-label-tertiary);
+  opacity: 0.5;
   cursor: default;
 }
 
@@ -3660,7 +3715,7 @@ body {
 }
 
 .search-box--mobile:focus-within {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: var(--ring-field);
 }
 
 .search-box__input::-webkit-search-cancel-button {
@@ -3831,7 +3886,7 @@ body {
 
 .search-box--desktop {
   width: 140px;
-  height: 28px;
+  height: var(--size-search-field);
   gap: var(--space-4);
   padding: 0 var(--space-4) 0 var(--space-8);
   border-radius: var(--radius-small-2);
@@ -3842,7 +3897,7 @@ body {
 
 .search-box--desktop:focus-within {
   width: 220px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: var(--ring-field);
 }
 
 /* With chips in it the field stays wider (the toolbar makes room for it) and,
@@ -3873,8 +3928,8 @@ body {
 }
 
 .search-box--desktop .search-box__clear {
-  width: 22px;
-  height: 22px;
+  width: var(--size-clear-button);
+  height: var(--size-clear-button);
 }
 
 /* Narrow windows: just the magnifier until the field is focused. */

@@ -621,6 +621,28 @@ body:has(.admin-app, .admin-auth) {
   white-space: normal;
 }
 
+:is(.admin-app, .admin-gallery, .admin-sheet) .admin-btn:hover:not(:disabled) {
+  background: var(--color-fill-button);
+}
+
+:is(.admin-app, .admin-gallery, .admin-sheet) .admin-btn:active:not(:disabled) {
+  background: var(--color-fill-strong);
+}
+
+:is(.admin-app, .admin-gallery, .admin-sheet) .admin-btn.admin-btn--primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+:is(.admin-app, .admin-gallery, .admin-sheet) .admin-btn.admin-btn--primary:active:not(:disabled) {
+  background: var(--color-accent-pressed);
+}
+
+:is(.admin-app, .admin-gallery, .admin-sheet) :is(input, select).admin-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--ring-field);
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
+}
+
 .admin-btn:focus-visible,
 .admin-input:focus-visible,
 .admin-switch:focus-visible,
@@ -787,7 +809,7 @@ button.admin-switch {
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--color-fill-clear);
+  background: var(--color-fill-strong);
   transition: background-color var(--dur-tint) var(--ease-tint);
 }
 
