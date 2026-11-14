@@ -33,8 +33,11 @@ describe("icon set", () => {
       expect(path.getAttribute("stroke")).toBe("currentColor");
       expect(path.getAttribute("fill")).toBe("none");
     }
-    expect(paths[0].getAttribute("d")).toMatch(/A3\.6 3\.6/); // cloud arcs
-    expect(paths[0].getAttribute("d")).toMatch(/Z$/); // closed outline
+    const d = paths[0].getAttribute("d") ?? "";
+    expect(d).toMatch(/A4\.9 4\.9/); // large middle bump
+    expect(d).not.toMatch(/Z/i); // open outline: no base closing the gap
+    // The arrow tip sits below the cloud base (y 12.7), passing through the gap.
+    expect(paths[1].getAttribute("d")).toMatch(/V17\.3/);
   });
 
   it("is the only drawing of the download icon: every download button uses it (#363)", () => {
