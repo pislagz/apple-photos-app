@@ -116,6 +116,11 @@ describe("keyboard", () => {
     expect(screen.getByRole("button", { name: "Show sidebar" }).getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector(".shell--sidebar-collapsed")).not.toBeNull();
     expect(localStorage.getItem("photos-viewer.sidebar-collapsed")).toBe("1");
+    // #349: the same toggle brings it back.
+    fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
+    expect(sidebar.hasAttribute("inert")).toBe(false);
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
+    expect(localStorage.getItem("photos-viewer.sidebar-collapsed")).toBe("0");
   });
 });
 

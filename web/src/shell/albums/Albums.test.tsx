@@ -178,7 +178,7 @@ describe("desktop Albums sidebar group", () => {
     );
     renderDesktop();
 
-    const group = (await screen.findByText("Media Types")).closest("details") as HTMLElement;
+    const group = (await screen.findByText("Media types")).closest("details") as HTMLElement;
     await waitFor(() => expect(within(group).getByRole("button", { name: "Videos" })).toBeInTheDocument());
     expect(within(group).getByRole("button", { name: "Panoramas" })).toBeInTheDocument();
     for (const empty of ["Selfies", "Live Photos", "Portrait", "Screenshots", "RAW"]) {
@@ -194,7 +194,7 @@ describe("desktop Albums sidebar group", () => {
     mockFetch(handler([], () => ALBUMS)); // only Favorites
     renderDesktop();
     expect(await screen.findByText("Trips")).toBeInTheDocument();
-    expect(screen.queryByText("Media Types")).not.toBeInTheDocument();
+    expect(screen.queryByText("Media types")).not.toBeInTheDocument();
   });
 
   it("says albums could not be loaded and retries", async () => {

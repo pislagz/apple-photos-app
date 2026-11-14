@@ -40,6 +40,7 @@ import { useAssetDetailState, useSelectionSummary } from "../viewer/useAssetDeta
 import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
+import { isTypingTarget, shortcutAction } from "../shortcuts";
 
 // #209: month section headers are 40 px tall (15 px / 700 in CSS).
 const HEADER_ROW_HEIGHT = 40;
@@ -371,6 +372,24 @@ export default function DesktopLibrary({
     setFocusedId(id);
   }, []);
 
+  // Shift+arrow: grow the selection from the anchor to the new focus (#217).
+  const extendTo = useCallback(
+    (id: string) => {
+      const anchor = anchorIdRef.current ?? focusedId ?? id;
+      const from = items.findIndex((candidate) => candidate.id === anchor);
+      const to = items.findIndex((candidate) => candidate.id === id);
+      if (from === -1 || to === -1) {
+        selectSingle(id);
+        return;
+      }
+      anchorIdRef.current = anchor;
+      const [lo, hi] = from < to ? [from, to] : [to, from];
+      setSelected(new Set(items.slice(lo, hi + 1).map((candidate) => candidate.id)));
+      setFocusedId(id);
+    },
+    [items, focusedId, selectSingle],
+  );
+
   // Reconciles an arrow-key target that was past the loaded items at the
   // time of the keypress: once the requested page arrives, catch focus up
   // to it (loading another page first if it still isn't far enough).
@@ -552,12 +571,8 @@ export default function DesktopLibrary({
     (event: React.KeyboardEvent) => {
       // Period cards are buttons that handle their own Enter/Space.
       if (isPeriodView) return;
-      const meta = event.metaKey || event.ctrlKey;
-      if (meta && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
-        return;
-      }
+      // Cmd/Ctrl combos (select all, zoom) live in the window handler below.
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
         changeZoom(Math.min(MAX_ZOOM_INDEX, zoomIndex + 1));
@@ -582,6 +597,7 @@ export default function DesktopLibrary({
       const delta = deltas[event.key];
       if (delta === undefined || items.length === 0) return;
       event.preventDefault();
+      const moveTo = event.shiftKey ? extendTo : selectSingle;
       const currentIndex = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (pendingDownRef.current) {
@@ -592,7 +608,7 @@ export default function DesktopLibrary({
         // old flat +columns move landed in the last column of the first row
         // and every press after that was a column off (D13).
         if (!focusedId) {
-          selectSingle(items[0].id);
+          moveTo(items[0].id);
           return;
         }
         // Rows restart after every date header (and Days has a hero row), so
@@ -602,7 +618,7 @@ export default function DesktopLibrary({
         const column = goal ?? 0;
         const target = verticalTarget(rows, focusedId, event.key === "ArrowDown" ? 1 : -1, column);
         if (target && target !== "end" && target !== "unknown") {
-          selectSingle(target);
+          moveTo(target);
           goalColumnRef.current = { id: target, column };
           return;
         }
@@ -626,9 +642,9 @@ export default function DesktopLibrary({
       } else {
         desiredIndexRef.current = null;
       }
-      selectSingle(items[nextIndex].id);
+      moveTo(items[nextIndex].id);
     },
-    [items, rows, columns, zoomIndex, changeZoom, focusedId, handleOpen, selectSingle, done, loadMore, loadAll],
+    [items, rows, columns, zoomIndex, changeZoom, focusedId, handleOpen, selectSingle, extendTo, done, loadMore],
   );
 
   const setCellRef = useCallback((id: string, element: HTMLElement | null) => {
@@ -783,6 +799,29 @@ export default function DesktopLibrary({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [hasSelection, overlayOpen]);
 
+  // #217 Cmd/Ctrl shortcuts, on the window so they work wherever focus sits
+  // (after a click on empty space, or on a toolbar button) but never while
+  // typing in a field. With the Viewer open they belong to the Viewer.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || viewerIndex !== null || contextMenu !== null) return;
+      if (isTypingTarget(event.target)) return;
+      const action = shortcutAction(event);
+      if (action === "selectAll" && !isPeriodView) {
+        event.preventDefault();
+        void loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
+      } else if (action === "zoomIn" || action === "zoomOut") {
+        event.preventDefault();
+        changeZoom(action === "zoomIn" ? Math.min(MAX_ZOOM_INDEX, zoomIndex + 1) : Math.max(0, zoomIndex - 1));
+      } else if (action === "info") {
+        event.preventDefault();
+        setInfoOpen((value) => !value);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [viewerIndex, contextMenu, isPeriodView, loadAll, changeZoom, zoomIndex]);
+
   const handleGridClick = useCallback((event: React.MouseEvent) => {
     if (suppressClickRef.current || event.shiftKey || event.metaKey || event.ctrlKey) return;
     const target = event.target as HTMLElement;
@@ -796,16 +835,17 @@ export default function DesktopLibrary({
 
   const controlsBar = (
     <>
+      <div className="desktop-library__bar-left">
         <div className="desktop-library__zoom-slider">
           <button
             type="button"
-            className="toolbar-button toolbar-button--small"
+            className="toolbar-button toolbar-button--small desktop-library__zoom-end"
             aria-label="Zoom Out"
             title="Zoom Out"
             disabled={zoomIndex === 0}
             onClick={() => setZoomIndex((previous) => Math.max(0, previous - 1))}
           >
-            <Icon name="minus" size={12} />
+            <Icon name="grid" size={11} />
           </button>
           <input
             type="range"
@@ -817,13 +857,13 @@ export default function DesktopLibrary({
           />
           <button
             type="button"
-            className="toolbar-button toolbar-button--small"
+            className="toolbar-button toolbar-button--small desktop-library__zoom-end"
             aria-label="Zoom In"
             title="Zoom In"
             disabled={zoomIndex === MAX_ZOOM_INDEX}
             onClick={() => setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1))}
           >
-            <Icon name="plus" size={12} />
+            <Icon name="grid" size={16} />
           </button>
           {/* #264: belongs with the size slider -- both change how tiles look. */}
           <button
@@ -837,7 +877,7 @@ export default function DesktopLibrary({
             <Icon name="aspect" size={16} filled={!squareMode} />
           </button>
         </div>
-        <div className="desktop-library__spacer" />
+      </div>
         {fixedView === undefined && (
         <div ref={segmentRef} role="tablist" aria-label="Library zoom" className="segmented-control">
           {DESKTOP_VIEWS.map((item) => (
@@ -856,6 +896,7 @@ export default function DesktopLibrary({
           ))}
         </div>
         )}
+      <div className="desktop-library__bar-right">
         {/* No dead button: sharing needs a secure (https) context, so it is
             hidden where unavailable, like macOS toolbars omit unusable items. */}
         {shareSupported && (
@@ -898,9 +939,6 @@ export default function DesktopLibrary({
             showHeicOption={selectionHasHeicPhoto}
           />
         )}
-        <span className="desktop-library__selection-count" data-testid="selection-count">
-          {selected.size > 0 ? `${selected.size} selected` : ""}
-        </span>
         {selected.size > 0 && (
           <button
             type="button"
@@ -912,6 +950,7 @@ export default function DesktopLibrary({
             <Icon name="close" size={14} />
           </button>
         )}
+      </div>
     </>
   );
 
@@ -927,7 +966,11 @@ export default function DesktopLibrary({
       <div className="page-heading" data-testid="page-heading">
         <div className="page-heading__text">
           <h1 className="page-heading__title">{title}</h1>
-          <p className="page-heading__subtitle">{subtitle ?? (view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0")}</p>
+          <p className="page-heading__subtitle" data-testid="selection-count">
+            {selected.size > 0
+              ? `${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`
+              : (subtitle ?? (view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"))}
+          </p>
         </div>
         <FilterMenu state={filterState} variant="desktop" label="Filter By" />
       </div>

@@ -18,6 +18,7 @@ import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
+import { isControlTarget, isTypingTarget, shortcutAction } from "../shortcuts";
 
 export interface ViewerProps {
   libraryId: number;
@@ -137,6 +138,25 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     window.addEventListener("keydown", onWindowKeyDown);
     return () => window.removeEventListener("keydown", onWindowKeyDown);
   }, [index, items.length, onClose, onIndexChange]);
+
+  // #217: Space, Cmd Up and Cmd [ close; Cmd I toggles Info. Capture phase +
+  // preventDefault, so the grid and the shell don't also act on the key.
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if (event.defaultPrevented || isTypingTarget(event.target)) return;
+      const shortcut = shortcutAction(event);
+      const space = event.key === " " && !event.metaKey && !event.ctrlKey && !event.altKey && !isControlTarget(event.target);
+      if (space || shortcut === "up" || shortcut === "back") {
+        event.preventDefault();
+        onClose();
+      } else if (shortcut === "info") {
+        event.preventDefault();
+        setInfoOpen((value) => !value);
+      }
+    }
+    window.addEventListener("keydown", onShortcut, true);
+    return () => window.removeEventListener("keydown", onShortcut, true);
+  }, [onClose]);
 
   useEffect(() => {
     if (scale > 1.01) media.requestOriginal();
@@ -347,7 +367,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             </button>
             {detail?.has_edited && (
               <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
-                <Icon name="document" size={16} />
+                <Icon name="download" size={16} />
               </button>
             )}
             {detail?.has_edited && (

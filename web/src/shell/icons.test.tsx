@@ -24,6 +24,17 @@ describe("icon set", () => {
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
   });
 
+  it("draws download as a stroked cloud with a down arrow (#350)", () => {
+    const { container } = render(<Icon name="download" size={16} />);
+    const paths = [...container.querySelectorAll("path")];
+    expect(paths.length).toBe(2);
+    for (const path of paths) {
+      expect(path.getAttribute("stroke")).toBe("currentColor");
+      expect(path.getAttribute("fill")).toBe("none");
+    }
+    expect(paths[0].getAttribute("d")).toMatch(/a3\.5 3\.5/); // cloud arcs
+  });
+
   it("covers every icon name the app uses", () => {
     const used = [
       "library", "days", "albums", "people", "map", "favorite", "added", "folder", "hidden", "tray",

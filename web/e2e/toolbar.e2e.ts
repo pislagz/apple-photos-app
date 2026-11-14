@@ -44,7 +44,7 @@ for (const width of [1440, 1024]) {
       expect(box.y).toBeCloseTo(boxes[0].y, 1);
     }
     // Collapsed to the magnifier at <=1100px, the full field above.
-    expect(boxes[0].width).toBeCloseTo(width <= 1100 ? 28 : 190, 0);
+    expect(boxes[0].width).toBeCloseTo(width <= 1100 ? 28 : 140, 0);
   });
 }
 

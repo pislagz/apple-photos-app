@@ -225,20 +225,20 @@ describe("DesktopLibrary", () => {
     const grid = screen.getByTestId("desktop-library-grid");
 
     fireEvent.click(cells(container)[0]);
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
     expect(cells(container)[0]).toHaveAttribute("data-selected", "true");
 
     fireEvent.click(cells(container)[2], { metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
 
     fireEvent.click(cells(container)[4], { shiftKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("3 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^3 of [0-9]+\+? selected/);
 
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("5 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^5 of [0-9]+\+? selected/));
 
     fireEvent.keyDown(grid, { key: "Escape" });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
   });
 
   it("clicking empty grid space deselects; clicking a tile or a modifier-click does not", async () => {
@@ -250,11 +250,11 @@ describe("DesktopLibrary", () => {
 
     fireEvent.click(cells(container)[0]);
     fireEvent.click(cells(container)[1], { metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
     fireEvent.click(grid, { metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
     fireEvent.click(grid);
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
     expect(cells(container)[0]).toHaveAttribute("data-selected", "false");
   });
 
@@ -267,9 +267,9 @@ describe("DesktopLibrary", () => {
     fireEvent.click(cells(container)[0]);
     fireEvent.contextMenu(cells(container)[0]);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
   });
 
   it("the Deselect button clears the selection and disappears", async () => {
@@ -282,7 +282,7 @@ describe("DesktopLibrary", () => {
     fireEvent.click(cells(container)[0]);
     fireEvent.click(cells(container)[1], { metaKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
     expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
   });
 
@@ -337,7 +337,7 @@ describe("DesktopLibrary", () => {
     const grid = screen.getByTestId("desktop-library-grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
 
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("300 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of [0-9]+\+? selected/));
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("/hidden");
     }
@@ -416,7 +416,7 @@ describe("DesktopLibrary", () => {
 
     const grid = screen.getByTestId("desktop-library-grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/));
     expect(container.innerHTML).not.toContain("hidden-1");
   });
 
@@ -1125,16 +1125,16 @@ describe("DesktopLibrary drag-select (#97)", () => {
 
       fireEvent.mouseMove(window, { clientX: 150, clientY: 50 });
       expect(screen.getByTestId("marquee")).toBeInTheDocument();
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
 
       fireEvent.mouseMove(window, { clientX: 150, clientY: 150 });
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of [0-9]+\+? selected/);
 
       fireEvent.mouseUp(window);
       expect(screen.queryByTestId("marquee")).toBeNull();
       // The click that follows a drag must not collapse the selection.
       fireEvent.click(first);
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of [0-9]+\+? selected/);
     } finally {
       restore();
     }
@@ -1149,7 +1149,7 @@ describe("DesktopLibrary drag-select (#97)", () => {
     fireEvent.mouseDown(second, { button: 0, clientX: 5, clientY: 5 });
     fireEvent.mouseUp(window);
     fireEvent.click(second);
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
   });
 });
 
@@ -1298,5 +1298,84 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     fireEvent.click(cells[0]);
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
     expect(screen.getByTestId("library-info-panel")).not.toHaveTextContent("3 photos");
+  });
+});
+
+describe("DesktopLibrary Photos shortcuts (#217)", () => {
+  const photos = () =>
+    Array.from({ length: 5 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+
+  it("Shift+arrows extend the selection, and the subtitle reads 'K of N selected'", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.click(cells(container)[0]);
+    fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("3 of 5 selected");
+    fireEvent.keyDown(grid, { key: "ArrowLeft", shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 of 5 selected");
+    fireEvent.keyDown(grid, { key: "ArrowRight" });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 of 5 selected");
+  });
+
+  it("Space opens the viewer for the selected tile and a second Space closes it", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(cells(container)[1]);
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: " " });
+    const viewer = await screen.findByTestId("desktop-viewer");
+    fireEvent.keyDown(viewer, { key: " " });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+  });
+
+  it("Cmd Up closes the viewer; Cmd I toggles Info in the grid", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const info = screen.getByRole("button", { name: "Info" });
+    expect(info).toHaveAttribute("aria-pressed", "false");
+    fireEvent.keyDown(window, { key: "i", metaKey: true });
+    expect(info).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "i", metaKey: true });
+    expect(info).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "Enter" });
+    const viewer = await screen.findByTestId("desktop-viewer");
+    fireEvent.keyDown(viewer, { key: "ArrowUp", metaKey: true });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+  });
+
+  it("Cmd + / Cmd - step the zoom slider", async () => {
+    mockAssets(photos());
+    render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+    const start = Number(slider.value);
+    fireEvent.keyDown(window, { key: "=", metaKey: true });
+    await waitFor(() => expect(Number(slider.value)).toBe(start + 1));
+    fireEvent.keyDown(window, { key: "-", metaKey: true });
+    await waitFor(() => expect(Number(slider.value)).toBe(start));
+  });
+
+  it("does nothing while typing in a field", async () => {
+    mockAssets(photos());
+    render(
+      <>
+        <input aria-label="Search" />
+        <DesktopLibrary libraryId={1} />
+      </>,
+    );
+    await screen.findAllByRole("img");
+    const field = screen.getByLabelText("Search");
+    field.focus();
+    fireEvent.keyDown(field, { key: "a", metaKey: true });
+    fireEvent.keyDown(field, { key: "i", metaKey: true });
+    fireEvent.keyDown(field, { key: "=", metaKey: true });
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+    expect(screen.getByRole("button", { name: "Info" })).toHaveAttribute("aria-pressed", "false");
   });
 });

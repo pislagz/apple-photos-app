@@ -587,7 +587,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
               onClick={handleDownloadOriginal}
               aria-label="Download Original"
             >
-              <Icon name="document" size={20} />
+              <Icon name="download" size={20} />
             </button>
           ) : (
             <span className="mobile-viewer__slot" aria-hidden />
