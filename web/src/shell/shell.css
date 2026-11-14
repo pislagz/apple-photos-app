@@ -139,6 +139,20 @@ body {
   background: var(--color-bg);
 }
 
+/* #418: iOS standalone cold start reports a viewport ~59px short. appHeight.ts
+   sets --app-height (and this class) only there; everywhere else the rules
+   above apply unchanged. */
+html.has-app-height,
+html.has-app-height body,
+html.has-app-height #root {
+  height: var(--app-height, 100dvh);
+}
+
+html.has-app-height .shell--mobile {
+  bottom: auto;
+  height: var(--app-height, 100dvh);
+}
+
 .shell--mobile {
   /* Tab row height; the Library's zoom pill and scroll padding stack on it. */
   --tab-bar-h: calc(56px + var(--safe-bottom));
