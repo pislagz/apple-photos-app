@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Profiler } from "react";
 import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -895,5 +896,44 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
     setup();
     const bar = document.querySelector(".mobile-viewer__bottombar") as HTMLElement;
     expect([...bar.children].map((c) => c.className.split(" ")[0])).toEqual(["mobile-viewer__filmstrip", "mobile-viewer__icon-row"]);
+  });
+
+  // #416: the mobile title is never empty on any commit while stepping.
+  it("never renders an empty title on any commit while stepping (#416)", async () => {
+    const same = "2024-05-10T10:00:00";
+    const items = [makeItem("b1"), makeItem("b2"), makeItem("b3", { date: null }), makeItem("b4")];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const id = url.match(/assets\/([^/?]+)$/)?.[1] ?? "";
+        if (id === "b3") return new Response("{}", { status: 500 });
+        await new Promise((resolve) => setTimeout(resolve, id === "b2" ? 30 : 5));
+        return new Response(JSON.stringify(makeDetail(id, { place: "", date_created: same })), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const seen: string[] = [];
+    const record = () => {
+      const primary = document.querySelector(".mobile-viewer__title-primary");
+      seen.push(primary?.textContent ?? "");
+    };
+    const view = (index: number) => (
+      <Profiler id="v" onRender={record}>
+        <MobileViewer libraryId={1} items={items} index={index} onIndexChange={() => {}} onClose={() => {}} />
+      </Profiler>
+    );
+    const { rerender } = render(view(0));
+    for (const index of [1, 2, 3, 2, 1, 0]) {
+      rerender(view(index));
+      await new Promise((resolve) => setTimeout(resolve, 8));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    record();
+    expect(seen.length).toBeGreaterThan(6);
+    // The very first commit may precede the first mount of the title; after
+    // that, never empty.
+    expect(seen.slice(1).filter((text) => text.trim() === "")).toEqual([]);
   });
 });
