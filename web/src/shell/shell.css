@@ -4088,7 +4088,9 @@ body {
   position: absolute;
   top: 8px;
   left: 12px;
-  z-index: 5;
+  /* #349: above the toolbar row (z-index 10), which otherwise covers the
+     button once the sidebar is hidden and traps the user. */
+  z-index: 11;
   display: grid;
   place-items: center;
   width: 30px;

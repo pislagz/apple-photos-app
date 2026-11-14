@@ -367,7 +367,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             </button>
             {detail?.has_edited && (
               <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
-                <Icon name="document" size={16} />
+                <Icon name="download" size={16} />
               </button>
             )}
             {detail?.has_edited && (
