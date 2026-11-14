@@ -4349,8 +4349,22 @@ body {
   cursor: default;
 }
 
-.sidebar-toggle:hover {
+.sidebar-toggle:hover:not(:disabled) {
   background: var(--sidebar-toggle-hover);
+}
+
+/* #368: narrow windows hide the sidebar and park the toggle, like Mac Photos. */
+.sidebar-toggle:disabled {
+  opacity: 0.35;
+}
+
+/* #368: toolbar items never overlap. Mac order: the size slider goes first,
+   then the Share/Info buttons' gaps tighten. */
+@media (max-width: 1100px) {
+  .desktop-library__zoom-slider input[type="range"],
+  .desktop-library__zoom-slider .desktop-library__zoom-end {
+    display: none;
+  }
 }
 
 .shell--desktop {

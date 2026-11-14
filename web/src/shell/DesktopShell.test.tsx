@@ -239,7 +239,7 @@ describe("sidebar section labels (#105)", () => {
 
 describe("sidebar toggle hover (#200)", () => {
   it("uses a theme variable that has a dark-mode value", () => {
-    expect(css).toMatch(/\.sidebar-toggle:hover \{[^}]*var\(--sidebar-toggle-hover\)/);
+    expect(css).toMatch(/\.sidebar-toggle:hover:not\(:disabled\) \{[^}]*var\(--sidebar-toggle-hover\)/);
     const tokens = readFileSync(join(__dirname, "tokens.css"), "utf-8");
     expect(tokens).toMatch(/prefers-color-scheme: dark\) \{\s*:root \{[^}]*--sidebar-toggle-hover: rgba\(255/);
   });
