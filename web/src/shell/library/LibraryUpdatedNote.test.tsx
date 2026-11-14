@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "../../api";
@@ -94,5 +96,21 @@ describe("Library updated banner placement", () => {
     render(<DesktopShell {...common} me={{ ...ME, libraries: [{ id: 1, display_name: "Family", updated_note: null }] }} />);
     await screen.findByRole("heading", { name: "Library" });
     expect(screen.queryByTestId("library-updated-note")).toBeNull();
+  });
+});
+
+describe("Library updated banner CSS (#170)", () => {
+  const css = readFileSync(join(__dirname, "../shell.css"), "utf8");
+  const rule = (selector: string) => css.slice(css.indexOf(`\n${selector} {`)).split("}")[0];
+
+  it("the phone banner reserves no empty strip above itself", () => {
+    expect(rule(".library-note--mobile")).not.toMatch(/margin-top/);
+  });
+
+  it("the close button is a 44x44 round hit area", () => {
+    const close = rule(".library-note__close");
+    expect(close).toMatch(/width: 44px/);
+    expect(close).toMatch(/height: 44px/);
+    expect(close).toMatch(/border-radius: 50%/);
   });
 });

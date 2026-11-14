@@ -4532,12 +4532,10 @@ body {
   border-bottom: 1px solid var(--color-hairline);
 }
 
-/* The account button floats over the top-right of the mobile screen (12px
-   inset + 32px). The banner starts below that row so nothing overlaps; the
-   title/Select bar is part of the grid below the banner. */
+/* No floating account button on the phone any more (#351), so the banner
+   starts at the top, below the status bar / notch only. */
 .library-note--mobile {
-  margin-top: calc(env(safe-area-inset-top, 0px) + 52px);
-  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-16);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-6)) var(--space-8) var(--space-6) var(--space-16);
 }
 
 .library-note__close {
@@ -4545,8 +4543,11 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 44x44 hit area, round so hover/focus draw a circle; the negative margin
+     keeps the banner as slim as before. */
   width: 44px;
-  height: 32px;
+  height: 44px;
+  margin: -6px 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
