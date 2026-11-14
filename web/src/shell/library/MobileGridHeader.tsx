@@ -31,18 +31,13 @@ export default function MobileGridHeader({
           <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>
             {selectMode ? "Cancel" : "Select"}
           </button>
-        ) : selectMode ? (
+        ) : (
           <button
             type="button"
-            className="mobile-library__glass-button mobile-library__close-button"
-            aria-label="Cancel"
+            className="mobile-library__glass-button mobile-library__select-button"
             onClick={onToggleSelect}
           >
-            <Icon name="close" />
-          </button>
-        ) : (
-          <button type="button" className="mobile-library__glass-button mobile-library__select-button" onClick={onToggleSelect}>
-            Select
+            {selectMode ? "Cancel" : "Select"}
           </button>
         ));
   return (

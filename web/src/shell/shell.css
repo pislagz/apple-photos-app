@@ -832,21 +832,17 @@ body {
 /* #212: on the Library the Select button is a glass pill, and Cancel a round
    glass close button; a pushed grid (nav) keeps the plain text button above. */
 .mobile-library__select-button.mobile-library__glass-button {
-  align-self: center;
+  /* #391: pinned to the top of the bar, not centred on the title block (tall on
+     a narrow phone, and a different height in Select mode). */
+  align-self: flex-start;
   min-height: 44px;
+  /* #391: Select and Cancel are the same button, so Cancel keeps its box. */
+  min-width: 92px;
   padding: 0 var(--space-18);
   background: var(--glass-button);
   color: var(--color-on-glass);
   font-size: var(--font-size-headline);
   font-weight: var(--font-weight-semibold);
-}
-
-/* The close button hugs the top of the bar (8px below the safe area) instead of
-   centring on the title block: on a narrow phone the title block is tall, and a
-   centred 44pt button then sits over the centre of the first row's right-hand
-   cell, so that cell cannot be tapped in Select mode. */
-.mobile-library__close-button {
-  align-self: flex-start;
 }
 
 .mobile-library__cell-wrap,
@@ -1464,6 +1460,21 @@ body {
 
 .login-card button[type="submit"]:disabled {
   opacity: 0.5;
+}
+
+/* #390: on the phone the ring wraps the whole field row (label + value). */
+.login-screen--mobile .login-card form > label:focus-within {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: var(--ring-field);
+}
+
+.login-screen--mobile .login-card input:focus-visible {
+  outline: 2px solid transparent; /* the row draws the ring; transparent stays visible in forced-colors */
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .login-card input:focus-visible {
@@ -2266,14 +2277,17 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-4);
-  height: 24px;
-  padding: 0 var(--space-10);
+  box-sizing: border-box;
+  /* #393: the same height, side padding and font size as the search box. */
+  height: var(--size-search-field);
+  min-width: 140px; /* the search box's resting width */
+  padding: 0 var(--space-8);
   border: none;
   /* #381 review (pp): match the desktop search box corners, not a capsule. */
   border-radius: var(--radius-small-2);
   background: var(--material-filter-pill);
   color: var(--color-on-filter-pill);
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-subhead);
   white-space: nowrap;
   backdrop-filter: var(--blur-material);
   -webkit-backdrop-filter: var(--blur-material);
@@ -2501,6 +2515,7 @@ body {
   gap: var(--space-8);
   margin-left: auto;
   flex: 0 0 auto;
+  align-self: flex-start;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -3207,7 +3222,8 @@ body {
 /* #372: Mac toolbar buttons are plain glyphs in the secondary label colour
    that darken on hover, with a soft rounded-rect hover and pressed state. */
 .desktop-viewer__topbar .toolbar-button {
-  width: 30px;
+  /* #395: square hover target. */
+  width: 28px;
   height: 28px;
   border-radius: var(--radius-6, 6px);
   color: var(--color-label-secondary);
