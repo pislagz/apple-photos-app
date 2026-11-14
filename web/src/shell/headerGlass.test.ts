@@ -13,7 +13,7 @@ const rule = (selector: string) => {
 describe("iPhone header CSS", () => {
   it("gives the shared glass button a blur and a tint", () => {
     const glass = rule(".mobile-library__glass-button");
-    expect(glass).toMatch(/backdrop-filter: blur\(/);
+    expect(glass).toMatch(/backdrop-filter: var\(--blur-/);
     expect(glass).toMatch(/background: var\(--glass-button\)/);
   });
 
