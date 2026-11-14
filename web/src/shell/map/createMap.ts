@@ -1,6 +1,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Map as MapLibreMap, MapOptions } from "maplibre-gl";
 import type { MapConfig } from "../../api";
+import { darkPaint, darkTileTemplate, darkVariant, prefersDark, registerDarkProtocol, watchDark } from "./darkMap";
 import { blankStyle, osmStyle, protomapsStyle, rasterPmtilesStyle } from "./basemap";
 
 // One pmtiles protocol handler for the page: MapLibre keeps a single handler
@@ -41,9 +42,17 @@ export async function createMap(
     }
   }
 
+  // Dark theme: the OSM tiles painted dark (#374); light keeps plain OSM.
+  const variant = darkVariant(window.location.search);
+  function onlineStyle() {
+    if (!prefersDark()) return osmStyle();
+    if (variant !== 1) registerDarkProtocol(maplibregl);
+    return osmStyle({ tiles: darkTileTemplate(variant), paint: darkPaint(variant), background: "#1c2820" });
+  }
+
   let style = blankStyle();
   if (config.mode === "online") {
-    style = osmStyle();
+    style = onlineStyle();
   } else if (config.mode === "local_file") {
     // Unreadable archive: blank background, never OSM (no consent).
     style = (await archiveStyle()) ?? blankStyle();
@@ -68,5 +77,14 @@ export async function createMap(
       if (fallback) map.setStyle(fallback);
     });
   });
+  // EXPERIMENT hook for the comparison screenshots (removed before merge).
+  if (new URLSearchParams(window.location.search).has("mapdark")) (window as unknown as { __osmMap: unknown }).__osmMap = map;
+  if (config.mode === "online") {
+    // Live theme switch: swap the style; pins and attribution are DOM and stay.
+    const stop = watchDark(() => {
+      if (!switched) map.setStyle(onlineStyle());
+    });
+    map.on("remove", stop);
+  }
   return { map, maplibregl };
 }

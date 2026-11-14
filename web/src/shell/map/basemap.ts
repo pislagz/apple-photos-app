@@ -1,4 +1,4 @@
-import type { StyleSpecification } from "maplibre-gl";
+import type { RasterLayerSpecification, StyleSpecification } from "maplibre-gl";
 import type { MapConfig } from "../../api";
 
 // The one place a tile URL is written down. The browser fetches these only
@@ -18,15 +18,16 @@ export function blankStyle(): StyleSpecification {
   };
 }
 
-export function osmStyle(): StyleSpecification {
+// `dark`: #374, the same OSM tiles painted dark (see darkMap.ts).
+export function osmStyle(dark?: { tiles: string; paint: RasterLayerSpecification["paint"]; background: string }): StyleSpecification {
   return {
     version: 8,
     sources: {
-      osm: { type: "raster", tiles: [OSM_TILE_TEMPLATE], tileSize: 256, maxzoom: 19 },
+      osm: { type: "raster", tiles: [dark?.tiles ?? OSM_TILE_TEMPLATE], tileSize: 256, maxzoom: 19 },
     },
     layers: [
-      { id: "background", type: "background", paint: { "background-color": BLANK } },
-      { id: "osm", type: "raster", source: "osm" },
+      { id: "background", type: "background", paint: { "background-color": dark?.background ?? BLANK } },
+      { id: "osm", type: "raster", source: "osm", paint: dark?.paint ?? {} },
     ],
   };
 }
