@@ -80,8 +80,10 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
-// Media types are not listed when empty: like /albums itself, while loading
-// or on failure none is (the Albums group shows the failure with Retry).
+// Media types are not listed when empty, and on failure none is (the Albums
+// group shows the failure with Retry). While /albums loads the group holds its
+// full height with invisible placeholder rows, so the groups below do not jump
+// once when the list arrives.
 function MediaTypesGroup({
   state,
   currentId,
@@ -91,6 +93,19 @@ function MediaTypesGroup({
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
+  if (!state.albums && !state.error) {
+    return (
+      <SidebarSection title="Media types">
+        <ul aria-hidden="true" data-testid="media-types-placeholder">
+          {MEDIA_TYPES.map((type) => (
+            <li key={type.label}>
+              <span className="sidebar__item sidebar__item--placeholder">{type.label}</span>
+            </li>
+          ))}
+        </ul>
+      </SidebarSection>
+    );
+  }
   const present = new Set(state.albums?.smart.map((album) => album.id));
   const types = MEDIA_TYPES.filter((type) => present.has(`smart:${type.smart}`));
   if (types.length === 0) return null;

@@ -197,6 +197,23 @@ describe("desktop Albums sidebar group", () => {
     expect(screen.queryByText("Media types")).not.toBeInTheDocument();
   });
 
+  it("holds the Media Types group's height while albums load, then drops the placeholders", async () => {
+    mockFetch(
+      handler([], () => ({
+        ...ALBUMS,
+        smart: [{ id: "smart:videos", title: "Videos", count: 2, cover_id: "p1" }],
+      })),
+    );
+    renderDesktop();
+    // Before /albums answers: seven invisible rows, nothing to click or read.
+    const placeholder = screen.getByTestId("media-types-placeholder");
+    expect(placeholder).toHaveAttribute("aria-hidden", "true");
+    expect(placeholder.querySelectorAll("li")).toHaveLength(7);
+    expect(within(placeholder).queryByRole("button")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Videos" })).toBeInTheDocument();
+    expect(screen.queryByTestId("media-types-placeholder")).not.toBeInTheDocument();
+  });
+
   it("says albums could not be loaded and retries", async () => {
     let fail = true;
     mockFetch(handler([], () => (fail ? jsonResponse({ detail: "x" }, 500) : ALBUMS)));

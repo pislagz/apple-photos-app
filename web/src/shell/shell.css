@@ -3249,6 +3249,10 @@ body {
   color: var(--color-label-secondary);
 }
 
+.sidebar__item--placeholder {
+  visibility: hidden;
+}
+
 .sidebar__retry {
   border: none;
   background: transparent;
