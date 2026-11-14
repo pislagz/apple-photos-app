@@ -193,8 +193,27 @@ describe("desktop Albums sidebar group", () => {
   it("hides the Media Types group when no type has items, and while albums load or fail", async () => {
     mockFetch(handler([], () => ALBUMS)); // only Favorites
     renderDesktop();
+    expect(screen.queryByText("Media types")).not.toBeInTheDocument();
     expect(await screen.findByText("Trips")).toBeInTheDocument();
     expect(screen.queryByText("Media types")).not.toBeInTheDocument();
+  });
+
+  it("hides media types whose count is 0 and shows none of the seven before albums load", async () => {
+    mockFetch(
+      handler([], () => ({
+        ...ALBUMS,
+        smart: [
+          { id: "smart:videos", title: "Videos", count: 2, cover_id: "p1" },
+          { id: "smart:selfies", title: "Selfies", count: 0, cover_id: null },
+        ],
+      })),
+    );
+    renderDesktop();
+    expect(screen.queryByRole("button", { name: "Videos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Selfies" })).not.toBeInTheDocument();
+    const group = (await screen.findByText("Media types")).closest("details") as HTMLElement;
+    expect(within(group).getAllByRole("button")).toHaveLength(1);
+    expect(within(group).getByRole("button", { name: "Videos" })).toBeEnabled();
   });
 
   it("says albums could not be loaded and retries", async () => {

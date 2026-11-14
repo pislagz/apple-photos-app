@@ -80,8 +80,9 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
-// Media types are not listed when empty: like /albums itself, while loading
-// or on failure none is (the Albums group shows the failure with Retry).
+// Only media types that have items are listed. While /albums loads (or when it
+// failed; the Albums group shows the failure with Retry) the group is absent
+// rather than flashing all seven rows.
 function MediaTypesGroup({
   state,
   currentId,
@@ -91,25 +92,28 @@ function MediaTypesGroup({
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
-  const present = new Set(state.albums?.smart.map((album) => album.id));
-  const types = MEDIA_TYPES.filter((type) => present.has(`smart:${type.smart}`));
+  const counts = new Map(state.albums?.smart.map((album) => [album.id, album.count ?? 0]));
+  const types = MEDIA_TYPES.filter((type) => (counts.get(`smart:${type.smart}`) ?? 0) > 0);
   if (types.length === 0) return null;
   return (
     <SidebarSection title="Media types">
       <ul>
-        {types.map((type) => (
-          <li key={type.label}>
-            <button
-              type="button"
-              aria-current={currentId === `smart:${type.smart}` ? "page" : undefined}
-              className="sidebar__item"
-              onClick={() => onOpen(`smart:${type.smart}`, type.label)}
-            >
-              <Icon name={type.icon} className="sidebar__icon" filled={currentId === `smart:${type.smart}`} />
-              {type.label}
-            </button>
-          </li>
-        ))}
+        {types.map((type) => {
+          const id = `smart:${type.smart}`;
+          return (
+            <li key={type.label}>
+              <button
+                type="button"
+                aria-current={currentId === id ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => onOpen(id, type.label)}
+              >
+                <Icon name={type.icon} className="sidebar__icon" filled={currentId === id} />
+                {type.label}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </SidebarSection>
   );

@@ -279,10 +279,12 @@ describe("Info panel mini-map", () => {
     await waitFor(() => expect(created[0].removed).toBe(true));
   });
 
-  it("Off mode: no attribution", async () => {
+  it("Off mode: shows the map-off note instead of a blank map with a pin", async () => {
     mockFetch(handler([], () => ({ mode: "off", pmtiles_url: null })));
     render(<MiniMap latitude={1} longitude={2} />);
-    await waitFor(() => expect(created).toHaveLength(1));
+    expect(await screen.findByTestId("mini-map-off-note")).toHaveTextContent("The map is off");
+    expect(screen.queryByTestId("mini-map")).not.toBeInTheDocument();
+    expect(created).toHaveLength(0);
     expect(screen.queryByRole("link", { name: /OpenStreetMap/ })).not.toBeInTheDocument();
   });
 });
