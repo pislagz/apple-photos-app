@@ -22,6 +22,7 @@ import { useSearchModel } from "./search/useSearchModel";
 import { useDebounced } from "./search/useDebounced";
 import type { LayoutOverride } from "./useLayout";
 import { clampSidebarWidth, readSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_DEFAULT, writeSidebarWidth } from "./sidebarWidth";
+import { effectiveSidebarCollapsed, isNarrow, isSidebarShortcut, toggleUserCollapsed } from "./sidebarAuto";
 import { isTypingTarget, shortcutAction } from "./shortcuts";
 import type { AlbumsState } from "./albums/useAlbums";
 import WelcomeScreen from "./WelcomeScreen";
@@ -258,17 +259,34 @@ export default function DesktopShell({
     view === "album" && !showingPerson && !showingPlace && !showingSearch ? (album?.id ?? null) : null;
   const [unlockPrompt, setUnlockPrompt] = useState(false);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
-  function toggleSidebar() {
-    setSidebarCollapsed((current) => {
+  const [userCollapsed, setUserCollapsed] = useState(readSidebarCollapsed);
+  const [narrow, setNarrow] = useState(() => isNarrow(window.innerWidth));
+  useEffect(() => {
+    const onResize = () => setNarrow(isNarrow(window.innerWidth));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const sidebarCollapsed = effectiveSidebarCollapsed(userCollapsed, narrow);
+  const toggleSidebar = useCallback(() => {
+    if (narrow) return;
+    setUserCollapsed((current) => {
       try {
         localStorage.setItem(SIDEBAR_KEY, current ? "0" : "1");
       } catch {
         /* storage unavailable: the choice just doesn't persist */
       }
-      return !current;
+      return toggleUserCollapsed(current, false);
     });
-  }
+  }, [narrow]);
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!isSidebarShortcut(event) || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      toggleSidebar();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleSidebar]);
 
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -381,6 +399,7 @@ export default function DesktopShell({
         type="button"
         className="sidebar-toggle"
         onClick={toggleSidebar}
+        disabled={narrow}
         aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
         aria-expanded={!sidebarCollapsed}
         aria-controls="app-sidebar"
