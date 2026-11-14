@@ -6,7 +6,7 @@ import { downloadVersion, shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
-import { useAssetDetail } from "./useAssetDetail";
+import { useAssetDetailState } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
@@ -18,7 +18,7 @@ import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import * as g from "./gestures";
 import { viewerKeyAction } from "./viewerKeys";
 import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
-import { formatViewerTitle } from "./viewerTitle";
+import { type ViewerTitle, formatViewerTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 
 export interface ViewerProps {
@@ -78,7 +78,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const { zoomOut } = useZoomTransition({ rootRef, stageRef, item });
   const { closing, dismiss } = useDismiss<ZoomFrame>(onCloseNow, zoomOut);
   const onClose = useCallback(() => dismiss(), [dismiss]);
-  const detail = useAssetDetail(libraryId, item?.id ?? null);
+  const { detail, failed: detailFailed } = useAssetDetailState(libraryId, item?.id ?? null);
+  const lastTitle = useRef<ViewerTitle | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true, scrubbing);
@@ -441,7 +442,14 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
   const infoRows = detail ? buildInfoRows(detail) : [];
   // #211: line 1 relative day, line 2 "time . place"; Info keeps the full date.
-  const title = detail ? formatViewerTitle(detail.date_created, formatShortPlaceName(detail)) : { primary: "", secondary: "" };
+  // #416: never blank. Until this asset's detail lands keep the last title (or
+  // derive one from the list item's date); never render an empty line 1.
+  const loaded = detail !== null || detailFailed;
+  const fresh = formatViewerTitle(detail?.date_created ?? item?.date ?? null, detail ? formatShortPlaceName(detail) : "");
+  let title: ViewerTitle = fresh;
+  if (!loaded && lastTitle.current) title = lastTitle.current;
+  if (!title.primary.trim()) title = lastTitle.current ?? { primary: item?.is_video ? "Video" : "Photo", secondary: "" };
+  if (loaded && title.primary.trim()) lastTitle.current = title;
 
   return (
     <div
@@ -454,7 +462,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={19} className="mobile-viewer__back-chevron" />
         </button>
-        <div className="mobile-viewer__title">
+        <div className="mobile-viewer__title" data-testid="viewer-title">
           {title.primary && <div className="mobile-viewer__title-primary">{title.primary}</div>}
           {title.secondary && <div className="mobile-viewer__title-secondary">{title.secondary}</div>}
         </div>

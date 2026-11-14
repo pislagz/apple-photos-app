@@ -124,6 +124,7 @@
   --size-sidebar-row: 32px;
   --size-toolbar-button: 28px;
   --size-search-field: 32px;
+  --size-toolbar-rest-width: 160px; /* #412: Filter By pill and search field at rest */
   --size-toolbar: 44px;
   --size-toolbar-button-w: 31px;
   --size-zoom-slider-w: 100px;

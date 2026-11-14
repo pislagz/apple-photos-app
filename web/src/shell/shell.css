@@ -2009,8 +2009,13 @@ html.has-app-height .shell--mobile {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--size-toolbar-button-w);
+  /* #413: icon buttons are 1:1, so the hover background is a square. */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--size-toolbar-button);
   height: var(--size-toolbar-button);
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border: none;
   background: transparent;
   border-radius: var(--radius-8);
@@ -2019,8 +2024,14 @@ html.has-app-height .shell--mobile {
   transition: background-color var(--dur-press) var(--ease-press);
 }
 
+/* Text buttons (Retry) are the one place a toolbar button is not a square. */
+.map-view__state .toolbar-button {
+  width: auto;
+  aspect-ratio: auto;
+  padding: 0 var(--space-12);
+}
+
 .toolbar-button--small {
-  width: 22px;
   color: var(--color-label-secondary);
 }
 
@@ -2371,7 +2382,10 @@ html.has-app-height .shell--mobile {
   box-sizing: border-box;
   /* #393: the same height, side padding and font size as the search box. */
   height: var(--size-search-field);
-  min-width: 140px; /* the search box's resting width */
+  /* #412: exactly the search box's resting width, so the two line up. */
+  width: var(--size-toolbar-rest-width);
+  justify-content: center;
+  overflow: hidden;
   padding: 0 var(--space-8);
   border: none;
   /* #381 review (pp): match the desktop search box corners, not a capsule. */
@@ -4182,7 +4196,7 @@ html.has-app-height .shell--mobile {
 }
 
 .search-box--desktop {
-  width: 140px;
+  width: var(--size-toolbar-rest-width);
   height: var(--size-search-field);
   gap: var(--space-4);
   padding: 0 var(--space-4) 0 var(--space-8);
@@ -4227,30 +4241,6 @@ html.has-app-height .shell--mobile {
 .search-box--desktop .search-box__clear {
   width: var(--size-clear-button);
   height: var(--size-clear-button);
-}
-
-/* Narrow windows: just the magnifier until the field is focused. */
-@media (max-width: 1100px) {
-  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) {
-    width: 28px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  /* The input stays in the page (an invisible overlay) so the field can be focused,
-     and tapping the magnifier focuses it, which expands the box. */
-  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) {
-    position: relative;
-  }
-
-  .search-box--desktop:not(:focus-within):not(:has(.search-box__input:not(:placeholder-shown))) .search-box__input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    padding: 0;
-    opacity: 0;
-  }
-
 }
 
 .toolbar__count {
