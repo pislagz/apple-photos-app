@@ -62,6 +62,8 @@ for (const scheme of ["light", "dark"] as const) {
       }
       const input = page.locator("input.admin-input:not(:disabled)").first();
       if (await input.count()) {
+        // The field lives in the collapsed "Advanced" <details>, which cannot take focus until opened.
+        await page.locator("details.admin-advanced > summary").click();
         await input.focus();
         await expect(input).toBeFocused();
         expect(await input.evaluate((e) => getComputedStyle(e).boxShadow)).not.toBe("none");
@@ -90,3 +92,18 @@ for (const scheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// Field focus rings are box-shadows, which forced-colors mode drops; a transparent outline stays visible there.
+test("focused login field keeps a forced-colors-visible outline", async ({ page }) => {
+  await page.goto("/");
+  const field = page.getByLabel("Username");
+  await field.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  const s = await field.evaluate((el) => {
+    const c = getComputedStyle(el);
+    return { style: c.outlineStyle, width: c.outlineWidth };
+  });
+  expect(s.style).toBe("solid");
+  expect(s.width).toBe("2px");
+});

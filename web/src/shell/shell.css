@@ -1456,7 +1456,7 @@ body {
 }
 
 .login-card input:focus-visible {
-  outline: none;
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
   border-color: var(--accent);
   box-shadow: var(--ring-field);
 }
