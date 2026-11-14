@@ -1,8 +1,8 @@
 import { type Page, expect, test } from "@playwright/test";
 
-// #363: close-ups of every place the shared download icon is drawn.
+// #363: close-ups (3x) of every place the download and link icons are drawn.
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
-const OUT = "e2e/screenshots/363";
+const OUT = "e2e/screenshots/363b";
 
 async function signIn(page: Page) {
   await page.goto("/");
@@ -14,7 +14,7 @@ async function signIn(page: Page) {
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme}`, () => {
-    test.use({ colorScheme: scheme });
+    test.use({ colorScheme: scheme, deviceScaleFactor: 3 });
 
     test("desktop: library toolbar and viewer", async ({ page }, info) => {
       test.skip(info.project.name !== "desktop", "desktop only");
@@ -34,6 +34,10 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(dl.locator("svg")).toBeVisible();
       await page.locator(".desktop-viewer__topbar-right").screenshot({ path: `${OUT}/desktop-${scheme}-viewer.png` });
       await dl.screenshot({ path: `${OUT}/desktop-${scheme}-viewer-icon.png` });
+      const link = viewer.getByRole("button", { name: "Copy Link", exact: true });
+      await expect(link.locator("svg")).toBeVisible();
+      await link.screenshot({ path: `${OUT}/desktop-${scheme}-viewer-link-icon.png` });
+      await page.screenshot({ path: `${OUT}/desktop-${scheme}-viewer-full.png` });
     });
 
     test("phone: select bar", async ({ page }, info) => {
@@ -48,6 +52,24 @@ for (const scheme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Download", exact: true }).screenshot({
         path: `${OUT}/${info.project.name}-${scheme}-select-icon.png`,
       });
+    });
+
+    test("phone: viewer Download Original", async ({ page }, info) => {
+      test.skip(info.project.name === "desktop", "phone only");
+      await signIn(page);
+      await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+      // "Download Original" shows only for edited photos; the demo library has none,
+      // so flag the asset detail response as edited.
+      await page.route(/\/api\/libraries\/[^/]+\/assets\/[^/?]+$/, async (route) => {
+        const res = await route.fetch();
+        const body = await res.json();
+        await route.fulfill({ response: res, json: { ...body, has_edited: true } });
+      });
+      await page.locator("img.mobile-library__cell").nth(0).click();
+      const btn = page.getByRole("button", { name: "Download Original" });
+      await expect(btn.locator("svg")).toBeVisible();
+      await btn.screenshot({ path: `${OUT}/${info.project.name}-${scheme}-viewer-icon.png` });
+      await page.screenshot({ path: `${OUT}/${info.project.name}-${scheme}-viewer-full.png` });
     });
   });
 }

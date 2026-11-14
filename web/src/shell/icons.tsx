@@ -44,17 +44,6 @@ function ringDashes(cx: number, cy: number, r: number, count: number, half: numb
   return d;
 }
 
-// Closed stadium (pill) outline of overall `len` x `wid`, centred on (cx, cy)
-// and turned by `deg`. Used by the chain link.
-function stadium(cx: number, cy: number, len: number, wid: number, deg: number): string {
-  const r = wid / 2;
-  const h = len / 2 - r;
-  const a = (deg * Math.PI) / 180;
-  const pt = (u: number, v: number) =>
-    `${n(cx + u * Math.cos(a) - v * Math.sin(a))} ${n(cy + u * Math.sin(a) + v * Math.cos(a))}`;
-  return `M${pt(-h, -r)}L${pt(h, -r)}A${n(r)} ${n(r)} 0 0 1 ${pt(h, r)}L${pt(-h, r)}A${n(r)} ${n(r)} 0 0 1 ${pt(-h, -r)}Z`;
-}
-
 // Approved sample shapes (sample sheet v1), used as drawn.
 const LIBRARY_BACK = "M6.5 6.3V5.6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-.8";
 const LIBRARY_FRONT = "M4.5 6.5h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z";
@@ -75,8 +64,10 @@ const INFO_STEM = "M10 9.2v4.6";
 const INFO_DOT = "M10 7.4a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9Z";
 
 const LIVE_DASHES = ringDashes(10, 10, 8.5, 8, 1);
-const LINK_A = stadium(7.5, 12.5, 10.4, 5.6, -45);
-const LINK_B = stadium(12.5, 7.5, 10.4, 5.6, -45);
+// Chain link: two open hooks (stadium ends, r 2.6) on the 45 degree diagonal,
+// facing each other across a small gap where the links interlock.
+const LINK_A = "M7.38 8.94L4.34 11.98A2.6 2.6 0 0 0 8.02 15.66L11.06 12.62";
+const LINK_B = "M12.62 11.06L15.66 8.02A2.6 2.6 0 0 0 11.98 4.34L8.94 7.38";
 const VIDEO_BODY = rr(2.5, 5.5, 10.5, 9, 2);
 const VIDEO_LENS = "M13 8.7l3.3-1.9a.8.8 0 0 1 1.2.7v5a.8.8 0 0 1-1.2.7L13 11.3";
 const DOC_BODY =
@@ -249,12 +240,15 @@ export const ICONS = {
     ],
   },
   // Own drawing in the spirit of icloud.and.arrow.down: a closed outline cloud
-  // with a flat base, the arrow inside it and its tip passing through a gap in
-  // the base. Same 1.5 stroke as the rest of the set.
+  // (three bumps joined by small tangent fillets, flat base, x 1.5..18.4) with
+  // the down arrow fully inside it. Same 1.5 stroke as the rest of the set.
   download: {
     parts: [
-      ["M7.7 16H5.6a3.1 3.1 0 0 1-.55-6.15 4.9 4.9 0 0 1 9.4-.7A3.5 3.5 0 0 1 14.4 16h-2.1", "s"],
-      ["M10 8.6v7.4M7.5 13.6l2.5 2.5 2.5-2.5", "s"],
+      [
+        "M5.1 15.9A3.6 3.6 0 0 1 4.08 8.85A1.1 1.1 0 0 0 4.86 7.97A4.5 4.5 0 0 1 13.68 7.66A1.1 1.1 0 0 0 14.74 8.5A3.7 3.7 0 0 1 14.7 15.9Z",
+        "s",
+      ],
+      ["M10 7.9V13M7.9 10.9L10 13L12.1 10.9", "s"],
     ],
   },
   // Photos' "Filter By": a circle with three lines of decreasing length.

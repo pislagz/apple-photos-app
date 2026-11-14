@@ -33,7 +33,8 @@ describe("icon set", () => {
       expect(path.getAttribute("stroke")).toBe("currentColor");
       expect(path.getAttribute("fill")).toBe("none");
     }
-    expect(paths[0].getAttribute("d")).toMatch(/a3\.1 3\.1/); // cloud arcs
+    expect(paths[0].getAttribute("d")).toMatch(/A3\.6 3\.6/); // cloud arcs
+    expect(paths[0].getAttribute("d")).toMatch(/Z$/); // closed outline
   });
 
   it("is the only drawing of the download icon: every download button uses it (#363)", () => {
