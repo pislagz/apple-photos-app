@@ -57,3 +57,34 @@ describe("control tokens (#233)", () => {
     expect(css).toContain(".login-card button[type=\"submit\"]:active:not(:disabled)");
   });
 });
+
+// #234: menus, popovers, modals and backdrops come from tokens.
+describe("menu and dialog tokens (#234)", () => {
+  const tokens = read("shell/tokens.css");
+  const css = read("shell/shell.css");
+  const admin = read("admin/admin.css");
+
+  it("defines the popup, backdrop and dialog tokens, with dark pairs", () => {
+    for (const n of ["--shadow-popup", "--backdrop-material", "--backdrop-dim"]) {
+      expect(tokens.match(new RegExp(`^\\s*${n}:`, "gm"))).toHaveLength(2);
+    }
+    for (const n of ["--radius-popup", "--dur-dialog", "--scale-dialog", "--ring-menu-item"]) {
+      expect(tokens.match(new RegExp(`^\\s*${n}:`, "gm"))!.length).toBeGreaterThanOrEqual(1);
+    }
+    expect(tokens).toContain("--shadow-popup: 0 11px 34px rgba(0, 0, 0, 0.16)");
+    expect(tokens).toContain("--shadow-popup: 0 11px 34px rgba(0, 0, 0, 0.65)");
+  });
+
+  it("menus are 12px radius, 5px padded, with the popup shadow and an inset focus ring", () => {
+    expect(css).toMatch(/\.desktop-library__context-menu \{[^}]*padding: var\(--space-5\);[^}]*border-radius: var\(--radius-card\);[^}]*box-shadow: var\(--shadow-popup\)/);
+    expect(css).toMatch(/\.desktop-library__context-menu button:focus-visible \{[^}]*var\(--ring-menu-item\)/);
+    expect(css).toMatch(/\.mac-menu \{[^}]*border-radius: var\(--radius-card\)/);
+  });
+
+  it("modals sit on the material backdrop; the phone sheet slides up on the plain dim", () => {
+    expect(admin).toMatch(/\.admin-sheet-backdrop \{[^}]*background: var\(--backdrop-material\)/);
+    expect(admin).toMatch(/max-width: 700px\) \{\s*\/\*[^]*?background: var\(--backdrop-dim\)/);
+    expect(admin).toContain("animation-name: admin-sheet-up");
+    expect(css).toMatch(/\.change-password \{[^}]*var\(--backdrop-material\)/);
+  });
+});
