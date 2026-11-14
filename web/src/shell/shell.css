@@ -3252,9 +3252,16 @@ body {
 /* #372: Mac toolbar buttons are plain glyphs in the secondary label colour
    that darken on hover, with a soft rounded-rect hover and pressed state. */
 .desktop-viewer__topbar .toolbar-button {
-  /* #395: square hover target. */
-  width: 28px;
-  height: 28px;
+  /* #395/#406: square hover target. Never flex-shrunk below its height in a
+     tight bar, and no UA padding or width token (--size-toolbar-button-w is
+     31px, for the wider shell toolbar buttons) may skew it. */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--size-toolbar-button);
+  min-width: var(--size-toolbar-button);
+  height: var(--size-toolbar-button);
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border-radius: var(--radius-6, 6px);
   color: var(--color-label-secondary);
 }
