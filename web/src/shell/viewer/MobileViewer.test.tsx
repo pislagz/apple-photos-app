@@ -462,7 +462,7 @@ describe("MobileViewer", () => {
     fireEvent.click(screen.getByLabelText("Info"));
     const panel = await screen.findByTestId("viewer-info-sheet");
     expect(await screen.findByTestId("original-missing-note")).toHaveTextContent(
-      "Only a smaller copy is on this Mac \u2014 downloads won't be the original.",
+      "Only a smaller copy is on this server \u2014 downloads won't be the original.",
     );
     expect(panel).toContainElement(screen.getByTestId("original-missing-note"));
 
