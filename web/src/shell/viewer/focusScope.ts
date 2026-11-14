@@ -6,14 +6,16 @@ import { type RefObject, useEffect, useRef } from "react";
 // parent's siblings, up to <body>. That works wherever the overlay is rendered
 // (inside the grid, a portal) without wiring each background component.
 // Elements that were already inert stay as they were; only what this call
-// marked is released.
+// marked is released. An element with `data-scope-keep` is never marked: the
+// desktop sidebar toggle floats over the Viewer's top bar and must stay
+// clickable and focusable (#403).
 export function makeOutsideInert(root: HTMLElement): () => void {
   const marked: Element[] = [];
   let node: HTMLElement = root;
   while (node.parentElement && node !== document.body) {
     const parent: HTMLElement = node.parentElement;
     for (const sibling of Array.from(parent.children)) {
-      if (sibling === node || sibling.hasAttribute("inert")) continue;
+      if (sibling === node || sibling.hasAttribute("inert") || sibling.hasAttribute("data-scope-keep")) continue;
       sibling.setAttribute("inert", "");
       marked.push(sibling);
     }

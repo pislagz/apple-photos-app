@@ -127,3 +127,14 @@ describe("Viewer focus (D59)", () => {
     act(() => {});
   });
 });
+
+describe("data-scope-keep (#403)", () => {
+  it("is never made inert by an overlay", () => {
+    document.body.innerHTML = `<div id="shell"><button id="keep" data-scope-keep></button><div id="other"></div><div id="main"><div id="overlay"></div></div></div>`;
+    const release = makeOutsideInert(document.getElementById("overlay")!);
+    expect(document.getElementById("keep")).not.toHaveAttribute("inert");
+    expect(document.getElementById("other")).toHaveAttribute("inert");
+    release();
+    expect(document.getElementById("other")).not.toHaveAttribute("inert");
+  });
+});

@@ -420,6 +420,7 @@ export default function DesktopShell({
       <button
         type="button"
         className="sidebar-toggle"
+        data-scope-keep
         onClick={toggleSidebar}
         aria-label={isOpen ? "Hide sidebar" : "Show sidebar"}
         aria-expanded={isOpen}

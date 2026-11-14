@@ -784,3 +784,11 @@ describe("DesktopViewer chrome (#211)", () => {
     expect(seen.some((text) => /^\d+ \w+ 2024 at/.test(text))).toBe(false);
   });
 });
+
+describe("Back clears the sidebar toggle (#403)", () => {
+  it("reserves the toggle's slot in the top bar and aligns the toggle with the bar", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    expect(css).toMatch(/\.desktop-viewer__topbar-left \{[^}]*padding-left:\s*calc\(30px \+/);
+    expect(css).toMatch(/\.shell:has\(\.desktop-viewer\) \.sidebar-toggle \{[^}]*top:\s*12px/);
+  });
+});
