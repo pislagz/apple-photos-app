@@ -72,3 +72,29 @@ describe("verticalTarget goal column (D12)", () => {
     expect(verticalTarget(rows, "a3", 1, 2)).toBe("a4");
   });
 });
+
+describe("buildRows oldest first (#224)", () => {
+  // Oldest to newest, 3 columns: 7 photos make a short top row and two full rows.
+  const ordered = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"].map((id, i) => item(id, `2024-05-0${i + 1}T10:00:00`));
+
+  it("cuts rows from the newest end so only the top row is short", () => {
+    const rows = buildRows(ordered, "all", 3, true);
+    expect(rows.map((row) => (row.type === "grid" ? row.items.map((i) => i.id) : []))).toEqual([["p1"], ["p2", "p3", "p4"], ["p5", "p6", "p7"]]);
+  });
+
+  it("keeps the rows (and their keys) a user is looking at when an older page is added", () => {
+    const before = buildRows(ordered.slice(2), "all", 3, true);
+    const after = buildRows(ordered, "all", 3, true);
+    const keys = (rows: ReturnType<typeof buildRows>) => rows.map((row) => row.key);
+    expect(keys(after).slice(-keys(before).length + 1)).toEqual(keys(before).slice(1));
+    expect(after.slice(-2).map((row) => (row.type === "grid" ? row.items.map((i) => i.id) : []))).toEqual([["p2", "p3", "p4"], ["p5", "p6", "p7"]]);
+  });
+
+  it("moves Down toward newer photos and reports the top edge as null", () => {
+    const rows = buildRows(ordered, "all", 3, true);
+    expect(verticalTarget(rows, "p3", 1)).toBe("p6");
+    expect(verticalTarget(rows, "p6", 1)).toBe("end");
+    expect(verticalTarget(rows, "p2", -1)).toBe("p1");
+    expect(verticalTarget(rows, "p1", -1)).toBeNull();
+  });
+});

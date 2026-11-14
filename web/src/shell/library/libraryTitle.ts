@@ -34,15 +34,17 @@ export function yearOf(iso: string): string {
   return String(parts(iso).year);
 }
 
-// Desktop title. `visibleDates` are the dates of the items on screen, newest
-// first; the top row's first item decides the Years and Months wording.
+// Desktop title. `visibleDates` are the dates of the items on screen, in
+// list order; the top row's first item decides the Years and Months wording.
 export function desktopTitle(view: ViewKey, visibleDates: string[]): string {
   if (visibleDates.length === 0) return "";
   const top = visibleDates[0];
   if (view === "years") return yearOf(top);
   if (view === "months") return monthYear(top);
-  const newest = shortDate(top);
-  const oldest = shortDate(visibleDates[visibleDates.length - 1]);
+  // Either direction: the Library lists oldest first (#224), albums newest first.
+  const sorted = [...visibleDates].sort();
+  const newest = shortDate(sorted[sorted.length - 1]);
+  const oldest = shortDate(sorted[0]);
   return newest === oldest ? newest : `${oldest} – ${newest}`;
 }
 

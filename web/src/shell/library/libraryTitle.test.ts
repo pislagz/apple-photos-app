@@ -63,3 +63,12 @@ describe("phoneTitle (#209)", () => {
     expect(phoneTitle(4, undefined)).toEqual({ subtitle: "", pill: "" });
   });
 });
+
+describe("desktopTitle order (#224)", () => {
+  it("names the same range for oldest-first and newest-first dates", () => {
+    const ascending = desktopTitle("all", ["2024-05-01T10:00:00", "2024-05-09T10:00:00"]);
+    const descending = desktopTitle("all", ["2024-05-09T10:00:00", "2024-05-01T10:00:00"]);
+    expect(ascending).toBe(descending);
+    expect(ascending).toContain("–");
+  });
+});

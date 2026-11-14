@@ -31,10 +31,11 @@ import {
 import DateTitle from "./DateTitle";
 import { desktopTitle, titleScrimProgress } from "./libraryTitle";
 import PeriodCardGrid from "./PeriodCards";
-import { buildPeriodCards, buildRows, columnOf, verticalTarget } from "./rows";
+import { buildPeriodCards, buildRows, columnOf, type LibraryRow, verticalTarget } from "./rows";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
+import { useLandOnPeriod, useOldestFirstScroll, useViewerIndex } from "./useOldestFirstScroll";
 import { InfoRows } from "../viewer/InfoRows";
 import { useAssetDetailState, useSelectionSummary } from "../viewer/useAssetDetail";
 import { buildInfoRows, buildSelectionRows } from "../viewer/viewerInfo";
@@ -201,7 +202,7 @@ export default function DesktopLibrary({
     null,
   );
   const anchorIdRef = useRef<string | null>(null);
-  // Holds the arrow-key target index while it is still past the loaded
+  // Holds the arrow-key target index (counted from the newest end, #224) while it is still past the loaded
   // items, so the reconciliation effect below can catch focus up once
   // `loadMore` delivers the page that contains it.
   const desiredIndexRef = useRef<number | null>(null);
@@ -213,9 +214,17 @@ export default function DesktopLibrary({
   // Down past the last loaded row: where the run started, until the next page
   // arrives and the move can be finished through the row model.
   // `count` Down presses are owed (more arrive while the page loads).
+  // The run heads down in a newest-first list and up in the oldest-first
+  // Library, where the unloaded pages are above.
   const pendingDownRef = useRef<{ id: string; column: number; count: number } | null>(null);
 
-  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide);
+  // #224: the Library (no album) lists oldest first and opens at the newest
+  // photos; albums, search, people and places keep newest first.
+  const oldestFirst = !album;
+  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
+  // Index counted from the newest end: stable when older pages are added on
+  // top. Its own inverse, so it also maps back to a list position.
+  const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
   const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
   useEffect(() => {
     if (!loading || items.length > 0) onCount?.(items.length, done);
@@ -265,22 +274,23 @@ export default function DesktopLibrary({
     if (!isPeriodView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view as "years" | "months" | "days") : [];
   }, [view, summary, isPeriodView]);
-  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns)), [isPeriodView, items, view, columns]);
+  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns, oldestFirst)), [isPeriodView, items, view, columns, oldestFirst]);
   const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
   const cellSize = squareEdge(containerWidth, columns, gap, dpr);
   const tileWidth = widths.length ? Math.min(...widths) : cellSize;
 
+  const rowSize = useCallback(
+    (row: LibraryRow) =>
+      row.type === "header" ? HEADER_ROW_HEIGHT : row.type === "feature" ? featureRowHeight(containerWidth, cellSize, gap) : gridRowHeight(cellSize, gap),
+    [containerWidth, cellSize, gap],
+  );
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) =>
-      rows[index].type === "header"
-        ? HEADER_ROW_HEIGHT
-        : rows[index].type === "feature"
-          ? featureRowHeight(containerWidth, cellSize, gap)
-          : gridRowHeight(cellSize, gap),
+    estimateSize: (index) => rowSize(rows[index]),
     overscan: 6,
   });
+  const { scrollToEnd } = useOldestFirstScroll({ scrollRef, rows, rowSize, ready: oldestFirst && !isPeriodView && containerWidth > 0 });
 
   // Row heights depend on the container width and column count, but the
   // virtualizer caches sizes per index; drop the cache when they change so a
@@ -322,8 +332,7 @@ export default function DesktopLibrary({
 
   // #118: the title covers the rows actually on screen (the virtualizer's
   // overscan rows are not), so it follows scroll like sequoia-library-grid.png
-  // and never claims dates from pages that are not on screen. Items are sorted
-  // newest first, so the range runs from the last visible item to the first.
+  // and never claims dates from pages that are not on screen.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const viewportHeight = rowVirtualizer.scrollRect?.height ?? 0;
   const { dateRangeLabel, headerInBand } = useMemo(() => {
@@ -346,8 +355,9 @@ export default function DesktopLibrary({
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
-    if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [virtualRows, rows.length, loading, done, loadMore]);
+    // Oldest first: the unloaded pages are above the first row.
+    if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
+  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst]);
 
   // Keyboard/click focus has to stay on-screen: the virtualizer only mounts
   // rows near the viewport, so moving focus by state alone (as selection
@@ -397,14 +407,14 @@ export default function DesktopLibrary({
     const desired = desiredIndexRef.current;
     if (desired === null) return;
     if (desired < items.length) {
-      selectSingle(items[desired].id);
+      selectSingle(items[fromNewest(desired)].id);
       desiredIndexRef.current = null;
     } else if (!done && !loading) {
       loadMore();
     } else {
       desiredIndexRef.current = null;
     }
-  }, [items, done, loading, loadMore, selectSingle]);
+  }, [items, done, loading, loadMore, selectSingle, fromNewest]);
 
   // Finishes the Down presses that ran past the last loaded row (see
   // `pendingDownRef`), one row at a time through the row model.
@@ -413,7 +423,7 @@ export default function DesktopLibrary({
     if (!pending || loading) return;
     let id = pending.id;
     while (pending.count > 0) {
-      const target = verticalTarget(rows, id, 1, pending.column);
+      const target = verticalTarget(rows, id, oldestFirst ? -1 : 1, pending.column);
       if (target === "end" || target === "unknown" || target === null) break;
       id = target;
       pending.count -= 1;
@@ -428,9 +438,9 @@ export default function DesktopLibrary({
     } else {
       pendingDownRef.current = null;
     }
-  }, [rows, loading, done, loadMore, selectSingle]);
+  }, [rows, loading, done, loadMore, selectSingle, oldestFirst]);
 
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [viewerIndex, setViewerIndex] = useViewerIndex(items);
   // Set right before drilling a zoom level in, so the scroll effect below
   // can land on the opened tile's own row once the new view's rows exist.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
@@ -439,7 +449,15 @@ export default function DesktopLibrary({
   // Months -> All Photos: the month ("2022-01") whose newest photo goes to the top.
   const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(initialScrollDayKey ?? null);
 
-  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setViewerIndex, onInitialAssetOpened);
+  // Opens the Viewer and also scrolls the grid behind it to the photo.
+  const openFromLink = useCallback(
+    (index: number) => {
+      setViewerIndex(index);
+      setPendingScrollId(items[index]?.id ?? null);
+    },
+    [items, setViewerIndex],
+  );
+  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, openFromLink, onInitialAssetOpened);
 
   // Lands the just-switched-to view scrolled to the tile that was opened,
   // not back at the top -- see `handleOpen` below.
@@ -447,24 +465,40 @@ export default function DesktopLibrary({
     if (!pendingScrollId) return;
     const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.id === pendingScrollId));
     if (rowIndex !== -1) {
-      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
       setPendingScrollId(null);
     }
   }, [pendingScrollId, rows, rowVirtualizer]);
 
-  // Years/Months sit scrolled to the bottom (newest); a photo view must not
-  // inherit that offset.
+  // Years/Months sit scrolled to the bottom (newest). The Library's photos
+  // open there too (useOldestFirstScroll); newest-first lists start at the top.
   const previousViewRef = useRef(view);
   useLayoutEffect(() => {
     const previous = previousViewRef.current;
     previousViewRef.current = view;
-    if ((previous === "years" || previous === "months" || previous === "days") && !isPeriodView && scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [view, isPeriodView]);
+    if (!oldestFirst && (previous === "years" || previous === "months" || previous === "days") && !isPeriodView && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [view, isPeriodView, oldestFirst]);
 
-  // All Photos is newest first and paged: keep loading until the requested
-  // month's first photo is there, then scroll it to the top.
+  // From a Month or Day card: load older pages until the period is in the
+  // list, then scroll its first photo to the top.
+  const clearPendingMonth = useCallback(() => setPendingMonthKey(null), []);
+  const scrollToRowStart = useCallback((rowIndex: number) => rowVirtualizer.scrollToIndex(rowIndex, { align: "start" }), [rowVirtualizer]);
+  useLandOnPeriod({
+    key: pendingMonthKey,
+    active: oldestFirst && view === "all",
+    items,
+    rows,
+    loading,
+    done,
+    loadMore,
+    scrollToRow: scrollToRowStart,
+    onLanded: clearPendingMonth,
+  });
+
+  // Newest-first lists: keep loading until the requested month's first photo
+  // is there, then scroll it to the top.
   useEffect(() => {
-    if (!pendingMonthKey || view !== "all") return;
+    if (!pendingMonthKey || view !== "all" || oldestFirst) return;
     const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((item) => item.date?.startsWith(pendingMonthKey)));
     if (rowIndex !== -1) {
       rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
@@ -474,7 +508,7 @@ export default function DesktopLibrary({
     } else if (!loading) {
       loadMore();
     }
-  }, [pendingMonthKey, view, rows, done, loading, loadMore, rowVirtualizer]);
+  }, [pendingMonthKey, view, rows, done, loading, loadMore, rowVirtualizer, oldestFirst]);
 
   // Years and Months cards drill one level down (#307); Years -> Months
   // lands on that year's first month, Months -> All Photos on that month.
@@ -598,17 +632,21 @@ export default function DesktopLibrary({
       if (delta === undefined || items.length === 0) return;
       event.preventDefault();
       const moveTo = event.shiftKey ? extendTo : selectSingle;
-      const currentIndex = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
+      // Right and Down move toward newer photos: forward in the oldest-first
+      // Library, backward in a newest-first list.
+      const flat = (value: number) => (oldestFirst ? -value : value);
+      const found = focusedId ? items.findIndex((item) => item.id === focusedId) : -1;
+      const currentIndex = found === -1 ? -1 : fromNewest(found);
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         if (pendingDownRef.current) {
-          if (event.key === "ArrowDown") pendingDownRef.current.count += 1;
+          if (event.key === (oldestFirst ? "ArrowUp" : "ArrowDown")) pendingDownRef.current.count += 1;
           return;
         }
         // Nothing focused yet: the first press selects the first photo. The
         // old flat +columns move landed in the last column of the first row
         // and every press after that was a column off (D13).
         if (!focusedId) {
-          moveTo(items[0].id);
+          moveTo(items[fromNewest(0)].id);
           return;
         }
         // Rows restart after every date header (and Days has a hero row), so
@@ -622,11 +660,11 @@ export default function DesktopLibrary({
           goalColumnRef.current = { id: target, column };
           return;
         }
-        if (target === null) return;
-        if (target === "end") {
+        if (target === null || target === "end") {
           // Finish through the row model once the next page is in; the flat
           // +columns fallback is wrong across date groups and the lead photo.
-          if (!done) {
+          // The unloaded pages are below a newest-first list, above the Library.
+          if ((oldestFirst ? target === null : target === "end") && !done) {
             pendingDownRef.current = { id: focusedId, column, count: 1 };
             loadMore();
           }
@@ -634,7 +672,7 @@ export default function DesktopLibrary({
         }
       }
       const base = desiredIndexRef.current ?? (currentIndex === -1 ? 0 : currentIndex);
-      const desired = Math.max(0, base + delta);
+      const desired = Math.max(0, base + flat(delta));
       const nextIndex = Math.min(items.length - 1, desired);
       if (desired > nextIndex && !done) {
         desiredIndexRef.current = desired;
@@ -642,9 +680,9 @@ export default function DesktopLibrary({
       } else {
         desiredIndexRef.current = null;
       }
-      moveTo(items[nextIndex].id);
+      moveTo(items[fromNewest(nextIndex)].id);
     },
-    [items, rows, columns, zoomIndex, changeZoom, focusedId, handleOpen, selectSingle, extendTo, done, loadMore],
+    [items, rows, columns, zoomIndex, changeZoom, focusedId, handleOpen, selectSingle, extendTo, done, loadMore, oldestFirst, fromNewest],
   );
 
   const setCellRef = useCallback((id: string, element: HTMLElement | null) => {
@@ -807,7 +845,13 @@ export default function DesktopLibrary({
       if (event.defaultPrevented || viewerIndex !== null || contextMenu !== null) return;
       if (isTypingTarget(event.target)) return;
       const action = shortcutAction(event);
-      if (action === "selectAll" && !isPeriodView) {
+      const toNewest =
+        (event.key === "End" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) ||
+        ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "ArrowDown");
+      if (toNewest && (oldestFirst || isPeriodView)) {
+        event.preventDefault();
+        scrollToEnd(true);
+      } else if (action === "selectAll" && !isPeriodView) {
         event.preventDefault();
         void loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
       } else if (action === "zoomIn" || action === "zoomOut") {
@@ -820,7 +864,7 @@ export default function DesktopLibrary({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewerIndex, contextMenu, isPeriodView, loadAll, changeZoom, zoomIndex]);
+  }, [viewerIndex, contextMenu, isPeriodView, loadAll, changeZoom, zoomIndex, oldestFirst, scrollToEnd]);
 
   const handleGridClick = useCallback((event: React.MouseEvent) => {
     if (suppressClickRef.current || event.shiftKey || event.metaKey || event.ctrlKey) return;

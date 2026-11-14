@@ -20,6 +20,7 @@ import FilterMenu from "./FilterMenu";
 import { useLibraryFilter } from "./useLibraryFilter";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
+import { useLandOnPeriod, useOldestFirstScroll, useViewerIndex } from "./useOldestFirstScroll";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
 import DateTitle from "./DateTitle";
@@ -72,21 +73,22 @@ export default function MobileLibrary({
   const [view, setView] = useState<ViewKey>("all");
   const viewRef = useRef(view);
   viewRef.current = view;
-  // Set right before drilling Months -> Days (#126): anchors the Days/All
-  // Photos feed's first page at that month instead of the top of the whole
-  // library. `/assets`'s `to` bound is a string compare on the local-day
-  // column, so "-31" is always a safe upper bound regardless of the real
-  // month length.
-  const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
+  // Set when a Day card is tapped: All Photos scrolls to that day once the
+  // pages back to it are loaded.
+  const [pendingDayKey, setPendingDayKey] = useState<string | null>(null);
+  // #224: the Library (no album) lists oldest first and opens at the newest
+  // photos; albums, search, people and places keep newest first.
+  const oldestFirst = !album;
   const filterState = useLibraryFilter();
   // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
   const [wholePhotos, setWholePhotos] = useState(false);
   const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
-    daysAnchor,
+    null,
     filterState.filter,
     album ?? null,
     filterState.hide,
+    oldestFirst,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
   const libraryEmpty = summary !== null && summary.years.length === 0;
@@ -166,15 +168,18 @@ export default function MobileLibrary({
     const rect = scrollRef.current?.getBoundingClientRect();
     zoomLevels(steps, { clientX: (rect?.left ?? 0) + (rect?.width ?? 0) / 2, clientY: (rect?.top ?? 0) + (rect?.height ?? 0) / 2 });
   };
-  // #146: back to the newest photos -- drop the Month -> Days anchor and
-  // scroll to the top. Re-selecting a zoom tab or the Library tab does this.
-  // Years/Months are oldest first, so their newest end is the bottom (#307).
-  const backToNewest = useCallback((target: ViewKey) => {
-    setDaysAnchor(null);
-    setPendingScrollKey(null);
-    const element = scrollRef.current;
-    if (element) element.scrollTop = target !== "all" ? element.scrollHeight : 0;
-  }, []);
+  // #146: back to the newest photos. Re-selecting a zoom tab or the Library
+  // tab does this. The Library, Years and Months are oldest first (#224, #307),
+  // so their newest end is the bottom; newest-first lists start at the top.
+  const backToNewest = useCallback(
+    (target: ViewKey) => {
+      setPendingDayKey(null);
+      setPendingScrollKey(null);
+      const element = scrollRef.current;
+      if (element) element.scrollTop = target !== "all" || oldestFirst ? element.scrollHeight : 0;
+    },
+    [oldestFirst],
+  );
   // A new filter lists different photos: start at the top, not mid-library.
   const filterKey = `${filterState.filter}|${filterState.hide.join(",")}`;
   const lastFilterKey = useRef(filterKey);
@@ -189,13 +194,23 @@ export default function MobileLibrary({
     lastResetSignal.current = resetSignal;
     backToNewest(viewRef.current);
   }, [resetSignal, backToNewest]);
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   // Set right before drilling Years -> Months, so Months can land on the
   // tapped year's first card.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
   const isTileView = view === "years" || view === "months" || view === "days";
 
-  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
+  const [openIndex, setOpenIndex] = useViewerIndex(items);
+  // A pasted link opens the Viewer and also scrolls the grid behind it to the photo.
+  const [revealId, setRevealId] = useState<string | null>(null);
+  const openFromLink = useCallback(
+    (index: number) => {
+      setOpenIndex(index);
+      setRevealId(items[index]?.id ?? null);
+    },
+    [items, setOpenIndex],
+  );
+  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, openFromLink, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
   const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -257,10 +272,8 @@ export default function MobileLibrary({
         setView("days");
         return;
       }
-      // Day -> All Photos at that day: the feed starts at the day's last
-      // photo, newest-first (#126, `to` is a string compare on the local day).
-      setDaysAnchor(bucketKey);
-      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+      // Day -> All Photos at that day (#224: loads back to it, then scrolls there).
+      setPendingDayKey(bucketKey);
       setView("all");
     },
     [view],
@@ -316,6 +329,17 @@ export default function MobileLibrary({
     return () => observer.disconnect();
   }, [selectMode]);
 
+  // The Library opens at its end (#224): when the Select bar appears (more
+  // bottom padding), keep the newest row above it instead of underneath.
+  const lastBarHeight = useRef(0);
+  useLayoutEffect(() => {
+    const delta = selectBarHeight - lastBarHeight.current;
+    lastBarHeight.current = selectBarHeight;
+    const element = scrollRef.current;
+    if (!oldestFirst || delta <= 0 || !element) return;
+    if (element.scrollHeight - element.clientHeight - element.scrollTop <= delta + 2) element.scrollTop = element.scrollHeight;
+  }, [selectBarHeight, oldestFirst]);
+
   const [containerWidth, setContainerWidth] = useState(0);
 
   useLayoutEffect(() => {
@@ -338,7 +362,7 @@ export default function MobileLibrary({
     if (!isTileView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : summary.days, view === "months" ? "days" : view) : [];
   }, [view, summary]);
-  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns)), [isTileView, view, items, columns]);
+  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst)), [isTileView, view, items, columns, oldestFirst]);
   // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
   // what is left of the width; dividing the full width overflowed the
   // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
@@ -350,16 +374,38 @@ export default function MobileLibrary({
       ? cellSize * Math.min(MAX_SINGLE_ASPECT, Math.max(MIN_SINGLE_ASPECT, item.height / item.width))
       : cellSize;
 
+  const rowSize = (row: LibraryRow) => {
+    if (row.type === "header") return HEADER_ROW_HEIGHT;
+    return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
+  };
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => {
-      const row = rows[index];
-      if (row.type === "header") return HEADER_ROW_HEIGHT;
-      return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
-    },
+    estimateSize: (index) => rowSize(rows[index]),
     overscan: 6,
   });
+  const { scrollToEnd } = useOldestFirstScroll({ scrollRef, rows, rowSize, ready: oldestFirst && !isTileView && containerWidth > 0 });
+  const clearPendingDay = useCallback(() => setPendingDayKey(null), []);
+  const scrollToRowStart = useCallback((rowIndex: number) => rowVirtualizer.scrollToIndex(rowIndex, { align: "start" }), [rowVirtualizer]);
+  useLandOnPeriod({
+    key: pendingDayKey,
+    active: oldestFirst && view === "all",
+    items,
+    rows,
+    loading,
+    done,
+    loadMore,
+    scrollToRow: scrollToRowStart,
+    onLanded: clearPendingDay,
+  });
+  useLayoutEffect(() => {
+    if (!revealId) return;
+    const row = findRowIndexByAsset(rows, revealId);
+    if (row !== -1) {
+      rowVirtualizer.scrollToIndex(row, { align: "center" });
+      setRevealId(null);
+    }
+  }, [revealId, rows, rowVirtualizer]);
 
   // The virtualizer caches row sizes per index and `estimateSize` is not part
   // of its memo key, so a resize left the old heights (black gaps between
@@ -397,8 +443,9 @@ export default function MobileLibrary({
     if (isTileView) return;
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
-    if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [isTileView, virtualRows, rows.length, loading, done, loadMore]);
+    // Oldest first: the unloaded pages are above the first row.
+    if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
+  }, [isTileView, virtualRows, rows.length, loading, done, loadMore, oldestFirst]);
 
   useLayoutEffect(() => {
     const anchor = pinchAnchor.current;
@@ -493,10 +540,14 @@ export default function MobileLibrary({
                 // Re-tapping "All" glides to the newest photo (instant when
                 // the user asked for reduced motion).
                 if (item.key === "all" && view === "all" && scrollRef.current) {
-                  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-                  setDaysAnchor(null);
+                  setPendingDayKey(null);
                   setPendingScrollKey(null);
-                  scrollRef.current.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+                  if (oldestFirst) {
+                    scrollToEnd(true);
+                  } else {
+                    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                    scrollRef.current.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+                  }
                   return;
                 }
                 backToNewest(item.key);

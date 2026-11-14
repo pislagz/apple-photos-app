@@ -41,8 +41,9 @@ test("horizontal drag selects a run across rows, then deselects it", async ({ pa
   test.skip(info.project.name === "desktop", "phone layout only");
   await enterSelect(page);
   const cells = page.locator("img.mobile-library__cell");
-  const a = (await cells.nth(1).boundingBox())!;
-  const b = (await cells.nth(6).boundingBox())!;
+  // Oldest first (#224): the Library opens at its end, so the last cells are on screen.
+  const a = (await cells.nth(-6).boundingBox())!;
+  const b = (await cells.nth(-1).boundingBox())!;
   const centre = (box: typeof a) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
   await drag(page, centre(a), centre(b));
   await expect(page.getByTestId("select-bar")).toContainText(/6 (Photos|Videos|Items) Selected/);

@@ -100,7 +100,8 @@ describe("Viewer focus (D59)", () => {
     const cells = await screen.findAllByTestId("library-cell");
     fireEvent.doubleClick(cells.find((cell) => cell.getAttribute("data-asset-id") === "a2") as HTMLElement);
     await screen.findByTestId("desktop-viewer");
-    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    // Oldest first (#224): a2 comes before a1, so Right steps on to a1.
+    fireEvent.keyDown(window, { key: "ArrowRight" });
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
     expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a1"]'));
