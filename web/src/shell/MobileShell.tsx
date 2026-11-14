@@ -240,7 +240,7 @@ export default function MobileShell({
         </div>
         {route.tab !== "library" && renderContent()}
       </main>
-      <nav className={route.tab === "library" ? "tab-bar tab-bar--overlay" : "tab-bar"} aria-label="Primary">
+      <nav className="tab-bar" aria-label="Primary">
         {TABS.map((tab) => (
           <button
             key={tab.key}
