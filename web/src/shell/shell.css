@@ -51,6 +51,9 @@ body {
   flex-direction: column;
   height: 100dvh;
   min-height: 0;
+  /* #364: the tab bar slides 100% below the shell while selecting; without
+     this that transform grew the document and added a page scrollbar. */
+  overflow: hidden;
   background: var(--color-bg);
 }
 
