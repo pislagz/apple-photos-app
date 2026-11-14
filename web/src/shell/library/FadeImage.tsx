@@ -95,6 +95,7 @@ export default function FadeImage({
 
   return (
     <img
+      draggable={false}
       {...rest}
       src={canObserve() ? shown : src}
       ref={ref}

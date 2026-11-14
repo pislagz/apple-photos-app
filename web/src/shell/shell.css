@@ -22,6 +22,45 @@ input[type="radio"],
   cursor: default;
 }
 
+/* #236: the app shell never rubber-bands as a whole; the scroll areas inside it
+   keep their own natural scrolling. No grey flash when a control is tapped. */
+html {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* #236: chrome is not selectable text, like a native app. Captions, metadata,
+   file names and text fields are left out on purpose so they can be copied. */
+button,
+summary,
+[role="button"],
+[role="menu"],
+[role="menuitem"],
+[role="menuitemradio"],
+[role="tab"],
+[role="tablist"],
+[role="toolbar"],
+[role="option"],
+.sidebar,
+.tab-bar,
+.toolbar-button,
+.desktop-library__cell,
+.mobile-library__cell-wrap,
+.album-tile {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* #236: no long-press save sheet or drag ghost on a photo tile. */
+.fade-image,
+.desktop-library__cell img,
+.mobile-library__cell-wrap img,
+.album-tile img {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -299,7 +338,7 @@ body {
   font-size: var(--font-size-title-large);
   font-weight: var(--font-weight-bold);
   line-height: 1.1;
-  letter-spacing: -0.3px;
+  letter-spacing: var(--tracking-title-large);
 }
 
 .mobile-library__subtitle {
@@ -325,7 +364,7 @@ body {
   color: var(--color-label-pill);
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
+  letter-spacing: var(--tracking-title);
   line-height: 1.2;
 }
 
@@ -475,7 +514,7 @@ body {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-body);
   background: linear-gradient(to top, var(--scrim-strong) 0%, var(--scrim-clear) 75%);
   pointer-events: none;
 }
@@ -529,7 +568,7 @@ body {
   margin: 0;
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.4px;
+  letter-spacing: var(--tracking-title-large);
   color: var(--color-label);
 }
 
@@ -606,7 +645,7 @@ body {
 .period-card__label {
   font-size: var(--font-size-title-3);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
+  letter-spacing: var(--tracking-title-3);
   line-height: 1.15;
 }
 
@@ -702,7 +741,7 @@ body {
   padding: var(--space-14) var(--space-4) var(--space-4);
   font-size: var(--font-size-title-2-lg);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
+  letter-spacing: var(--tracking-title);
   color: var(--color-label);
 }
 
@@ -1116,7 +1155,7 @@ body {
   margin: 0;
   font-size: var(--font-size-title-2);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-title-2);
 }
 
 .mobile-screen__body {
@@ -2018,7 +2057,7 @@ body {
   font-size: var(--font-size-title-3);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-title-3);
   white-space: nowrap;
   pointer-events: none;
 }
