@@ -277,8 +277,6 @@ describe("narrow sidebar overlay (#392)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
