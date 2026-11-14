@@ -180,6 +180,7 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
         first_body = first_page.json()
         assert [item["id"] for item in first_body["items"]] == ["newest", "middle"]
         assert first_body["next_cursor"] is not None
+        assert first_body["total"] == 3
 
         # Simulate a re-index inserting a row newer than anything paged so far --
         # it sorts "above" the cursor and must not perturb the next page.
@@ -195,6 +196,7 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
         second_body = second_page.json()
         assert [item["id"] for item in second_body["items"]] == ["oldest"]
         assert second_body["next_cursor"] is None
+        assert second_body["total"] is None
     finally:
         conn.close()
 

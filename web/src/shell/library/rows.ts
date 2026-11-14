@@ -37,19 +37,31 @@ function gridRows(items: AssetListItem[], columns: number, label: string, keyPre
   return rows;
 }
 
-// `oldestFirst` (#224): `items` run oldest to newest and All Photos rows are cut
-// from the newest end, so the bottom rows are always full and an older page
-// added on top never re-flows the rows the user is looking at. Only the top
-// row can be short. Row keys use the row's last item, which stays put.
-export function buildRows(items: AssetListItem[], view: ViewKey, columns: number, oldestFirst = false): LibraryRow[] {
+// `oldestFirst` (#224, #365): `items` run oldest to newest and All Photos rows
+// start at the library's OLDEST photo, like Apple Photos: every row is full
+// and only the last (newest) one can be short, empty on the right. `total` is
+// the library's photo count; with it the loaded items' position from the
+// oldest photo is known, so rows are cut at global multiples of `columns`. An
+// older page added on top then never moves a row boundary below it, and only
+// the top row (not yet reaching the oldest photo) can be short until it
+// arrives. Row keys use the row's last item, which stays put.
+export function buildRows(
+  items: AssetListItem[],
+  view: ViewKey,
+  columns: number,
+  oldestFirst = false,
+  total: number | null = null,
+): LibraryRow[] {
   if (view === "all" && oldestFirst) {
+    const unloaded = total !== null && total > items.length ? total - items.length : 0;
+    const head = (columns - (unloaded % columns)) % columns;
     const rows: GridRow[] = [];
-    for (let end = items.length; end > 0; end -= columns) {
-      const slice = items.slice(Math.max(0, end - columns), end);
+    for (let start = 0; start < items.length; start = start === 0 && head > 0 ? head : start + columns) {
+      const slice = items.slice(start, start === 0 && head > 0 ? head : start + columns);
       const label = formatGroupLabel(slice[0]?.date ? slice[0].date.slice(0, 10) : "", "days");
       rows.push({ type: "grid", key: `all-${slice[slice.length - 1].id}`, label, items: slice });
     }
-    return rows.reverse();
+    return rows;
   }
   if (view === "all") {
     // Uniform square grid, no inline headers -- the overlaid title (#209)

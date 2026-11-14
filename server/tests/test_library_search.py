@@ -169,7 +169,7 @@ def test_empty_query_is_an_empty_page_and_paging_works(tmp_path):
     try:
         for q in ("", "   "):
             body = client.get(f"/api/libraries/{lib}/search", params={"q": q}).json()
-            assert body == {"items": [], "next_cursor": None}
+            assert body == {"items": [], "next_cursor": None, "total": None}
         assert client.get(f"/api/libraries/{lib}/search").json()["items"] == []
         first = client.get(
             f"/api/libraries/{lib}/search", params={"q": "2023", "limit": 3}

@@ -3,6 +3,8 @@ import { type AssetFilter, type AssetHide, type AssetListItem, getAssets } from 
 
 export interface UseLibraryAssetsResult {
   items: AssetListItem[];
+  // Photos matching the request, known after the first page (#365); else null.
+  total: number | null;
   loading: boolean;
   done: boolean;
   // True when the latest page request failed; `retry` re-requests that page.
@@ -35,6 +37,7 @@ export function useLibraryAssets(
 ): UseLibraryAssetsResult {
   const [raw, setItems] = useState<AssetListItem[]>([]);
   const items = useMemo(() => (oldestFirst ? [...raw].reverse() : raw), [raw, oldestFirst]);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
@@ -48,6 +51,7 @@ export function useLibraryAssets(
     return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album, hide)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
+        if (replace) setTotal(response.total ?? null);
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
         cursorRef.current = response.next_cursor;
         setDone(!response.next_cursor);
@@ -72,6 +76,7 @@ export function useLibraryAssets(
     setDone(false);
     setError(false);
     setItems([]);
+    setTotal(null);
     fetchPage(libraryId, null, true);
   }, [libraryId, fetchPage]);
 
@@ -103,5 +108,5 @@ export function useLibraryAssets(
     return oldestFirst ? [...all].reverse() : all;
   }, [libraryId, raw, oldestFirst, done, fetchPage]);
 
-  return { items, loading, done, error, retry, loadMore, loadAll };
+  return { items, total, loading, done, error, retry, loadMore, loadAll };
 }

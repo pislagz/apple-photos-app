@@ -82,7 +82,7 @@ export default function MobileLibrary({
   const filterState = useLibraryFilter();
   // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
   const [wholePhotos, setWholePhotos] = useState(false);
-  const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
+  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
     null,
     filterState.filter,
@@ -362,7 +362,7 @@ export default function MobileLibrary({
     if (!isTileView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : summary.days, view === "months" ? "days" : view) : [];
   }, [view, summary]);
-  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst)), [isTileView, view, items, columns, oldestFirst]);
+  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst, total)), [isTileView, view, items, columns, oldestFirst, total]);
   // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
   // what is left of the width; dividing the full width overflowed the
   // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).

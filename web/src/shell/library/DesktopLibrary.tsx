@@ -221,7 +221,7 @@ export default function DesktopLibrary({
   // #224: the Library (no album) lists oldest first and opens at the newest
   // photos; albums, search, people and places keep newest first.
   const oldestFirst = !album;
-  const { items, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
+  const { items, total, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
   // Index counted from the newest end: stable when older pages are added on
   // top. Its own inverse, so it also maps back to a list position.
   const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
@@ -274,7 +274,7 @@ export default function DesktopLibrary({
     if (!isPeriodView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view as "years" | "months" | "days") : [];
   }, [view, summary, isPeriodView]);
-  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns, oldestFirst)), [isPeriodView, items, view, columns, oldestFirst]);
+  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns, oldestFirst, total)), [isPeriodView, items, view, columns, oldestFirst, total]);
   const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
   const cellSize = squareEdge(containerWidth, columns, gap, dpr);
   const tileWidth = widths.length ? Math.min(...widths) : cellSize;

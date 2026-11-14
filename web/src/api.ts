@@ -201,6 +201,8 @@ export interface AssetListItem {
 export interface AssetListResponse {
   items: AssetListItem[];
   next_cursor: string | null;
+  // First page only: the number of photos matching the request (#365).
+  total?: number | null;
 }
 
 // Apple Photos' Hidden album (P1.13): the only list a hidden asset appears

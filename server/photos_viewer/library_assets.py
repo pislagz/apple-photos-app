@@ -285,6 +285,10 @@ class AssetListItem(BaseModel):
 class AssetListResponse(BaseModel):
     items: list[AssetListItem]
     next_cursor: str | None
+    # Rows matching the request's filters, set on the first page only (no
+    # cursor). The oldest-first grid (#365) needs it to cut rows from the
+    # oldest photo while older pages are still unloaded.
+    total: int | None = None
 
 
 def _encode_cursor(date_created: str, asset_row_id: int) -> str:
@@ -393,6 +397,11 @@ def _list_assets(
     if to:
         clauses.append(f"{_LOCAL_DAY_SQL} <= ?")
         params.append(to)
+    total: int | None = None
+    if not cursor:
+        total = db.execute(
+            f"SELECT COUNT(*) FROM assets WHERE {' AND '.join(clauses)}", params
+        ).fetchone()[0]
     if cursor:
         cursor_date, cursor_row_id = _decode_cursor(cursor)
         clauses.append("(date_created < ? OR (date_created = ? AND id < ?))")
@@ -414,7 +423,9 @@ def _list_assets(
         _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
     )
     return AssetListResponse(
-        items=[_to_list_item(row) for row in page], next_cursor=next_cursor
+        items=[_to_list_item(row) for row in page],
+        next_cursor=next_cursor,
+        total=total,
     )
 
 
