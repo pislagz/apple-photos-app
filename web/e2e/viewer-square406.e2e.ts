@@ -33,7 +33,7 @@ for (const width of [1440, 900]) {
       const box = (await button.boundingBox())!;
       const label = await button.getAttribute("aria-label");
       expect(Math.abs(box.width - box.height), `${label}: ${box.width}x${box.height}`).toBeLessThanOrEqual(0.5);
-      if (i === 1 && width === 1440) {
+      if (i === count - 1 && width === 1440) {
         await page.screenshot({ path: `${OUT}/406-hover.png`, clip: { x: 0, y: 0, width, height: 60 } });
       }
     }
