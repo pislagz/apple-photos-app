@@ -130,7 +130,6 @@ describe("focus ring and motion CSS", () => {
     // Only the search input (the ring is drawn around the whole field) and the programmatically focused viewer may set outline: none.
     const nones = css.match(/[^{}]+{[^}]*outline:\s*none/g) ?? [];
     expect(nones.map((rule) => rule.trim().split("\n")[0])).toEqual([
-      ".login-card input:focus-visible {",
       ".search-box__input {",
       ".search-box__input:focus-visible {",
       ".desktop-viewer:focus {",
