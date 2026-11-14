@@ -160,8 +160,8 @@ describe("desktop search", () => {
     expect(toolbar).not.toContainElement(heading);
     expect(heading.closest(".page-heading")).not.toBeNull();
     expect(toolbar.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // Filter By sits on the right of the heading row.
-    expect(screen.getByRole("button", { name: "Filter By" }).closest(".page-heading")).not.toBeNull();
+    // Filter By is the pill over the grid (#369), not part of the heading row.
+    expect(screen.getByRole("button", { name: "Filter By" }).closest(".page-heading")).toBeNull();
 
     // Another view: same toolbar element and field, heading swaps.
     fireEvent.click(screen.getByRole("button", { name: "Map" }));
