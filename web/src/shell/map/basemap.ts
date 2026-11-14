@@ -1,5 +1,6 @@
 import type { StyleSpecification } from "maplibre-gl";
 import type { MapConfig } from "../../api";
+import { DARK_BACKGROUND, DARK_PAINT } from "./darkMap";
 
 // The one place a tile URL is written down. The browser fetches these only
 // while a map is mounted; the server never sees them (docs/SPEC.md "No
@@ -18,15 +19,16 @@ export function blankStyle(): StyleSpecification {
   };
 }
 
-export function osmStyle(): StyleSpecification {
+// `dark`: #374, the same OSM tiles painted dark (see darkMap.ts).
+export function osmStyle(dark = false): StyleSpecification {
   return {
     version: 8,
     sources: {
       osm: { type: "raster", tiles: [OSM_TILE_TEMPLATE], tileSize: 256, maxzoom: 19 },
     },
     layers: [
-      { id: "background", type: "background", paint: { "background-color": BLANK } },
-      { id: "osm", type: "raster", source: "osm" },
+      { id: "background", type: "background", paint: { "background-color": dark ? DARK_BACKGROUND : BLANK } },
+      { id: "osm", type: "raster", source: "osm", paint: dark ? DARK_PAINT : {} },
     ],
   };
 }
