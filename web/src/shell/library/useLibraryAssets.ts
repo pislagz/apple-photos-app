@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AssetFilter, type AssetHide, type AssetListItem, getAssets } from "../../api";
 
 export interface UseLibraryAssetsResult {
@@ -21,8 +21,20 @@ export interface UseLibraryAssetsResult {
 // doesn't page through everything newer first.
 const NO_HIDE: readonly AssetHide[] = [];
 
-export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all", album: string | null = null, hide: readonly AssetHide[] = NO_HIDE): UseLibraryAssetsResult {
-  const [items, setItems] = useState<AssetListItem[]>([]);
+// #224: the server pages newest first and so does this hook (`raw`, index 0 =
+// newest, a stable origin that older pages never move). With `oldestFirst`
+// (the Library, like Apple Photos) `items` is that list reversed: oldest on
+// top, newest last, and `loadMore` adds the next OLDER page at the front.
+export function useLibraryAssets(
+  libraryId: number,
+  anchorTo: string | null = null,
+  filter: AssetFilter = "all",
+  album: string | null = null,
+  hide: readonly AssetHide[] = NO_HIDE,
+  oldestFirst = false,
+): UseLibraryAssetsResult {
+  const [raw, setItems] = useState<AssetListItem[]>([]);
+  const items = useMemo(() => (oldestFirst ? [...raw].reverse() : raw), [raw, oldestFirst]);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
@@ -78,7 +90,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
   // sequentially -- bypassing the scroll-triggered `loadMore` entirely --
   // until the server reports no further cursor.
   const loadAll = useCallback(async (): Promise<AssetListItem[]> => {
-    let all = items;
+    let all = raw;
     let cursor = cursorRef.current;
     let finished = done;
     while (!finished) {
@@ -88,8 +100,8 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       cursor = response.next_cursor;
       finished = !cursor;
     }
-    return all;
-  }, [libraryId, items, done, fetchPage]);
+    return oldestFirst ? [...all].reverse() : all;
+  }, [libraryId, raw, oldestFirst, done, fetchPage]);
 
   return { items, loading, done, error, retry, loadMore, loadAll };
 }

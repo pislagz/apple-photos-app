@@ -27,7 +27,8 @@ test("F2: a clicked desktop tile shows no white flash, only the blue frame", asy
 }, info) => {
   test.skip(info.project.name !== "desktop");
   await openAllPhotos(page);
-  const cell = page.locator('[data-testid="library-cell"]').first();
+  // The Library opens scrolled to its end (#224): the last cells are the ones on screen.
+  const cell = page.locator('[data-testid="library-cell"]').last();
   await cell.click();
   await expect(cell).toHaveAttribute("data-selected", "true");
   const style = await cell.evaluate((el) => {

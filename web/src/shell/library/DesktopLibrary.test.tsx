@@ -296,11 +296,16 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
     const grid = screen.getByTestId("desktop-library-grid");
 
+    // Oldest first (#224): the first press picks the newest photo, the last cell;
+    // Left goes toward older photos, Right back toward newer.
     fireEvent.keyDown(grid, { key: "ArrowRight" });
-    expect(cells(container)[1]).toHaveAttribute("data-selected", "true");
+    expect(cells(container)[3]).toHaveAttribute("data-selected", "true");
+
+    fireEvent.keyDown(grid, { key: "ArrowLeft" });
+    expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
 
     fireEvent.keyDown(grid, { key: "ArrowRight" });
-    expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
+    expect(cells(container)[3]).toHaveAttribute("data-selected", "true");
 
     const firstImage = screen.getAllByRole("img")[0];
     expect(firstImage.getAttribute("src")).toContain("size=grid");
@@ -353,13 +358,15 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img", undefined, SLOW_WAIT);
     const grid = screen.getByTestId("desktop-library-grid");
 
-    // Each ArrowDown moves focus a full row (6 columns at the default
-    // zoom); 40 presses lands far outside the virtualizer's overscan
-    // window, so this only passes if the focused row gets scrolled into
-    // view rather than just updated in state. The first press only selects
-    // the first photo (D13), so 41 presses land on row 40.
+    // Oldest first (#224): the Library opens at the newest photos, so each
+    // ArrowUp moves focus a full row toward older photos (6 columns at the
+    // default zoom), through the page that has to be loaded on the way. 40
+    // presses land far outside the virtualizer's overscan window, so this
+    // only passes if the focused row gets scrolled into view rather than just
+    // updated in state. The first press only selects the newest photo (D13),
+    // so 41 presses land on row 40.
     for (let i = 0; i < 41; i++) {
-      fireEvent.keyDown(grid, { key: "ArrowDown" });
+      fireEvent.keyDown(grid, { key: "ArrowUp" });
     }
 
     // 300 cells plus 40 re-renders: the one wait that outlasts the 1 s default
@@ -379,6 +386,8 @@ describe("DesktopLibrary", () => {
     const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByRole("img", undefined, SLOW_WAIT);
     const grid = screen.getByTestId("desktop-library-grid");
+    // The Library opens scrolled to its end; jsdom fires no scroll event for that.
+    fireEvent.scroll(grid);
 
     // Fake layout: 600 px viewport, so centre = scrollTop + 300. Put the
     // centre inside the row holding p20 (6 columns, ~152 px rows).
@@ -463,7 +472,8 @@ describe("DesktopLibrary", () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00"), makeItem("a3", "2024-05-08T10:00:00")];
     function mockWithDetail() {
       mockFetch((url) => {
-        if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+        // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+        if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
         const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
         if (match) return mockDetail(match[1]);
         throw new Error(`unexpected request: ${url}`);
@@ -542,7 +552,8 @@ describe("DesktopLibrary", () => {
   it("opens the Viewer on a double-click in All Photos, at the clicked item's position, and closing it restores the grid", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -567,7 +578,8 @@ describe("DesktopLibrary", () => {
   it("opens the photo on a double-click right after a fresh single-click selection change (#265)", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -613,23 +625,30 @@ describe("DesktopLibrary", () => {
     const items = [
       ...Array.from({ length: 60 }, (_, i) => makeItem(`recent-${i}`, "2024-05-10T10:00:00")),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+      ...Array.from({ length: 30 }, (_, i) => makeItem(`dec21-${i}`, "2021-12-10T10:00:00")),
     ];
     mockAssets(items);
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(3));
     const grid = screen.getByTestId("desktop-library-grid");
     grid.scrollTop = 0;
 
-    fireEvent.click(periodCards(container)[0]);
+    // Oldest first (#224): Dec 2021, then Jan 2022, then the recent photos.
+    fireEvent.click(periodCards(container)[1]);
 
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-    // The photo list is paged; the landing waits for it, then scrolls past the
-    // newer "recent" row. `scrollTop` is the real signal in jsdom.
+    // The landing scrolls past the older "dec21" rows to the month's oldest
+    // photo. `scrollTop` is the real signal in jsdom.
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="jan22-19"]')).not.toBeNull());
+    // The month's first photo sits at the very top of the viewport.
+    const row = (container.querySelector('[data-asset-id="jan22-19"]') as HTMLElement).parentElement as HTMLElement;
+    expect(Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1])).toBe(grid.scrollTop);
   });
 
   it("in the Days view a day card hands its day key to onOpenDay instead of opening the Viewer (#301)", async () => {
@@ -680,6 +699,7 @@ describe("DesktopLibrary", () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 8 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(8 - i).padStart(2, "0")}T10:00:00`)),
+      ...Array.from({ length: 30 }, (_, i) => makeItem(`dec21-${i}`, "2021-12-10T10:00:00")),
     ];
     mockAssets(items);
 
@@ -694,7 +714,8 @@ describe("DesktopLibrary", () => {
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -711,7 +732,8 @@ describe("DesktopLibrary", () => {
   it("silently ignores an initialAssetId that never shows up in this grid (hidden or foreign)", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
     const onInitialAssetOpened = vi.fn();
@@ -726,7 +748,8 @@ describe("DesktopLibrary", () => {
   it("opens the Viewer on the focused cell with Space or Enter", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -755,7 +778,8 @@ describe("DesktopLibrary", () => {
   it("right-click opens a context menu to download the asset, independent of the multi-selection", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -782,7 +806,8 @@ describe("DesktopLibrary", () => {
   it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1], { has_edited: true });
       throw new Error(`unexpected request: ${url}`);
@@ -807,7 +832,8 @@ describe("DesktopLibrary", () => {
   it("right-click's menu has no Download Original for a photo that was never edited", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1], { has_edited: false });
       throw new Error(`unexpected request: ${url}`);
@@ -825,7 +851,8 @@ describe("DesktopLibrary", () => {
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -1006,15 +1033,16 @@ describe("DesktopLibrary", () => {
       fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
       await waitFor(() => expect(cells(container)).toHaveLength(3));
 
+      // Oldest first (#224): f3, f2, f1; Right steps toward newer photos.
       fireEvent.doubleClick(cells(container)[0]);
       const viewer = await screen.findByTestId("desktop-viewer");
       const src = () => viewer.querySelector(".desktop-viewer__media")?.getAttribute("src") ?? "";
-      expect(src()).toContain("f1");
+      expect(src()).toContain("f3");
 
       fireEvent.keyDown(viewer, { key: "ArrowRight" });
       await waitFor(() => expect(src()).toContain("f2"));
       fireEvent.keyDown(viewer, { key: "ArrowRight" });
-      await waitFor(() => expect(src()).toContain("f3"));
+      await waitFor(() => expect(src()).toContain("f1"));
       fireEvent.keyDown(viewer, { key: "ArrowLeft" });
       await waitFor(() => expect(src()).toContain("f2"));
       expect(src()).not.toContain("n1");
@@ -1068,6 +1096,75 @@ describe("DesktopLibrary assets failure (#147)", () => {
   });
 });
 
+describe("DesktopLibrary oldest first (#224)", () => {
+  it("lists the oldest photo first and the newest last", async () => {
+    const items = [makeItem("new", "2024-05-10T10:00:00"), makeItem("mid", "2024-05-09T10:00:00"), makeItem("old", "2024-05-08T10:00:00")];
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(cells(container).map((cell) => cell.getAttribute("data-asset-id"))).toEqual(["old", "mid", "new"]);
+  });
+
+  it("opens scrolled to the end and glides back there with End or Cmd-Down", async () => {
+    mockAssets(Array.from({ length: 60 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00")));
+    render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+    expect(grid.scrollTop).toBe(grid.scrollHeight);
+
+    const scrollTo = vi.fn();
+    grid.scrollTo = scrollTo as unknown as typeof grid.scrollTo;
+    grid.scrollTop = 0;
+    fireEvent.keyDown(window, { key: "End" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: grid.scrollHeight, behavior: "smooth" });
+    fireEvent.keyDown(window, { key: "ArrowDown", metaKey: true });
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+  });
+
+  it("a deep link to an old photo on a later page loads back to it, opens the Viewer and scrolls the grid there", async () => {
+    // 300 photos; p250 is on the second page (the Library loads the newest 200 first).
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return computeSummary(items);
+      const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
+      if (match) {
+        const params = new URLSearchParams(match[1]);
+        const cursor = params.get("cursor");
+        const start = cursor ? items.findIndex((item) => item.id === cursor) + 1 : 0;
+        const page = items.slice(start, start + 200);
+        return { items: page, next_cursor: start + 200 < items.length ? page[page.length - 1].id : null };
+      }
+      const detail = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (detail) return { id: detail[1], filename: `${detail[1]}.jpg`, original_filename: `${detail[1]}.jpg`, date_created: "2024-05-10T10:00:00", people: [], albums: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const onOpened = vi.fn();
+    const { container } = render(<DesktopLibrary libraryId={1} initialAssetId="p250" onInitialAssetOpened={onOpened} />);
+    const viewer = await screen.findByTestId("desktop-viewer", undefined, SLOW_WAIT);
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("p250");
+    expect(onOpened).toHaveBeenCalled();
+    // The grid behind the Viewer sits on p250's row, not at the newest end.
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p250"]')).not.toBeNull(), SLOW_WAIT);
+  });
+
+  it("Shift-click selects a range that spans pages added on top", async () => {
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.click(container.querySelector('[data-asset-id="p0"]') as HTMLElement);
+    // Everything older loads in front (cmd-A pages the whole library); the anchor stays p0.
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of 300 selected/), SLOW_WAIT);
+    fireEvent.click(container.querySelector('[data-asset-id="p0"]') as HTMLElement);
+    fireEvent.click(container.querySelector('[data-asset-id="p3"]') as HTMLElement, { shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of 300 selected/);
+  });
+});
+
 describe("DesktopLibrary date-range title (#118)", () => {
   it("covers the visible rows only and follows scroll", async () => {
     // One photo per month, newest first: Dec 2025 back to Jan 2016.
@@ -1081,11 +1178,15 @@ describe("DesktopLibrary date-range title (#118)", () => {
     await screen.findAllByRole("img");
 
     const label = () => container.querySelector(".desktop-library__date-range")?.textContent ?? "";
+    // Opens scrolled to the newest end; jsdom does not clamp scrollTop or fire
+    // a scroll event, so put it at the real end (20 rows of 152 px, 600 px viewport).
+    const grid = screen.getByTestId("desktop-library-grid");
+    grid.scrollTop = 20 * 152 - 600;
+    fireEvent.scroll(grid);
     await waitFor(() => expect(label()).toContain("2025"));
     expect(label()).not.toContain("2016");
 
-    const grid = screen.getByTestId("desktop-library-grid");
-    grid.scrollTop = 135 * 18;
+    grid.scrollTop = 1200;
     fireEvent.scroll(grid);
     await waitFor(() => expect(label()).not.toContain("2025"));
     expect(label()).toMatch(/20(1\d|2[0-3])/);
@@ -1157,7 +1258,8 @@ describe("DesktopLibrary Info panel (#98)", () => {
   it("opens an inspector for the focused cell with the asset's details", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/assets/a1")
         return {
           id: "a1", filename: "a1.jpg", original_filename: "a1.jpg", title: null, description: null,
@@ -1188,7 +1290,8 @@ describe("DesktopLibrary Info panel errors (#98)", () => {
   it("says the info could not be loaded instead of Loading forever", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/assets/a1") return jsonResponse({ detail: "boom" }, 500);
       throw new Error("unexpected request: " + url);
     });
@@ -1230,7 +1333,8 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
 
   function mockWithSummary(summary: object | null) {
     return mockFetch((url, init) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/selection-summary") {
         if (!summary) return jsonResponse({ detail: "boom" }, 500);
         return summary;

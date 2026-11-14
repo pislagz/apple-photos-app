@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem, MeResponse } from "../api";
-import { getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
+import { getThumb, jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import MobileShell from "./MobileShell";
 import { useFakeLayout } from "../testLayout";
 
@@ -195,26 +195,30 @@ describe("MobileShell Library tab re-tap (#146)", () => {
     // Months (Day cards) -> Days -> the newest day opens All Photos at that day.
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
-    await waitFor(() => expect(queryThumb("recent")).toBeNull());
+    // All Photos is oldest first (#224): it scrolls to that day, away from the newest end.
+    const scrollEl = await screen.findByTestId("library-scroll");
+    await waitFor(() => expect(scrollEl.scrollTop).not.toBe(scrollEl.scrollHeight));
     expect(getThumb("jan22-0")).toBeInTheDocument();
+    return scrollEl;
   }
 
   it("returns to the newest photos when the already-active Library tab is tapped", async () => {
     mockLibrary();
     renderMobile();
-    await drillToOlderMonth();
+    const scrollEl = await drillToOlderMonth();
 
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
     fireEvent.click(primary.getByRole("button", { name: "Library" }));
 
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
+    await waitFor(() => expect(scrollEl.scrollTop).toBe(scrollEl.scrollHeight));
   });
 
   it("only navigates, without resetting, when Library is tapped from another tab", async () => {
     mockLibrary();
     renderMobile();
-    await drillToOlderMonth();
+    const scrollEl = await drillToOlderMonth();
+    const landed = scrollEl.scrollTop;
 
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     fireEvent.click(primary.getByRole("button", { name: "More" }));
@@ -223,9 +227,9 @@ describe("MobileShell Library tab re-tap (#146)", () => {
 
     expect(window.location.pathname).toBe("/");
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
-    // Still on the older month: the anchor survived the round trip.
+    // Still on the older month: the scroll position survived the round trip.
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(landed);
     expect(getThumb("jan22-0")).toBeInTheDocument();
-    expect(queryThumb("recent")).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AssetListItem } from "../../api";
+import type { AssetHide, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
 import { useLibraryAssets } from "./useLibraryAssets";
 
@@ -73,5 +73,46 @@ describe("useLibraryAssets (#147)", () => {
     rerender({ id: 2 });
     await waitFor(() => expect(result.current.items).toHaveLength(1));
     expect(result.current.error).toBe(false);
+  });
+});
+
+const NO_HIDE: AssetHide[] = [];
+
+describe("useLibraryAssets oldest first (#224)", () => {
+  // The server pages newest first; these four assets are a4 (newest) .. a1.
+  function pagedServer() {
+    const all = ["a4", "a3", "a2", "a1"].map(makeItem);
+    return mockFetch((url) => {
+      const cursor = new URL(url, "http://x").searchParams.get("cursor");
+      const start = cursor ? all.findIndex((item) => item.id === cursor) + 1 : 0;
+      const page = all.slice(start, start + 2);
+      return { items: page, next_cursor: start + 2 < all.length ? page[page.length - 1].id : null };
+    });
+  }
+
+  it("lists the newest page first requested, oldest on top, and prepends each older page", async () => {
+    pagedServer();
+    const { result } = renderHook(() => useLibraryAssets(1, null, "all", null, NO_HIDE, true));
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a3", "a4"]));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a1", "a2", "a3", "a4"]));
+    expect(result.current.done).toBe(true);
+  });
+
+  it("keeps the newest-first order when not oldest first", async () => {
+    pagedServer();
+    const { result } = renderHook(() => useLibraryAssets(1));
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a4", "a3"]));
+  });
+
+  it("loadAll returns the whole library oldest first", async () => {
+    pagedServer();
+    const { result } = renderHook(() => useLibraryAssets(1, null, "all", null, NO_HIDE, true));
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    let all: AssetListItem[] = [];
+    await act(async () => {
+      all = await result.current.loadAll();
+    });
+    expect(all.map((item) => item.id)).toEqual(["a1", "a2", "a3", "a4"]);
   });
 });

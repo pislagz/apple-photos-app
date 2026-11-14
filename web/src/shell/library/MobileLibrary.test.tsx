@@ -156,15 +156,19 @@ describe("MobileLibrary", () => {
     // Years/Months no longer have a pinned header (each tile already shows
     // its own label); only All Photos' uniform grid still needs one.
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
-
+    // Oldest first (#224): the grid starts with the oldest photo, 1 Apr.
     const scrollEl = screen.getByTestId("library-scroll");
-    // One grid row (cellSize 265px with the mocked 800px-wide container / 3
-    // columns) comfortably clears the first row (may-1, may-2, apr-0, apr-1).
-    scrollEl.scrollTop = 300;
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Apr 2024"));
+
+    // Eight rows of 3 (the top one holds the odd photo), ~267 px each (cellSize
+    // 265px with the mocked 800px-wide container, 2 px gap): scrolled to the
+    // last row, the title names the newest photos' day range start (20 Apr).
+    scrollEl.scrollTop = 1900;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("19 Apr 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("20 Apr 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {
@@ -242,8 +246,11 @@ describe("MobileLibrary", () => {
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     const bar = await screen.findByTestId("top-bar");
-    expect(bar.style.getPropertyValue("--title-scrim")).toBe("0");
     const scrollEl = screen.getByTestId("library-scroll");
+    // The Library opens scrolled to its end (#224); go to the very top first.
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0"));
     scrollEl.scrollTop = 24;
     fireEvent.scroll(scrollEl);
     await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0.5"));
@@ -494,19 +501,24 @@ describe("MobileLibrary", () => {
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
 
-    // The anchor (`to=2022-01-20`) excludes "recent" and starts All Photos at that day.
+    // All Photos (oldest first, #224) scrolls so that day's photo is at the top of the viewport.
     fireEvent.click(screen.getByText(/Jan 20, 2022/));
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    const scrollEl = screen.getByTestId("library-scroll");
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
-    expect(queryThumb("recent")).toBeNull();
+    // jsdom does not clamp scrollTop or fire a scroll event: put the offset where a browser would, then let the grid settle.
+    await waitFor(() => {
+      const row = getThumb("jan22-0").closest(".mobile-library__row-grid") as HTMLElement;
+      expect(Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1])).toBe(scrollEl.scrollTop);
+    });
   });
 
-  it("re-selecting All Photos after jumping to an older month clears the anchor and loads the newest photos (#146)", async () => {
+  it("re-tapping All Photos after landing on an older day glides to the newest photos (#146, #224)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
-    const fetchMock = mockAssets(items);
+    mockAssets(items);
 
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
@@ -514,19 +526,15 @@ describe("MobileLibrary", () => {
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
-    expect(queryThumb("recent")).toBeNull();
 
+    const scrollEl = screen.getByTestId("library-scroll");
+    const scrollTo = vi.fn();
+    scrollEl.scrollTo = scrollTo as unknown as typeof scrollEl.scrollTo;
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
-    const lastAssetsUrl = String(
-      fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/assets?")).at(-1),
-    );
-    expect(new URLSearchParams(lastAssetsUrl.split("?")[1]).get("to")).toBeNull();
-    expect(screen.getByTestId("library-scroll").scrollTop).toBe(0);
+    expect(scrollTo).toHaveBeenCalledWith({ top: scrollEl.scrollHeight, behavior: "smooth" });
   });
 
-  it("bumping resetSignal (Library tab re-tap) drops the anchor and returns to the newest photos (#146)", async () => {
+  it("bumping resetSignal (Library tab re-tap) returns to the newest photos at the bottom (#146, #224)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
@@ -535,15 +543,12 @@ describe("MobileLibrary", () => {
 
     const { rerender } = render(<MobileLibrary libraryId={1} resetSignal={0} />);
     await screen.findAllByRole("img");
-    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
-    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(queryThumb("recent")).toBeNull());
+    const scrollEl = screen.getByTestId("library-scroll");
+    scrollEl.scrollTop = 500;
 
     rerender(<MobileLibrary libraryId={1} resetSignal={1} />);
 
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
+    await waitFor(() => expect(scrollEl.scrollTop).toBe(scrollEl.scrollHeight));
   });
 
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
@@ -664,7 +669,8 @@ describe("MobileLibrary", () => {
     const badges = () => [...container.querySelectorAll(".mobile-library__check")].map((b) => b.getAttribute("data-selected"));
     expect(badges()).toEqual(["false", "false"]);
     fireEvent.click(images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLElement);
-    expect(badges()).toEqual(["true", "false"]);
+    // Oldest first (#224): a2 is listed before a1.
+    expect(badges()).toEqual(["false", "true"]);
     expect(container.querySelector('.mobile-library__cell-wrap[data-selected="true"]')).not.toBeNull();
   });
 
@@ -802,7 +808,8 @@ describe("MobileLibrary", () => {
     expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Selected");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
-    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024");
+    // The title names the top row, the oldest photo (#224).
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("9 May 2024");
   });
 
   it("falls back to download links per item when the Web Share API is unavailable", async () => {

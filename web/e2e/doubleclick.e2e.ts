@@ -13,12 +13,13 @@ test("desktop opens on All Photos and a double-click right after a selection ope
   await expect(page.getByRole("tab", { name: "All Photos", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(cells.first()).toBeVisible();
 
-  await cells.nth(0).click();
-  await cells.nth(2).dblclick();
+  // Oldest first (#224): the last cells are the ones on screen.
+  await cells.nth(-1).click();
+  await cells.nth(-3).dblclick();
   await expect(page.getByTestId("desktop-viewer")).toBeVisible();
-  await page.getByLabel("Close").click();
+  await page.getByLabel("Back").click();
   await expect(page.getByTestId("desktop-viewer")).toHaveCount(0);
 
-  await cells.nth(1).dblclick({ delay: 30 });
+  await cells.nth(-2).dblclick({ delay: 30 });
   await expect(page.getByTestId("desktop-viewer")).toBeVisible();
 });

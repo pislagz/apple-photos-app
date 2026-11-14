@@ -37,7 +37,20 @@ function gridRows(items: AssetListItem[], columns: number, label: string, keyPre
   return rows;
 }
 
-export function buildRows(items: AssetListItem[], view: ViewKey, columns: number): LibraryRow[] {
+// `oldestFirst` (#224): `items` run oldest to newest and All Photos rows are cut
+// from the newest end, so the bottom rows are always full and an older page
+// added on top never re-flows the rows the user is looking at. Only the top
+// row can be short. Row keys use the row's last item, which stays put.
+export function buildRows(items: AssetListItem[], view: ViewKey, columns: number, oldestFirst = false): LibraryRow[] {
+  if (view === "all" && oldestFirst) {
+    const rows: GridRow[] = [];
+    for (let end = items.length; end > 0; end -= columns) {
+      const slice = items.slice(Math.max(0, end - columns), end);
+      const label = formatGroupLabel(slice[0]?.date ? slice[0].date.slice(0, 10) : "", "days");
+      rows.push({ type: "grid", key: `all-${slice[slice.length - 1].id}`, label, items: slice });
+    }
+    return rows.reverse();
+  }
   if (view === "all") {
     // Uniform square grid, no inline headers -- the overlaid title (#209)
     // already names the period, so a year row header would sit under it. The
