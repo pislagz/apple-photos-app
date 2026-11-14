@@ -168,7 +168,8 @@
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-hover-faint: rgba(0, 0, 0, 0.05);
   --color-pressed: rgba(0, 0, 0, 0.08);
-  --color-slider-track: rgba(0, 0, 0, 0.2);
+  --color-slider-track: rgba(0, 0, 0, 0.12);
+  --color-slider-fill: rgba(0, 0, 0, 0.4);
   --color-selected: rgba(0, 0, 0, 0.08);
   --color-sidebar-selected: rgba(0, 0, 0, 0.08);
   --color-slider-thumb: #fff;
@@ -215,7 +216,9 @@
   --color-viewer-bg: #fff;
   --material-viewer-bar: rgba(246, 246, 246, 0.86);
   --material-sidebar: rgba(246, 246, 246, 0.82);
-  --material-toolbar: rgba(246, 246, 246, 0.92);
+  /* #370: the Mac unified toolbar is a solid colour, not a material. */
+  --material-toolbar: #f6f5f5;
+  --color-toolbar-separator: rgba(0, 0, 0, 0.16);
   --material-popover: rgba(255, 255, 255, 0.95);
   --glass-menu: rgba(250, 250, 252, 0.84); /* iPhone Library menu (#352) */
   --material-pill: rgba(255, 255, 255, 0.75);
@@ -227,6 +230,8 @@
   /* Scrims over photos (the text on them is always white). */
   --scrim-clear: rgba(0, 0, 0, 0);
   --scrim-title: rgba(0, 0, 0, 0.5);
+  --scrim-header: rgba(0, 0, 0, 0.6);
+  --scrim-header-mid: rgba(0, 0, 0, 0.28);
   --scrim-soft: rgba(0, 0, 0, 0.45);
   --scrim-medium: rgba(0, 0, 0, 0.55);
   --scrim-strong: rgba(0, 0, 0, 0.6);
@@ -303,8 +308,9 @@
     --color-hover: rgba(255, 255, 255, 0.08);
     --color-hover-faint: rgba(255, 255, 255, 0.08);
     --color-pressed: rgba(255, 255, 255, 0.16);
-    --color-slider-track: rgba(255, 255, 255, 0.3);
-    --color-slider-thumb: #323232;
+    --color-slider-track: rgba(255, 255, 255, 0.18);
+    --color-slider-fill: rgba(255, 255, 255, 0.55);
+    --color-slider-thumb: #e6e6e6;
     --shadow-slider-thumb: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 1px 3px rgba(0, 0, 0, 0.5);
     --color-selected: rgba(255, 255, 255, 0.14);
     --color-sidebar-selected: rgba(255, 255, 255, 0.16);
@@ -324,7 +330,8 @@
     --material-bar: rgba(22, 22, 24, 0.86);
     --material-bar-strong: rgba(22, 22, 24, 0.92);
     --material-sidebar: rgba(30, 30, 30, 0.82);
-    --material-toolbar: rgba(30, 30, 30, 0.92);
+    --material-toolbar: #3e3b3c;
+    --color-toolbar-separator: #000;
     --material-popover: rgba(44, 44, 46, 0.95);
     --glass-menu: rgba(44, 44, 46, 0.8);
     --material-pill: rgba(60, 60, 67, 0.72);

@@ -43,7 +43,7 @@ describe("control tokens (#233)", () => {
     for (const n of ["--color-pressed", "--color-slider-track", "--size-toolbar-button-w", "--ring-field"]) {
       expect(tokens.match(new RegExp(`^\\s*${n}:`, "gm"))).toHaveLength(n.startsWith("--size") || n === "--ring-field" ? 1 : 2);
     }
-    expect(tokens).toContain("--color-slider-thumb: #323232");
+    expect(tokens).toContain("--color-slider-thumb: #e6e6e6");
   });
 
   it("toolbar buttons are 8px radius with hover and pressed fills", () => {

@@ -890,7 +890,7 @@ export default function DesktopLibrary({
             disabled={zoomIndex === 0}
             onClick={() => setZoomIndex((previous) => Math.max(0, previous - 1))}
           >
-            <Icon name="grid" size={11} />
+            <Icon name="minus" size={14} />
           </button>
           <input
             type="range"
@@ -909,7 +909,7 @@ export default function DesktopLibrary({
             disabled={zoomIndex === MAX_ZOOM_INDEX}
             onClick={() => setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1))}
           >
-            <Icon name="grid" size={16} />
+            <Icon name="plus" size={14} />
           </button>
           {/* #264: belongs with the size slider -- both change how tiles look. */}
           <button
@@ -1000,6 +1000,10 @@ export default function DesktopLibrary({
     </>
   );
 
+  // #370: in the Library root the title and date sit over the photos (Mac
+  // Photos style); the heading band stays in the DOM for screen readers only.
+  const overlayHeading = title === "Library" && subtitle === undefined && !isPeriodView && !!dateRangeLabel;
+
   return (
     <div className="desktop-library" data-testid="desktop-library">
       {toolbarSlot ? (
@@ -1009,7 +1013,7 @@ export default function DesktopLibrary({
           {controlsBar}
         </div>
       )}
-      <div className="page-heading" data-testid="page-heading">
+      <div className="page-heading" data-testid="page-heading" data-overlay={overlayHeading || undefined}>
         <div className="page-heading__text">
           <h1 className="page-heading__title">{title}</h1>
           <p className="page-heading__subtitle" data-testid="selection-count">
@@ -1046,6 +1050,11 @@ export default function DesktopLibrary({
           >
             <div className="desktop-library__title-scrim" aria-hidden="true" />
             <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
+            {overlayHeading && selected.size > 0 && (
+              <span className="desktop-library__title-sub" data-testid="desktop-library-title-sub">
+                {`${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`}
+              </span>
+            )}
           </div>
         )}
         {isPeriodView && summaryError ? (

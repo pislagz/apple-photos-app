@@ -15,15 +15,20 @@ describe("title scrim fade (#261)", () => {
     expect(titleScrimProgress(5000)).toBe(1);
   });
 
-  it("is a light blur driven by --title-scrim, with no blur under Reduce Transparency", () => {
+  it("is a dark-to-clear gradient driven by --title-scrim, with no blur (#370)", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
-    const blur = /\.desktop-library__title-scrim::before \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(blur).toContain("backdrop-filter: var(--blur-thin)");
-    expect(blur).toContain("opacity: var(--title-scrim, 1)");
-    const tint = /\.desktop-library__title-scrim::after \{([^}]*var\(--scrim-title\)[^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(tint).toContain("opacity: calc(0.4 + 0.6 * var(--title-scrim, 1))");
-    const reduced = /@media \(prefers-reduced-transparency: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
-    expect(reduced).toContain("backdrop-filter: none");
+    const off = /\.desktop-library__title-scrim::before \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(off).toContain("display: none");
+    expect(off).not.toContain("backdrop-filter");
+    const tint = /\.desktop-library__title-scrim::after \{([^}]*var\(--scrim-header\)[^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(tint).toContain("var(--scrim-clear) 100%");
+    expect(tint).toContain("opacity: calc(0.45 + 0.55 * var(--title-scrim, 1))");
+  });
+
+  it("uses a solid toolbar colour and a separator token (#370)", () => {
+    const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
+    expect(tokens).toMatch(/--material-toolbar: #[0-9a-f]{6};/g);
+    expect(tokens).toContain("--color-toolbar-separator: #000;");
   });
 });
 

@@ -231,37 +231,25 @@ body {
   white-space: nowrap;
 }
 
-/* #261: a light blur that fades in over the first 48 px of scroll
-   (--title-scrim 0 -> 1, set inline from the scroll offset). The tint keeps
-   40 % at the top so the white title stays legible on bright photos, and
-   reaches full strength with the blur. Scroll-linked, so no transition. */
+/* #370: Mac Photos / iOS Photos style. No blur band: a soft dark-to-clear
+   gradient behind the bold white title, so it reads over light photos too.
+   Fades in over the first 48 px of scroll (--title-scrim 0 -> 1, set inline from
+   the scroll offset); the top keeps 45 % of the tint at rest. Scroll-linked, so
+   no transition. */
 .mobile-library__top-bar[data-scrim="true"]::before,
 .desktop-library__title-scrim::before {
-  -webkit-backdrop-filter: var(--blur-thin);
-  backdrop-filter: var(--blur-thin);
-  mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
-  opacity: var(--title-scrim, 1);
+  display: none;
 }
 
 .mobile-library__top-bar[data-scrim="true"]::after,
 .desktop-library__title-scrim::after {
-  background: linear-gradient(to bottom, var(--scrim-title) 0%, var(--scrim-clear) 100%);
-  opacity: calc(0.4 + 0.6 * var(--title-scrim, 1));
-}
-
-/* Reduce Transparency: no blur at all; the tint alone, at full strength. */
-@media (prefers-reduced-transparency: reduce) {
-  .mobile-library__top-bar[data-scrim="true"]::before,
-  .desktop-library__title-scrim::before {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-
-  .mobile-library__top-bar[data-scrim="true"]::after,
-  .desktop-library__title-scrim::after {
-    opacity: 1;
-  }
+  background: linear-gradient(
+    to bottom,
+    var(--scrim-header) 0%,
+    var(--scrim-header-mid) 55%,
+    var(--scrim-clear) 100%
+  );
+  opacity: calc(0.45 + 0.55 * var(--title-scrim, 1));
 }
 
 /* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
@@ -1714,7 +1702,7 @@ body {
   display: flex;
   align-items: center;
   padding: var(--space-8) var(--space-16);
-  border-bottom: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   background: var(--material-toolbar);
 }
 
@@ -1738,7 +1726,7 @@ body {
   align-items: center;
   gap: var(--space-10);
   padding: var(--space-8) var(--space-16);
-  border-bottom: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   background: var(--material-toolbar);
 }
 
@@ -1794,7 +1782,7 @@ body {
 .desktop-library__zoom-slider input[type="range"]::-webkit-slider-runnable-track {
   height: var(--size-slider-track);
   border-radius: var(--radius-2);
-  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--range-fill, 0%) 100% no-repeat,
+  background: linear-gradient(var(--color-slider-fill), var(--color-slider-fill)) 0 / var(--range-fill, 0%) 100% no-repeat,
     var(--color-slider-track);
 }
 
@@ -1807,7 +1795,7 @@ body {
 .desktop-library__zoom-slider input[type="range"]::-moz-range-progress {
   height: var(--size-slider-track);
   border-radius: var(--radius-2);
-  background: var(--accent);
+  background: var(--color-slider-fill);
 }
 
 .desktop-library__zoom-slider input[type="range"]::-webkit-slider-thumb {
@@ -2024,7 +2012,7 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 76px;
+  height: 112px;
   pointer-events: none;
 }
 
@@ -2034,12 +2022,24 @@ body {
   left: 0;
   display: block;
   padding: var(--space-14) var(--space-10) 0;
-  font-size: var(--font-size-title-3);
+  font-size: var(--font-size-title-2-lg);
+  text-shadow: var(--text-shadow-overlay);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
   letter-spacing: var(--tracking-title-3);
   white-space: nowrap;
   pointer-events: none;
+}
+
+.desktop-library__title-sub {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  padding: 0 var(--space-10);
+  font-size: var(--font-size-subhead);
+  color: var(--color-white);
+  text-shadow: var(--text-shadow-overlay);
+  white-space: nowrap;
 }
 
 .desktop-library__title[data-prev]::after {
@@ -3927,7 +3927,7 @@ body {
   height: 44px;
   box-sizing: border-box;
   padding: 0 var(--space-16);
-  border-bottom: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   background: var(--material-toolbar);
 }
 
@@ -3969,6 +3969,17 @@ body {
   justify-content: space-between;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16) var(--space-8);
+}
+
+/* #370: Library root: the title is drawn over the photos instead. */
+.page-heading[data-overlay] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .page-heading__text {
