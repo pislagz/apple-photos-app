@@ -144,6 +144,9 @@ export default function FilterMenu({
             <span className="filter-menu__check" aria-hidden="true">
               {state.filter === option.key ? "✓" : ""}
             </span>
+            <span className="filter-menu__dicon" aria-hidden="true">
+              <Icon name={FILTER_ICONS[option.key]} size={16} />
+            </span>
             {option.label}
           </button>
         </Fragment>
@@ -166,6 +169,9 @@ export default function FilterMenu({
         <span className="filter-menu__check" aria-hidden="true">
           {state.show.screenshots ? "✓" : ""}
         </span>
+        <span className="filter-menu__dicon" aria-hidden="true">
+          <Icon name="screenshot" size={16} />
+        </span>
         Screenshots
       </button>
       <button
@@ -176,6 +182,9 @@ export default function FilterMenu({
       >
         <span className="filter-menu__check" aria-hidden="true">
           {state.show.shared ? "✓" : ""}
+        </span>
+        <span className="filter-menu__dicon" aria-hidden="true">
+          <Icon name="shared" size={16} />
         </span>
         Shared with You
       </button>

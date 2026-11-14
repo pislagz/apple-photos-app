@@ -2169,7 +2169,8 @@ body {
   height: 24px;
   padding: 0 var(--space-10);
   border: none;
-  border-radius: var(--radius-pill);
+  /* #381 review (pp): match the desktop search box corners, not a capsule. */
+  border-radius: var(--radius-small-2);
   background: var(--material-filter-pill);
   color: var(--color-on-filter-pill);
   font-size: var(--font-size-caption);
@@ -2345,6 +2346,22 @@ body {
   width: 18px;
   flex: 0 0 auto;
   text-align: center;
+}
+
+/* Desktop menu: Mac-style row icons, same glyphs as the iPhone menu (#381). */
+.filter-menu__dicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 2px;
+  flex: 0 0 auto;
+  color: var(--color-label);
+}
+
+.filter-menu__dicon svg {
+  display: block;
 }
 
 .filter-menu__separator {
