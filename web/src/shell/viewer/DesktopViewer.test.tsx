@@ -745,4 +745,42 @@ describe("DesktopViewer chrome (#211)", () => {
       expect(css.slice(start, css.indexOf("}", start))).toContain("var(--color-viewer-bg)");
     });
   });
+
+  // #396: the title updates in place while stepping; it never drops to the
+  // date-only fallback or goes empty while the next asset's detail loads.
+  it("keeps the previous title until the next detail arrives, never empty", async () => {
+    const items = [makeItem("a1"), makeItem("a2", { date: "2024-06-11T11:00:00" })];
+    const details: Record<string, AssetDetailResponse> = {
+      a1: makeDetail("a1"),
+      a2: makeDetail("a2", { place: "Oslo", date_created: "2024-06-11T11:00:00" }),
+    };
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const id = url.match(/assets\/([^/?]+)$/)?.[1] ?? "";
+        if (id === "a2") await gate;
+        return new Response(JSON.stringify(details[id]), { status: 200, headers: { "Content-Type": "application/json" } });
+      }),
+    );
+    const { rerender } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    const title = screen.getByTestId("viewer-title");
+    await waitFor(() => expect(title).toHaveTextContent("San Francisco"));
+
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => seen.push(title.textContent ?? ""));
+    observer.observe(title, { childList: true, subtree: true, characterData: true });
+    rerender(<DesktopViewer libraryId={1} items={items} index={1} onIndexChange={() => {}} onClose={() => {}} />);
+    // Same element, still the old place, nothing empty or date-only.
+    expect(screen.getByTestId("viewer-title")).toBe(title);
+    expect(title).toHaveTextContent("San Francisco");
+    release();
+    await waitFor(() => expect(title).toHaveTextContent("Oslo"));
+    observer.disconnect();
+    expect(seen.every((text) => text.trim() !== "")).toBe(true);
+    expect(seen.some((text) => /^\d+ \w+ 2024 at/.test(text))).toBe(false);
+  });
 });
