@@ -14,6 +14,11 @@ export const FILTER_OPTIONS: { key: AssetFilter; label: string }[] = [
   { key: "not-in-album", label: "Not in an Album" },
 ];
 
+// The value half of the desktop "Filter By: <value>" pill.
+export function filterValueLabel(filter: AssetFilter): string {
+  return FILTER_OPTIONS.find((option) => option.key === filter)?.label ?? "All Items";
+}
+
 export interface ShowToggles {
   screenshots: boolean;
   shared: boolean;

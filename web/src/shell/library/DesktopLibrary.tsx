@@ -1018,9 +1018,12 @@ export default function DesktopLibrary({
               : (subtitle ?? (view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"))}
           </p>
         </div>
-        <FilterMenu state={filterState} variant="desktop" label="Filter By" />
       </div>
       <div className="desktop-library__body">
+      <div className="desktop-library__grid-wrap">
+      <div className="desktop-library__filter-pill">
+        <FilterMenu state={filterState} variant="desktop" label="Filter By" />
+      </div>
       <div
         ref={scrollRef}
         className="desktop-library__grid"
@@ -1144,6 +1147,7 @@ export default function DesktopLibrary({
             </button>
           </div>
         )}
+      </div>
       </div>
       {infoOpen && (
         <aside className="desktop-library__info-panel" data-testid="library-info-panel" aria-label="Info">

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Icon, type IconName } from "../icons";
-import { FILTER_OPTIONS, type LibraryFilterState } from "./useLibraryFilter";
+import { FILTER_OPTIONS, filterValueLabel, type LibraryFilterState } from "./useLibraryFilter";
 
 // What the iPhone menu adds above "Show": View Options (zoom + aspect).
 export interface ViewOptions {
@@ -144,6 +144,9 @@ export default function FilterMenu({
             <span className="filter-menu__check" aria-hidden="true">
               {state.filter === option.key ? "✓" : ""}
             </span>
+            <span className="filter-menu__dicon" aria-hidden="true">
+              <Icon name={FILTER_ICONS[option.key]} size={16} />
+            </span>
             {option.label}
           </button>
         </Fragment>
@@ -166,6 +169,9 @@ export default function FilterMenu({
         <span className="filter-menu__check" aria-hidden="true">
           {state.show.screenshots ? "✓" : ""}
         </span>
+        <span className="filter-menu__dicon" aria-hidden="true">
+          <Icon name="screenshot" size={16} />
+        </span>
         Screenshots
       </button>
       <button
@@ -176,6 +182,9 @@ export default function FilterMenu({
       >
         <span className="filter-menu__check" aria-hidden="true">
           {state.show.shared ? "✓" : ""}
+        </span>
+        <span className="filter-menu__dicon" aria-hidden="true">
+          <Icon name="shared" size={16} />
         </span>
         Shared with You
       </button>
@@ -324,7 +333,7 @@ export default function FilterMenu({
       <button
         ref={buttonRef}
         type="button"
-        className={variant === "desktop" ? "toolbar-button" : "filter-menu__button mobile-library__glass-button"}
+        className={variant === "desktop" ? "filter-pill" : "filter-menu__button mobile-library__glass-button"}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -333,7 +342,15 @@ export default function FilterMenu({
         data-active={state.active}
         onClick={() => (open ? close(false) : setOpen(true))}
       >
-        <Icon name="filter" size={variant === "desktop" ? 16 : 22} filled={state.active} />
+        {variant === "desktop" ? (
+          <>
+            <span className="filter-pill__label">Filter By: </span>
+            <span className="filter-pill__value">{filterValueLabel(state.filter)}</span>
+            <Icon name="chevron" size={10} className="filter-pill__chevron" />
+          </>
+        ) : (
+          <Icon name="filter" size={22} filled={state.active} />
+        )}
       </button>
       {open && (
         <div

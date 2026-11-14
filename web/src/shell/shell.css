@@ -2260,8 +2260,56 @@ body {
   color: var(--accent);
 }
 
-.filter-menu--desktop .toolbar-button[data-active="true"] {
-  color: var(--accent);
+/* Desktop: Mac Photos "Filter By: All Items" pill floating over the grid. */
+.desktop-library__grid-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.desktop-library__filter-pill {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-20);
+  z-index: 6;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 24px;
+  padding: 0 var(--space-10);
+  border: none;
+  /* #381 review (pp): match the desktop search box corners, not a capsule. */
+  border-radius: var(--radius-small-2);
+  background: var(--material-filter-pill);
+  color: var(--color-on-filter-pill);
+  font-size: var(--font-size-caption);
+  white-space: nowrap;
+  backdrop-filter: var(--blur-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-pill);
+  cursor: default;
+  transition: background var(--dur-tint) var(--ease-tint);
+}
+
+.filter-pill:hover,
+.filter-pill[aria-expanded="true"] {
+  background: var(--material-filter-pill-hover);
+}
+
+.filter-pill__label {
+  font-weight: var(--font-weight-regular);
+}
+
+.filter-pill__value {
+  font-weight: var(--font-weight-semibold);
+}
+
+.filter-pill__chevron {
+  transform: rotate(90deg);
 }
 
 .filter-menu__popup {
@@ -2411,6 +2459,22 @@ body {
   width: 18px;
   flex: 0 0 auto;
   text-align: center;
+}
+
+/* Desktop menu: Mac-style row icons, same glyphs as the iPhone menu (#381). */
+.filter-menu__dicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 2px;
+  flex: 0 0 auto;
+  color: var(--color-label);
+}
+
+.filter-menu__dicon svg {
+  display: block;
 }
 
 .filter-menu__separator {

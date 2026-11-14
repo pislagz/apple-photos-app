@@ -256,6 +256,9 @@
   --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.15);
   --shadow-pill: 0 4px 16px rgba(0, 0, 0, 0.18);
+  --material-filter-pill: rgba(44, 44, 46, 0.78);
+  --material-filter-pill-hover: rgba(44, 44, 46, 0.9);
+  --color-on-filter-pill: #fff;
   --shadow-pill-selected: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-banner: 0 1px 6px rgba(0, 0, 0, 0.2);
@@ -345,6 +348,9 @@
     --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.55);
     --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.5);
     --shadow-pill: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --material-filter-pill: rgba(72, 72, 74, 0.78);
+    --material-filter-pill-hover: rgba(88, 88, 90, 0.88);
+    --color-on-filter-pill: #fff;
     --shadow-pill-selected: none;
     --shadow-segment: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-banner: 0 1px 6px rgba(0, 0, 0, 0.45);

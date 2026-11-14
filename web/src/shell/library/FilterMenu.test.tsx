@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import FilterMenu from "./FilterMenu";
-import { DEFAULT_SHOW, hiddenKinds, type LibraryFilterState } from "./useLibraryFilter";
+import { DEFAULT_SHOW, filterValueLabel, hiddenKinds, type LibraryFilterState } from "./useLibraryFilter";
 
 function makeState(over: Partial<LibraryFilterState> = {}): LibraryFilterState {
   return {
@@ -167,5 +167,21 @@ describe("FilterMenu mobile", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "View Options" }));
     expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveFocus();
     expect(screen.getByRole("menuitem", { name: "View Options" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("Filter By pill (#369)", () => {
+  it("names the value for every filter, All Items by default", () => {
+    expect(filterValueLabel("all")).toBe("All Items");
+    expect(filterValueLabel("favorites")).toBe("Favorites");
+    expect(filterValueLabel("not-in-album")).toBe("Not in an Album");
+  });
+  it("reads 'Filter By: <value>' with the value in its own span", () => {
+    const { rerender } = render(<FilterMenu state={makeState()} variant="desktop" label="Filter By" />);
+    const button = screen.getByRole("button", { name: "Filter By" });
+    expect(button.textContent).toBe("Filter By: All Items");
+    expect(button.querySelector(".filter-pill__value")?.textContent).toBe("All Items");
+    rerender(<FilterMenu state={makeState({ filter: "favorites", active: true })} variant="desktop" label="Filter By" />);
+    expect(button.querySelector(".filter-pill__value")?.textContent).toBe("Favorites");
   });
 });
