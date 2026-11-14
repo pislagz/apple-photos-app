@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(new URL("./shell.css", import.meta.url), "utf8");
+// jsdom makes import.meta.url an http URL, so resolve from the file path instead.
+const css = readFileSync(join(__dirname, "shell.css"), "utf8");
 
 function rule(selector: string): string {
   const start = css.indexOf(`${selector} {`);
