@@ -15,7 +15,6 @@ import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } f
 import SearchScreen from "./search/SearchScreen";
 import TabPlaceholderScreen from "./TabPlaceholderScreen";
 import WelcomeScreen from "./WelcomeScreen";
-import type { LayoutOverride } from "./useLayout";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 
 // #125, tracker R1: Library, Albums, More, Search -- no "For You" (Apple's
@@ -33,8 +32,6 @@ export default function MobileShell({
   me,
   activeLibraryId,
   onActiveLibraryChange,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   deepLinkAssetId,
   onDeepLinkConsumed,
@@ -44,8 +41,6 @@ export default function MobileShell({
   me: MeResponse;
   activeLibraryId?: number;
   onActiveLibraryChange: (id: number) => void;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
@@ -125,8 +120,6 @@ export default function MobileShell({
           onActiveLibraryChange={onActiveLibraryChange}
           onNavigate={navigate}
           me={me}
-          layoutOverride={layoutOverride}
-          onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
           onAvatarChanged={onAvatarChanged}
         />

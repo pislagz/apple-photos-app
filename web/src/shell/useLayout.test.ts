@@ -69,30 +69,11 @@ describe("useLayout", () => {
     expect(result.current.layout).toBe("mobile");
   });
 
-  it("sticks to an override across a resize, and clears back to auto", () => {
-    setViewport(1200, { finePointer: true });
+  it("ignores and clears a stored manual layout so a phone gets the automatic layout (#386)", () => {
+    window.localStorage.setItem("photos-viewer:layout-override", "desktop");
+    setViewport(400, { finePointer: false });
     const { result } = renderHook(() => useLayout());
-
-    act(() => result.current.setOverride("mobile"));
-    expect(result.current.layout).toBe("mobile");
-    expect(window.localStorage.getItem("photos-viewer:layout-override")).toBe("mobile");
-
-    act(() => {
-      setViewport(400, { finePointer: true });
-      window.dispatchEvent(new Event("resize"));
-    });
-    expect(result.current.layout).toBe("mobile");
-
-    act(() => result.current.setOverride("auto"));
     expect(result.current.layout).toBe("mobile");
     expect(window.localStorage.getItem("photos-viewer:layout-override")).toBeNull();
-  });
-
-  it("reads a previously stored override on mount", () => {
-    window.localStorage.setItem("photos-viewer:layout-override", "desktop");
-    setViewport(400, { finePointer: true });
-    const { result } = renderHook(() => useLayout());
-    expect(result.current.layout).toBe("desktop");
-    expect(result.current.override).toBe("desktop");
   });
 });

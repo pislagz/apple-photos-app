@@ -38,43 +38,43 @@ test("footer row is inset and vertically centred, hover highlight is padded", as
 test("hovering a parent opens its submenu and it stays open under the pointer", async ({ page }) => {
   await signIn(page);
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("menuitem", { name: "Layout" }).hover();
-  const sub = page.getByRole("menu", { name: "Layout" });
+  await page.getByRole("menuitem", { name: "Library" }).hover();
+  const sub = page.getByRole("menu", { name: "Library" });
   await expect(sub).toBeVisible();
-  await sub.getByRole("menuitemradio", { name: "Desktop" }).hover();
+  await sub.getByRole("menuitemradio", { name: "Demo Library" }).hover();
   await page.waitForTimeout(600);
   await expect(sub).toBeVisible();
-  await expect(page.getByRole("menuitemradio", { name: "Desktop" })).toHaveAttribute("aria-checked", /true|false/);
+  await expect(page.getByRole("menuitemradio", { name: "Demo Library" })).toHaveAttribute("aria-checked", /true|false/);
 });
 
-test("a diagonal move across a sibling item into the submenu keeps it open", async ({ page }) => {
+test("a diagonal move from the parent into the submenu keeps it open", async ({ page }) => {
   await signIn(page);
   await page.getByRole("button", { name: "Account menu" }).click();
-  const layout = (await page.getByRole("menuitem", { name: "Layout" }).boundingBox())!;
+  const layout = (await page.getByRole("menuitem", { name: "Library" }).boundingBox())!;
   await page.mouse.move(layout.x + 20, layout.y + layout.height / 2);
-  const sub = page.getByRole("menu", { name: "Layout" });
+  const sub = page.getByRole("menu", { name: "Library" });
   await expect(sub).toBeVisible();
   const sb = (await sub.boundingBox())!;
-  const below = (await page.getByRole("menuitem", { name: "Change Password…" }).boundingBox())!;
-  // Slide down-right across the next root item, then into the submenu's last row.
-  await page.mouse.move(layout.x + layout.width - 30, below.y + below.height / 2, { steps: 4 });
-  await page.mouse.move(sb.x + 40, sb.y + sb.height - 12, { steps: 6 });
+  // Slide diagonally from the parent row into the submenu's row (the submenu is a
+  // single row here, so the old "across a sibling item" path would leave the safe zone).
+  await page.mouse.move(layout.x + layout.width - 30, layout.y + layout.height / 2 + 4, { steps: 4 });
+  await page.mouse.move(sb.x + 6, sb.y + sb.height - 4, { steps: 3 });
   await page.waitForTimeout(500);
   await expect(sub).toBeVisible();
-  await page.getByRole("menuitemradio", { name: "Desktop" }).click();
+  await page.getByRole("menuitemradio", { name: "Demo Library" }).click();
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 
 test("pointing at a plain item closes the open submenu; arrows still work", async ({ page }) => {
   await signIn(page);
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("menuitem", { name: "Layout" }).hover();
-  await expect(page.getByRole("menu", { name: "Layout" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Library" }).hover();
+  await expect(page.getByRole("menu", { name: "Library" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Log Out" }).hover();
-  await expect(page.getByRole("menu", { name: "Layout" })).toHaveCount(0);
-  await page.getByRole("menuitem", { name: "Layout" }).focus();
+  await expect(page.getByRole("menu", { name: "Library" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Library" }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("menuitemradio", { name: "Automatic" })).toBeFocused();
+  await expect(page.getByRole("menuitemradio", { name: "Demo Library" })).toBeFocused();
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByRole("menuitem", { name: "Layout" })).toBeFocused();
+  await expect(page.getByRole("menuitem", { name: "Library" })).toBeFocused();
 });

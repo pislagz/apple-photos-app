@@ -12,8 +12,6 @@ describe("AccountMenu (#189)", () => {
     render(
       <AccountMenu
         me={ME}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
         compact
       />,
@@ -32,8 +30,6 @@ describe("AccountMenu (#189)", () => {
     render(
       <AccountMenu
         me={{ ...ME, libraries: [lib], avatar_version: 3 }}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
         compact
       />,

@@ -55,8 +55,6 @@ function renderDesktop() {
       me={ME}
       activeLibraryId={1}
       onActiveLibraryChange={() => {}}
-      layoutOverride="auto"
-      onLayoutOverrideChange={() => {}}
       onLogout={() => {}}
     />,
   );
@@ -68,8 +66,6 @@ function renderMobile() {
       me={ME}
       activeLibraryId={1}
       onActiveLibraryChange={() => {}}
-      layoutOverride="auto"
-      onLayoutOverrideChange={() => {}}
       onLogout={() => {}}
     />,
   );

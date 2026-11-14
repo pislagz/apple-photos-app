@@ -6,15 +6,8 @@ import Avatar from "./Avatar";
 import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
 import PasskeysDialog from "./PasskeysDialog";
-import type { LayoutOverride } from "./useLayout";
 
-const LAYOUT_CHOICES: { value: LayoutOverride; label: string }[] = [
-  { value: "auto", label: "Automatic" },
-  { value: "desktop", label: "Desktop" },
-  { value: "mobile", label: "iPhone" },
-];
-
-type SubmenuKey = "library" | "layout";
+type SubmenuKey = "library";
 
 // Items that belong to this menu element itself, not to a nested submenu.
 function ownItems(menu: HTMLElement): HTMLElement[] {
@@ -54,8 +47,6 @@ function Check({ on }: { on: boolean }) {
 // and its backdrop-filter would otherwise trap position: fixed.
 export default function MacAccountMenu({
   me,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   libraries,
   activeLibraryId,
@@ -63,8 +54,6 @@ export default function MacAccountMenu({
   onAvatarChanged,
 }: {
   me: MeResponse;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   libraries?: LibrarySummary[];
   activeLibraryId?: number;
@@ -342,18 +331,6 @@ export default function MacAccountMenu({
                   </div>
                 )),
               )}
-            {submenuParent(
-              "layout",
-              "Layout",
-              LAYOUT_CHOICES.map((choice) => (
-                <div key={choice.value} role="none" className="mac-menu__row">
-                  {item(choice.label, act(() => onLayoutOverrideChange(choice.value)), {
-                    role: "menuitemradio",
-                    checked: layoutOverride === choice.value,
-                  })}
-                </div>
-              )),
-            )}
             <div role="separator" className="mac-menu__separator" />
             {me.libraries.length > 0 && item("Choose Avatar…", act(() => setChoosingAvatar(true)))}
             {me.avatar_version != null &&

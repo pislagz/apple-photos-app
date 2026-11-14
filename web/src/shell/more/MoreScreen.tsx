@@ -2,9 +2,7 @@ import { useState } from "react";
 import { type LibrarySummary, type MeResponse, removeAvatar } from "../../api";
 import AvatarPicker from "../AvatarPicker";
 import ChangePasswordDialog from "../ChangePasswordDialog";
-import LayoutOverrideControl from "../LayoutOverrideControl";
 import PasskeysDialog from "../PasskeysDialog";
-import type { LayoutOverride } from "../useLayout";
 import { Icon } from "../icons";
 import LibrarySwitcher from "../LibrarySwitcher";
 import { MEDIA_TYPES } from "./mediaTypes";
@@ -20,8 +18,6 @@ export default function MoreScreen({
   onActiveLibraryChange,
   onNavigate,
   me,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   onAvatarChanged,
 }: {
@@ -30,8 +26,6 @@ export default function MoreScreen({
   onActiveLibraryChange: (id: number) => void;
   onNavigate: (path: "/people" | "/places" | `/media/${string}` | "/hidden") => void;
   me: MeResponse;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   onAvatarChanged?: () => void;
 }) {
@@ -122,21 +116,22 @@ export default function MoreScreen({
             </button>
           </li>
         </ul>
-        <ul className="more-screen__group">
-          <li className="more-screen__group-label">Settings</li>
-          <li>
-            <div className="more-screen__item">
-              <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
-            </div>
-          </li>
-          {me.role === "admin" && (
+        {me.role === "admin" && (
+          <ul className="more-screen__group">
+            <li className="more-screen__group-label">Settings</li>
             <li>
               <a href="/admin" className="more-screen__item more-screen__item--link">
                 Admin
               </a>
             </li>
-          )}
-        </ul>
+          </ul>
+        )}
+        <LibrarySwitcher
+          libraries={libraries}
+          activeLibraryId={activeLibraryId}
+          onChange={onActiveLibraryChange}
+          className="more-screen__library-switcher"
+        />
       </div>
       {choosingAvatar && (
         <AvatarPicker
@@ -147,12 +142,6 @@ export default function MoreScreen({
       )}
       {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
       {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
-      <LibrarySwitcher
-        libraries={libraries}
-        activeLibraryId={activeLibraryId}
-        onChange={onActiveLibraryChange}
-        className="more-screen__library-switcher"
-      />
     </div>
   );
 }

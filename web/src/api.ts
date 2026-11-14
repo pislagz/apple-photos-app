@@ -179,10 +179,6 @@ export function logout(): Promise<void> {
 
 // The server is the source of truth for this choice; localStorage
 // (`useLayout.ts`) is only a fast default while `/api/me` loads.
-export function setLayoutOverride(value: "desktop" | "mobile" | null): Promise<void> {
-  return mutate<void>("PUT", "/api/me/layout-override", { layout_override: value });
-}
-
 export interface AssetListItem {
   id: string;
   filename: string | null;
