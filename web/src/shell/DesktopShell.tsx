@@ -80,9 +80,9 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
   );
 }
 
-// Every media type is always listed, so the groups below never move when
-// /albums arrives. A type with no items (and every type while albums load or
-// failed; the Albums group shows the failure with Retry) is disabled.
+// Only media types that have items are listed. While /albums loads (or when it
+// failed; the Albums group shows the failure with Retry) the group is absent
+// rather than flashing all seven rows.
 function MediaTypesGroup({
   state,
   currentId,
@@ -92,17 +92,18 @@ function MediaTypesGroup({
   currentId: string | null;
   onOpen: (id: string, title: string) => void;
 }) {
-  const present = new Set(state.albums?.smart.map((album) => album.id));
+  const counts = new Map(state.albums?.smart.map((album) => [album.id, album.count ?? 0]));
+  const types = MEDIA_TYPES.filter((type) => (counts.get(`smart:${type.smart}`) ?? 0) > 0);
+  if (types.length === 0) return null;
   return (
     <SidebarSection title="Media types">
       <ul>
-        {MEDIA_TYPES.map((type) => {
+        {types.map((type) => {
           const id = `smart:${type.smart}`;
           return (
             <li key={type.label}>
               <button
                 type="button"
-                disabled={!present.has(id)}
                 aria-current={currentId === id ? "page" : undefined}
                 className="sidebar__item"
                 onClick={() => onOpen(id, type.label)}
