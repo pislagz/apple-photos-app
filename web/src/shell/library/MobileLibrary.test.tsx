@@ -189,6 +189,18 @@ describe("MobileLibrary", () => {
     expect(bar.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
   });
 
+  it("uses the same glass Select button in a pushed grid as in the Library (#417)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const { unmount } = render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const main = screen.getByRole("button", { name: "Select" }).className;
+    unmount();
+    render(<MobileLibrary libraryId={1} album="smart:videos" nav={{ title: "Videos", backLabel: "More", onBack: vi.fn() }} />);
+    await screen.findAllByRole("img");
+    expect(screen.getByRole("button", { name: "Select" }).className).toBe(main);
+    expect(main).toContain("mobile-library__glass-button");
+  });
+
   it("puts a pushed grid's back button, Select and title in the same one top bar (#260)", async () => {
     mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
     const onBack = vi.fn();
