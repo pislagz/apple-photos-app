@@ -403,7 +403,7 @@ body {
 
 
 .mobile-library__row-grid {
-  gap: var(--grid-gap-dense);
+  gap: var(--grid-gap);
 }
 
 .mobile-library__row-feature {
@@ -5244,4 +5244,54 @@ body {
 
 .albums-list__type-icon {
   color: var(--accent);
+}
+
+/* #213 pinch zoom: the grid layer scales under the fingers; a copy of it
+   fades out over the re-laid-out grid when a new level is picked. */
+.mobile-library__zoom-layer {
+  position: relative;
+}
+
+.mobile-library__zoom-layer.is-snapping {
+  transition: transform var(--dur-chrome) var(--ease-chrome);
+}
+
+.mobile-library__zoom-layer.is-fading-in {
+  animation: zoom-layer-in var(--dur-zoom) var(--ease-zoom);
+}
+
+@keyframes zoom-layer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.mobile-library__zoom-ghost {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 1;
+  transition: opacity var(--dur-zoom) var(--ease-zoom);
+}
+
+.mobile-library__zoom-ghost.is-leaving {
+  opacity: 0;
+}
+
+.mobile-library__zoom-ghost-layer {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transition: transform var(--dur-zoom) var(--ease-zoom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-library__zoom-layer.is-snapping,
+  .mobile-library__zoom-layer.is-fading-in,
+  .mobile-library__zoom-ghost,
+  .mobile-library__zoom-ghost-layer {
+    animation: none;
+    transition: none;
+  }
 }

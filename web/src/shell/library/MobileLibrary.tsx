@@ -24,14 +24,18 @@ import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
 import DateTitle from "./DateTitle";
 import { phoneTitle, titleScrimProgress } from "./libraryTitle";
-import { usePinchColumns } from "./usePinchColumns";
+import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
+import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
+import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
 
 const HEADER_ROW_HEIGHT = 32;
-const DEFAULT_COLUMNS = 4;
-// Must equal --grid-gap-dense in tokens.css.
-const MOBILE_GRID_GAP = 1;
+// Must equal --grid-gap in tokens.css.
+const MOBILE_GRID_GAP = 2;
+// One column shows whole photos; keep very tall or wide ones on screen.
+const MIN_SINGLE_ASPECT = 0.5;
+const MAX_SINGLE_ASPECT = 1.5;
 // Keep fetching the next page well before the user reaches the physical
 // bottom of what's loaded, since a page covers many virtual rows.
 const LOAD_MORE_ROW_MARGIN = 3;
@@ -86,18 +90,81 @@ export default function MobileLibrary({
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
   const libraryEmpty = summary !== null && summary.years.length === 0;
   const pinchAnchor = useRef<PinchAnchor | null>(null);
-  const { columns, zoomBy, canZoomIn, canZoomOut, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
-    // #93: remember the asset under the fingers; the layout effect below
-    // scrolls it back into place once the new column count has reflowed.
+  const [columns, setColumns] = useState<GridColumns>(DEFAULT_COLUMNS);
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
+
+  // #93: remember the asset under the point being zoomed; the layout effect
+  // below scrolls it back into place once the new level has laid out.
+  function rememberAnchor(point: PinchPoint) {
     const element = scrollRef.current;
     if (!element) return;
     const rect = element.getBoundingClientRect();
-    const viewportY = midpoint.clientY - rect.top;
+    const viewportY = point.clientY - rect.top;
     const y = element.scrollTop + viewportY;
     const row = rowVirtualizer.getVirtualItems().find((r) => r.start <= y && y < r.start + r.size);
-    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize + MOBILE_GRID_GAP);
+    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, point.clientX - rect.left, cellSize + MOBILE_GRID_GAP);
     if (row && assetId) pinchAnchor.current = { assetId, rowFraction: (y - row.start) / row.size, viewportY };
+  }
+
+  // Pinch and the zoom buttons share this: move `steps` levels along
+  // Years / Months / 5 / 3 / 1 columns, keeping `point` where it was.
+  function zoomLevels(steps: number, point: PinchPoint) {
+    const next = levelAfter(view, columns, steps);
+    if (next.view === view && next.columns === columns) return false;
+    rememberAnchor(point);
+    if (!isTileView && next.view !== "all") {
+      // Zooming out to Months: land on the month of the photo under the point.
+      const date = items.find((item) => item.id === pinchAnchor.current?.assetId)?.date;
+      setPendingScrollKey(date ? date.slice(0, 7) : null);
+    } else if (isTileView) {
+      // Out of Years/Months/Days: no photo under the fingers, so start at the newest.
+      setPendingScrollKey(null);
+      if (next.view === "all") backToNewest("all");
+    }
+    setColumns(next.columns);
+    setView(next.view);
+    return true;
+  }
+
+  const pinchRef = useRef<{ tapBlocked: () => boolean } | null>(null);
+  const pinch = usePinchZoom({
+    onStart: (point) => {
+      const element = scrollRef.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      origin.current = { x: point.clientX - rect.left, y: element.scrollTop + point.clientY - rect.top };
+    },
+    onScale: (scale) => {
+      if (layerRef.current) scaleLayer(layerRef.current, scale, origin.current);
+    },
+    onEnd: (scale, point) => {
+      const layer = layerRef.current;
+      const scroller = scrollRef.current;
+      const steps = stepsForScale(scale);
+      if (!layer || !scroller) return;
+      const next = levelAfter(view, columns, steps);
+      if (steps === 0 || (next.view === view && next.columns === columns)) {
+        snapBack(layer);
+        return;
+      }
+      fadeGhost(layer, scroller, scale, steps > 0);
+      resetLayer(layer);
+      zoomLevels(steps, point);
+      if (!reducedMotion()) {
+        setFadeIn(true);
+        window.setTimeout(() => setFadeIn(false), tokenMs("--dur-zoom", 280));
+      }
+    },
   });
+  pinchRef.current = pinch;
+  const [fadeIn, setFadeIn] = useState(false);
+  const canZoomIn = levelIndex(view, columns) < ZOOM_LEVELS.length - 1;
+  const canZoomOut = levelIndex(view, columns) > 0;
+  const zoomBy = (steps: number) => {
+    const rect = scrollRef.current?.getBoundingClientRect();
+    zoomLevels(steps, { clientX: (rect?.left ?? 0) + (rect?.width ?? 0) / 2, clientY: (rect?.top ?? 0) + (rect?.height ?? 0) / 2 });
+  };
   // #146: back to the newest photos -- drop the Month -> Days anchor and
   // scroll to the top. Re-selecting a zoom tab or the Library tab does this.
   // Years/Months are oldest first, so their newest end is the bottom (#307).
@@ -159,6 +226,7 @@ export default function MobileLibrary({
   // Years/Months tiles drill down instead, via `openTile` below (R3, #126).
   const openItem = useCallback(
     (item: AssetListItem) => {
+      if (pinchRef.current?.tapBlocked()) return;
       if (selectMode) {
         toggleSelected(item.id);
         return;
@@ -173,6 +241,7 @@ export default function MobileLibrary({
   // that month (#126). Neither ever opens the Viewer.
   const openTile = useCallback(
     (bucketKey: string) => {
+      if (pinchRef.current?.tapBlocked()) return;
       if (view === "years") {
         setPendingScrollKey(bucketKey);
         setView("months");
@@ -271,13 +340,19 @@ export default function MobileLibrary({
   // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
   const cellSize = containerWidth > 0 ? (containerWidth - (columns - 1) * MOBILE_GRID_GAP) / columns : 0;
 
+  // One column shows whole photos at their aspect ratio; otherwise squares.
+  const cellHeight = (item: AssetListItem) =>
+    columns === 1 && item.width && item.height
+      ? cellSize * Math.min(MAX_SINGLE_ASPECT, Math.max(MIN_SINGLE_ASPECT, item.height / item.width))
+      : cellSize;
+
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => {
       const row = rows[index];
       if (row.type === "header") return HEADER_ROW_HEIGHT;
-      return row.type === "feature" ? cellSize * 2 : cellSize;
+      return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
     },
     overscan: 6,
   });
@@ -428,8 +503,9 @@ export default function MobileLibrary({
           touchAction: "pan-y",
           ...(selectBarHeight > 0 ? { paddingBottom: selectBarHeight } : {}),
         }}
-        {...touchHandlers}
+        {...pinch.touchHandlers}
       >
+        <div ref={layerRef} className={`mobile-library__zoom-layer${fadeIn ? " is-fading-in" : ""}`}>
         {showSummaryError || showAssetsError ? (
           <div className="mobile-library__empty" role="alert">
             <p>{albumMessages(album).error}</p>
@@ -504,7 +580,7 @@ export default function MobileLibrary({
                       key={item.id}
                       className="mobile-library__cell-wrap"
                       data-selected={selectedIds.has(item.id)}
-                      style={{ width: cellSize, height: cellSize }}
+                      style={{ width: cellSize, height: cellHeight(item) }}
                     >
                       <FadeImage
                         src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
@@ -513,7 +589,7 @@ export default function MobileLibrary({
                         tabIndex={-1}
                         loading="lazy"
                         className="mobile-library__cell"
-                        style={{ width: cellSize, height: cellSize, objectFit: wholePhotos ? "contain" : "cover" }}
+                        style={{ width: cellSize, height: cellHeight(item), objectFit: wholePhotos ? "contain" : "cover" }}
                         onClick={() => openItem(item)}
                       />
                       <TileOverlays item={item} tileWidth={cellSize} prefix="mobile-library" />
@@ -533,6 +609,7 @@ export default function MobileLibrary({
             </button>
           </div>
         )}
+        </div>
       </div>
       {selectMode && (
         // Laid out like Photos' select toolbar (#259): Share at the left, the
