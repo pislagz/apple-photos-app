@@ -677,7 +677,7 @@ describe("DesktopViewer chrome (#211)", () => {
     const start = css.indexOf("\n.desktop-viewer__topbar {");
     const rule = css.slice(start, css.indexOf("}", start));
     expect(rule).toContain("height: 52px");
-    expect(rule).toContain("backdrop-filter: blur(20px)");
+    expect(rule).toContain("backdrop-filter: var(--blur-bar)");
     expect(rule).toContain("var(--material-viewer-bar)");
   });
 

@@ -91,8 +91,8 @@ body {
   z-index: -1;
   pointer-events: none;
   background: linear-gradient(to top, var(--material-bar-strong) 45%, var(--scrim-clear));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: var(--blur-material);
+  -webkit-backdrop-filter: var(--blur-material);
   mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
   -webkit-mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
 }
@@ -220,8 +220,8 @@ body {
    reaches full strength with the blur. Scroll-linked, so no transition. */
 .mobile-library__top-bar[data-scrim="true"]::before,
 .desktop-library__title-scrim::before {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: var(--blur-thin);
+  -webkit-backdrop-filter: var(--blur-thin);
   mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 45%, transparent 100%);
   opacity: var(--title-scrim, 1);
@@ -320,8 +320,8 @@ body {
   padding: 6px 16px;
   border-radius: var(--radius-pill);
   background: var(--material-pill);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: var(--blur-material);
+  -webkit-backdrop-filter: var(--blur-material);
   color: var(--color-label-pill);
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
@@ -348,8 +348,8 @@ body {
   border: none;
   border-radius: var(--radius-pill);
   background: var(--glass-button);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   color: var(--color-on-glass);
   cursor: default;
   transition: opacity var(--dur-press) var(--ease-press);
@@ -373,8 +373,8 @@ body {
   box-sizing: border-box;
   border-radius: var(--radius-16);
   background: var(--material-pill);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: var(--blur-material);
+  -webkit-backdrop-filter: var(--blur-material);
   box-shadow: var(--shadow-pill);
 }
 
@@ -646,8 +646,8 @@ body {
   padding: 3px 8px;
   border-radius: var(--radius-pill);
   background: var(--scrim-badge);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: var(--blur-medium);
+  backdrop-filter: var(--blur-medium);
   color: var(--color-white);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
@@ -700,7 +700,7 @@ body {
 .period-grid__month {
   margin: 0;
   padding: var(--space-14) var(--space-4) var(--space-4);
-  font-size: 24px;
+  font-size: var(--font-size-title-2-lg);
   font-weight: var(--font-weight-bold);
   letter-spacing: -0.3px;
   color: var(--color-label);
@@ -709,14 +709,14 @@ body {
 .period-card--phone {
   aspect-ratio: auto;
   height: 230px;
-  border-radius: 24px;
+  border-radius: var(--radius-24);
   /* Continuous corners where the browser has them; radius is the fallback. */
   corner-shape: squircle;
 }
 
 .period-grid--years .period-card--phone {
   height: 300px;
-  border-radius: 28px;
+  border-radius: var(--radius-28);
 }
 
 .period-grid--years .period-card--phone .period-card__caption {
@@ -725,7 +725,7 @@ body {
 }
 
 .period-grid--years .period-card--phone .period-card__label {
-  font-size: 30px;
+  font-size: var(--font-size-title-lg);
 }
 
 .period-card--phone.period-card--days .period-card__caption {
@@ -741,7 +741,7 @@ body {
 
 .period-card--phone.period-card--days .period-card__count {
   display: block;
-  font-size: 13px;
+  font-size: var(--font-size-subhead);
   font-weight: var(--font-weight-semibold);
   opacity: 0.85;
 }
@@ -750,7 +750,7 @@ body {
   top: var(--space-12);
   right: var(--space-12);
   padding: 5px 10px;
-  font-size: 13px;
+  font-size: var(--font-size-subhead);
 }
 
 /* The key photo fills the left; two small photos stack on the right. */
@@ -852,7 +852,7 @@ body {
   bottom: 4px;
   color: var(--color-white);
   font-weight: var(--font-weight-semibold);
-  font-size: 12px;
+  font-size: var(--font-size-caption);
   line-height: 1;
   text-shadow: var(--text-shadow-tile);
   font-variant-numeric: tabular-nums;
@@ -965,8 +965,8 @@ body {
   flex-direction: column;
   padding: var(--space-4) var(--space-8) calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
   background: var(--material-bar-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
 }
 
@@ -1035,8 +1035,8 @@ body {
 .tab-bar {
   display: flex;
   background: var(--material-bar);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
   padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
 }
@@ -1518,8 +1518,8 @@ body {
     padding var(--dur-zoom) var(--ease-zoom),
     opacity var(--dur-chrome) var(--ease-chrome);
   background: var(--material-sidebar);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: var(--blur-thick);
+  -webkit-backdrop-filter: var(--blur-thick);
   border-right: 1px solid var(--color-hairline);
   padding: 44px var(--space-8) var(--space-12);
   display: flex;
@@ -1581,10 +1581,10 @@ body {
   border: none;
   background: transparent;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--font-size-subhead);
   color: var(--color-label);
   padding: 0 var(--space-8);
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   cursor: default;
 }
 
@@ -1599,7 +1599,7 @@ body {
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
-  border-radius: 3px;
+  border-radius: var(--radius-3);
   object-fit: cover;
   background: var(--color-placeholder);
 }
@@ -1740,13 +1740,13 @@ body {
 
 .desktop-library__zoom-slider input[type="range"]::-webkit-slider-runnable-track {
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-2);
   background: var(--color-fill-strong);
 }
 
 .desktop-library__zoom-slider input[type="range"]::-moz-range-track {
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-2);
   background: var(--color-fill-strong);
 }
 
@@ -2112,8 +2112,8 @@ body {
   padding: var(--space-6);
   border-radius: var(--radius-10);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   box-shadow: var(--shadow-menu);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
@@ -2164,8 +2164,8 @@ body {
   padding: var(--space-6);
   border-radius: var(--radius-10);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   box-shadow: var(--shadow-menu);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
@@ -2196,10 +2196,10 @@ body {
   width: min(300px, calc(100vw - 32px));
   min-width: 0;
   padding: var(--space-8) 0;
-  border-radius: 26px;
+  border-radius: var(--radius-26);
   background: var(--glass-menu);
-  backdrop-filter: blur(30px) saturate(1.8);
-  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
   transform-origin: top right;
 }
 
@@ -2406,8 +2406,8 @@ body {
   border: none;
   border-radius: 50%;
   background: var(--glass-button);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   color: var(--color-on-glass);
   box-shadow: var(--shadow-segment);
   cursor: default;
@@ -2429,8 +2429,8 @@ body {
   padding: var(--space-12) var(--space-14);
   border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   box-shadow: var(--shadow-menu);
   color: var(--color-label);
   font-size: var(--font-size-subhead);
@@ -2490,7 +2490,7 @@ body {
   justify-content: center;
   background: var(--accent);
   color: var(--color-white);
-  font-size: 11px;
+  font-size: var(--font-size-footnote);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -2508,13 +2508,13 @@ body {
   flex-direction: column;
   min-width: 180px;
   padding: 5px;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: var(--blur-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
   box-shadow: var(--shadow-menu), 0 0 0 0.5px var(--color-hairline);
   color: var(--color-label);
-  font-size: 13px;
+  font-size: var(--font-size-subhead);
   box-sizing: border-box;
 }
 
@@ -2555,7 +2555,7 @@ body {
   height: 22px;
   padding: 0 8px 0 4px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -2575,7 +2575,7 @@ body {
 .mac-menu__check {
   flex: 0 0 16px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-caption);
 }
 
 .mac-menu__label {
@@ -2586,7 +2586,7 @@ body {
 .mac-menu__chevron {
   flex: 0 0 auto;
   margin-left: 12px;
-  font-size: 14px;
+  font-size: var(--font-size-body-sm);
 }
 
 .mac-menu__separator {
@@ -2658,8 +2658,8 @@ body {
 .mobile-viewer__topbar,
 .mobile-viewer__bottombar {
   background: var(--material-bar);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
 }
 
 .mobile-viewer__topbar {
@@ -2957,8 +2957,8 @@ body {
   height: 52px;
   padding: 0 var(--space-14);
   background: var(--material-viewer-bar);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   /* 200 ms is local until the #206 motion tokens land. */
   transition:
     opacity var(--dur-chrome) ease-in-out,
@@ -3920,8 +3920,8 @@ body {
   box-sizing: border-box;
   border-radius: var(--radius-10);
   background: var(--material-popover);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: var(--blur-bar-vivid);
+  backdrop-filter: var(--blur-bar-vivid);
   box-shadow: var(--shadow-menu);
   border: 0.5px solid var(--color-hairline);
 }
@@ -4093,7 +4093,7 @@ body {
   box-sizing: border-box;
   padding: var(--space-12);
   border: none;
-  border-radius: 22px;
+  border-radius: var(--radius-22);
   background: var(--color-card);
   color: var(--color-label);
   text-align: left;
@@ -4203,7 +4203,7 @@ body {
   width: 51px;
   height: 31px;
   margin: 0;
-  border-radius: 16px;
+  border-radius: var(--radius-16);
   background:
     radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
     var(--color-fill-strong);
@@ -4273,7 +4273,7 @@ body {
   height: 100%;
   border: none;
   padding: 0;
-  border-radius: 2px;
+  border-radius: var(--radius-2);
   overflow: hidden;
   background: var(--filmstrip-slit-bg);
   cursor: inherit;
@@ -4307,7 +4307,7 @@ body {
   left: 50%;
   width: 3px;
   margin-left: -1.5px;
-  border-radius: 1.5px;
+  border-radius: var(--radius-1-5);
   background: var(--filmstrip-playhead, var(--color-white));
   box-shadow: var(--shadow-playhead);
   pointer-events: none;
@@ -5299,7 +5299,7 @@ body {
 .albums-home__heading {
   margin: 0;
   padding: 0 20px var(--space-8);
-  font-size: 22px;
+  font-size: var(--font-size-title-2);
   font-weight: var(--font-weight-bold);
 }
 
@@ -5361,7 +5361,7 @@ body {
   width: 168px;
   height: 168px;
   border: none;
-  border-radius: 22px;
+  border-radius: var(--radius-22);
   overflow: hidden;
   padding: 0;
   background: var(--color-card-raised);

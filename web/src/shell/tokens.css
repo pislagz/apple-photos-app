@@ -14,6 +14,8 @@
   --font-size-title-sm: 26px;
   --font-size-title-2: 22px;
   --font-size-title-3: 20px;
+  --font-size-title-2-lg: 24px;
+  --font-size-title-lg: 30px;
   --font-size-headline-sm: 18px;
   --font-size-headline: 17px;
   --font-size-body-lg: 16px;
@@ -57,6 +59,13 @@
   --radius-14: 14px;
   --radius-16: 16px;
   --radius-large: 20px;
+  --radius-1-5: 1.5px;
+  --radius-2: 2px;
+  --radius-3: 3px;
+  --radius-22: 22px;
+  --radius-24: 24px;
+  --radius-26: 26px;
+  --radius-28: 28px;
   --radius-pill: 999px;
 
   /* Motion (#206). Only transform, opacity and colour are animated, never
@@ -90,6 +99,21 @@
   --grid-gap: 2px;
   --grid-gap-dense: 1px;
 
+  /* Blur (backdrop-filter values). The material blur is the common 15-16px one. */
+  --blur-thin: blur(8px);
+  --blur-medium: blur(12px);
+  --blur-material: blur(15px) saturate(0.86);
+  --blur-bar: blur(20px);
+  --blur-bar-vivid: blur(20px) saturate(1.8);
+  --blur-thick: blur(24px);
+  --blur-glass: blur(30px) saturate(1.8);
+
+  /* Measured desktop metrics: sidebar row, toolbar button, search field. */
+  --size-sidebar-row: 32px;
+  --size-toolbar-button: 28px;
+  --size-search-field: 32px;
+  --size-toolbar: 44px;
+
   /* Colour (light). */
   --accent: #0a84ff;
   --accent-ios: #007aff;
@@ -119,7 +143,7 @@
   --color-fill-strong: rgba(120, 120, 128, 0.28);
   --color-fill-clear: rgba(118, 118, 128, 0.4);
   --color-segment-selected: #fff;
-  --color-hover: rgba(0, 0, 0, 0.06);
+  --color-hover: rgba(0, 0, 0, 0.04);
   --color-hover-faint: rgba(0, 0, 0, 0.05);
   --color-selected: rgba(0, 0, 0, 0.08);
   --color-sidebar-selected: rgba(0, 0, 0, 0.08);
@@ -243,10 +267,10 @@
     --color-fill-strong: rgba(120, 120, 128, 0.4);
     --color-fill-clear: rgba(118, 118, 128, 0.6);
     --color-segment-selected: #636366;
-    --color-hover: rgba(255, 255, 255, 0.14);
+    --color-hover: rgba(255, 255, 255, 0.08);
     --color-hover-faint: rgba(255, 255, 255, 0.08);
     --color-selected: rgba(255, 255, 255, 0.14);
-    --color-sidebar-selected: rgba(255, 255, 255, 0.1);
+    --color-sidebar-selected: rgba(255, 255, 255, 0.16);
     --sidebar-toggle-hover: rgba(255, 255, 255, 0.14);
     --color-accent-soft: rgba(10, 132, 255, 0.3);
     --color-accent-tint: rgba(10, 132, 255, 0.2);

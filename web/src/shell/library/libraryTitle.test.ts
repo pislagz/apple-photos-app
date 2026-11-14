@@ -18,7 +18,7 @@ describe("title scrim fade (#261)", () => {
   it("is a light blur driven by --title-scrim, with no blur under Reduce Transparency", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const blur = /\.desktop-library__title-scrim::before \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(blur).toContain("backdrop-filter: blur(8px)");
+    expect(blur).toContain("backdrop-filter: var(--blur-thin)");
     expect(blur).toContain("opacity: var(--title-scrim, 1)");
     const tint = /\.desktop-library__title-scrim::after \{([^}]*var\(--scrim-title\)[^}]*)\}/.exec(css)?.[1] ?? "";
     expect(tint).toContain("opacity: calc(0.4 + 0.6 * var(--title-scrim, 1))");
