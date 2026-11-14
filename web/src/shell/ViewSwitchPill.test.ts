@@ -30,7 +30,8 @@ describe("mobile view-switch pill (#117)", () => {
 
   it("reserves bottom padding so the pill never covers the last Days caption", () => {
     const scroll = rule(".mobile-library__scroll");
-    const pad = Number(scroll.match(/padding-bottom:\s*(\d+)px/)?.[1]);
+    // #216: the tab bar height is added on top of the fixed room.
+    const pad = Number(scroll.match(/padding-bottom:\s*calc\(var\(--tab-bar-h, 0px\) \+ (\d+)px\)/)?.[1]);
     expect(pad).toBeGreaterThanOrEqual(64);
   });
 });

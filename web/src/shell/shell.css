@@ -54,8 +54,53 @@ body {
   background: var(--color-bg);
 }
 
+.shell--mobile {
+  /* Tab row height; the Library's zoom pill and scroll padding stack on it. */
+  --tab-bar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+
 .shell--mobile .tab-bar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: var(--tab-bar-h);
+}
+
+/* #216: on the Library the tab bar floats over the grid as the one bottom
+   layer. No border; a soft scrim fades the photos out above it, and the zoom
+   pill sits in that same fade instead of on a second bar. */
+.shell--mobile .tab-bar--overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  border-top: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: transform var(--dur-chrome) var(--ease-slide);
+}
+
+.shell--mobile .tab-bar--overlay::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tab-bar-h) + 76px);
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--material-bar-strong) 45%, var(--scrim-clear));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
+  -webkit-mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
+}
+
+/* Selecting replaces the bar with the selection bar. */
+.shell--mobile:has(.mobile-library__select-bar) .tab-bar--overlay {
+  transform: translateY(100%);
+  pointer-events: none;
 }
 
 /* The title + account button float over the top of the grid (see
@@ -317,7 +362,7 @@ body {
 .mobile-library__view-switch {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  bottom: calc(var(--tab-bar-h, 0px) + 8px);
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
@@ -388,7 +433,7 @@ body {
   overscroll-behavior: contain;
   /* Room below the last row so the floating view-switch pill (about 44px
      tall, 14px off the bottom) never covers the last Days hero caption. */
-  padding-bottom: 72px;
+  padding-bottom: calc(var(--tab-bar-h, 0px) + 72px);
   box-sizing: border-box;
 }
 

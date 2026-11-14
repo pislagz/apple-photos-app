@@ -253,3 +253,22 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
   await expect(popover).toHaveCount(0);
   expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
 });
+
+// #216: one bottom layer over the grid; the zoom pill sits right above the tab row.
+test("iPhone bottom chrome is one bar and the last row clears it", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone layout");
+  await signIn(page);
+  const bar = page.locator("nav.tab-bar");
+  await expect(bar).toHaveClass(/tab-bar--overlay/);
+  expect(await bar.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
+  const pill = await page.locator(".mobile-library__view-switch").boundingBox();
+  const barBox = await bar.boundingBox();
+  expect(pill && barBox && pill.y + pill.height <= barBox.y + barBox.height).toBe(true);
+  expect(pill && barBox && barBox.y - (pill.y + pill.height) < 16).toBe(true);
+  const padding = await page
+    .getByTestId("library-scroll")
+    .evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(padding).toBeGreaterThanOrEqual(120);
+  await page.locator(".tab-bar__item", { hasText: "Albums" }).click();
+  await expect(bar).not.toHaveClass(/tab-bar--overlay/);
+});
