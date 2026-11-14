@@ -89,6 +89,25 @@ function formatDayCardLabel(key: string, currentYear: number): string {
   });
 }
 
+// "Saturday", the iPhone Day card title when no place name is known (#219).
+function formatWeekday(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString("en-US", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+}
+
+// "May 2024", the month header above a month's Day cards on iPhone (#219).
+export function formatMonthHeader(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function buildPeriodCards(
   buckets: SummaryPeriodBucket[],
   view: "years" | "months" | "days",
@@ -104,6 +123,7 @@ export function buildPeriodCards(
           : formatGroupLabel(bucket.key, view),
     count: bucket.count,
     keyAssetIds: bucket.key_asset_ids ?? [],
+    weekday: view === "days" ? formatWeekday(bucket.key) : undefined,
   }));
 }
 

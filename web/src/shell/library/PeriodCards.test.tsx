@@ -121,3 +121,40 @@ describe("Day cards (#301)", () => {
     expect(container.querySelector("img")?.getAttribute("src")).toMatch(/\/thumb\/d1\?size=grid2x$/);
   });
 });
+
+describe("iPhone cards (#219)", () => {
+  const DAYS: SummaryPeriodBucket[] = [
+    { key: "2024-04-30", count: 2, key_asset_ids: ["a", "b"] },
+    { key: "2024-05-10", count: 5, key_asset_ids: ["c", "d", "e"] },
+  ];
+
+  it("Days: mosaic only with 3+ photos, weekday title, count pill above 3", () => {
+    const { container } = renderGrid("days", DAYS, { phone: true });
+    const cards = Array.from(container.querySelectorAll(".period-card--days"));
+    expect(cards[0].querySelector(".period-card__mosaic")).toBeNull();
+    expect(cards[1].querySelectorAll(".period-card__mosaic-image")).toHaveLength(2);
+    expect(cards[1].querySelector(".period-card__label")).toHaveTextContent("Friday");
+    expect(cards[1].querySelector(".period-card__count")).toHaveTextContent("5 Items");
+    expect(cards[1].querySelector(".period-card__pill")).toHaveTextContent("5");
+  });
+
+  it("Months: day cards under one header per month; tapping a day reports its key", () => {
+    const { container, onOpen } = renderGrid("months", [{ key: "2024-04-30", count: 1, key_asset_ids: ["a"] }, ...DAYS.slice(1)], { phone: true });
+    const headers = Array.from(container.querySelectorAll("[data-testid='period-month-header']"));
+    expect(headers.map((h) => h.textContent)).toEqual(["April 2024", "May 2024"]);
+    fireEvent.click(container.querySelectorAll(".period-card--days")[1]);
+    expect(onOpen).toHaveBeenCalledWith("2024-05-10");
+  });
+
+  it("Years: title only, no count line", () => {
+    const { container } = renderGrid("years", YEARS, { phone: true });
+    expect(container.querySelector(".period-grid--phone")).not.toBeNull();
+    expect(container.querySelector(".period-card__count")).toBeNull();
+  });
+
+  it("desktop (no phone flag) is unchanged: no mosaic, no month headers", () => {
+    const { container } = renderGrid("days", DAYS);
+    expect(container.querySelector(".period-card__mosaic")).toBeNull();
+    expect(container.querySelector(".period-card--phone")).toBeNull();
+  });
+});

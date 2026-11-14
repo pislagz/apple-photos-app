@@ -192,9 +192,9 @@ describe("MobileShell Library tab re-tap (#146)", () => {
 
   async function drillToOlderMonth() {
     fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("Jan 2022"));
-    // Month -> Days cards -> the newest day opens All Photos at that day.
-    fireEvent.click(await screen.findByText("Jan 20, 2022"));
+    // Months (Day cards) -> Days -> the newest day opens All Photos at that day.
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     await waitFor(() => expect(queryThumb("recent")).toBeNull());
     expect(getThumb("jan22-0")).toBeInTheDocument();
   }

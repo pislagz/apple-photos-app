@@ -58,11 +58,22 @@ for (const scheme of ["light", "dark"] as const) {
         await openZoom(page, view);
         const { columns, widest, viewport } = await columnsOf(page);
         // Several cards per row (never one full-width tile), and never huge.
-        const minColumns = view === "Years" ? 2 : desktop ? 4 : 3;
+        const minColumns = view === "Years" ? 2 : 4;
         const cards = await page.getByTestId("period-card").count();
-        expect(columns, `${view} columns at ${tag}`).toBeGreaterThanOrEqual(Math.min(minColumns, cards));
-        expect(widest).toBeLessThan(viewport * 0.5);
-        expect(widest).toBeLessThan(330);
+        if (desktop) {
+          expect(columns, `${view} columns at ${tag}`).toBeGreaterThanOrEqual(Math.min(minColumns, cards));
+          expect(widest).toBeLessThan(viewport * 0.5);
+          expect(widest).toBeLessThan(330);
+        } else {
+          // iPhone (#219): one full-width rounded card per row at a fixed height.
+          expect(columns).toBe(1);
+          const box = (await page.getByTestId("period-card").last().boundingBox())!;
+          expect(box.height).toBe(view === "Years" ? 300 : 230);
+          expect(Math.abs(box.width - (viewport - 32))).toBeLessThan(2);
+          const radius = await page.getByTestId("period-card").last().evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+          expect(radius).toBe(view === "Years" ? "28px" : "24px");
+          if (view === "Months") await expect(page.getByTestId("period-month-header").first()).toBeVisible();
+        }
         // Opens at the newest: the last card is on screen.
         await expect(page.getByTestId("period-card").last()).toBeInViewport();
         await page.screenshot({ path: `${SHOTS}/${tag}-period-${view.toLowerCase()}-${scheme}.png` });
@@ -89,7 +100,7 @@ test("clicking a year card goes down to Months, and a month card down to the pho
     // iPhone: Months -> Days at that month.
     await expect(page.getByRole("tab", { name: "Days", exact: true })).toHaveAttribute("aria-selected", "true");
   }
-  expect(month).toMatch(/^\d{4}-\d{2}$/);
+  expect(month).toMatch(info.project.name === "desktop" ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/);
 });
 
 test("hovering a card scales its image without moving the layout", async ({ page }, info) => {

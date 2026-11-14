@@ -47,9 +47,14 @@ for (const scheme of ["light", "dark"] as const) {
       const rect = els[0].getBoundingClientRect();
       return { columns: Math.max(...tops.values()), width: rect.width, height: rect.height, dpr: window.devicePixelRatio };
     });
-    expect(Math.abs(geometry.width - geometry.height)).toBeLessThan(2);
-    if (desktop) expect(geometry.columns).toBeGreaterThanOrEqual(4);
-    else expect(geometry.columns).toBe(2);
+    if (desktop) {
+      expect(Math.abs(geometry.width - geometry.height)).toBeLessThan(2);
+      expect(geometry.columns).toBeGreaterThanOrEqual(4);
+    } else {
+      // iPhone (#219): one 230px card per row.
+      expect(geometry.height).toBe(230);
+      expect(geometry.columns).toBe(1);
+    }
 
     // Sharp key photo: the loaded thumbnail covers the card at the device pixel ratio.
     const sharp = await page.evaluate(() =>
