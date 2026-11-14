@@ -279,3 +279,37 @@ describe("DesktopShell with no library (#263)", () => {
     expect(screen.queryByLabelText("Library switcher")).toBeNull();
   });
 });
+
+describe("narrow sidebar overlay (#392)", () => {
+  it("keeps the toggle enabled, opens over the content, closes on Escape, outside press and item choice", () => {
+    mockFetch(() => ({ items: [], next_cursor: null, years: [], months: [], days: [], tree: [], smart: [] }));
+    vi.stubGlobal("innerWidth", 800);
+    const { container } = render(
+      <DesktopShell
+        me={ME_RESPONSE}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        layoutOverride="auto"
+        onLayoutOverrideChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    const shell = container.querySelector(".shell--desktop") as HTMLElement;
+    const toggle = screen.getByRole("button", { name: "Show sidebar" });
+    expect(toggle).not.toBeDisabled();
+    expect(shell.className).not.toContain("overlay-open");
+    fireEvent.click(toggle);
+    expect(shell.className).toContain("shell--sidebar-overlay-open");
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toHaveProperty("ariaExpanded", "true");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(shell.className).not.toContain("overlay-open");
+    // Ctrl+Alt+S with the physical key opens it (Mac Option rewrites event.key).
+    fireEvent.keyDown(window, { key: "ß", code: "KeyS", ctrlKey: true, altKey: true });
+    expect(shell.className).toContain("overlay-open");
+    fireEvent.pointerDown(container.querySelector(".shell__main") as Element);
+    expect(shell.className).not.toContain("overlay-open");
+    fireEvent.click(toggle);
+    fireEvent.click(container.querySelector("aside .sidebar__item:not(:disabled)") as Element);
+    expect(shell.className).not.toContain("overlay-open");
+  });
+});

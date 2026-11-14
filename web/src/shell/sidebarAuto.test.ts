@@ -4,7 +4,7 @@ import {
   effectiveSidebarCollapsed,
   isNarrow,
   isSidebarShortcut,
-  toggleUserCollapsed,
+  sidebarOpen,
 } from "./sidebarAuto";
 
 describe("sidebar auto-hide (#368)", () => {
@@ -18,14 +18,20 @@ describe("sidebar auto-hide (#368)", () => {
     expect(effectiveSidebarCollapsed(true, false)).toBe(true);
     expect(effectiveSidebarCollapsed(true, true)).toBe(true);
   });
-  it("ignores the toggle while narrow", () => {
-    expect(toggleUserCollapsed(false, true)).toBe(false);
-    expect(toggleUserCollapsed(true, true)).toBe(true);
-    expect(toggleUserCollapsed(false, false)).toBe(true);
-    expect(toggleUserCollapsed(true, false)).toBe(false);
+  it("narrow: open state is the overlay's, not the user's choice (#392)", () => {
+    expect(sidebarOpen(true, true, true)).toBe(true);
+    expect(sidebarOpen(false, true, false)).toBe(false);
+    expect(sidebarOpen(false, false, true)).toBe(true);
+    expect(sidebarOpen(true, false, true)).toBe(false);
   });
   it("recognises Cmd/Ctrl+Option+S", () => {
-    expect(isSidebarShortcut({ key: "s", metaKey: true, ctrlKey: false, altKey: true })).toBe(true);
-    expect(isSidebarShortcut({ key: "s", metaKey: false, ctrlKey: false, altKey: true })).toBe(false);
+    expect(isSidebarShortcut({ key: "s", code: "KeyS", metaKey: true, ctrlKey: false, altKey: true })).toBe(true);
+    expect(isSidebarShortcut({ key: "s", metaKey: false, ctrlKey: true, altKey: true })).toBe(true);
+    expect(isSidebarShortcut({ key: "s", code: "KeyS", metaKey: false, ctrlKey: false, altKey: true })).toBe(false);
+    expect(isSidebarShortcut({ key: "s", code: "KeyS", metaKey: true, ctrlKey: false, altKey: false })).toBe(false);
+  });
+  it("matches on the physical key: Mac Option+S reports key 'ß' (#392)", () => {
+    expect(isSidebarShortcut({ key: "ß", code: "KeyS", metaKey: true, ctrlKey: false, altKey: true })).toBe(true);
+    expect(isSidebarShortcut({ key: "ß", code: "KeyX", metaKey: true, ctrlKey: false, altKey: true })).toBe(false);
   });
 });
