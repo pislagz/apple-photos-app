@@ -254,21 +254,24 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
   expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
 });
 
-// #216: one bottom layer over the grid; the zoom pill sits right above the tab row.
-test("iPhone bottom chrome is one bar and the last row clears it", async ({ page }, info) => {
+// #367: the Library tab bar is the plain Albums bar and the pill sits fully above it.
+test("iPhone Library tab bar matches Albums and the pill clears it", async ({ page }, info) => {
   test.skip(info.project.name === "desktop", "phone layout");
   await signIn(page);
   const bar = page.locator("nav.tab-bar");
-  await expect(bar).toHaveClass(/tab-bar--overlay/);
-  expect(await bar.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
+  const style = () =>
+    bar.evaluate((el) => {
+      const c = getComputedStyle(el);
+      return [c.backgroundColor, c.backdropFilter, c.borderTopWidth, c.position].join("|");
+    });
+  const libraryStyle = await style();
   const pill = await page.locator(".mobile-library__view-switch").boundingBox();
   const barBox = await bar.boundingBox();
-  expect(pill && barBox && pill.y + pill.height <= barBox.y + barBox.height).toBe(true);
-  expect(pill && barBox && barBox.y - (pill.y + pill.height) < 16).toBe(true);
-  const padding = await page
-    .getByTestId("library-scroll")
-    .evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
-  expect(padding).toBeGreaterThanOrEqual(120);
+  expect(pill && barBox && pill.y + pill.height <= barBox.y).toBe(true);
+  const scroll = page.getByTestId("library-scroll");
+  const padding = await scroll.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(padding).toBeGreaterThanOrEqual(64);
   await page.locator(".tab-bar__item", { hasText: "Albums" }).click();
-  await expect(bar).not.toHaveClass(/tab-bar--overlay/);
+  await expect(page.locator(".tab-bar__item[aria-current=page]")).toHaveText(/Albums/);
+  expect(await style()).toBe(libraryStyle);
 });

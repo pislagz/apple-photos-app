@@ -50,8 +50,8 @@ describe("MobileShell layout", () => {
     expect(shell?.querySelector(".shell__header")).not.toBeNull();
     expect(shell?.querySelector(".shell__content")).not.toBeNull();
     expect(shell?.querySelector(".tab-bar")).not.toBeNull();
-    // #216: on the Library the tab bar is the single floating bottom layer.
-    expect(shell?.querySelector(".tab-bar--overlay")).not.toBeNull();
+    // #367: the Library tab bar is the plain in-flow bar, same as Albums.
+    expect(shell?.querySelector(".tab-bar--overlay")).toBeNull();
     // The library's own scroll area is nested inside the bounded content
     // area, not a sibling of it -- that's what keeps the header and tab
     // bar from scrolling off-screen with the grid.

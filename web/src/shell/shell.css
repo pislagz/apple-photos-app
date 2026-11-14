@@ -65,40 +65,15 @@ body {
   min-height: var(--tab-bar-h);
 }
 
-/* #216: on the Library the tab bar floats over the grid as the one bottom
-   layer. No border; a soft scrim fades the photos out above it, and the zoom
-   pill sits in that same fade instead of on a second bar. */
-.shell--mobile .tab-bar--overlay {
+/* #367: the Library uses the same in-flow tab bar as Albums, so the grid and
+   the zoom pill end above it and nothing overlaps. Selecting slides the bar
+   out of the flow (no extra scrollbar, #364); the select bar replaces it. */
+.shell--mobile:has(.mobile-library__select-bar) .tab-bar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 4;
-  border-top: none;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  transition: transform var(--dur-chrome) var(--ease-slide);
-}
-
-.shell--mobile .tab-bar--overlay::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: calc(var(--tab-bar-h) + 76px);
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(to top, var(--material-bar-strong) 45%, var(--scrim-clear));
-  backdrop-filter: var(--blur-material);
-  -webkit-backdrop-filter: var(--blur-material);
-  mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
-  -webkit-mask-image: linear-gradient(to top, var(--color-black) 55%, transparent);
-}
-
-/* Selecting replaces the bar with the selection bar. */
-.shell--mobile:has(.mobile-library__select-bar) .tab-bar--overlay {
   transform: translateY(100%);
   pointer-events: none;
 }
@@ -362,7 +337,7 @@ body {
 .mobile-library__view-switch {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--tab-bar-h, 0px) + 8px);
+  bottom: 8px;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
@@ -433,7 +408,7 @@ body {
   overscroll-behavior: contain;
   /* Room below the last row so the floating view-switch pill (about 44px
      tall, 14px off the bottom) never covers the last Days hero caption. */
-  padding-bottom: calc(var(--tab-bar-h, 0px) + 72px);
+  padding-bottom: 72px;
   box-sizing: border-box;
 }
 
