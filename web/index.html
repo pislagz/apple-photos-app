@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- #236: home-screen launch shows this canvas, light or dark, before the CSS loads. -->
+    <style>
+      html {
+        background: Canvas;
+      }
+    </style>
     <title>Photos</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
