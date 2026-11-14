@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // #396: stepping fast through photos on desktop must not make the viewer
 // title blink (empty, or the date-only fallback, or a different colour).
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
-const SHOTS = "e2e/screenshots/396";
+const SHOTS = "e2e/screenshots/n1114c";
 
 for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} mode`, () => {
@@ -58,7 +58,7 @@ for (const scheme of ["light", "dark"] as const) {
         await page.waitForTimeout(60);
       }
       await page.waitForTimeout(700);
-      await page.screenshot({ path: `${SHOTS}/desktop-title-${scheme}.png`, clip: { x: 0, y: 0, width: 1440, height: 80 } });
+      await page.screenshot({ path: `${SHOTS}/408-title-${scheme}.png`, clip: { x: 0, y: 0, width: 1440, height: 80 } });
       const bad = await page.evaluate(() => {
         (window as unknown as { __stop: boolean }).__stop = true;
         return (window as unknown as { __bad: string[] }).__bad;

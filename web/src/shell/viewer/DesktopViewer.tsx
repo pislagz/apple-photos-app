@@ -304,18 +304,20 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   // #396: the detail resets to null on every page, so a title built from it
   // would flip place -> date-only -> place while stepping fast. Keep the last
   // resolved title until the new asset's detail lands, then swap in place.
-  let title: ViewerTitle;
-  if (detail || detailFailed || !lastTitle.current) {
-    title = formatDesktopTitle({
-      place: detail ? formatShortPlaceName(detail) : "",
-      dateCreated: detail?.date_created ?? item.date ?? null,
-      index,
-      total: items.length,
-    });
-    if (detail || detailFailed) lastTitle.current = title;
-  } else {
-    title = lastTitle.current;
-  }
+  const loaded = detail !== null || detailFailed;
+  const fresh = formatDesktopTitle({
+    place: detail ? formatShortPlaceName(detail) : "",
+    dateCreated: detail?.date_created ?? item.date ?? null,
+    index,
+    total: items.length,
+  });
+  // #408: a title is never empty. Until this asset's detail lands, and when
+  // the computed one has no line 1 (no place and no usable date), keep the
+  // last non-empty title, and as a last resort a neutral word.
+  let title: ViewerTitle = fresh;
+  if (!loaded && lastTitle.current) title = lastTitle.current;
+  if (!title.primary.trim()) title = lastTitle.current ?? { primary: item.is_video ? "Video" : "Photo", secondary: fresh.secondary };
+  if (loaded && title.primary.trim()) lastTitle.current = title;
 
   return (
     <div

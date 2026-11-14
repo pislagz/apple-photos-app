@@ -17,6 +17,9 @@ describe("1114b look fixes", () => {
     expect(rule(".filter-pill")).toMatch(/height: var\(--size-search-field\)/);
   });
   it("#395 viewer toolbar buttons are square", () => {
-    expect(rule(".desktop-viewer__topbar .toolbar-button")).toMatch(/width: 28px;\s*height: 28px/);
+    const css = rule(".desktop-viewer__topbar .toolbar-button");
+    expect(css).toMatch(/width: var\(--size-toolbar-button\);/);
+    expect(css).toMatch(/height: var\(--size-toolbar-button\);/);
+    expect(css).toMatch(/aspect-ratio: 1 \/ 1;/);
   });
 });

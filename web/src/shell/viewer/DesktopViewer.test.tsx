@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Profiler } from "react";
 import { join } from "node:path";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -782,6 +783,44 @@ describe("DesktopViewer chrome (#211)", () => {
     observer.disconnect();
     expect(seen.every((text) => text.trim() !== "")).toBe(true);
     expect(seen.some((text) => /^\d+ \w+ 2024 at/.test(text))).toBe(false);
+  });
+
+  // #408: record the title on every commit while stepping fast, same-date
+  // neighbours and a failing/dateless asset included; none may be empty.
+  it("never renders an empty title on any commit while stepping", async () => {
+    const same = "2024-05-10T10:00:00";
+    const items = [makeItem("b1"), makeItem("b2"), makeItem("b3", { date: null }), makeItem("b4")];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const id = url.match(/assets\/([^/?]+)$/)?.[1] ?? "";
+        if (id === "b3") return new Response("{}", { status: 500 });
+        await new Promise((resolve) => setTimeout(resolve, id === "b2" ? 30 : 5));
+        return new Response(JSON.stringify(makeDetail(id, { place: "", date_created: same })), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const seen: string[] = [];
+    const record = () => {
+      const primary = document.querySelector(".desktop-viewer__title-primary");
+      if (primary) seen.push(primary.textContent ?? "");
+    };
+    const view = (index: number) => (
+      <Profiler id="v" onRender={record}>
+        <DesktopViewer libraryId={1} items={items} index={index} onIndexChange={() => {}} onClose={() => {}} />
+      </Profiler>
+    );
+    const { rerender } = render(view(0));
+    for (const index of [1, 2, 3, 2, 1, 0]) {
+      rerender(view(index));
+      await new Promise((resolve) => setTimeout(resolve, 8));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    record();
+    expect(seen.length).toBeGreaterThan(6);
+    expect(seen.filter((text) => text.trim() === "")).toEqual([]);
   });
 });
 
