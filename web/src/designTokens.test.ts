@@ -32,3 +32,28 @@ describe("design tokens", () => {
     expect(names.length).toBe(new Set(names).size);
   });
 });
+
+// #233: Apple-matched controls come from tokens, with every state defined.
+describe("control tokens (#233)", () => {
+  const tokens = read("shell/tokens.css");
+  const css = read("shell/shell.css");
+  const admin = read("admin/admin.css");
+
+  it("defines the control tokens once, with a dark pair where the value differs", () => {
+    for (const n of ["--color-pressed", "--color-slider-track", "--size-toolbar-button-w", "--ring-field"]) {
+      expect(tokens.match(new RegExp(`^\\s*${n}:`, "gm"))).toHaveLength(n.startsWith("--size") || n === "--ring-field" ? 1 : 2);
+    }
+    expect(tokens).toContain("--color-slider-thumb: #323232");
+  });
+
+  it("toolbar buttons are 8px radius with hover and pressed fills", () => {
+    expect(css).toMatch(/\.toolbar-button:active:not\(:disabled\)\s*\{\s*background: var\(--color-pressed\)/);
+    expect(css).toMatch(/\.toolbar-button \{[^}]*border-radius: var\(--radius-8\)/);
+  });
+
+  it("buttons have hover, pressed and focus states; fields a focus ring", () => {
+    expect(admin).toContain(".admin-btn.admin-btn--primary:active:not(:disabled)");
+    expect(admin).toContain("box-shadow: var(--ring-field)");
+    expect(css).toContain(".login-card button[type=\"submit\"]:active:not(:disabled)");
+  });
+});

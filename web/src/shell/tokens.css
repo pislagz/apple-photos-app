@@ -113,6 +113,16 @@
   --size-toolbar-button: 28px;
   --size-search-field: 32px;
   --size-toolbar: 44px;
+  --size-toolbar-button-w: 31px;
+  --size-zoom-slider-w: 100px;
+  --size-zoom-slider-h: 20px;
+  --size-slider-thumb: 18px;
+  --size-slider-track: 3px;
+  --size-clear-button: 24px;
+  --size-control-touch: 44px;
+  --ring-field: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  --color-accent-hover: color-mix(in srgb, var(--accent) 88%, var(--color-black));
+  --color-accent-pressed: color-mix(in srgb, var(--accent) 76%, var(--color-black));
 
   /* Colour (light). */
   --accent: #0a84ff;
@@ -145,6 +155,8 @@
   --color-segment-selected: #fff;
   --color-hover: rgba(0, 0, 0, 0.04);
   --color-hover-faint: rgba(0, 0, 0, 0.05);
+  --color-pressed: rgba(0, 0, 0, 0.08);
+  --color-slider-track: rgba(0, 0, 0, 0.2);
   --color-selected: rgba(0, 0, 0, 0.08);
   --color-sidebar-selected: rgba(0, 0, 0, 0.08);
   --color-slider-thumb: #fff;
@@ -269,6 +281,10 @@
     --color-segment-selected: #636366;
     --color-hover: rgba(255, 255, 255, 0.08);
     --color-hover-faint: rgba(255, 255, 255, 0.08);
+    --color-pressed: rgba(255, 255, 255, 0.16);
+    --color-slider-track: rgba(255, 255, 255, 0.3);
+    --color-slider-thumb: #323232;
+    --shadow-slider-thumb: 0 0 0 0.5px rgba(255, 255, 255, 0.3), 0 1px 3px rgba(0, 0, 0, 0.5);
     --color-selected: rgba(255, 255, 255, 0.14);
     --color-sidebar-selected: rgba(255, 255, 255, 0.16);
     --sidebar-toggle-hover: rgba(255, 255, 255, 0.14);
