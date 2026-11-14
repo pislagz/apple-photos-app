@@ -76,6 +76,16 @@ body,
    -webkit-fill-available makes the chain match the visible height. */
 :root {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* One place for the top inset (#414): every phone Library header and the
+     content below it read this, so a test can mock a notch. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  /* Title block (8px gap + 62px) the phone Library header occupies, and the
+     breathing room under it (#415). */
+  --library-header-h: 70px;
+  --library-content-gap: 8px;
+  /* Where the first header / row of EVERY phone Library view starts (#414),
+     so switching Years / Months / Days / All never makes the top jump. */
+  --library-top-inset: calc(var(--safe-top) + var(--library-header-h) + var(--library-content-gap));
 }
 
 html {
@@ -162,7 +172,7 @@ body {
   right: 0;
   z-index: 5;
   /* Centred on the 62px title block: 8px top gap + (62 - 44) / 2. */
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8) + var(--space-9)) var(--space-20) 0 0;
+  padding: calc(var(--safe-top) + var(--space-8) + var(--space-9)) var(--space-20) 0 0;
 }
 
 .shell--mobile .shell__content {
@@ -206,7 +216,7 @@ body {
   gap: var(--space-10);
   box-sizing: border-box;
   pointer-events: none;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) max(var(--space-16), env(safe-area-inset-right, 0px)) 30px
+  padding: calc(var(--safe-top) + var(--space-8)) max(var(--space-16), env(safe-area-inset-right, 0px)) 30px
     max(var(--space-20), env(safe-area-inset-left, 0px));
 }
 
@@ -472,7 +482,28 @@ body {
   /* Room below the last row so the floating view-switch pill (about 44px
      tall, 14px off the bottom) never covers the last Days hero caption. */
   padding-bottom: 72px;
+  /* #414/#415: the floating title block overlays the top of the scroller, so
+     content starts below it. Padding (not margin) lets the user scroll the
+     first row up under the header, and scroll back past it. The virtualised
+     All Photos list takes this inset as its paddingStart instead (see
+     MobileLibrary), so it is not doubled. */
+  padding-top: var(--library-top-inset);
   box-sizing: border-box;
+}
+
+.mobile-library__scroll[data-virtual-inset] {
+  padding-top: 0;
+}
+
+/* Measured by MobileLibrary: env() cannot be read from JS, a box can. */
+.mobile-library__inset-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: var(--library-top-inset);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .mobile-library__row-header {
@@ -724,7 +755,8 @@ body {
   --period-card-min: 100%;
   grid-template-columns: 1fr;
   gap: var(--space-8);
-  padding: var(--space-8) var(--space-16);
+  /* No top padding: .mobile-library__scroll's inset is the one top offset. */
+  padding: 0 var(--space-16) var(--space-8);
 }
 
 .period-grid--phone.period-grid--years {
@@ -732,7 +764,11 @@ body {
 }
 
 .period-grid--phone .period-grid__header {
-  padding: var(--space-8) var(--space-4) var(--space-4);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.period-grid--phone .period-grid__month:first-child {
+  padding-top: 0;
 }
 
 .period-grid__month {
@@ -4687,7 +4723,7 @@ body {
   visibility: hidden;
   transition:
     transform var(--dur-slide) var(--ease-slide),
-    visibility 0s linear var(--dur-slide);
+    visibility 0s linear var(--dur-slide); /* motion-allow: delay, not a duration */
 }
 
 .shell--desktop.shell--sidebar-narrow.shell--sidebar-overlay-open .sidebar {
@@ -4696,7 +4732,7 @@ body {
   box-shadow: var(--shadow-popup);
   transition:
     transform var(--dur-slide) var(--ease-slide),
-    visibility 0s;
+    visibility 0s; /* motion-allow: visibility flips instantly, nothing animates */
 }
 
 .shell--desktop {
@@ -5767,7 +5803,7 @@ body {
   flex-direction: column;
   /* Header block (safe area + title + fade) above, view switch (33px tall, 8px
      off the bottom) below. */
-  padding-top: calc(env(safe-area-inset-top, 0px) + 98px);
+  padding-top: calc(var(--safe-top) + 98px);
   padding-bottom: 41px;
 }
 
