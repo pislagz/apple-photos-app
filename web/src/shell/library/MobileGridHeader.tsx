@@ -27,19 +27,13 @@ export default function MobileGridHeader({
   selectMode: boolean;
   onToggleSelect: () => void;
 }) {
-  const selectControl = (nav ? (
-          <button type="button" className="mobile-library__select-button" onClick={onToggleSelect}>
-            {selectMode ? "Cancel" : "Select"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="mobile-library__glass-button mobile-library__select-button"
-            onClick={onToggleSelect}
-          >
-            {selectMode ? "Cancel" : "Select"}
-          </button>
-        ));
+  // One button for every grid, nav or not (#417): a second plain-text variant
+  // for pushed grids is what made Select differ from the Library's.
+  const selectControl = (
+    <button type="button" className="mobile-library__glass-button mobile-library__select-button" onClick={onToggleSelect}>
+      {selectMode ? "Cancel" : "Select"}
+    </button>
+  );
   return (
     <div
       className={nav ? "mobile-library__top-bar mobile-library__top-bar--nav" : "mobile-library__top-bar"}

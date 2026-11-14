@@ -237,10 +237,6 @@ body {
   background: var(--color-bg-grouped);
 }
 
-.mobile-library__top-bar--nav .mobile-library__select-button {
-  color: var(--accent);
-}
-
 .mobile-library__back {
   min-height: 32px;
   margin: 0 0 0 -4px;
@@ -843,39 +839,25 @@ body {
   color: var(--accent);
 }
 
-/* P1.17 multi-select: the "Select" pill, left of the account button. */
+/* P1.17 multi-select, #212, #391, #417: the one Select / Cancel glass pill on
+   every phone grid (Library and pushed grids). Pinned to the top of the bar,
+   not centred on the title block, whose height differs between grids; Cancel
+   keeps Select's box via min-width. */
 .mobile-library__select-button {
   flex: 0 0 auto;
-  /* Top of the first row, not centred on it: the row's other item (date
-     title or back button) differs in height between grids (#260). */
   align-self: flex-start;
   margin-left: auto;
-  min-height: 32px;
-  padding: 0 var(--space-4);
-  pointer-events: auto;
-  border: none;
-  background: transparent;
-  color: var(--color-white);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-  white-space: nowrap;
-  cursor: default;
-}
-
-/* #212: on the Library the Select button is a glass pill, and Cancel a round
-   glass close button; a pushed grid (nav) keeps the plain text button above. */
-.mobile-library__select-button.mobile-library__glass-button {
-  /* #391: pinned to the top of the bar, not centred on the title block (tall on
-     a narrow phone, and a different height in Select mode). */
-  align-self: flex-start;
   min-height: 44px;
-  /* #391: Select and Cancel are the same button, so Cancel keeps its box. */
   min-width: 92px;
   padding: 0 var(--space-18);
+  pointer-events: auto;
+  border: none;
   background: var(--glass-button);
   color: var(--color-on-glass);
   font-size: var(--font-size-headline);
   font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  cursor: default;
 }
 
 .mobile-library__cell-wrap,
