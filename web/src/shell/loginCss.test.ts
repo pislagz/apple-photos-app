@@ -24,4 +24,11 @@ describe("login CSS (F1)", () => {
     expect(body).toContain("var(--color-label-secondary)");
     expect(body).toMatch(/margin: var\(--space-12\) 0 0/);
   });
+
+  it("lays the hint out as text plus (i) inside the shared button", () => {
+    const body = rule(".login-card .login-card__passkey-note .info-button--labelled");
+    expect(body).toContain("display: inline-flex");
+    expect(body).toContain("align-items: center");
+    expect(body).not.toContain("cursor: pointer");
+  });
 });
