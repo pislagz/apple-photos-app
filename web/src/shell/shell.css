@@ -2838,19 +2838,6 @@ body {
   color: var(--color-label);
 }
 
-/* #407: iOS home-screen apps get a viewport short by about the status-bar
-   height, which left a black strip under the tab bar and the viewer bar.
-   --standalone-gap (set by standaloneGap.ts, 0 everywhere else) pins the
-   full-screen surfaces to the physical bottom edge. */
-:root {
-  --standalone-gap: 0px;
-}
-
-.shell--mobile,
-.mobile-viewer {
-  bottom: calc(-1 * var(--standalone-gap));
-}
-
 /* #214: while a swipe-down dismiss drag runs, the chrome fades with the
    background (--viewer-chrome-alpha is set inline from the drag distance). */
 .mobile-viewer__topbar,
