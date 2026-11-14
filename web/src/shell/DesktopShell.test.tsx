@@ -245,6 +245,15 @@ describe("sidebar toggle hover (#200)", () => {
   });
 });
 
+describe("sidebar toggle is never covered (#349)", () => {
+  it("stacks above the toolbar row so a hidden sidebar can be reopened", () => {
+    const z = (sel: RegExp) => Number(css.match(sel)?.[1]);
+    const toggle = z(/\.sidebar-toggle \{[^}]*z-index:\s*(\d+)/);
+    const toolbar = z(/\n\.shell__toolbar \{[^}]*z-index:\s*(\d+)/);
+    expect(toggle).toBeGreaterThan(toolbar);
+  });
+});
+
 describe("DesktopShell with no library (#263)", () => {
   const noLibrary = (role: "admin" | "user"): MeResponse => ({ ...ME_RESPONSE, role, libraries: [] });
   const props = {
