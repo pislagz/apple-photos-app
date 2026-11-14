@@ -640,7 +640,7 @@ body:has(.admin-app, .admin-auth) {
 :is(.admin-app, .admin-gallery, .admin-sheet) :is(input, select).admin-input:focus-visible {
   border-color: var(--accent);
   box-shadow: var(--ring-field);
-  outline: none;
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
 }
 
 .admin-btn:focus-visible,

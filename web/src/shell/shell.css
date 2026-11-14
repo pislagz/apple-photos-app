@@ -836,6 +836,14 @@ body {
   font-weight: var(--font-weight-semibold);
 }
 
+/* The close button hugs the top of the bar (8px below the safe area) instead of
+   centring on the title block: on a narrow phone the title block is tall, and a
+   centred 44pt button then sits over the centre of the first row's right-hand
+   cell, so that cell cannot be tapped in Select mode. */
+.mobile-library__close-button {
+  align-self: flex-start;
+}
+
 .mobile-library__cell-wrap,
 .mobile-library__row-feature {
   position: relative;
@@ -1460,7 +1468,7 @@ body {
 }
 
 .login-card input:focus-visible {
-  outline: none;
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
   border-color: var(--accent);
   box-shadow: var(--ring-field);
 }
