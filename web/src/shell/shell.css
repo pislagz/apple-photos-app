@@ -4609,18 +4609,48 @@ body {
   background: var(--sidebar-toggle-hover);
 }
 
-/* #368: narrow windows hide the sidebar and park the toggle, like Mac Photos. */
-.sidebar-toggle:disabled {
-  opacity: 0.35;
+/* #392: the zoom slider stays at every desktop width; it only shrinks when
+   the toolbar gets tight, so no item overlaps another (#368). */
+@media (max-width: 1100px) {
+  .desktop-library__zoom-slider input[type="range"] {
+    width: 64px;
+  }
 }
 
-/* #368: toolbar items never overlap. Mac order: the size slider goes first,
-   then the Share/Info buttons' gaps tighten. */
-@media (max-width: 1100px) {
-  .desktop-library__zoom-slider input[type="range"],
-  .desktop-library__zoom-slider .desktop-library__zoom-end {
-    display: none;
+@media (max-width: 900px) {
+  .desktop-library__zoom-slider input[type="range"] {
+    width: 44px;
   }
+}
+
+/* #392: a narrow window never reflows the grid for the sidebar. It slides
+   in over the content and out again; the toolbar keeps its room for the
+   toggle either way. */
+.shell--desktop.shell--sidebar-narrow .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  flex: none;
+  width: var(--sidebar-width, 220px);
+  padding: 44px var(--space-8) var(--space-12);
+  opacity: 1;
+  border-right-width: 1px;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--dur-slide) var(--ease-slide),
+    visibility 0s linear var(--dur-slide);
+}
+
+.shell--desktop.shell--sidebar-narrow.shell--sidebar-overlay-open .sidebar {
+  transform: translateX(0);
+  visibility: visible;
+  box-shadow: var(--shadow-popup);
+  transition:
+    transform var(--dur-slide) var(--ease-slide),
+    visibility 0s;
 }
 
 .shell--desktop {

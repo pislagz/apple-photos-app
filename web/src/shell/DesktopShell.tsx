@@ -21,7 +21,7 @@ import DesktopSearch from "./search/DesktopSearch";
 import { useSearchModel } from "./search/useSearchModel";
 import { useDebounced } from "./search/useDebounced";
 import { clampSidebarWidth, readSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_DEFAULT, writeSidebarWidth } from "./sidebarWidth";
-import { effectiveSidebarCollapsed, isNarrow, isSidebarShortcut, toggleUserCollapsed } from "./sidebarAuto";
+import { effectiveSidebarCollapsed, isNarrow, isSidebarShortcut, sidebarOpen } from "./sidebarAuto";
 import { isTypingTarget, shortcutAction } from "./shortcuts";
 import type { AlbumsState } from "./albums/useAlbums";
 import WelcomeScreen from "./WelcomeScreen";
@@ -261,16 +261,23 @@ export default function DesktopShell({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  // Layout state: narrow always lays out without the sidebar; the overlay is
+  // drawn on top of it (#392).
   const sidebarCollapsed = effectiveSidebarCollapsed(userCollapsed, narrow);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const isOpen = sidebarOpen(userCollapsed, narrow, overlayOpen);
   const toggleSidebar = useCallback(() => {
-    if (narrow) return;
+    if (narrow) {
+      setOverlayOpen((open) => !open);
+      return;
+    }
     setUserCollapsed((current) => {
       try {
         localStorage.setItem(SIDEBAR_KEY, current ? "0" : "1");
       } catch {
         /* storage unavailable: the choice just doesn't persist */
       }
-      return toggleUserCollapsed(current, false);
+      return !current;
     });
   }, [narrow]);
   useEffect(() => {
@@ -282,6 +289,26 @@ export default function DesktopShell({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [toggleSidebar]);
+  useEffect(() => {
+    if (!narrow) setOverlayOpen(false);
+  }, [narrow]);
+  useEffect(() => {
+    if (!narrow || !overlayOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Element | null;
+      if (target?.closest("#app-sidebar, .sidebar-toggle, .account-menu__popover, [role=menu]")) return;
+      setOverlayOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOverlayOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [narrow, overlayOpen]);
 
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -387,23 +414,29 @@ export default function DesktopShell({
 
   return (
     <div
-      className={`shell shell--desktop${sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${resizing ? " shell--resizing" : ""}`}
+      className={`shell shell--desktop${sidebarCollapsed ? " shell--sidebar-collapsed" : ""}${narrow ? " shell--sidebar-narrow" : ""}${narrow && overlayOpen ? " shell--sidebar-overlay-open" : ""}${resizing ? " shell--resizing" : ""}`}
       style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
       <button
         type="button"
         className="sidebar-toggle"
         onClick={toggleSidebar}
-        disabled={narrow}
-        aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-        aria-expanded={!sidebarCollapsed}
+        aria-label={isOpen ? "Hide sidebar" : "Show sidebar"}
+        aria-expanded={isOpen}
         aria-controls="app-sidebar"
       >
         <Icon name="sidebar" size={16} />
       </button>
       {/* inert while collapsed: the width animates to 0 but the links must
           leave the Tab order and the accessibility tree. */}
-      <aside className="sidebar" id="app-sidebar" aria-label="Sidebar" inert={sidebarCollapsed}>
+      <aside className="sidebar" id="app-sidebar"
+        aria-label="Sidebar"
+        inert={!isOpen}
+        onClick={(event) => {
+          // #392: choosing a sidebar item dismisses the overlay.
+          if (narrow && (event.target as Element).closest(".sidebar__item:not(:disabled)")) setOverlayOpen(false);
+        }}
+      >
         <nav aria-label="Sections">
           <SidebarSection title="Photos">
             <ul>{PHOTOS_SECTION.map(renderItem)}</ul>
@@ -446,7 +479,7 @@ export default function DesktopShell({
           onActiveLibraryChange={onActiveLibraryChange}
         />
       </aside>
-      {!sidebarCollapsed && (
+      {!sidebarCollapsed && !narrow && (
         <div
           className="sidebar-resizer"
           role="separator"

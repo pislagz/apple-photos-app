@@ -11,12 +11,21 @@ export function effectiveSidebarCollapsed(userCollapsed: boolean, narrow: boolea
   return narrow || userCollapsed;
 }
 
-// The toggle flips only the user's choice, and does nothing while narrow.
-export function toggleUserCollapsed(userCollapsed: boolean, narrow: boolean): boolean {
-  return narrow ? userCollapsed : !userCollapsed;
+// #392: narrow windows keep the toggle enabled. It opens the sidebar as an
+// overlay (no grid reflow) instead of pushing the content aside.
+export function sidebarOpen(userCollapsed: boolean, narrow: boolean, overlayOpen: boolean): boolean {
+  return narrow ? overlayOpen : !userCollapsed;
 }
 
-// Cmd/Ctrl+Option+S is Photos' own "Show/Hide Sidebar"; plain Ctrl/Cmd+\ too.
-export function isSidebarShortcut(event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
-  return (event.metaKey || event.ctrlKey) && event.altKey && event.key.toLowerCase() === "s";
+// Cmd/Ctrl+Option+S is Photos' own "Show/Hide Sidebar". On a Mac, Option
+// changes event.key ("ß"), so the physical key (event.code) decides.
+export function isSidebarShortcut(event: {
+  key: string;
+  code?: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+}): boolean {
+  if (!(event.metaKey || event.ctrlKey) || !event.altKey) return false;
+  return event.code ? event.code === "KeyS" : event.key.toLowerCase() === "s";
 }

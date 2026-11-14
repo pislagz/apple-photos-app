@@ -51,7 +51,8 @@ for (const scheme of ["light", "dark"] as const) {
       const narrow = width < 980;
       if (narrow) await expect(shell).toHaveClass(/shell--sidebar-collapsed/);
       else await expect(shell).not.toHaveClass(/shell--sidebar-collapsed/);
-      if (narrow) await expect(page.locator(".sidebar-toggle")).toBeDisabled();
+      await expect(page.locator(".sidebar-toggle")).toBeEnabled();
+      await expect(page.locator(".desktop-library__zoom-slider input[type=range]")).toBeVisible();
       const boxes = await toolbarBoxes(page);
       expect(boxes.length).toBeGreaterThan(3);
       for (let i = 0; i < boxes.length; i++) {
@@ -72,7 +73,7 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
-test("a sidebar the user closed stays closed after narrow and wide again; the shortcut is off while narrow", async ({ page }, info) => {
+test("a sidebar the user closed stays closed after narrow and wide again; the narrow overlay does not touch the choice", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "desktop layout only");
   await page.setViewportSize({ width: 1440, height: 900 });
   await signIn(page);
@@ -80,8 +81,9 @@ test("a sidebar the user closed stays closed after narrow and wide again; the sh
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(shell).toHaveClass(/shell--sidebar-collapsed/);
   await page.setViewportSize({ width: 800, height: 900 });
-  await expect(page.locator(".sidebar-toggle")).toBeDisabled();
+  await expect(page.locator(".sidebar-toggle")).toBeEnabled();
   await page.keyboard.press("Control+Alt+s");
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(shell).toHaveClass(/shell--sidebar-collapsed/);
   await page.keyboard.press("Control+Alt+s");
