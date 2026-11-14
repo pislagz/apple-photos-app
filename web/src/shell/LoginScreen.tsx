@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import InfoButton from "../help/InfoButton";
 import { passkeyConnectionNote, passkeysSupported } from "../passkeys";
 import type { KeepSignedInMode } from "../api";
 import type { Layout } from "./useLayout";
@@ -85,7 +86,9 @@ export default function LoginScreen({
           <button type="submit">Sign in</button>
         </form>
         {onPasskey && passkeyConnectionNote() && (
-          <p className="login-card__passkey-note">{passkeyConnectionNote()}</p>
+          <p className="login-card__passkey-note">
+            <InfoButton helpKey="passkeyLogin" name="logging in with passkeys" label="How to log in using passkeys?" />
+          </p>
         )}
         {onPasskey && !passkeyConnectionNote() && passkeysSupported() && (
           <button type="button" className="login-card__passkey" onClick={() => onPasskey(offered && keep)}>

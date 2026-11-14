@@ -14,11 +14,26 @@ function stubBrowser(hostname: string, isSecureContext: boolean) {
 }
 
 describe("LoginScreen passkey button", () => {
-  it("is hidden with a plain-language note over plain http", () => {
+  it("is hidden behind a hint with an (i) popover over plain http", () => {
     stubBrowser("homeserver.local", false);
     render(<LoginScreen layout="desktop" error={null} onSubmit={() => {}} onPasskey={() => {}} />);
     expect(screen.queryByText("Sign in with a passkey")).toBeNull();
-    expect(screen.getByText(/Passkeys need a secure \(https\) connection/)).toBeTruthy();
+    expect(screen.queryByText(/Passkeys need a secure/)).toBeNull();
+    const hint = screen.getByRole("button", { name: "How to log in using passkeys?" });
+    const tip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
+    expect(hint.getAttribute("aria-describedby")).toBe(tip.id);
+    expect(tip.hidden).toBe(true);
+    expect(tip.textContent).toMatch(/https/);
+    expect(tip.textContent).toMatch(/photos\.example\.com/);
+    expect(tip.textContent).toMatch(/192\.168\.1\.20/);
+    expect(tip.textContent).toMatch(/username and password/);
+    fireEvent.mouseEnter(hint);
+    expect(tip.hidden).toBe(false);
+    fireEvent.mouseLeave(hint);
+    fireEvent.click(hint);
+    expect(tip.hidden).toBe(false);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(tip.hidden).toBe(true);
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
 
@@ -26,7 +41,7 @@ describe("LoginScreen passkey button", () => {
     stubBrowser("myhost.tailxyz.ts.net", true);
     render(<LoginScreen layout="desktop" error={null} onSubmit={() => {}} onPasskey={() => {}} />);
     expect(screen.getByText("Sign in with a passkey")).toBeTruthy();
-    expect(screen.queryByText(/Passkeys need/)).toBeNull();
+    expect(screen.queryByText("How to log in using passkeys?")).toBeNull();
   });
 });
 

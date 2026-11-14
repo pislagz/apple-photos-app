@@ -1524,6 +1524,24 @@ body {
   text-wrap: balance;
 }
 
+/* The hint is the shared (i) button with its text inside, so hover or tap on
+   either one opens the popover. */
+.login-card .login-card__passkey-note .info-button--labelled {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: var(--space-4) var(--space-8);
+  font: inherit;
+  color: inherit;
+}
+.login-card .login-card__passkey-note .info-button--labelled:hover,
+.login-card .login-card__passkey-note .info-button--labelled[aria-expanded="true"] {
+  color: var(--color-label);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Desktop shell (macOS Sequoia Photos)                                   */
 /* ---------------------------------------------------------------------- */

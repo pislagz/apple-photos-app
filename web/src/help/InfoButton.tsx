@@ -7,7 +7,7 @@ import { HELP, type HelpKey } from "./adminHelp";
 // tap pins it open. Escape or a tap outside closes it. The text is portalled to
 // <body> and positioned from the button, so it is never clipped by a card and does
 // not become part of the surrounding <label>'s text.
-export default function InfoButton({ helpKey, name, extra }: { helpKey: HelpKey; name: string; extra?: string }) {
+export default function InfoButton({ helpKey, name, extra, label }: { helpKey: HelpKey; name: string; extra?: string; label?: string }) {
   const id = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
@@ -57,8 +57,8 @@ export default function InfoButton({ helpKey, name, extra }: { helpKey: HelpKey;
       <button
         ref={buttonRef}
         type="button"
-        className="info-button"
-        aria-label={`About ${name}`}
+        className={label ? "info-button info-button--labelled" : "info-button"}
+        aria-label={label ? undefined : `About ${name}`}
         aria-describedby={id}
         aria-expanded={open}
         onMouseEnter={() => setHovered(true)}
@@ -67,6 +67,7 @@ export default function InfoButton({ helpKey, name, extra }: { helpKey: HelpKey;
         onBlur={() => setFocused(false)}
         onClick={() => setPinned((value) => !value)}
       >
+        {label && <span>{label}</span>}
         <Icon name="info" size={16} />
       </button>
       {createPortal(

@@ -2,6 +2,9 @@
 // does, when you would change it, and any consequence. Technical words (seconds,
 // bytes, PWA, PMTiles, tailnet) may appear only in this file, never as page copy.
 export const HELP = {
+  // Login screen
+  passkeyLogin:
+    "Passkeys only work when the app is opened over a secure connection (the address starts with https) and by a host name such as photos.example.com, not by an IP address like 192.168.1.20. Plain http on your home network still works with your username and password. The setup guide in the docs explains how to switch to https.",
   // Account menu (every user)
   layout:
     "Chooses how the app looks on this device: Auto picks the phone or the computer design for you. Change it only if the wrong design shows up.",
