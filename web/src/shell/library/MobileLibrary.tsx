@@ -684,7 +684,7 @@ export default function MobileLibrary({
           <div className="mobile-library__select-row">
             <button
               type="button"
-              className="mobile-library__bar-button"
+              className="mobile-library__glass-button mobile-library__bar-button"
               aria-label="Share"
               onClick={handleShareSelection}
               disabled={selectedIds.size === 0 || sharing}
@@ -696,7 +696,7 @@ export default function MobileLibrary({
             </span>
             <button
               type="button"
-              className="mobile-library__bar-button mobile-library__bar-button--end"
+              className="mobile-library__glass-button mobile-library__bar-button mobile-library__bar-button--end"
               aria-label="Download"
               onClick={() => void handleDownloadSelection()}
               disabled={selectedIds.size === 0 || zip.busy}
