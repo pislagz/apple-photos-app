@@ -842,9 +842,10 @@ export default function DesktopLibrary({
   // typing in a field. With the Viewer open they belong to the Viewer.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || viewerIndex !== null || contextMenu !== null) return;
-      if (isTypingTarget(event.target)) return;
       const action = shortcutAction(event);
+      // The app-wide guard (#366) already cancelled the browser's Select All.
+      if ((event.defaultPrevented && action !== "selectAll") || viewerIndex !== null || contextMenu !== null) return;
+      if (isTypingTarget(event.target)) return;
       const toNewest =
         (event.key === "End" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) ||
         ((event.metaKey || event.ctrlKey) && !event.altKey && event.key === "ArrowDown");

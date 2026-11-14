@@ -5456,3 +5456,22 @@ body {
     transition: none;
   }
 }
+
+/* #366: no browser text/element selection anywhere in the app, like a native
+   app. Fields and the Info panel's metadata keep it so text can be copied. */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable-text],
+[data-selectable-text] * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

@@ -57,3 +57,34 @@ describe("sidebar width", () => {
     localStorage.removeItem(SIDEBAR_WIDTH_KEY);
   });
 });
+
+describe("select-all guard (#366)", () => {
+  const ev = (target: EventTarget | null, extra: Partial<KeyboardEvent> = {}) => ({ ...key("a"), target, ...extra });
+
+  it("blocks the browser's Select All outside fields", async () => {
+    const { blocksBrowserSelectAll } = await import("./shortcuts");
+    expect(blocksBrowserSelectAll(ev(document.body))).toBe(true);
+    expect(blocksBrowserSelectAll(ev(document.body, { metaKey: false, ctrlKey: true }))).toBe(true);
+    expect(blocksBrowserSelectAll({ ...key("b"), target: document.body })).toBe(false);
+  });
+
+  it("leaves fields and the Info panel text alone", async () => {
+    const { blocksBrowserSelectAll } = await import("./shortcuts");
+    expect(blocksBrowserSelectAll(ev(document.createElement("input")))).toBe(false);
+    expect(blocksBrowserSelectAll(ev(document.createElement("textarea")))).toBe(false);
+    const dl = document.createElement("dl");
+    dl.setAttribute("data-selectable-text", "");
+    const dd = document.createElement("dd");
+    dl.append(dd);
+    expect(blocksBrowserSelectAll(ev(dd))).toBe(false);
+  });
+
+  it("installs a capture listener that cancels the default", async () => {
+    const { installSelectAllGuard } = await import("./shortcuts");
+    const off = installSelectAllGuard();
+    const event = new KeyboardEvent("keydown", { key: "a", metaKey: true, cancelable: true, bubbles: true });
+    document.body.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    off();
+  });
+});
