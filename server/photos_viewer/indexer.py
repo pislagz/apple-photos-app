@@ -547,6 +547,10 @@ def _write_index(
                     purge.append(photo.uuid)
                 if old[3] != int(photo.hidden):
                     counts["hidden_changed"] += 1
+                    if old[3] and not photo.hidden:
+                        # Unhidden: it newly appears in the grid, so the
+                        # banner counts it as added.
+                        counts["added_visible"] += 1
             # Optimize Mac Storage: no full-size original on disk, but a
             # derivative to fall back to.
             original_missing = bool(
