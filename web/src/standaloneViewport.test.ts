@@ -64,3 +64,17 @@ describe("empty states", () => {
     expect(rule(".mobile-screen__body--empty")).toMatch(/justify-content:\s*center/);
   });
 });
+
+// #414 / #415: one top offset for every phone Library view.
+describe("phone Library top inset (#414, #415)", () => {
+  it("defines one --safe-top and one --library-top-inset token", () => {
+    expect(rule(":root")).toMatch(/--safe-top:\s*env\(safe-area-inset-top/);
+    expect(rule(":root")).toMatch(/--library-top-inset:\s*calc\(var\(--safe-top\)/);
+  });
+
+  it("pads the scroller by that inset and leaves no per-view top padding", () => {
+    expect(rule(".mobile-library__scroll")).toMatch(/padding-top:\s*var\(--library-top-inset\)/);
+    expect(rule(".period-grid--phone")).toMatch(/padding:\s*0 var\(--space-16\)/);
+    expect(rule(".period-grid--phone .period-grid__header")).toMatch(/padding:\s*0 /);
+  });
+});

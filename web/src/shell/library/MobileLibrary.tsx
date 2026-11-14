@@ -395,7 +395,19 @@ export default function MobileLibrary({
     if (row.type === "header") return HEADER_ROW_HEIGHT;
     return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
   };
+  // #415: the All Photos rows start below the floating header; the CSS inset
+  // is measured through a probe box because env() is not readable from JS.
+  const insetProbeRef = useRef<HTMLDivElement | null>(null);
+  const [topInset, setTopInset] = useState(0);
+  useLayoutEffect(() => {
+    // Computed height (resolved px in browsers) rather than offsetHeight.
+    const measure = () => setTopInset(Number.parseFloat(getComputedStyle(insetProbeRef.current ?? document.body).height) || 0);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
   const rowVirtualizer = useVirtualizer({
+    paddingStart: isTileView ? 0 : topInset,
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => rowSize(rows[index]),
@@ -484,6 +496,7 @@ export default function MobileLibrary({
 
   return (
     <div className="mobile-library">
+      <div ref={insetProbeRef} className="mobile-library__inset-probe" aria-hidden="true" />
       {(nav || view === "all" || !isTileView) && (
         // One flex row so the title can never sit under Select: the title
         // shrinks and ellipsizes, Select keeps its natural width. The scrim is
@@ -580,6 +593,7 @@ export default function MobileLibrary({
         ref={scrollRef}
         className="mobile-library__scroll"
         data-testid="library-scroll"
+        data-virtual-inset={!isTileView ? "" : undefined}
         style={{
           touchAction: "pan-y",
           ...(selectBarHeight > 0 ? { paddingBottom: selectBarHeight } : {}),
