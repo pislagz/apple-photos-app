@@ -5,7 +5,7 @@ import { Icon } from "../icons";
 import { copyAssetLink, downloadVersion } from "./download";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
-import { useAssetDetail } from "./useAssetDetail";
+import { useAssetDetailState } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
@@ -15,7 +15,7 @@ import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
 import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
-import { formatDesktopTitle } from "./viewerTitle";
+import { type ViewerTitle, formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
 import { viewerKeyAction } from "./viewerKeys";
 import { isControlTarget, isTypingTarget, shortcutAction } from "../shortcuts";
@@ -46,7 +46,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const { zoomOut } = useZoomTransition({ rootRef, stageRef, item });
   const { closing, dismiss } = useDismiss(onCloseNow, zoomOut);
   const onClose = useCallback(() => dismiss(), [dismiss]);
-  const detail = useAssetDetail(libraryId, item?.id ?? null);
+  const { detail, failed: detailFailed } = useAssetDetailState(libraryId, item?.id ?? null);
+  const lastTitle = useRef<ViewerTitle | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const media = useViewerMedia(libraryId, item, detail?.has_edited, detail?.original_outside_library === true);
   usePreloadNeighbours(libraryId, items, index);
@@ -300,12 +301,21 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const alt = assetAlt({ ...item, title: detail?.title });
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const stillOnError = media.showingOriginal || media.wantsOriginal ? media.onOriginalError : undefined;
-  const title = formatDesktopTitle({
-    place: detail ? formatShortPlaceName(detail) : "",
-    dateCreated: detail?.date_created ?? item.date ?? null,
-    index,
-    total: items.length,
-  });
+  // #396: the detail resets to null on every page, so a title built from it
+  // would flip place -> date-only -> place while stepping fast. Keep the last
+  // resolved title until the new asset's detail lands, then swap in place.
+  let title: ViewerTitle;
+  if (detail || detailFailed || !lastTitle.current) {
+    title = formatDesktopTitle({
+      place: detail ? formatShortPlaceName(detail) : "",
+      dateCreated: detail?.date_created ?? item.date ?? null,
+      index,
+      total: items.length,
+    });
+    if (detail || detailFailed) lastTitle.current = title;
+  } else {
+    title = lastTitle.current;
+  }
 
   return (
     <div
