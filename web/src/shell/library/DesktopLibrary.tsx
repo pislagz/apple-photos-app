@@ -735,7 +735,7 @@ export default function DesktopLibrary({
     const toShare = items.filter((item) => selected.has(item.id));
     if (toShare.length === 0) return;
     try {
-      await shareAssets(libraryId, toShare.map((item) => ({ id: item.id, filename: item.filename })));
+      await shareAssets(libraryId, toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })));
     } catch {
       // Nothing useful to show; the user can still use Download.
     }
