@@ -5,6 +5,7 @@ import ControlsGallery from "./admin/ui/ControlsGallery";
 import AppShell from "./shell/AppShell";
 import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler";
 import { installSelectAllGuard } from "./shell/shortcuts";
+import { installStandaloneGap } from "./shell/standaloneGap";
 import "./shell/tokens.css";
 import "./shell/shell.css";
 
@@ -29,6 +30,9 @@ createRoot(root).render(
 );
 
 installSelectAllGuard();
+
+// #407: the iOS home-screen app stops short of the bottom edge; extend it.
+installStandaloneGap();
 
 // #215: no new thumbnail loads while the grid is flying past.
 watchScrollSpeed(thumbScheduler);
