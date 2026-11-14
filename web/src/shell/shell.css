@@ -3202,16 +3202,18 @@ body {
   justify-content: flex-end;
 }
 
-/* #403: the shell's sidebar toggle (absolute, left 12px, 30px wide, z-index
-   11) floats over the viewer's top-left corner. Reserve its slot so Back sits
-   to its right instead of underneath it. While the viewer is open the toggle
-   drops 4px so its centre matches the 52px bar (the grid toolbar is 44px). */
-.desktop-viewer__topbar-left {
-  padding-left: calc(30px + var(--space-8));
+/* #403: the shell's sidebar toggle (absolute, 30px wide, z-index 11) floats
+   over the viewer's top-left corner. pp 2026-11-14: Back comes first, the
+   toggle sits right after it, then the zoom group. While the viewer is open
+   the toggle moves past Back and drops 4px so its centre matches the 52px bar
+   (the grid toolbar is 44px). */
+.desktop-viewer__back {
+  margin-right: calc(30px + var(--space-8));
 }
 
 .shell:has(.desktop-viewer) .sidebar-toggle {
   top: 12px;
+  left: calc(var(--space-12) + var(--size-toolbar-button-w) + var(--space-2) + var(--space-8) / 2);
 }
 
 .desktop-viewer__zoom {

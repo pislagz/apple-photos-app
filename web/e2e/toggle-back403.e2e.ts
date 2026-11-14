@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// #403: the sidebar toggle and the viewer's Back chevron sit side by side.
+// #403: the viewer's Back chevron and the sidebar toggle sit side by side (Back first).
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 const SHOTS = "e2e/screenshots/403";
 
@@ -33,7 +33,8 @@ for (const c of cases) {
         const back = page.getByRole("button", { name: "Back" });
         const t = (await toggle.boundingBox())!;
         const b = (await back.boundingBox())!;
-        expect(b.x).toBeGreaterThanOrEqual(t.x + t.width + 4);
+        // pp 2026-11-14: Back first, toggle right after it.
+        expect(t.x).toBeGreaterThanOrEqual(b.x + b.width + 4);
         expect(Math.abs(t.y + t.height / 2 - (b.y + b.height / 2))).toBeLessThanOrEqual(1);
         // Both are the topmost element at their centres, i.e. clickable.
         for (const [el, box] of [["sidebar-toggle", t], ["desktop-viewer__back", b]] as const) {
