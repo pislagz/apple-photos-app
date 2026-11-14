@@ -17,8 +17,6 @@ const LIBS = [
 function setup(me = USER, extra: Partial<Parameters<typeof MacAccountMenu>[0]> = {}) {
   const props = {
     me,
-    layoutOverride: "auto" as const,
-    onLayoutOverrideChange: vi.fn(),
     onLogout: vi.fn(),
     libraries: LIBS,
     activeLibraryId: 1,
@@ -37,7 +35,7 @@ describe("MacAccountMenu (#292)", () => {
     fireEvent.click(trigger());
     expect(screen.getByRole("menu", { name: "Account" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Admin…" })).not.toBeInTheDocument();
-    for (const name of ["Library", "Layout", "Change Password…", "Passkeys…", "Log Out"]) {
+    for (const name of ["Library", "Change Password…", "Passkeys…", "Log Out"]) {
       expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
     expect(screen.getAllByRole("separator")).toHaveLength(2);
@@ -50,32 +48,19 @@ describe("MacAccountMenu (#292)", () => {
     expect(screen.getAllByRole("menuitem")[0]).toHaveAccessibleName("Admin…");
   });
 
-  it("marks the current layout and applies a choice", () => {
-    const props = setup(USER, { layoutOverride: "desktop" });
-    fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("menuitem", { name: "Layout" }));
-    expect(screen.getByRole("menuitemradio", { name: "Desktop" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitemradio", { name: "Automatic" })).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "iPhone" }));
-    expect(props.onLayoutOverrideChange).toHaveBeenCalledWith("mobile");
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(document.activeElement).toBe(trigger());
-  });
-
   it("navigates with arrow keys, opens submenus with Right and closes them with Left", () => {
     setup();
     fireEvent.click(trigger());
     const root = screen.getByRole("menu", { name: "Account" });
-    fireEvent.keyDown(root, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Layout" }));
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Library" }));
     fireEvent.keyDown(root, { key: "ArrowRight" });
-    const sub = screen.getByRole("menu", { name: "Layout" });
-    expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Automatic" }));
+    const sub = screen.getByRole("menu", { name: "Library" });
+    expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Family" }));
     fireEvent.keyDown(sub, { key: "ArrowDown" });
-    expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Desktop" }));
+    expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "Travel" }));
     fireEvent.keyDown(sub, { key: "ArrowLeft" });
-    expect(screen.queryByRole("menu", { name: "Layout" })).not.toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Layout" }));
+    expect(screen.queryByRole("menu", { name: "Library" })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Library" }));
   });
 
   it("switches library from the Library submenu", () => {
@@ -119,43 +104,43 @@ describe("MacAccountMenu (#292)", () => {
       vi.useFakeTimers();
       setup();
       fireEvent.click(trigger());
-      hover("Layout", 10, 10);
-      expect(screen.queryByRole("menu", { name: "Layout" })).not.toBeInTheDocument();
+      hover("Library", 10, 10);
+      expect(screen.queryByRole("menu", { name: "Library" })).not.toBeInTheDocument();
       act(() => void vi.advanceTimersByTime(200));
-      const sub = screen.getByRole("menu", { name: "Layout" });
+      const sub = screen.getByRole("menu", { name: "Library" });
       // Pointer enters the submenu, then rests there: it stays open.
       fireEvent.mouseEnter(sub);
       act(() => void vi.advanceTimersByTime(2000));
-      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+      expect(screen.getByRole("menu", { name: "Library" })).toBeInTheDocument();
     });
 
     it("closes the submenu when the pointer moves to a plain item", () => {
       vi.useFakeTimers();
       setup();
       fireEvent.click(trigger());
-      hover("Layout", 10, 10);
+      hover("Library", 10, 10);
       act(() => void vi.advanceTimersByTime(200));
       hover("Log Out", 10, 200);
       act(() => void vi.advanceTimersByTime(10));
-      expect(screen.queryByRole("menu", { name: "Layout" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("menu", { name: "Library" })).not.toBeInTheDocument();
     });
 
     it("keeps the submenu through a grace period on a diagonal move, then switches", () => {
       vi.useFakeTimers();
       setup();
       fireEvent.click(trigger());
-      hover("Layout", 10, 10);
+      hover("Library", 10, 10);
       act(() => void vi.advanceTimersByTime(200));
       // jsdom has no layout: give the submenu a real rectangle to aim at.
-      const sub = screen.getByRole("menu", { name: "Layout" });
+      const sub = screen.getByRole("menu", { name: "Library" });
       sub.getBoundingClientRect = () => ({ left: 100, right: 300, top: 0, bottom: 200, width: 200, height: 200, x: 100, y: 0, toJSON() {} });
-      hover("Layout", 10, 10);
+      hover("Library", 10, 10);
       hover("Passkeys…", 40, 20); // heading toward the submenu: inside the triangle
       act(() => void vi.advanceTimersByTime(100));
-      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+      expect(screen.getByRole("menu", { name: "Library" })).toBeInTheDocument();
       fireEvent.mouseEnter(sub); // arrives in time
       act(() => void vi.advanceTimersByTime(1000));
-      expect(screen.getByRole("menu", { name: "Layout" })).toBeInTheDocument();
+      expect(screen.getByRole("menu", { name: "Library" })).toBeInTheDocument();
     });
   });
 

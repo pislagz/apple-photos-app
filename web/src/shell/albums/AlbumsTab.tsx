@@ -88,7 +88,7 @@ export default function AlbumsTab({
         </button>
         <h1 className="mobile-screen__title">{folder?.title ?? "Folder"}</h1>
       </header>
-      <div className="mobile-screen__body">
+      <div className={`mobile-screen__body${rows.length === 0 ? " mobile-screen__body--empty" : ""}`}>
         {rows.length === 0 ? (
           <p>This folder is empty.</p>
         ) : (

@@ -20,7 +20,6 @@ import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 import DesktopSearch from "./search/DesktopSearch";
 import { useSearchModel } from "./search/useSearchModel";
 import { useDebounced } from "./search/useDebounced";
-import type { LayoutOverride } from "./useLayout";
 import { clampSidebarWidth, readSidebarWidth, SIDEBAR_MAX, SIDEBAR_MIN, SIDEBAR_DEFAULT, writeSidebarWidth } from "./sidebarWidth";
 import { effectiveSidebarCollapsed, isNarrow, isSidebarShortcut, toggleUserCollapsed } from "./sidebarAuto";
 import { isTypingTarget, shortcutAction } from "./shortcuts";
@@ -148,8 +147,6 @@ export default function DesktopShell({
   me,
   activeLibraryId,
   onActiveLibraryChange,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   deepLinkAssetId,
   onDeepLinkConsumed,
@@ -159,8 +156,6 @@ export default function DesktopShell({
   me: MeResponse;
   activeLibraryId?: number;
   onActiveLibraryChange: (id: number) => void;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
@@ -445,8 +440,6 @@ export default function DesktopShell({
         <MacAccountMenu
           onAvatarChanged={onAvatarChanged}
           me={me}
-          layoutOverride={layoutOverride}
-          onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
           libraries={me.libraries}
           activeLibraryId={activeLibraryId}

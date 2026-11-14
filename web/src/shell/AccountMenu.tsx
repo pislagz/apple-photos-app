@@ -6,20 +6,14 @@ import ChangePasswordDialog from "./ChangePasswordDialog";
 import InfoButton from "../help/InfoButton";
 import { Icon } from "./icons";
 import PasskeysDialog from "./PasskeysDialog";
-import LayoutOverrideControl from "./LayoutOverrideControl";
-import type { LayoutOverride } from "./useLayout";
 
 function AccountMenuItems({
   me,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   onPasswordDialogClosed,
   onAvatarChanged,
 }: {
   me: MeResponse;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   onPasswordDialogClosed?: () => void;
   onAvatarChanged?: () => void;
@@ -42,7 +36,6 @@ function AccountMenuItems({
         <p className="account-menu__username">{me.username}</p>
       </div>
       {me.role === "admin" && <a href="/admin">Admin</a>}
-      <LayoutOverrideControl override={layoutOverride} onChange={onLayoutOverrideChange} />
       {me.libraries.length > 0 && (
         <button type="button" onClick={() => setChoosingAvatar(true)}>
           Choose avatar…
@@ -97,15 +90,11 @@ function AccountMenuItems({
 // don't eat a row of the overlaid title.
 export default function AccountMenu({
   me,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   onAvatarChanged,
   compact = false,
 }: {
   me: MeResponse;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   onAvatarChanged?: () => void;
   compact?: boolean;
@@ -117,8 +106,6 @@ export default function AccountMenu({
       <div className="account-menu">
         <AccountMenuItems
           me={me}
-          layoutOverride={layoutOverride}
-          onLayoutOverrideChange={onLayoutOverrideChange}
           onLogout={onLogout}
           onAvatarChanged={onAvatarChanged}
         />
@@ -141,8 +128,6 @@ export default function AccountMenu({
         <div className="account-menu__popover">
           <AccountMenuItems
             me={me}
-            layoutOverride={layoutOverride}
-            onLayoutOverrideChange={onLayoutOverrideChange}
             onLogout={onLogout}
             onPasswordDialogClosed={() => setOpen(false)}
             onAvatarChanged={onAvatarChanged}

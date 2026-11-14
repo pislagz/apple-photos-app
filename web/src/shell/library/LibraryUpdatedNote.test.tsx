@@ -63,8 +63,6 @@ const common = {
   me: ME,
   activeLibraryId: 1,
   onActiveLibraryChange: () => {},
-  layoutOverride: "auto" as const,
-  onLayoutOverrideChange: () => {},
   onLogout: () => {},
 };
 

@@ -65,8 +65,6 @@ describe("alt text", () => {
         me={ME}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -101,8 +99,6 @@ describe("keyboard", () => {
         me={ME}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );

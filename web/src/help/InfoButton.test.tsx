@@ -16,15 +16,15 @@ describe("help registry", () => {
 
 describe("InfoButton", () => {
   function setup() {
-    render(<InfoButton helpKey="layout" name="Layout" />);
-    return screen.getByRole("button", { name: "About Layout" });
+    render(<InfoButton helpKey="changePassword" name="Password" />);
+    return screen.getByRole("button", { name: "About Password" });
   }
   const tip = () => document.querySelector<HTMLElement>('[role="tooltip"]')!;
 
   it("links the text with aria-describedby and starts closed", () => {
     const button = setup();
     expect(button.getAttribute("aria-describedby")).toBe(tip().id);
-    expect(tip().textContent).toBe(HELP.layout);
+    expect(tip().textContent).toBe(HELP.changePassword);
     expect(tip().hidden).toBe(true);
   });
 

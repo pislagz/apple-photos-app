@@ -6,7 +6,6 @@ import {
   type KeepSignedInMode,
   login as apiLogin,
   logout as apiLogout,
-  setLayoutOverride as apiSetLayoutOverride,
   type SetupChoices,
   setupAdmin as apiSetupAdmin,
   type MeResponse,
@@ -20,12 +19,12 @@ import MobileShell from "./MobileShell";
 import { parsePhotoPath } from "./route";
 import { PlaceInfoContext } from "./PlaceInfoContext";
 import SetupScreen from "./SetupScreen";
-import { isStandalone, type LayoutOverride, useLayout } from "./useLayout";
+import { isStandalone, useLayout } from "./useLayout";
 
 type Status = "loading" | "needs-setup" | "anonymous" | "authenticated";
 
 export default function AppShell() {
-  const { layout, override, setOverride, applyRemoteOverride } = useLayout();
+  const { layout } = useLayout();
   const [keepSignedIn, setKeepSignedIn] = useState<KeepSignedInMode>("default_on");
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -61,9 +60,6 @@ export default function AppShell() {
       const response = await getMe();
       setMe(response);
       setStatus("authenticated");
-      // The server is authoritative once it answers -- localStorage was
-      // only this render's fast default.
-      applyRemoteOverride(response.layout_override ?? "auto");
     } catch (error) {
       if (error instanceof ApiError && error.status === 403 && error.code === "tailnet_identity_not_allowed") {
         setBlocked(true);
@@ -72,7 +68,7 @@ export default function AppShell() {
       setMe(null);
       setStatus("anonymous");
     }
-  }, [applyRemoteOverride]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -108,14 +104,6 @@ export default function AppShell() {
       }
       setSetupError(error instanceof ApiError ? error.message : "Could not create the admin account. Try again.");
     }
-  }
-
-  function handleLayoutOverrideChange(value: LayoutOverride) {
-    setOverride(value);
-    apiSetLayoutOverride(value === "auto" ? null : value).catch(() => {
-      // Best-effort: the local choice still applies this session even if
-      // the server write fails (offline tab, expired session, ...).
-    });
   }
 
   function reportLoginError(error: unknown) {
@@ -194,8 +182,6 @@ export default function AppShell() {
           me={me}
           activeLibraryId={activeLibraryId}
           onActiveLibraryChange={setActiveLibraryId}
-          layoutOverride={override}
-          onLayoutOverrideChange={handleLayoutOverrideChange}
           onLogout={handleLogout}
           deepLinkAssetId={deepLinkAssetId}
           onDeepLinkConsumed={consumeDeepLink}
@@ -212,8 +198,6 @@ export default function AppShell() {
         me={me}
         activeLibraryId={activeLibraryId}
         onActiveLibraryChange={setActiveLibraryId}
-        layoutOverride={override}
-        onLayoutOverrideChange={handleLayoutOverrideChange}
         onLogout={handleLogout}
         deepLinkAssetId={deepLinkAssetId}
         onDeepLinkConsumed={consumeDeepLink}

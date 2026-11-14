@@ -32,7 +32,7 @@ for (const scheme of ["light", "dark"] as const) {
     for (const name of ["Change password", "Passkeys", "Log out"]) {
       await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
     }
-    await expect(page.getByLabel("Layout")).toBeVisible();
+    await expect(page.getByLabel("Layout")).toHaveCount(0);
     await expect(page.getByText(`Signed in as ${USER.username}`)).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/${info.project.name}-303-more-${scheme}.png` });
 

@@ -37,8 +37,6 @@ describe("DesktopShell layout", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -74,8 +72,6 @@ describe("DesktopShell layout", () => {
         me={twoLibraries}
         activeLibraryId={1}
         onActiveLibraryChange={onActiveLibraryChange}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -141,8 +137,6 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -187,8 +181,6 @@ describe("DesktopShell Library reset (#167)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -209,8 +201,6 @@ describe("sidebar resize (#217)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -258,8 +248,6 @@ describe("DesktopShell with no library (#263)", () => {
   const noLibrary = (role: "admin" | "user"): MeResponse => ({ ...ME_RESPONSE, role, libraries: [] });
   const props = {
     onActiveLibraryChange: () => {},
-    layoutOverride: "auto" as const,
-    onLayoutOverrideChange: () => {},
     onLogout: () => {},
   };
 

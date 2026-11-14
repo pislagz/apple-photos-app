@@ -39,8 +39,6 @@ describe("MobileShell layout", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -67,7 +65,9 @@ describe("MobileShell layout", () => {
   // only thing that scrolls.
   it("bounds the mobile shell to the viewport and clips the content area", () => {
     const shellRule = css.match(/\.shell--mobile\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(shellRule).toMatch(/height:\s*100dvh/);
+    // #387: pinned to the viewport edges (not 100dvh, which iOS standalone gets wrong).
+    expect(shellRule).toMatch(/position:\s*fixed/);
+    expect(shellRule).toMatch(/inset:\s*0/);
     expect(shellRule).toMatch(/flex-direction:\s*column/);
 
     const contentRule = css.match(/\.shell--mobile \.shell__content\s*\{[^}]*\}/)?.[0] ?? "";
@@ -104,8 +104,6 @@ describe("MobileShell tab switching", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -183,8 +181,6 @@ describe("MobileShell Library tab re-tap (#146)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -240,8 +236,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -263,6 +257,18 @@ describe("MobileShell More tab", () => {
     expect(switcher?.parentElement?.lastElementChild).toBe(switcher);
   });
 
+  it("has no manual Layout choice (#386) and the switcher scrolls with the list (#389)", async () => {
+    const { container } = render(
+      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} onLogout={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findByText("More", { selector: ".mobile-screen__title" });
+    expect(screen.queryByLabelText("Layout")).toBeNull();
+    expect(screen.queryByText("Layout")).toBeNull();
+    const switcher = container.querySelector(".more-screen__library-switcher");
+    expect(switcher?.parentElement).toHaveClass("more-screen__body");
+  });
+
   it("lets a multi-library account pick the active library from the bottom of More", async () => {
     const onActiveLibraryChange = vi.fn();
     const twoLibraries = { ...ME_RESPONSE, libraries: [{ id: 1, display_name: "Family" }, { id: 2, display_name: "Travel" }] };
@@ -271,8 +277,6 @@ describe("MobileShell More tab", () => {
         me={twoLibraries}
         activeLibraryId={1}
         onActiveLibraryChange={onActiveLibraryChange}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -294,8 +298,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -316,8 +318,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -418,8 +418,6 @@ describe("MobileShell with no library (#263)", () => {
       <MobileShell
         me={{ ...ME_RESPONSE, role: "user", libraries: [] }}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -443,8 +441,6 @@ describe("MobileShell more menu moved into More (#303)", () => {
         me={{ ...ME_RESPONSE, role }}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -464,7 +460,7 @@ describe("MobileShell more menu moved into More (#303)", () => {
     expect(screen.getByRole("button", { name: "Change password" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Passkeys" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Layout")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Layout")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 
@@ -482,7 +478,7 @@ describe("MobileShell more menu moved into More (#303)", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(
-      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} layoutOverride="auto" onLayoutOverrideChange={() => {}} onLogout={onLogout} />,
+      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} onLogout={onLogout} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
