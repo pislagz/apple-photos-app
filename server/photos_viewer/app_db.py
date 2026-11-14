@@ -12,11 +12,20 @@ against an already-migrated file is a no-op.
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 import sqlite3
 
 from . import search_index
+
+logger = logging.getLogger(__name__)
+
+FTS5_MISSING_MESSAGE = (
+    "This Python's SQLite was built without FTS5, which Search needs "
+    "(SQLite {version}). Use a Python or SQLite build with FTS5 enabled "
+    "(the python.org, Homebrew and python:3.12 Docker builds have it)."
+)
 
 _DATA_DIR_ENV = "PHOTOS_VIEWER_DATA_DIR"
 
@@ -595,7 +604,19 @@ def migrate(conn: sqlite3.Connection) -> None:
             if version <= current:
                 continue
             for statement in statements:
-                conn.execute(statement)
+                try:
+                    conn.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    # Without FTS5, migration 25 fails with a bare "no such
+                    # module"; name the real problem instead of a traceback
+                    # that reads like a corrupt database.
+                    if "no such module" in str(exc) and "fts5" in str(exc).lower():
+                        message = FTS5_MISSING_MESSAGE.format(
+                            version=sqlite3.sqlite_version
+                        )
+                        logger.error(message)
+                        raise RuntimeError(message) from exc
+                    raise
             conn.execute(f"PRAGMA user_version = {version}")
     except BaseException:
         conn.rollback()
