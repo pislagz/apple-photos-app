@@ -18,7 +18,7 @@ for (const scheme of ["light", "dark"] as const) {
   test(`info text opens (${scheme})`, async ({ page, isMobile }, info) => {
     await page.emulateMedia({ colorScheme: scheme });
     await openSettings(page);
-    const button = page.getByRole("button", { name: "About zip size limit" });
+    const button = page.getByRole("button", { name: "About largest download" });
     await button.scrollIntoViewIfNeeded();
     const tip = page.getByRole("tooltip").filter({ hasText: "biggest download" });
     await expect(tip).toBeHidden();
@@ -37,9 +37,9 @@ for (const scheme of ["light", "dark"] as const) {
 test("keyboard focus opens and Escape closes", async ({ page, isMobile }) => {
   test.skip(isMobile, "keyboard path is desktop");
   await openSettings(page);
-  const button = page.getByRole("button", { name: "About thumbnail quality" });
+  const button = page.getByRole("button", { name: "About picture quality" });
   await button.focus();
-  await expect(page.getByRole("tooltip").filter({ hasText: "How much detail" })).toBeVisible();
+  await expect(page.getByRole("tooltip").filter({ hasText: "How sharp" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("tooltip").filter({ hasText: "How much detail" })).toBeHidden();
+  await expect(page.getByRole("tooltip").filter({ hasText: "How sharp" })).toBeHidden();
 });

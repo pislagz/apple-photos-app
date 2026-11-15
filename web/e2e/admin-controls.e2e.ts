@@ -16,12 +16,18 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByTestId("gallery-compact")).toBeVisible();
     await expect(page.getByTestId("gallery-touch")).toBeVisible();
 
-    // Row heights: 32px and 44px, whatever the viewport.
-    const rowHeight = (testId: string) =>
-      page.getByTestId(testId).locator(".admin-row").first().evaluate((el) => el.getBoundingClientRect().height);
-    expect(await rowHeight("gallery-compact")).toBeGreaterThanOrEqual(32);
-    expect(await rowHeight("gallery-compact")).toBeLessThan(44);
-    expect(await rowHeight("gallery-touch")).toBeGreaterThanOrEqual(44);
+    // Row heights: 32px and 44px, whatever the viewport. Measured on "Scan time", a row with
+    // no control: the first row holds a switch, which is 31px tall on a phone (iOS size) and
+    // can wrap its label next to "Saved" at 320px, so it is legitimately taller than 32px there.
+    const rowHeight = (testId: string, label: string) =>
+      page
+        .getByTestId(testId)
+        .locator(".admin-row", { hasText: label })
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().height);
+    expect(await rowHeight("gallery-compact", "Scan time")).toBeGreaterThanOrEqual(32);
+    expect(await rowHeight("gallery-compact", "Scan time")).toBeLessThan(44);
+    expect(await rowHeight("gallery-touch", "Scan time")).toBeGreaterThanOrEqual(44);
 
     // Switch toggles and reports its state.
     const sw = page.getByTestId("gallery-touch").getByRole("switch", { name: "Hidden photos" });

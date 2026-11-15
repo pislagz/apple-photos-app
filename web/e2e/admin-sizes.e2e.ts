@@ -16,7 +16,9 @@ async function open(page: Page, section: "Settings" | "People" | "Sharing") {
   await expect(page.getByRole("heading", { name: section, level: 1 })).toBeVisible();
 }
 
-async function sizes(page: Page, selector: string) {
+async function sizes(page: Page, selector: string, waitForData = true) {
+  // The screens fetch their data after the heading shows; measure only once something matched.
+  if (waitForData) await page.locator(selector).first().waitFor();
   return page.locator(selector).evaluateAll((els) =>
     els.map((e) => {
       const r = e.getBoundingClientRect();
@@ -45,7 +47,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     await open(page, "People");
     const personRows = await sizes(page, ".admin-people .admin-group:first-of-type .admin-row");
-    const otherRows = await sizes(page, ".admin-people .admin-group:not(:first-of-type) .admin-row");
+    const otherRows = await sizes(page, ".admin-people .admin-group:not(:first-of-type) .admin-row", false);
     const minPerson = Math.min(...personRows.map((r) => r[1]));
     if (desktop) {
       expect(minPerson).toBeGreaterThanOrEqual(40);

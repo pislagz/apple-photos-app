@@ -29,7 +29,20 @@ async function expectPhotosShown(page: Page, imgSelector: string) {
       ),
     )
     .toBeGreaterThan(1);
-  await expect(page.locator(`${imgSelector}[data-loaded="false"]`)).toHaveCount(0);
+  // Only photos in the viewport must be loaded: the grid keeps a few rows of overscan below
+  // the fold whose images wait until they scroll near (FadeImage), so they stay data-loaded=false.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (sel) =>
+          [...document.querySelectorAll<HTMLImageElement>(`${sel}[data-loaded="false"]`)].filter((i) => {
+            const r = i.getBoundingClientRect();
+            return r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth;
+          }).length,
+        imgSelector,
+      ),
+    )
+    .toBe(0);
 }
 
 async function shot(page: Page, name: string, project: string, scheme: string) {
@@ -69,7 +82,7 @@ for (const scheme of ["light", "dark"] as const) {
 
         // "Busy Days" is the demo's big album (the first tile).
         await grid.locator(".album-tile").first().click();
-        await expect(page.locator(".toolbar .toolbar-button", { hasText: "Albums" })).toBeVisible();
+        await expect(page.locator(".shell__toolbar .toolbar-button", { hasText: "Albums" })).toBeVisible();
         await expectPhotosShown(page, ".desktop-library__cell img");
         await page.waitForLoadState("networkidle");
         await shot(page, "album-open", project, scheme);
