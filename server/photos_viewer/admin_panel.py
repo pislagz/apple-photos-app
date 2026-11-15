@@ -726,12 +726,19 @@ def read_audit_log(
     library_name: str | None = None,
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    before_id: int | None = Query(None, ge=1),
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AuditLogResponse:
     where, params = _audit_log_filters(
         user_id, library_id, date_from, date_to, username, library_name
     )
+    if before_id is not None:
+        # Cursor paging: ids only grow, so rows written after page one was
+        # fetched never shift the next page the way an offset would.
+        where += " AND " if where else " WHERE "
+        where += "audit_log.id < ?"
+        params.append(before_id)
     rows = db.execute(
         f"{_AUDIT_LOG_SELECT}{where} ORDER BY audit_log.occurred_at DESC, audit_log.id DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),

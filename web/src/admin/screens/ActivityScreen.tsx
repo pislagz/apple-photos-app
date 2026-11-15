@@ -75,13 +75,18 @@ export default function ActivityScreen() {
   }, [load, userId, libraryId, dateFrom, dateTo]);
 
   async function loadMore() {
-    if (entries === null) return;
+    if (entries === null || entries.length === 0) return;
+    const beforeId = entries[entries.length - 1].id;
     const run = latest.current;
     setLoadingMore(true);
     try {
-      const page = await readAuditLog({ ...filters, limit: PAGE_SIZE, offset: entries.length });
+      const page = await readAuditLog({ ...filters, limit: PAGE_SIZE, beforeId });
       if (run !== latest.current) return;
-      setEntries((current) => [...(current ?? []), ...page]);
+      setEntries((current) => {
+        const seen = new Set((current ?? []).map((e) => e.id));
+        return [...(current ?? []), ...page.filter((e) => !seen.has(e.id))];
+      });
+      setError(null);
       setHasMore(page.length === PAGE_SIZE);
     } catch (err) {
       setError(describeError(err));
