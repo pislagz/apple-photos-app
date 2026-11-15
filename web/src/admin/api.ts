@@ -110,6 +110,14 @@ export function listLibraries(): Promise<LibraryResponse[]> {
   return request<LibraryResponse[]>("/api/admin/libraries");
 }
 
+// Picker: the server only accepts a path that is in its current folder scan.
+export function addScannedLibrary(candidatePath: string, displayName?: string): Promise<LibraryResponse> {
+  return mutate<LibraryResponse>("POST", "/api/admin/libraries/from-scan", {
+    candidate_path: candidatePath,
+    display_name: displayName ?? null,
+  });
+}
+
 export function addLibrary(path: string, displayName?: string): Promise<LibraryResponse> {
   return mutate<LibraryResponse>("POST", "/api/admin/libraries", { path, display_name: displayName ?? null });
 }
