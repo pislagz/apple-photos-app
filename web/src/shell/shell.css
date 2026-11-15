@@ -527,6 +527,19 @@ html.has-app-height .shell--mobile {
   padding-top: 0;
 }
 
+/* #431: the 78px --library-top-inset reserves the "Library" title block, which
+   only All Photos has. Days carries its own title inside the grid, so it
+   starts right below the safe area on the Select row; Years and Months have no
+   title and start just under the 44px Select button. */
+.mobile-library__scroll[data-view="days"] {
+  padding-top: calc(var(--safe-top) + var(--space-8));
+}
+
+.mobile-library__scroll[data-view="years"],
+.mobile-library__scroll[data-view="months"] {
+  padding-top: calc(var(--safe-top) + var(--space-8) + 44px + var(--space-8));
+}
+
 /* Measured by MobileLibrary: env() cannot be read from JS, a box can. */
 .mobile-library__inset-probe {
   position: absolute;
