@@ -226,7 +226,7 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
   test.skip(info.project.name !== "desktop", "hover cursors are a desktop concern");
   await signIn(page);
   await page.getByRole("button", { name: "Account menu" }).click();
-  const popover = page.locator(".account-menu__popover");
+  const popover = page.locator(".mac-menu--root");
   await expect(popover).toBeVisible();
   // Points inside the control must all be the arrow. A rounded corner's point
   // can land on the bar behind it (`auto`, also drawn as the arrow); those
@@ -248,7 +248,7 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
       }
       return [...seen];
     });
-  expect(await cursorsAcross(".account-menu__popover :is(a, button)")).toEqual(["default"]);
+  expect(await cursorsAcross(".mac-menu--root .mac-menu__item")).toEqual(["default"]);
   await page.getByRole("button", { name: "Account menu" }).click();
   await expect(popover).toHaveCount(0);
   expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);

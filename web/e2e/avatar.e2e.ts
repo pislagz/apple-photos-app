@@ -27,18 +27,15 @@ for (const scheme of ["light", "dark"] as const) {
       await page.reload();
       await page.waitForLoadState("networkidle");
 
-      await page.getByRole("button", { name: "Account menu" }).click();
       if (desktop) {
+        await page.getByRole("button", { name: "Account menu" }).click();
         await expect(page.getByRole("menuitem", { name: "Choose Avatar…" })).toBeVisible();
         await expect(page.getByRole("menuitem", { name: "Remove Avatar" })).toHaveCount(0);
       } else {
-        // Change password, Passkeys and Log out look like Admin / Choose avatar, not disabled.
-        const colours = await page
-          .locator(".account-menu__popover button")
-          .evaluateAll((els) => els.map((el) => [el.textContent, getComputedStyle(el).color]));
-        const actions = colours.filter(([t]) => /Choose avatar…|Change password|Passkeys|Log out/.test(t ?? ""));
-        expect(actions).toHaveLength(4);
-        expect(new Set(actions.map(([, c]) => c)).size).toBe(1);
+        // #303: on the phone the account actions live in the More tab, not a popover.
+        await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "More" }).click();
+        await expect(page.getByRole("button", { name: "Choose avatar…" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Remove avatar" })).toHaveCount(0);
       }
       await page.screenshot({ path: `${SHOTS}/${name}-avatar-${scheme}-1-menu.png` });
 
@@ -67,12 +64,16 @@ for (const scheme of ["light", "dark"] as const) {
 
       await page.getByRole("button", { name: "Save" }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      const img = page.locator(desktop ? ".account-menu__row-trigger img" : ".account-menu__popover img, .account-menu img").first();
-      if (!desktop) await page.getByRole("button", { name: "Account menu" }).click();
-      await expect(img).toBeVisible();
-      await expect
-        .poll(() => img.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth))
-        .toBe(256);
+      if (desktop) {
+        const img = page.locator(".account-menu__row-trigger img").first();
+        await expect(img).toBeVisible();
+        await expect
+          .poll(() => img.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth))
+          .toBe(256);
+      } else {
+        // The More tab shows no avatar image; the saved avatar surfaces as "Remove avatar".
+        await expect(page.getByRole("button", { name: "Remove avatar" })).toBeVisible();
+      }
       await page.screenshot({ path: `${SHOTS}/${name}-avatar-${scheme}-4-shown.png` });
 
       // Everyone signed in can read it; a broken file falls back to the initial.

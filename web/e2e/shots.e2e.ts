@@ -1097,7 +1097,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     if (kind === "desktop") {
       await page.locator(".account-menu__row-trigger").click();
-      await expect(page.locator(".account-menu__popover")).toBeVisible();
+      await expect(page.locator(".mac-menu--root")).toBeVisible();
       await snap("menu");
       await page.locator(".account-menu__row-trigger").click();
     }
