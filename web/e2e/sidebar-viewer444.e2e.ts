@@ -30,7 +30,7 @@ for (const c of cases) {
       await expect(collapsed).toHaveCount(0);
       await expect(toggle).toBeVisible();
       const weight = async (sel: string) => page.locator(sel).first().evaluate((e) => getComputedStyle(e).fontWeight);
-      expect(await weight(".desktop-library__title")).toBe("400");
+      expect(await weight(".desktop-library__title")).toBe("700");
       await page.screenshot({ path: `${SHOTS}/grid-open-${c.scheme}-${c.width}.png` });
 
       await page.locator('[data-testid="library-cell"]').nth(2).dblclick();
