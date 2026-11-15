@@ -109,6 +109,7 @@ describe("MobileViewer", () => {
 
     // Double tap: two touchStarts at the same point within the double-tap window.
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 100, clientY: 100 }] });
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
@@ -124,6 +125,7 @@ describe("MobileViewer", () => {
     const media = () => stage.querySelector("img") as HTMLImageElement;
 
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 100, clientY: 100 }] });
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
@@ -327,6 +329,7 @@ describe("MobileViewer", () => {
     const still = container.querySelector(".viewer-still") as HTMLElement;
     // Double tap at the centre: 2.5x. Window is 1024x768 so the fit is 768 square.
     fireEvent.touchStart(stage, { touches: [{ clientX: 512, clientY: 384 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 512, clientY: 384 }] });
     fireEvent.touchStart(stage, { touches: [{ clientX: 512, clientY: 384 }] });
     fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 512, clientY: 384 }] });
     expect(still.style.transform).toContain("scale(2.5)");
@@ -355,6 +358,23 @@ describe("MobileViewer", () => {
     tap();
     tap();
     expect(still.style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("a pan followed by a quick second touch is not a double tap (#437)", () => {
+    mockDetail({ a1: makeDetail("a1") });
+    const { container } = render(
+      <MobileViewer libraryId={1} items={[makeItem("a1", { width: 4000, height: 3000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const stage = screen.getByTestId("mobile-viewer-stage");
+    const still = container.querySelector(".viewer-still") as HTMLElement;
+    // A swipe down that starts and ends near the same spot, then a touch right after.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 600, clientY: 384 }] });
+    fireEvent.touchMove(stage, { touches: [{ clientX: 600, clientY: 440 }] });
+    fireEvent.touchMove(stage, { touches: [{ clientX: 600, clientY: 390 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 600, clientY: 390 }] });
+    fireEvent.touchStart(stage, { touches: [{ clientX: 600, clientY: 384 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 600, clientY: 384 }] });
+    expect(still.style.transform).not.toContain("scale(2.5)");
   });
 
   it("with reduced motion, gestures work but nothing animates", () => {
@@ -658,6 +678,7 @@ describe("MobileViewer", () => {
     const media = () => stage.querySelector("img") as HTMLImageElement;
 
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 100, clientY: 100 }] });
     fireEvent.touchStart(stage, { touches: [{ clientX: 100, clientY: 100 }] });
 
     await waitFor(() => expect(media().src).toContain("/original/a1"));
