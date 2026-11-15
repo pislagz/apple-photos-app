@@ -1154,13 +1154,18 @@ describe("DesktopLibrary oldest first (#224)", () => {
     mockAssets(items);
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    // The grid opens at the newest end in a later effect, so p0 (the newest) may not be mounted yet.
+    const cell = async (id: string) => {
+      await waitFor(() => expect(container.querySelector(`[data-asset-id="${id}"]`)).not.toBeNull(), SLOW_WAIT);
+      return container.querySelector(`[data-asset-id="${id}"]`) as HTMLElement;
+    };
     const grid = screen.getByTestId("desktop-library-grid");
-    fireEvent.click(container.querySelector('[data-asset-id="p0"]') as HTMLElement);
+    fireEvent.click(await cell("p0"));
     // Everything older loads in front (cmd-A pages the whole library); the anchor stays p0.
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
     await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of 300 selected/), SLOW_WAIT);
-    fireEvent.click(container.querySelector('[data-asset-id="p0"]') as HTMLElement);
-    fireEvent.click(container.querySelector('[data-asset-id="p3"]') as HTMLElement, { shiftKey: true });
+    fireEvent.click(await cell("p0"));
+    fireEvent.click(await cell("p3"), { shiftKey: true });
     expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of 300 selected/);
   });
 });
