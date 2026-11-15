@@ -21,9 +21,10 @@
   <array>
     <string>/Users/CHANGEME/apple-photos-app/.venv/bin/uvicorn</string>
     <string>photos_viewer.main:app</string>
-    <!-- Loopback: Tailscale Serve on this Mac proxies to it. -->
+    <!-- 0.0.0.0: reachable from other devices on the home network. Use 127.0.0.1
+         instead for a Tailscale-Serve-only setup. -->
     <string>--host</string>
-    <string>127.0.0.1</string>
+    <string>0.0.0.0</string>
     <string>--port</string>
     <string>8000</string>
   </array>
@@ -37,9 +38,7 @@
     <string>/Users/CHANGEME/photos-viewer-data</string>
     <key>OSXPHOTOS_NO_VERSION_CHECK</key>
     <string>1</string>
-    <!-- Must match the https:// name Tailscale Serve publishes. -->
-    <key>PHOTOS_VIEWER_PUBLIC_ORIGINS</key>
-    <string>https://myhost.tailxyz.ts.net</string>
+    <!-- Optional: PHOTOS_VIEWER_PUBLIC_ORIGINS, only if a proxy rewrites Host. -->
   </dict>
 
   <key>RunAtLoad</key>

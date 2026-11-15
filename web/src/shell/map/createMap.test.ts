@@ -74,3 +74,42 @@ describe("createMap basemap choice", () => {
     expect(maps[0].style.sources).toEqual({});
   });
 });
+
+describe("createMap theme switch", () => {
+  // A controllable prefers-color-scheme query.
+  function mockScheme(initial: boolean) {
+    const listeners: (() => void)[] = [];
+    const query = {
+      matches: initial,
+      addEventListener: (_: string, h: () => void) => listeners.push(h),
+      removeEventListener: (_: string, h: () => void) => listeners.splice(listeners.indexOf(h), 1),
+    };
+    vi.stubGlobal("matchMedia", () => query);
+    window.matchMedia = (() => query) as unknown as typeof window.matchMedia;
+    return (dark: boolean) => {
+      query.matches = dark;
+      [...listeners].forEach((h) => h());
+    };
+  }
+  const paintOf = (style: unknown) =>
+    (style as { layers: { id: string; paint: Record<string, unknown> }[] }).layers.find((l) => l.id === "osm")!.paint;
+
+  it("restyles an open map when the theme flips, without recreating it", async () => {
+    const flip = mockScheme(false);
+    await createMap(container, config({ mode: "online" }));
+    expect(paintOf(maps[0].style)).toEqual({});
+    flip(true);
+    expect(maps[0].setStyle).toHaveBeenCalledTimes(1);
+    expect(paintOf(maps[0].setStyle.mock.calls[0][0])["raster-brightness-max"]).toBe(0.1);
+    flip(false);
+    expect(maps[0].setStyle).toHaveBeenCalledTimes(2);
+    expect(paintOf(maps[0].setStyle.mock.calls[1][0])).toEqual({});
+    expect(maps).toHaveLength(1);
+  });
+
+  it("starts dark when the system is dark", async () => {
+    mockScheme(true);
+    await createMap(container, config({ mode: "online" }));
+    expect(paintOf(maps[0].style)["raster-hue-rotate"]).toBe(180);
+  });
+});

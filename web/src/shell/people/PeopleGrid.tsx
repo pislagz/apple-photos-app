@@ -46,6 +46,52 @@ export function FaceCircle({ libraryId, cover }: { libraryId: number; cover: Fac
   );
 }
 
+// One face with its name and count, as a button. A heart sits inside the
+// circle's bottom-right (inset, so the round crop never cuts it off). Unnamed
+// groups show Photos' "Add Name" placeholder text; it is only a label (the app
+// is read-only, so it can't add names). The generated label ("Person A") stays
+// as the accessible name and as the opened page's title.
+export function PersonButton({
+  libraryId,
+  person,
+  current,
+  onOpen,
+}: {
+  libraryId: number;
+  person: Person;
+  current?: boolean;
+  onOpen: (person: Person) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="people-grid__item"
+      aria-current={current ? "page" : undefined}
+      onClick={() => onOpen(person)}
+    >
+      <span className="people-grid__face">
+        <FaceCircle libraryId={libraryId} cover={person.cover} />
+        {person.favorite && (
+          <span className="people-grid__heart" data-testid="person-heart">
+            <Icon name="favorite" size={14} filled />
+          </span>
+        )}
+      </span>
+      <span className={person.name === null ? "people-grid__name people-grid__name--unnamed" : "people-grid__name"}>
+        {person.name === null ? (
+          <>
+            <span aria-hidden="true">Add Name</span>
+            <span className="sr-only">{person.label}</span>
+          </>
+        ) : (
+          person.label
+        )}
+      </span>
+      <span className="people-grid__count">{person.count.toLocaleString()}</span>
+    </button>
+  );
+}
+
 // P2.2: the grid of circular faces with names, shared by both layouts.
 export default function PeopleGrid({
   libraryId,
@@ -68,25 +114,16 @@ export default function PeopleGrid({
     );
   }
   if (!people) return <p className="people-grid__note">Loading…</p>;
-  if (people.length === 0) return <p className="people-grid__note">No people in this library.</p>;
+  if (people.length === 0) {
+    return <p className="people-grid__note">No people or pets have been found in this library yet.</p>;
+  }
   return (
     <ul className="people-grid">
-        {people.map((person) => (
-          <li key={person.id}>
-            <button
-              type="button"
-              className="people-grid__item"
-              aria-current={currentId === person.id ? "page" : undefined}
-              onClick={() => onOpen(person)}
-            >
-              <FaceCircle libraryId={libraryId} cover={person.cover} />
-              <span className={person.name === null ? "people-grid__name people-grid__name--unnamed" : "people-grid__name"}>
-                {person.label}
-              </span>
-              <span className="people-grid__count">{person.count.toLocaleString()}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {people.map((person) => (
+        <li key={person.id}>
+          <PersonButton libraryId={libraryId} person={person} current={currentId === person.id} onOpen={onOpen} />
+        </li>
+      ))}
+    </ul>
   );
 }

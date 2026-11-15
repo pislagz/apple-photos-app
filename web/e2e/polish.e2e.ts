@@ -60,7 +60,11 @@ test.describe("desktop keyboard path", () => {
       const style = getComputedStyle(el);
       return {
         label: el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName,
-        ring: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2,
+        // The search input has no outline of its own: its field draws the ring
+        // as a box-shadow while it holds focus (:focus-within, --ring-field).
+        ring:
+          (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2) ||
+          (!!el.closest(".search-box") && getComputedStyle(el.closest(".search-box")!).boxShadow !== "none"),
       };
     });
 
@@ -124,7 +128,29 @@ test.describe("reduced motion", () => {
     await open();
     await expect(viewer).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(viewer).toHaveClass(/is-closing/);
+    // #220: closing zooms back into the tile (data-zoom), or plays the fade
+    // (is-closing) when no tile is on screen; either way it is not instant.
+    await expect
+      .poll(() => viewer.evaluate((el) => el.getAttribute("data-zoom") === "1" || el.classList.contains("is-closing")))
+      .toBe(true);
+    // #286: the closing photo stays on its tile until the viewer unmounts, it
+    // never snaps back to full screen over the grid. Sample every frame.
+    const flashed = await page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          const el = document.querySelector(".desktop-viewer, .mobile-viewer");
+          let flash = false;
+          const tick = () => {
+            const root = document.querySelector(".desktop-viewer, .mobile-viewer");
+            if (!root || root !== el) return resolve(flash);
+            const stage = root.querySelector<HTMLElement>("[data-testid$='-stage']");
+            if (root.getAttribute("data-zoom") !== "1" && !root.classList.contains("is-closing") && stage) flash = true;
+            requestAnimationFrame(tick);
+          };
+          tick();
+        }),
+    );
+    expect(flashed).toBe(false);
     await expect(viewer).toHaveCount(0);
 
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -166,4 +192,92 @@ test("compact view switch follows the container width, not the viewport", async 
   await expect.poll(fontSize).toBe(12);
   expect(await onOneLine()).toBe(true);
   expect(await page.evaluate(() => window.innerWidth)).toBe(info.project.name === "small" ? 320 : 390);
+});
+
+// F8: at <=1100px the expanded search takes toolbar space instead of covering the icons.
+test("narrow desktop: expanded search never overlaps the toolbar buttons", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop toolbar only");
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await signIn(page);
+  await openAllPhotos(page);
+  const field = page.locator(".search-box--desktop");
+  await page.locator(".search-box--desktop .search-box__input").focus();
+  // The whole field (icon, input, clear) grows to its focused width (220px,
+  // #369/#370); wait for the transition so the overlap check sees the end state.
+  await expect(field).toHaveCSS("width", "220px");
+  const box = await field.boundingBox();
+  const buttons = page.locator(".desktop-library__toolbar button:visible");
+  const n = await buttons.count();
+  for (let i = 0; i < n; i++) {
+    const b = await buttons.nth(i).boundingBox();
+    if (!b || b.width === 0) continue;
+    expect(b.x + b.width, `button ${i} overlaps search`).toBeLessThanOrEqual(box!.x + 1);
+  }
+});
+
+// F7: no dead Share button without Web Share (plain http / unsupported).
+test("desktop: Share is hidden when navigator.share is unavailable", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop toolbar only");
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+  });
+  await signIn(page);
+  await openAllPhotos(page);
+  await expect(page.getByRole("button", { name: "Share" })).toHaveCount(0);
+});
+
+// #255: one cursor across a whole menu row -- padding, label and the gap to
+// the next item -- so it never flickers between the hand and the arrow.
+test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "hover cursors are a desktop concern");
+  await signIn(page);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  const popover = page.locator(".mac-menu--root");
+  await expect(popover).toBeVisible();
+  // Points inside the control must all be the arrow. A rounded corner's point
+  // can land on the bar behind it (`auto`, also drawn as the arrow); those
+  // only must never be the hand.
+  const cursorsAcross = async (selector: string) =>
+    page.locator(selector).evaluateAll((elements) => {
+      const seen = new Set<string>();
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect();
+        for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) {
+          for (const fy of [0.1, 0.5, 0.9]) {
+            const hit = document.elementFromPoint(rect.left + rect.width * fx, rect.top + rect.height * fy);
+            if (!hit) continue;
+            const cursor = getComputedStyle(hit).cursor;
+            if (element.contains(hit)) seen.add(cursor);
+            else if (cursor === "pointer") seen.add(`pointer outside ${element.className}`);
+          }
+        }
+      }
+      return [...seen];
+    });
+  expect(await cursorsAcross(".mac-menu--root .mac-menu__item")).toEqual(["default"]);
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(popover).toHaveCount(0);
+  expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
+});
+
+// #367: the Library tab bar is the plain Albums bar and the pill sits fully above it.
+test("iPhone Library tab bar matches Albums and the pill clears it", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "phone layout");
+  await signIn(page);
+  const bar = page.locator("nav.tab-bar");
+  const style = () =>
+    bar.evaluate((el) => {
+      const c = getComputedStyle(el);
+      return [c.backgroundColor, c.backdropFilter, c.borderTopWidth, c.position].join("|");
+    });
+  const libraryStyle = await style();
+  const pill = await page.locator(".mobile-library__view-switch").boundingBox();
+  const barBox = await bar.boundingBox();
+  expect(pill && barBox && pill.y + pill.height <= barBox.y).toBe(true);
+  const scroll = page.getByTestId("library-scroll");
+  const padding = await scroll.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  expect(padding).toBeGreaterThanOrEqual(64);
+  await page.locator(".tab-bar__item", { hasText: "Albums" }).click();
+  await expect(page.locator(".tab-bar__item[aria-current=page]")).toHaveText(/Albums/);
+  expect(await style()).toBe(libraryStyle);
 });

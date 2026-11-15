@@ -2,7 +2,16 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus from "./ZipStatus";
-import { fetchZip, formatBytes, isIosDevice, STREAM_TO_DISK_BYTES, useZipDownload, waitForUnconverted, ZipError } from "./zipDownload";
+import {
+  fetchZip,
+  formatBytes,
+  isIosDevice,
+  selectionHasHeic,
+  STREAM_TO_DISK_BYTES,
+  useZipDownload,
+  waitForUnconverted,
+  ZipError,
+} from "./zipDownload";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -292,5 +301,33 @@ describe("ZipStatus", () => {
     rerender(<ZipStatus state={{ phase: "error", message: "Too large" }} jpeg onJpegChange={() => {}} />);
     expect(screen.getByRole("alert").textContent).toBe("Too large");
     expect((screen.getByLabelText("HEIC as JPEG") as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe("HEIC as JPEG only for a selection with a HEIC (#254)", () => {
+  const items = [
+    { id: "heic", filename: "IMG_1.JPG", is_heic: true },
+    { id: "jpeg", filename: "IMG_2.HEIC", is_heic: false },
+    { id: "png", filename: "IMG_3.png", is_heic: false },
+    { id: "old-server", filename: "IMG_4.heif" },
+  ];
+
+  it("follows is_heic, not the filename", () => {
+    expect(selectionHasHeic(items, ["jpeg", "png"])).toBe(false);
+    expect(selectionHasHeic(items, ["png", "heic"])).toBe(true);
+  });
+
+  it("falls back to the extension when the server sends no is_heic", () => {
+    expect(selectionHasHeic(items, ["old-server"])).toBe(true);
+    expect(selectionHasHeic([{ id: "x", filename: "a.jpg" }], ["x"])).toBe(false);
+  });
+
+  it("assumes a selected item it hasn't loaded might be HEIC", () => {
+    expect(selectionHasHeic(items, ["png", "not-loaded"])).toBe(true);
+  });
+
+  it("ZipStatus hides the checkbox when told the selection has no HEIC", () => {
+    render(<ZipStatus state={{ phase: "idle" }} jpeg={false} onJpegChange={() => {}} showHeicOption={false} />);
+    expect(screen.queryByLabelText("HEIC as JPEG")).toBeNull();
   });
 });

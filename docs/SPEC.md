@@ -1,12 +1,12 @@
 # Project: Private Photos Viewer
 
-Multiple `.photoslibrary` files → web app for iPhone (PWA, iOS 17 Photos style) and desktop (macOS Sequoia Photos style), over Tailscale.
+Multiple `.photoslibrary` files → web app for iPhone (PWA, iOS 17 Photos style) and desktop (macOS Sequoia Photos style), over the home network or Tailscale.
 
 The server runs on macOS and on Linux. Both are first-class. See [Platforms](#platforms).
 
 ## Goal
 
-Build a self-hosted, read-only web app that lets several people browse and download photos and videos from Apple Photos libraries stored as `.photoslibrary` packages on one drive. Access is remote, over Tailscale, from:
+Build a self-hosted, read-only web app that lets several people browse and download photos and videos from Apple Photos libraries stored as `.photoslibrary` packages on one drive. Access is remote, over the home network (plain http, the default) or Tailscale, from:
 
 - **iPhone:** an installable PWA that looks and feels like the pre-iOS 18 (iOS 17) Photos app.
 - **Desktop browser** (Safari, Chrome, Firefox on Mac or PC): a layout that looks and feels like the macOS Sequoia (macOS 15) Photos app.
@@ -18,7 +18,7 @@ Both use the same login. Admins also get an admin panel to register library file
 - Several separate `.photoslibrary` packages on one drive, none of them the macOS System Photo Library. They total several terabytes, all originals are local, and there's no iCloud.
 - PhotoKit is not used. It only reaches the System Photo Library, and it does not exist on Linux. Libraries are read directly from disk with [osxphotos](https://github.com/RhetTbull/osxphotos), which opens any library by path on macOS and on Linux.
 - **Strictly read-only.** Never write to, migrate, repair, or open-for-write any library package or its database. Open the database read-only (`mode=ro`), immutable, or as a copy that lives outside the package. Detect when Photos.app has the same library open and show a warning.
-- Access only over the Tailscale tailnet, with HTTPS through Tailscale Serve. Nothing is exposed publicly.
+- **Home network by default, Tailscale supported (decided 2026-11-12, #266).** The server can be opened over plain http from other devices on the LAN (`http://192.168.1.20:8000`, `http://homeserver.local:8000`) with no extra settings: the session cookie is `Secure` only when the request arrived over https (`PHOTOS_VIEWER_COOKIE_SECURE=auto`; `true`/`false` force it), and the CSRF `Origin` check accepts an Origin whose host and port equal the request's `Host` header, plus any `PHOTOS_VIEWER_PUBLIC_ORIGINS` entry. A cross-site Origin is never accepted. `X-Forwarded-Proto` and `Tailscale-User-Login` are believed only from loopback or `PHOTOS_VIEWER_TRUSTED_PROXIES`; a direct LAN client gets its own login-lockout bucket from its real address. HTTPS is optional (Tailscale Serve or any reverse proxy) and is needed for passkeys and Add to Home Screen; without it the login screen hides the passkey button and says why. Nothing is exposed publicly; do not forward the port from the internet. Where the text below says "behind tailscale serve", that is the HTTPS option.
 - **No outbound connections except browser-side OSM map tiles.** The server makes zero outbound requests, with one exception: an admin's one-time download of the GeoNames city list for the optional Offline place names (below), possible only after the admin agreed to "Map & place names". The only other external connection is the browser loading OpenStreetMap tiles while a map is open, and only after that same agreement. See [No outbound network](#no-outbound-network).
 - No paid Apple Developer account, so the iPhone side is a PWA added from Safari, with no native app.
 - Out of scope: editing, deleting, uploading, public share links, Memories, Featured Photos.
@@ -124,7 +124,7 @@ Every endpoint requires a session, and every request is checked against the libr
 ### Authentication
 
 - Username and password, hashed with Argon2id. Passkeys (WebAuthn, P3.1) sign in beside the password; the password keeps working. Registering a new passkey asks for the account password again, in the same request that starts the ceremony, and counts wrong passwords toward the login lockout. See `PHOTOS_VIEWER_WEBAUTHN_RP_ID` / `PHOTOS_VIEWER_WEBAUTHN_ORIGINS` in `.env.example`.
-- Secure, HttpOnly, SameSite=Strict session cookies. Long lifetime for the installed PWA, shorter for desktop by default (configurable). "Remember me" and logout.
+- Secure, HttpOnly, SameSite=Strict session cookies. Long lifetime for the installed PWA, shorter for desktop by default (configurable). "Keep me signed in" (sign-in checkbox, ticked by default; persistent cookie, 400 days, until sign-out or admin revoke; unticked = browser-session cookie with the normal desktop/PWA lifetime; the admin Settings choose ticked/unticked default or hide it) and logout.
 - Rate-limit logins and lock out temporarily after repeated failures. The lockout is keyed on the username, not on who is asking, plus a looser per-client limit keyed on the real client address -- the tailnet device's own address, once uvicorn's `--proxy-headers` (on by default behind `tailscale serve`, see below) has rewritten it from `X-Forwarded-For` -- falling back to the `Tailscale-User-Login` header only when the direct peer is loopback, or is listed in `PHOTOS_VIEWER_TRUSTED_PROXIES` (so everyone behind the proxy would otherwise share one counter); trade-off: knowing a real username is enough to lock that account out for the cool-off window. An unknown username locks out the same way, in a separate counter, so a 429 never reveals which usernames are real. An admin can clear a user's lockout from the admin panel (`POST /api/admin/users/{username}/unlock`) or, with no server running, via `python -m photos_viewer.admin unlock <username>` directly against `app.db` -- the fallback for an admin who is themselves locked out.
 - Never trust library ids from the client without checking the session's assignments.
 - Optional extra layer: allow only listed tailnet identities, using the `Tailscale-User-Login` header.
@@ -157,7 +157,7 @@ Every endpoint requires a session, and every request is checked against the libr
 ## Front end
 
 - TypeScript, Vite, and React or Svelte. One codebase with two layouts:
-  - **Mobile layout** (iPhone, iOS 17 style): used on narrow touch screens and when installed as a PWA.
+  - **Mobile layout** (iPhone, iOS 17 style): used on narrow or touch-first screens (width below 768 px, or a primary pointer that is not fine), whether or not the app is installed as a PWA. Auto never looks at the install state, so an installed Mac app in a wide window gets the desktop layout. The install state only picks the session client type.
   - **Desktop layout** (macOS Sequoia style): used on wide screens with a pointer.
   - Detect by viewport width and pointer type, and let users override in settings.
 - Shared: API client, auth, virtualized grid engine (TanStack Virtual or similar) for tens of thousands of items, viewer logic, and Cache Storage for thumbnails.

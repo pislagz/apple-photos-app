@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { type AssetFilter, type AssetListItem, getAssets } from "../../api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type AssetFilter, type AssetHide, type AssetListItem, getAssets } from "../../api";
 
 export interface UseLibraryAssetsResult {
   items: AssetListItem[];
+  // Photos matching the request, known after the first page (#365); else null.
+  total: number | null;
   loading: boolean;
   done: boolean;
   // True when the latest page request failed; `retry` re-requests that page.
@@ -19,8 +21,23 @@ export interface UseLibraryAssetsResult {
 // Days drill-down) starts the first page at that local day instead of the
 // top of the library, so landing on a month deep in the library's history
 // doesn't page through everything newer first.
-export function useLibraryAssets(libraryId: number, anchorTo: string | null = null, filter: AssetFilter = "all", album: string | null = null): UseLibraryAssetsResult {
-  const [items, setItems] = useState<AssetListItem[]>([]);
+const NO_HIDE: readonly AssetHide[] = [];
+
+// #224: the server pages newest first and so does this hook (`raw`, index 0 =
+// newest, a stable origin that older pages never move). With `oldestFirst`
+// (the Library, like Apple Photos) `items` is that list reversed: oldest on
+// top, newest last, and `loadMore` adds the next OLDER page at the front.
+export function useLibraryAssets(
+  libraryId: number,
+  anchorTo: string | null = null,
+  filter: AssetFilter = "all",
+  album: string | null = null,
+  hide: readonly AssetHide[] = NO_HIDE,
+  oldestFirst = false,
+): UseLibraryAssetsResult {
+  const [raw, setItems] = useState<AssetListItem[]>([]);
+  const items = useMemo(() => (oldestFirst ? [...raw].reverse() : raw), [raw, oldestFirst]);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
@@ -31,9 +48,10 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError(false);
-    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album)
+    return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album, hide)
       .then((response) => {
         if (requestIdRef.current !== requestId) return null;
+        if (replace) setTotal(response.total ?? null);
         setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
         cursorRef.current = response.next_cursor;
         setDone(!response.next_cursor);
@@ -51,13 +69,14 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       .finally(() => {
         if (requestIdRef.current === requestId) setLoading(false);
       });
-  }, [anchorTo, filter, album]);
+  }, [anchorTo, filter, album, hide]);
 
   useEffect(() => {
     cursorRef.current = null;
     setDone(false);
     setError(false);
     setItems([]);
+    setTotal(null);
     fetchPage(libraryId, null, true);
   }, [libraryId, fetchPage]);
 
@@ -76,7 +95,7 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
   // sequentially -- bypassing the scroll-triggered `loadMore` entirely --
   // until the server reports no further cursor.
   const loadAll = useCallback(async (): Promise<AssetListItem[]> => {
-    let all = items;
+    let all = raw;
     let cursor = cursorRef.current;
     let finished = done;
     while (!finished) {
@@ -86,8 +105,8 @@ export function useLibraryAssets(libraryId: number, anchorTo: string | null = nu
       cursor = response.next_cursor;
       finished = !cursor;
     }
-    return all;
-  }, [libraryId, items, done, fetchPage]);
+    return oldestFirst ? [...all].reverse() : all;
+  }, [libraryId, raw, oldestFirst, done, fetchPage]);
 
-  return { items, loading, done, error, retry, loadMore, loadAll };
+  return { items, total, loading, done, error, retry, loadMore, loadAll };
 }

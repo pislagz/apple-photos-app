@@ -90,6 +90,23 @@ describe("Viewer focus (D59)", () => {
     expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a2"]'));
   });
 
+  it("desktop: after paging, focus returns to the tile of the item shown at close", async () => {
+    const items = [item("a1", "2024-05-10T10:00:00"), item("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      return new Response("{}", { status: 404 });
+    });
+    render(<DesktopLibrary libraryId={1} initialView="all" />);
+    const cells = await screen.findAllByTestId("library-cell");
+    fireEvent.doubleClick(cells.find((cell) => cell.getAttribute("data-asset-id") === "a2") as HTMLElement);
+    await screen.findByTestId("desktop-viewer");
+    // Oldest first (#224): a2 comes before a1, so Right steps on to a1.
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+    expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a1"]'));
+  });
+
   it("phone: the Info sheet makes everything it covers unfocusable and returns focus to Info", async () => {
     mockFetch(() => new Response("{}", { status: 404 }));
     render(<MobileViewer libraryId={1} items={[item("a1", "2024-05-10T10:00:00")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
@@ -108,5 +125,16 @@ describe("Viewer focus (D59)", () => {
     expect(toggle.closest("[inert]")).toBeNull();
     expect(document.activeElement).toBe(toggle);
     act(() => {});
+  });
+});
+
+describe("data-scope-keep (#403)", () => {
+  it("is never made inert by an overlay", () => {
+    document.body.innerHTML = `<div id="shell"><button id="keep" data-scope-keep></button><div id="other"></div><div id="main"><div id="overlay"></div></div></div>`;
+    const release = makeOutsideInert(document.getElementById("overlay")!);
+    expect(document.getElementById("keep")).not.toHaveAttribute("inert");
+    expect(document.getElementById("other")).toHaveAttribute("inert");
+    release();
+    expect(document.getElementById("other")).not.toHaveAttribute("inert");
   });
 });

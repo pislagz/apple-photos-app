@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { render } from "@testing-library/react";
 import IconGallery from "./IconGallery";
 import { ICONS, ICON_NAMES, Icon, hasFilledVariant } from "./icons";
@@ -24,12 +25,44 @@ describe("icon set", () => {
     expect(svg?.getAttribute("aria-hidden")).toBe("true");
   });
 
+  it("draws download as a stroked cloud with a down arrow (#350)", () => {
+    const { container } = render(<Icon name="download" size={16} />);
+    const paths = [...container.querySelectorAll("path")];
+    expect(paths.length).toBe(2);
+    for (const path of paths) {
+      expect(path.getAttribute("stroke")).toBe("currentColor");
+      expect(path.getAttribute("fill")).toBe("none");
+    }
+    const d = paths[0].getAttribute("d") ?? "";
+    expect(d).toMatch(/A4\.9 4\.9/); // large middle bump
+    expect(d).not.toMatch(/Z/i); // open outline: no base closing the gap
+    // The arrow tip sits below the cloud base (y 12.7), passing through the gap.
+    expect(paths[1].getAttribute("d")).toMatch(/V17\.3/);
+  });
+
+  it("is the only drawing of the download icon: every download button uses it (#363)", () => {
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(`${dir}/${e.name}`) : [`${dir}/${e.name}`],
+      );
+    const needle = 'name="download"';
+    const out = walk("src")
+      .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx") && readFileSync(f, "utf8").includes(needle))
+      .join("\n");
+    expect(out.split("\n").filter(Boolean).sort()).toEqual([
+      "src/shell/library/DesktopLibrary.tsx",
+      "src/shell/library/MobileLibrary.tsx",
+      "src/shell/viewer/DesktopViewer.tsx",
+      "src/shell/viewer/MobileViewer.tsx",
+    ]);
+  });
+
   it("covers every icon name the app uses", () => {
     const used = [
       "library", "days", "albums", "people", "map", "favorite", "added", "folder", "hidden", "tray",
-      "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "rotate",
+      "grid", "search", "download", "filter", "chevron", "sidebar", "trash", "info", "share", "aspect", "plus", "minus",
       "more", "play", "close", "livephoto", "video", "camera", "portrait", "panorama", "screenshot",
-      "document", "link", "original", "slomo",
+      "document", "link", "original", "slomo", "edited", "zoomIn", "zoomOut", "shared", "notInAlbum",
     ];
     expect([...ICON_NAMES].sort()).toEqual([...used].sort());
   });

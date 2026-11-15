@@ -156,7 +156,9 @@ def test_demoting_one_of_two_admins_is_allowed(tmp_path):
             "/api/admin/users",
             json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"},
         )
-        response = client.patch("/api/admin/users/admin", json={"role": "user"})
+        # Another admin's demotion is fine; your own is refused (see the
+        # self-protection tests below).
+        response = client.patch("/api/admin/users/carol", json={"role": "user"})
         assert response.status_code == 200
     finally:
         conn.close()
@@ -497,6 +499,121 @@ def test_revoke_unknown_session_is_404(tmp_path):
 # --------------------------------------------------------------------------
 
 
+def test_audit_log_before_id_cursor_ignores_new_rows(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        for name in ("carol", "dave", "erin"):
+            client.post(
+                "/api/admin/users", json={"username": name, "password": VALID_PASSWORD}
+            )
+        first = client.get("/api/admin/audit-log?limit=2").json()["entries"]
+        # A row written between the two page loads must not shift page two.
+        client.post(
+            "/api/admin/users", json={"username": "frank", "password": VALID_PASSWORD}
+        )
+        cursor = first[-1]["id"]
+        second = client.get(f"/api/admin/audit-log?limit=50&before_id={cursor}").json()[
+            "entries"
+        ]
+        assert second
+        assert all(e["id"] < cursor for e in second)
+        assert not {e["id"] for e in first} & {e["id"] for e in second}
+    finally:
+        conn.close()
+
+
+def _seed_audit(conn, stamps):
+    for i, ts in enumerate(stamps):
+        conn.execute(
+            "INSERT INTO audit_log (action, actor, detail, occurred_at) VALUES (?, 'test', ?, ?)",
+            (f"seed_{i}", None, ts),
+        )
+    conn.commit()
+
+
+def _page_all(client, limit):
+    """Walk the log the way the web client does; return ids in order seen."""
+    seen = []
+    cursor = None
+    while True:
+        url = f"/api/admin/audit-log?limit={limit}"
+        if cursor is not None:
+            url += f"&before_id={cursor}"
+        page = client.get(url).json()["entries"]
+        seen.extend(e["id"] for e in page)
+        if len(page) < limit:
+            return seen
+        cursor = page[-1]["id"]
+
+
+def _full_order(client):
+    entries = client.get("/api/admin/audit-log?limit=1000").json()["entries"]
+    return [e["id"] for e in entries]
+
+
+def test_audit_log_cursor_non_monotonic_timestamps(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        # Clock jumped back / backfilled rows: occurred_at is not monotonic in id.
+        _seed_audit(
+            conn,
+            [
+                "2030-01-05 00:00:00",
+                "2030-01-01 00:00:00",
+                "2030-01-09 00:00:00",
+                "2030-01-03 00:00:00",
+                "2030-01-07 00:00:00",
+                "2030-01-02 00:00:00",
+                "2030-01-08 00:00:00",
+            ],
+        )
+        expected = _full_order(client)
+        for limit in (1, 2, 3):
+            seen = _page_all(client, limit)
+            assert seen == expected
+            assert len(seen) == len(set(seen))
+    finally:
+        conn.close()
+
+
+def test_audit_log_cursor_equal_timestamps_across_page_boundary(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        _seed_audit(conn, ["2030-02-01 10:00:00"] * 5 + ["2030-01-01 10:00:00"] * 2)
+        expected = _full_order(client)
+        for limit in (1, 2, 3, 4):
+            seen = _page_all(client, limit)
+            assert seen == expected
+            assert len(seen) == len(set(seen))
+    finally:
+        conn.close()
+
+
+def test_audit_log_cursor_rows_inserted_between_pages(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        _seed_audit(conn, ["2030-03-01 00:00:00"] * 3 + ["2030-02-01 00:00:00"] * 3)
+        first = client.get("/api/admin/audit-log?limit=3").json()["entries"]
+        # New rows land (one with an old backfilled timestamp, one equal to the
+        # cursor's) between page loads.
+        _seed_audit(conn, ["2030-03-01 00:00:00", "2030-02-15 00:00:00"])
+        cursor = first[-1]["id"]
+        rest = client.get(f"/api/admin/audit-log?limit=1000&before_id={cursor}").json()[
+            "entries"
+        ]
+        first_ids = {e["id"] for e in first}
+        rest_ids = [e["id"] for e in rest]
+        assert not first_ids & set(rest_ids)
+        assert len(rest_ids) == len(set(rest_ids))
+        # Nothing at or after the cursor in display order sneaks in.
+        assert all(
+            (e["occurred_at"], e["id"]) < (first[-1]["occurred_at"], cursor)
+            for e in rest
+        )
+    finally:
+        conn.close()
+
+
 def test_audit_log_lists_and_filters_by_user(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
@@ -590,6 +707,7 @@ def test_settings_default_then_round_trip(tmp_path):
         assert defaults.status_code == 200
         assert defaults.json()["map_tiles_mode"] == "off"  # D41: opt-in
         assert defaults.json()["osm_consent"] is False
+        assert defaults.json()["keep_signed_in_mode"] == "default_on"
         assert defaults.json()["map_tiles_pmtiles_path"] is None
 
         updated = client.put(
@@ -598,6 +716,7 @@ def test_settings_default_then_round_trip(tmp_path):
                 "session_lifetime_desktop_seconds": 3600,
                 "session_lifetime_pwa_seconds": 7200,
                 "session_lifetime_remember_me_seconds": 86400,
+                "keep_signed_in_mode": "default_off",
                 "thumb_size_grid": 320,
                 "thumb_size_grid2x": 640,
                 "thumb_size_preview": 1800,
@@ -613,6 +732,7 @@ def test_settings_default_then_round_trip(tmp_path):
         assert updated.json()["map_tiles_mode"] == "online"
         assert updated.json()["map_tiles_pmtiles_path"] == "/data/world.pmtiles"
         assert updated.json()["thumb_quality"] == 90
+        assert updated.json()["keep_signed_in_mode"] == "default_off"
 
         reread = client.get("/api/admin/settings")
         assert reread.json() == updated.json()
@@ -736,3 +856,262 @@ def test_settings_default_quality_matches_the_media_default():
     from photos_viewer import admin_panel, media
 
     assert admin_panel._SETTINGS_DEFAULTS["thumb_quality"] == media.DEFAULT_QUALITY
+
+
+# --------------------------------------------------------------------------
+# #313: small admin API additions
+# --------------------------------------------------------------------------
+
+_JSON = {"content-type": "application/json"}
+
+
+def test_sessions_mark_the_current_one(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        other = TestClient(client.app, base_url="https://testserver")
+        other.post(
+            "/api/auth/login", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        sessions = client.get("/api/admin/sessions").json()
+        assert {s["username"]: s["is_current"] for s in sessions} == {
+            "admin": True,
+            "carol": False,
+        }
+    finally:
+        conn.close()
+
+
+def test_admin_cannot_revoke_own_current_session(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        current = client.get("/api/admin/sessions").json()[0]
+        response = client.delete(f"/api/admin/sessions/{current['id']}", headers=_JSON)
+        assert response.status_code == 400
+        assert "Sign out" in response.json()["detail"]
+        assert client.get("/api/me").status_code == 200
+    finally:
+        conn.close()
+
+
+def test_admin_cannot_demote_or_disable_self_even_with_another_admin(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users",
+            json={"username": "carol", "password": VALID_PASSWORD, "role": "admin"},
+        )
+        for body in ({"role": "user"}, {"disabled": True}):
+            response = client.patch("/api/admin/users/admin", json=body)
+            assert response.status_code == 400
+            assert "your own" in response.json()["detail"]
+        # Harmless self-edits still work.
+        assert (
+            client.patch("/api/admin/users/admin", json={"role": "admin"}).status_code
+            == 200
+        )
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["admin"]["role"] == "admin" and not users["admin"]["disabled"]
+    finally:
+        conn.close()
+
+
+def test_users_report_locked(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post(
+            "/api/admin/users", json={"username": "carol", "password": VALID_PASSWORD}
+        )
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["carol"]["locked"] is False
+        for _ in range(session_auth.MAX_FAILED_LOGIN_ATTEMPTS):
+            session_auth.record_login_failure(conn, "carol", user_exists=True)
+        users = {u["username"]: u for u in client.get("/api/admin/users").json()}
+        assert users["carol"]["locked"] is True
+        assert users["admin"]["locked"] is False
+        matrix = client.get("/api/admin/access-matrix").json()
+        assert {u["username"]: u["locked"] for u in matrix["users"]}["carol"] is True
+    finally:
+        conn.close()
+
+
+def test_cancel_invite(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        code = client.post("/api/admin/invites", json={}).json()["code"]
+        invite_id = client.get("/api/admin/invites").json()[0]["id"]
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 204
+        )
+        assert client.get("/api/admin/invites").json() == []
+        assert client.get(f"/api/invites/{code}").status_code == 404
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 404
+        )
+        audit = client.get("/api/admin/audit-log").json()["entries"]
+        assert any(e["action"] == "cancel_invite" for e in audit)
+    finally:
+        conn.close()
+
+
+def test_cancel_used_invite_is_409_and_kept(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        code = client.post("/api/admin/invites", json={}).json()["code"]
+        anon = TestClient(client.app, base_url="https://testserver")
+        anon.post(
+            f"/api/invites/{code}/accept",
+            json={"username": "dave", "password": VALID_PASSWORD},
+        )
+        invite_id = client.get("/api/admin/invites").json()[0]["id"]
+        assert (
+            client.delete(f"/api/admin/invites/{invite_id}", headers=_JSON).status_code
+            == 409
+        )
+        assert len(client.get("/api/admin/invites").json()) == 1
+    finally:
+        conn.close()
+
+
+def test_new_admin_routes_are_admin_only(tmp_path):
+    conn, client = _non_admin_client(tmp_path)
+    try:
+        assert (
+            client.patch(
+                "/api/admin/settings", json={"thumb_quality": 80}, headers=_JSON
+            ).status_code
+            == 403
+        )
+        assert client.delete("/api/admin/invites/x", headers=_JSON).status_code == 403
+        assert client.get("/api/admin/libraries/status").status_code == 403
+        assert client.get("/api/admin/audit-log?username=bob").status_code == 403
+    finally:
+        conn.close()
+
+
+def test_audit_log_filters_by_names(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        lib = _create_library(conn, "Family")
+        client.post(
+            "/api/admin/users", json={"username": "Carol", "password": VALID_PASSWORD}
+        )
+        carol = next(
+            u for u in client.get("/api/admin/users").json() if u["username"] == "carol"
+        )
+        client.put(f"/api/admin/users/{carol['id']}/libraries/{lib}", headers=_JSON)
+        by_user = client.get("/api/admin/audit-log?username=Carol").json()["entries"]
+        assert by_user and all(e["username"] == "carol" for e in by_user)
+        by_lib = client.get("/api/admin/audit-log?library_name=Family").json()[
+            "entries"
+        ]
+        assert by_lib and all(e["library_display_name"] == "Family" for e in by_lib)
+        assert (
+            client.get("/api/admin/audit-log?username=nobody").json()["entries"] == []
+        )
+        csv_resp = client.get("/api/admin/audit-log.csv?library_name=Family")
+        assert csv_resp.text.count("Family") >= 1
+    finally:
+        conn.close()
+
+
+def test_patch_settings_changes_only_sent_fields(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        before = client.get("/api/admin/settings").json()
+        response = client.patch(
+            "/api/admin/settings", json={"thumb_quality": 70}, headers=_JSON
+        )
+        assert response.status_code == 200, response.text
+        after = response.json()
+        assert after["thumb_quality"] == 70
+        assert {k: v for k, v in after.items() if k != "thumb_quality"} == {
+            k: v for k, v in before.items() if k != "thumb_quality"
+        }
+        assert client.get("/api/admin/settings").json() == after
+        # Empty body is a no-op.
+        assert (
+            client.patch("/api/admin/settings", json={}, headers=_JSON).json() == after
+        )
+        # Consent and the path go through the same handling as PUT.
+        patched = client.patch(
+            "/api/admin/settings",
+            json={"osm_consent": True, "map_tiles_pmtiles_path": " /d/w.pmtiles "},
+            headers=_JSON,
+        ).json()
+        assert patched["map_tiles_mode"] == "online"
+        assert patched["map_tiles_pmtiles_path"] == "/d/w.pmtiles"
+        assert patched["thumb_quality"] == 70
+        cleared = client.patch(
+            "/api/admin/settings", json={"map_tiles_pmtiles_path": None}, headers=_JSON
+        ).json()
+        assert cleared["map_tiles_pmtiles_path"] is None
+        actions = [
+            e["action"] for e in client.get("/api/admin/audit-log").json()["entries"]
+        ]
+        assert "set_settings" in actions and "osm_consent_agreed" in actions
+    finally:
+        conn.close()
+
+
+def test_patch_settings_validates_like_put(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        before = client.get("/api/admin/settings").json()
+        for body in (
+            {"thumb_quality": 0},
+            {"thumb_quality": 101},
+            {"thumb_size_grid": 10},
+            {"session_lifetime_pwa_seconds": 5},
+            {"zip_size_limit_bytes": 0},
+            {"library_check_interval_minutes": -1},
+            {"thumb_quality": None},
+            {"no_such_setting": 1},
+            {"map_tiles_mode": "off"},
+        ):
+            response = client.patch("/api/admin/settings", json=body, headers=_JSON)
+            assert response.status_code == 422, body
+        assert client.get("/api/admin/settings").json() == before
+    finally:
+        conn.close()
+
+
+def test_library_status_has_sizes_and_batch_route(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_DATA_DIR", str(tmp_path))
+    conn, client = _admin_client(tmp_path)
+    try:
+        pkg = tmp_path / "Fam.photoslibrary"
+        (pkg / "database").mkdir(parents=True)
+        (pkg / "database" / "a.bin").write_bytes(b"x" * 1000)
+        (pkg / "b.bin").write_bytes(b"y" * 234)
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Fam', ?)", (str(pkg),)
+        )
+        conn.execute(
+            "INSERT INTO libraries (display_name, path) VALUES ('Gone', '/nope/x.photoslibrary')"
+        )
+        conn.commit()
+        lib_id = conn.execute(
+            "SELECT id FROM libraries WHERE display_name='Fam'"
+        ).fetchone()["id"]
+        cache = app_db.media_cache_dir(tmp_path) / str(lib_id) / "ab"
+        cache.mkdir(parents=True)
+        (cache / "t.jpg").write_bytes(b"z" * 500)
+
+        single = client.get(f"/api/admin/libraries/{lib_id}/status").json()
+        assert single["disk_size_bytes"] == 1234
+        assert single["disk_size_estimated"] is False
+        assert single["thumb_cache_bytes"] == 500
+        batch = client.get("/api/admin/libraries/status").json()
+        assert [b["display_name"] for b in batch] == ["Fam", "Gone"]
+        assert batch[0]["disk_size_bytes"] == 1234
+        assert batch[1]["disk_size_bytes"] is None
+        assert batch[1]["thumb_cache_bytes"] == 0
+        # The old fields are still there.
+        assert "total_size_bytes" in single and "warnings" in single
+    finally:
+        conn.close()

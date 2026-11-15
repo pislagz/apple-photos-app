@@ -47,15 +47,13 @@ function PersonPhotos({
   const person = people?.find((p) => p.id === personId);
   return (
     <div className="mobile-screen">
-      <header className="mobile-screen__header">
-        <button type="button" className="mobile-screen__back" onClick={() => onNavigate("/people")}>
-          <Icon name="chevron" className="mobile-screen__back-icon" />
-          People & Pets
-        </button>
-        <h1 className="mobile-screen__title">{person ? (person.label) : "Person"}</h1>
-      </header>
       <div className="mobile-screen__album-grid">
-        <MobileLibrary key={personId} libraryId={libraryId} album={`${PERSON_PREFIX}${personId}`} />
+        <MobileLibrary
+          key={personId}
+          libraryId={libraryId}
+          album={`${PERSON_PREFIX}${personId}`}
+          nav={{ title: person ? person.label : "Person", backLabel: "People & Pets", onBack: () => onNavigate("/people") }}
+        />
       </div>
     </div>
   );

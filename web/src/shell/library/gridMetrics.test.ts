@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  columnsForEdge,
+  columnWidths,
   computeCellSize,
+  DEFAULT_ZOOM_INDEX,
+  gapForEdge,
+  squareEdge,
+  sharpSizeFor,
+  thumbSizeFor,
+  ZOOM_EDGES,
   FEATURE_ASPECT,
   FEATURE_COLUMNS,
   FEATURE_MAX_WIDTH,
@@ -10,6 +18,60 @@ import {
   GRID_GAP,
   gridRowHeight,
 } from "./gridMetrics";
+
+describe("edge-length zoom (#207)", () => {
+  it("has five stops with 150 px as the default", () => {
+    expect([...ZOOM_EDGES]).toEqual([72, 104, 150, 210, 300]);
+    expect(ZOOM_EDGES[DEFAULT_ZOOM_INDEX]).toBe(150);
+  });
+
+  it("uses a 2 px gap, 1 px at the smallest edge", () => {
+    expect(gapForEdge(72)).toBe(1);
+    for (const edge of [104, 150, 210, 300]) expect(gapForEdge(edge)).toBe(2);
+  });
+
+  it("fills the width flush right with no gutter at 1024, 1280, 1440 and 1920", () => {
+    for (const width of [1024, 1280, 1440, 1920]) {
+      for (const edge of ZOOM_EDGES) {
+        for (const dpr of [1, 2]) {
+          const gap = gapForEdge(edge);
+          const columns = columnsForEdge(width, edge, gap);
+          const widths = columnWidths(width, columns, gap, dpr);
+          expect(widths).toHaveLength(columns);
+          const total = widths.reduce((a, b) => a + b, 0) + (columns - 1) * gap;
+          expect(total).toBeCloseTo(width, 6);
+          // Tile edges sit on whole device pixels and stay within a device pixel of the target.
+          for (const w of widths) {
+            expect(Math.abs(w * dpr - Math.round(w * dpr))).toBeLessThan(1e-6);
+            expect(w).toBeGreaterThanOrEqual(edge - gap - 1 / dpr);
+            expect(w).toBeLessThan(edge + gap + 1 + 1 / dpr + edge / columns);
+          }
+          expect(squareEdge(width, columns, gap, dpr)).toBeLessThanOrEqual(Math.max(...widths));
+        }
+      }
+    }
+  });
+
+  it("gives about nine columns at 150 px in a 1440 window minus the sidebar", () => {
+    expect(columnsForEdge(1220, 150)).toBe(8);
+    expect(columnsForEdge(1440, 150)).toBe(9);
+    expect(columnsForEdge(1024, 72)).toBe(14);
+    expect(columnsForEdge(1920, 300)).toBe(6);
+  });
+
+  it("never returns zero columns", () => {
+    expect(columnsForEdge(100, 300)).toBe(1);
+    expect(columnsForEdge(0, 150)).toBeGreaterThan(0);
+  });
+
+  it("asks for the small thumb up to 150 px and the 2x thumb above, or on dense screens", () => {
+    expect(thumbSizeFor(72)).toBe("grid");
+    expect(thumbSizeFor(150, 2)).toBe("grid");
+    expect(thumbSizeFor(150, 3)).toBe("grid2x");
+    expect(thumbSizeFor(210)).toBe("grid2x");
+    expect(thumbSizeFor(300, 2)).toBe("grid2x");
+  });
+});
 
 describe("gridMetrics", () => {
   it("cells plus gaps exactly fill the container width", () => {
@@ -81,5 +143,53 @@ describe("gridMetrics", () => {
         previous = lead;
       }
     }
+  });
+});
+
+// F6: model of the resize loop. Column count depends on the measured width;
+// row count (hence content height) depends on columns; a classic scrollbar
+// eats SCROLLBAR px only while content overflows. With the gutter reserved,
+// the width is constant, so every step settles in one
+// pass. (The real loop is checked in the browser by e2e/fixes-fa.e2e.ts.)
+describe("zoom steps are stable against the scrollbar (F6)", () => {
+  const SCROLLBAR = 15;
+  const VIEWPORT_H = 900;
+  const PHOTOS = 400;
+
+  function settle(outerWidth: number, edge: number, reserveGutter: boolean): number[] {
+    const gap = gapForEdge(edge);
+    let width = outerWidth;
+    const seen: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const columns = columnsForEdge(width, edge, gap);
+      const cell = squareEdge(width, columns, gap);
+      const height = Math.ceil(PHOTOS / columns) * gridRowHeight(cell, gap);
+      seen.push(columns);
+      width = reserveGutter || height > VIEWPORT_H ? outerWidth - SCROLLBAR : outerWidth;
+    }
+    return seen;
+  }
+
+  it("with a reserved gutter every width and zoom step settles", () => {
+    for (let w = 600; w <= 1600; w++) {
+      for (const edge of ZOOM_EDGES) {
+        expect(new Set(settle(w, edge, true).slice(-4)).size).toBe(1);
+      }
+    }
+  });
+});
+
+describe("sharpSizeFor (#433)", () => {
+  it("keeps the grid thumb for small tiles and steps up for big ones", () => {
+    expect(sharpSizeFor(130, 3)).toBe("grid"); // 3 per row on an iPhone: 390 device px
+    expect(sharpSizeFor(198, 2)).toBe("grid");
+    expect(sharpSizeFor(265, 2)).toBe("grid2x"); // 530 device px
+    expect(sharpSizeFor(300, 3)).toBe("grid2x"); // 900 device px, still enough
+    expect(sharpSizeFor(390, 3)).toBe("preview"); // 1 per row
+    expect(sharpSizeFor(800, 2)).toBe("preview");
+  });
+  it("treats a DPR below 1 as 1", () => {
+    expect(sharpSizeFor(400, 0)).toBe("grid");
+    expect(sharpSizeFor(500, 0.5)).toBe("grid2x");
   });
 });

@@ -5,6 +5,7 @@ import {
   bufferToB64url,
   creationOptionsFromJSON,
   loginWithPasskey,
+  passkeyConnectionNote,
   passkeysSupported,
   registerPasskey,
   requestOptionsFromJSON,
@@ -50,6 +51,33 @@ describe("passkeysSupported", () => {
     vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
     vi.stubGlobal("navigator", { credentials: {} });
     expect(passkeysSupported()).toBe(true);
+  });
+});
+
+describe("passkeys without a secure connection", () => {
+  function stubBrowser(hostname: string, isSecureContext: boolean) {
+    vi.stubGlobal("PublicKeyCredential", function PublicKeyCredential() {});
+    vi.stubGlobal("navigator", { credentials: {} });
+    vi.stubGlobal("isSecureContext", isSecureContext);
+    vi.stubGlobal("location", { hostname });
+  }
+
+  it("explains why on plain http", () => {
+    stubBrowser("homeserver.local", false);
+    expect(passkeysSupported()).toBe(false);
+    expect(passkeyConnectionNote()).toMatch(/secure \(https\) connection/);
+  });
+
+  it("explains why on a bare IP address", () => {
+    stubBrowser("192.168.1.20", true);
+    expect(passkeysSupported()).toBe(false);
+    expect(passkeyConnectionNote()).not.toBeNull();
+  });
+
+  it("has no note over https on a host name", () => {
+    stubBrowser("myhost.tailxyz.ts.net", true);
+    expect(passkeysSupported()).toBe(true);
+    expect(passkeyConnectionNote()).toBeNull();
   });
 });
 

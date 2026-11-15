@@ -437,7 +437,10 @@ def _build_web(force: bool) -> None:
         return
     if not (WEB_DIR / "node_modules").exists():
         subprocess.run(["npm", "install"], cwd=WEB_DIR, check=True)
-    subprocess.run(["npm", "run", "build"], cwd=WEB_DIR, check=True)
+    # The demo build also includes the dev-only /admin/controls page that the
+    # #308 screenshot spec visits; a production build leaves it out.
+    env = {**os.environ, "VITE_ADMIN_GALLERY": "1"}
+    subprocess.run(["npm", "run", "build"], cwd=WEB_DIR, check=True, env=env)
 
 
 # A four-row stand-in for the GeoNames download (the demo never goes online):
@@ -492,6 +495,8 @@ def main() -> int:
         **os.environ,
         "PHOTOS_VIEWER_DATA_DIR": str(DATA_DIR),
         "OSXPHOTOS_NO_VERSION_CHECK": "1",
+        # The picker in Admin > Libraries lists this folder.
+        "PHOTOS_VIEWER_LIBRARIES_DIR": str(LIBRARY_DIR),
         # Dev only: the session cookie is Secure by default and a browser will
         # not send it back over plain http://127.0.0.1. Applies to this child only.
         "PHOTOS_VIEWER_COOKIE_SECURE": "false",

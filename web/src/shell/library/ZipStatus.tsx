@@ -5,31 +5,49 @@ export default function ZipStatus({
   state,
   jpeg,
   onJpegChange,
+  showHeicOption = true,
+  variant = "inline",
 }: {
   state: ZipState;
   jpeg: boolean;
   onJpegChange: (value: boolean) => void;
+  // #254: only when the selection contains a HEIC/HEIF photo.
+  showHeicOption?: boolean;
+  // "row": the iPhone select bar's full-width settings row with a switch (#259).
+  variant?: "inline" | "row";
 }) {
+  const input = (
+    <input
+      type="checkbox"
+      role={variant === "row" ? "switch" : undefined}
+      checked={jpeg}
+      disabled={state.phase === "downloading"}
+      onChange={(event) => onJpegChange(event.target.checked)}
+    />
+  );
   return (
-    <span className="zip-status" data-testid="zip-status">
-      <label className="zip-status__option">
-        <input
-          type="checkbox"
-          checked={jpeg}
-          disabled={state.phase === "downloading"}
-          onChange={(event) => onJpegChange(event.target.checked)}
-        />
-        HEIC as JPEG
-      </label>
+    <span className={variant === "row" ? "zip-status zip-status--row" : "zip-status"} data-testid="zip-status">
+      {showHeicOption &&
+        (variant === "row" ? (
+          <label className="zip-status__option zip-status__option--row">
+            <span className="zip-status__option-text">HEIC as JPEG</span>
+            {input}
+          </label>
+        ) : (
+          <label className="zip-status__option">
+            {input}
+            HEIC as JPEG
+          </label>
+        ))}
       {state.phase === "downloading" &&
         (state.progress.total && !state.progress.totalUnknown ? (
           <progress
-            aria-label="Zip download progress"
+            aria-label="Download progress"
             value={Math.min(state.progress.received, state.progress.total)}
             max={state.progress.total}
           />
         ) : (
-          <progress aria-label="Zip download progress" />
+          <progress aria-label="Download progress" />
         ))}
       {state.phase === "downloading" && (
         <span role="status">
@@ -38,7 +56,7 @@ export default function ZipStatus({
         </span>
       )}
       {state.phase === "started" && (
-        <span role="status" title="The zip is saved by your browser; it appears in its downloads when finished.">
+        <span role="status" title="The download is saved by your browser; it appears in its downloads when finished.">
           Download started
         </span>
       )}

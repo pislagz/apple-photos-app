@@ -16,7 +16,8 @@ def _write_fake_dist(tmp_path):
     (tmp_path / "assets" / "index-abc123.js").write_text("console.log('app')")
     (tmp_path / "sw.js").write_text("// service worker")
     (tmp_path / "manifest.webmanifest").write_text('{"name": "Photos"}')
-    (tmp_path / "icons" / "icon.svg").write_text("<svg></svg>")
+    (tmp_path / "icons" / "favicon-16x16.png").write_bytes(b"\x89PNG")
+    (tmp_path / "favicon.ico").write_bytes(b"\x00\x00\x01\x00ico")
     return tmp_path
 
 
@@ -68,6 +69,28 @@ def test_manifest_gets_the_manifest_content_type(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/manifest+json"
+
+
+def test_favicon_ico_is_served_at_the_root_not_as_the_shell(tmp_path):
+    client = TestClient(create_app(web_dist_dir=_write_fake_dist(tmp_path)))
+
+    response = client.get("/favicon.ico")
+
+    assert response.status_code == 200
+    assert response.content == b"\x00\x00\x01\x00ico"
+    assert response.headers["content-type"] in (
+        "image/x-icon",
+        "image/vnd.microsoft.icon",
+    )
+
+
+def test_icon_png_is_served_from_icons_dir(tmp_path):
+    client = TestClient(create_app(web_dist_dir=_write_fake_dist(tmp_path)))
+
+    response = client.get("/icons/favicon-16x16.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
 
 
 def test_unknown_api_path_still_404s_as_json(tmp_path):

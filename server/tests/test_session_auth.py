@@ -171,7 +171,10 @@ def test_setup_status_reports_needs_setup_before_any_admin_exists(client):
     response = client.get("/api/setup/status")
 
     assert response.status_code == 200
-    assert response.json() == {"needs_setup": True}
+    assert response.json() == {
+        "needs_setup": True,
+        "keep_signed_in": "default_on",
+    }
 
 
 def test_setup_status_reports_no_setup_needed_once_an_admin_exists(client):
@@ -181,7 +184,10 @@ def test_setup_status_reports_no_setup_needed_once_an_admin_exists(client):
 
     response = client.get("/api/setup/status")
 
-    assert response.json() == {"needs_setup": False}
+    assert response.json() == {
+        "needs_setup": False,
+        "keep_signed_in": "default_on",
+    }
 
 
 def test_concurrent_first_run_setup_creates_exactly_one_admin(tmp_path):
@@ -668,7 +674,7 @@ def test_remember_me_requests_a_longer_cookie_lifetime(client):
             key, _, value = part.strip().partition("=")
             if key.lower() == "max-age":
                 return int(value)
-        raise AssertionError("no Max-Age in Set-Cookie")
+        return 0  # session cookie: no Max-Age
 
     assert max_age(long) > max_age(short)
 
@@ -2419,3 +2425,217 @@ def test_unknown_person_constant_matches_osxphotos():
     from photos_viewer import indexer
 
     assert indexer._UNKNOWN_PERSON == _UNKNOWN_PERSON
+
+
+# -- Issue #266: home-network mode (plain http on the LAN is the default) --
+
+
+def _lan_client(tmp_path, *, host="192.168.1.20:8000", peer="192.168.1.50"):
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    return conn, TestClient(app, base_url=f"http://{host}", client=(peer, 40000))
+
+
+def _setup_admin(c):
+    c.post("/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD})
+
+
+def _login(c, **headers):
+    return c.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD},
+        headers=headers,
+    )
+
+
+@pytest.mark.parametrize(
+    "host", ["192.168.1.20:8000", "homeserver.local:8000", "localhost:8000"]
+)
+def test_plain_http_login_works_on_the_lan_with_no_overrides(
+    tmp_path, monkeypatch, host
+):
+    monkeypatch.delenv("PHOTOS_VIEWER_COOKIE_SECURE", raising=False)
+    monkeypatch.delenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", raising=False)
+    conn, c = _lan_client(tmp_path, host=host)
+    try:
+        _setup_admin(c)
+        response = _login(c, Origin=f"http://{host}")
+        assert response.status_code == 200
+        assert "Secure" not in response.headers["set-cookie"]
+        assert c.get("/api/auth/me").status_code == 200
+    finally:
+        conn.close()
+
+
+def test_cookie_secure_auto_is_secure_over_https(tmp_path, monkeypatch):
+    monkeypatch.delenv("PHOTOS_VIEWER_COOKIE_SECURE", raising=False)
+    app = create_app()
+    conn = app_db.connect(tmp_path)
+    app.dependency_overrides[session_auth.get_db] = lambda: conn
+    c = TestClient(app, base_url="https://box.example", client=("192.168.1.50", 1))
+    try:
+        _setup_admin(c)
+        assert "Secure" in _login(c).headers["set-cookie"]
+    finally:
+        conn.close()
+
+
+def test_cookie_secure_auto_honours_forwarded_proto_only_from_trusted_peers(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("PHOTOS_VIEWER_COOKIE_SECURE", raising=False)
+    conn, direct = _lan_client(tmp_path)
+    try:
+        _setup_admin(direct)
+        spoofed = _login(direct, **{"X-Forwarded-Proto": "https"})
+        assert "Secure" not in spoofed.headers["set-cookie"]
+    finally:
+        conn.close()
+
+    conn, proxy = _lan_client(tmp_path, peer="127.0.0.1")
+    try:
+        forwarded = _login(proxy, **{"X-Forwarded-Proto": "https"})
+        assert "Secure" in forwarded.headers["set-cookie"]
+    finally:
+        conn.close()
+
+
+def test_cookie_secure_env_overrides_win(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_COOKIE_SECURE", "true")
+    conn, c = _lan_client(tmp_path)
+    try:
+        _setup_admin(c)
+        assert "Secure" in _login(c).headers["set-cookie"]
+    finally:
+        conn.close()
+    monkeypatch.setenv("PHOTOS_VIEWER_COOKIE_SECURE", "false")
+    assert session_auth._cookie_secure() is False
+
+
+def test_cross_site_origin_is_rejected_even_over_plain_http(tmp_path, monkeypatch):
+    monkeypatch.delenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", raising=False)
+    conn, c = _lan_client(tmp_path)
+    try:
+        _setup_admin(c)
+        for origin in (
+            "http://evil.example",
+            "https://evil.example",
+            "http://192.168.1.20:9999",
+            "http://192.168.1.21:8000",
+            "null",
+        ):
+            assert _login(c, Origin=origin).status_code == 403, origin
+    finally:
+        conn.close()
+
+
+def test_lan_origin_with_a_different_scheme_than_the_request_is_rejected(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", raising=False)
+    conn, c = _lan_client(tmp_path, host="192.168.1.20:8000")
+    try:
+        _setup_admin(c)
+        assert _login(c, Origin="https://192.168.1.20:8000").status_code == 403
+        assert (
+            _login(
+                c, Origin="https://192.168.1.20:8000", **{"X-Forwarded-Proto": "https"}
+            ).status_code
+            == 403
+        )
+        assert _login(c, Origin="http://192.168.1.20:8000").status_code == 200
+    finally:
+        conn.close()
+
+
+def test_configured_public_origin_is_still_accepted(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOTOS_VIEWER_PUBLIC_ORIGINS", "https://myhost.tailxyz.ts.net")
+    conn, c = _lan_client(tmp_path, host="127.0.0.1:8000", peer="127.0.0.1")
+    try:
+        _setup_admin(c)
+        assert _login(c, Origin="https://myhost.tailxyz.ts.net").status_code == 200
+        assert _login(c, Origin="https://evil.example").status_code == 403
+    finally:
+        conn.close()
+
+
+def test_direct_lan_clients_are_locked_out_per_address_and_ignore_spoofed_headers(
+    tmp_path,
+):
+    conn, c = _lan_client(tmp_path)
+    try:
+        _setup_admin(c)
+        attempt = 0
+        status = 401
+        while status != 429 and attempt < 200:
+            attempt += 1
+            status = c.post(
+                "/api/auth/login",
+                json={"username": f"nobody{attempt}", "password": "wrong-password-1"},
+                # Ignored: the peer is neither loopback nor a trusted proxy.
+                headers={
+                    "Tailscale-User-Login": f"fresh{attempt}@example.com",
+                    "X-Forwarded-For": f"10.9.9.{attempt % 250}",
+                },
+            ).status_code
+        assert status == 429
+        assert attempt <= session_auth.MAX_FAILED_LOGIN_ATTEMPTS_PER_IP + 1
+
+        other = TestClient(
+            c.app, base_url="http://192.168.1.20:8000", client=("192.168.1.51", 1)
+        )
+        assert (
+            other.post(
+                "/api/auth/login",
+                json={"username": "admin", "password": VALID_PASSWORD},
+            ).status_code
+            == 200
+        )
+    finally:
+        conn.close()
+
+
+def _cookie_attrs(response) -> dict[str, str]:
+    parts = [p.strip() for p in response.headers["set-cookie"].split(";")]
+    return {k.lower(): v for k, _, v in (p.partition("=") for p in parts)}
+
+
+def _login_remember(client, **extra):
+    return client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": VALID_PASSWORD, **extra},
+    )
+
+
+def test_keep_signed_in_cookie_variants(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    kept = _cookie_attrs(_login_remember(client, remember_me=True))
+    session_only = _cookie_attrs(_login_remember(client, remember_me=False))
+
+    assert int(kept["max-age"]) == session_auth._DEFAULT_REMEMBER_ME_LIFETIME_SECONDS
+    assert "max-age" not in session_only and "expires" not in session_only
+    for attrs in (kept, session_only):
+        assert "httponly" in attrs and "secure" in attrs
+        assert attrs["samesite"].lower() == "strict"
+
+
+def test_keep_signed_in_setting_default_and_status(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    assert client.get("/api/setup/status").json()["keep_signed_in"] == "default_on"
+
+
+def test_keep_signed_in_disabled_ignores_the_client_flag(client):
+    client.post(
+        "/api/setup/admin", json={"username": "admin", "password": VALID_PASSWORD}
+    )
+    conn = client.app.dependency_overrides[session_auth.get_db]()
+    app_db.set_setting(conn, session_auth.KEEP_SIGNED_IN_SETTING, "disabled")
+
+    assert client.get("/api/setup/status").json()["keep_signed_in"] == "disabled"
+    attrs = _cookie_attrs(_login_remember(client, remember_me=True))
+    assert "max-age" not in attrs

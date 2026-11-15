@@ -1,0 +1,55 @@
+import { expect, test } from "@playwright/test";
+
+// Dev-only login printed by scripts/dev_demo.py for the synthetic demo library.
+const USER = { username: "demo-user", password: "demo-user-pass-1" };
+const INSET = 47; // iPhone Dynamic Island class safe-area-inset-top
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`phone Library views share one top offset below the safe area, ${scheme} (#414 #415)`, async ({ page }, info) => {
+    test.skip(info.project.name === "desktop", "iPhone layout only");
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto("/");
+    await page.getByLabel("Username").fill(USER.username);
+    await page.getByLabel("Password").fill(USER.password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.locator("[data-asset-id]").first()).toBeVisible();
+    // env() cannot be faked in Chromium; every phone header reads --safe-top.
+    await page.evaluate((px) => document.documentElement.style.setProperty("--safe-top", `${px}px`), INSET);
+    await page.setViewportSize({ width: 390, height: 800 }); // re-measure the inset probe
+
+    const tops: Record<string, number> = {};
+    for (const name of ["Years", "Months", "Days", "All Photos"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true");
+      const scroll = page.getByTestId("library-scroll");
+      await expect(scroll.locator("img, [data-testid='period-month-header'], h1").first()).toBeVisible();
+      // The tab switch can still be settling its own scroll position (All Photos
+      // jumps to the end on load), so reset until the top sticks.
+      await expect
+        .poll(async () => scroll.evaluate((el) => ((el.scrollTop = 0), el.scrollTop)), { timeout: 5000 })
+        .toBe(0);
+      await page.waitForTimeout(250);
+      await expect.poll(async () => scroll.evaluate((el) => el.scrollTop)).toBe(0);
+      const m = await page.evaluate(() => {
+        const scroller = document.querySelector<HTMLElement>("[data-testid='library-scroll']")!;
+        const first = scroller.querySelector<HTMLElement>(
+          "[data-testid='period-grid-header'], [data-testid='period-month-header'], .period-card, [data-asset-id]",
+        )!;
+        // Header bottom = lowest control / title in the floating top bar, if any.
+        const bar = document.querySelector("[data-testid='top-bar']");
+        const parts = bar ? [...bar.querySelectorAll<HTMLElement>(".mobile-library__title-block, button")] : [];
+        const headerBottom = parts.reduce((max, el) => Math.max(max, el.getBoundingClientRect().bottom), 0);
+        return { top: first.getBoundingClientRect().top, headerBottom };
+      });
+      tops[name] = m.top;
+      expect(m.top, `${name} first content below the inset`).toBeGreaterThanOrEqual(INSET);
+      if (name === "Days") expect(m.top, "Days title shares the Select row").toBeLessThanOrEqual(INSET + 12);
+      else expect(m.top, `${name} clear of the header`).toBeGreaterThan(m.headerBottom);
+      await page.screenshot({ path: `e2e/screenshots/414/${name.replace(" ", "-").toLowerCase()}-${scheme}.png` });
+    }
+    // #431: Years and Months share one offset (below the Select button); Days
+    // starts on the Select row because its title is in the grid.
+    expect(Math.abs(tops["Years"] - tops["Months"]), JSON.stringify(tops)).toBeLessThanOrEqual(1);
+    expect(tops["Days"], JSON.stringify(tops)).toBeLessThan(tops["Months"]);
+  });
+}

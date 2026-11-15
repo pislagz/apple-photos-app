@@ -78,6 +78,28 @@ export interface MeResponse {
   layout_override: "desktop" | "mobile" | null;
   // The admin agreed to "Map & place names" (OpenStreetMap data, GeoNames).
   osm_consent?: boolean;
+  // #256: set while the user has an avatar; changes with every new one.
+  avatar_version?: number | null;
+}
+
+export function avatarUrl(username: string, version: number): string {
+  return `/api/users/${encodeURIComponent(username)}/avatar?v=${version}`;
+}
+
+// The crop is the square the user framed, as fractions of the preview image.
+export interface AvatarCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function setAvatar(libraryId: number, assetId: string, crop: AvatarCrop): Promise<{ avatar_version: number }> {
+  return mutate("PUT", "/api/me/avatar", { library_id: libraryId, asset_id: assetId, ...crop });
+}
+
+export function removeAvatar(): Promise<void> {
+  return mutate("DELETE", "/api/me/avatar");
 }
 
 export interface AuthUserResponse {
@@ -89,8 +111,12 @@ export function getMe(): Promise<MeResponse> {
   return request<MeResponse>("/api/me");
 }
 
+export type KeepSignedInMode = "default_on" | "default_off" | "disabled";
+
 export interface SetupStatusResponse {
   needs_setup: boolean;
+  // Admin setting: is "Keep me signed in" ticked by default, unticked, or not offered.
+  keep_signed_in?: KeepSignedInMode;
 }
 
 // Lets the shell show "Create admin account" instead of "Sign in" before
@@ -153,10 +179,6 @@ export function logout(): Promise<void> {
 
 // The server is the source of truth for this choice; localStorage
 // (`useLayout.ts`) is only a fast default while `/api/me` loads.
-export function setLayoutOverride(value: "desktop" | "mobile" | null): Promise<void> {
-  return mutate<void>("PUT", "/api/me/layout-override", { layout_override: value });
-}
-
 export interface AssetListItem {
   id: string;
   filename: string | null;
@@ -168,11 +190,15 @@ export interface AssetListItem {
   width: number | null;
   height: number | null;
   duration: number | null;
+  // #254: the original is HEIC/HEIF. Absent from older servers.
+  is_heic?: boolean;
 }
 
 export interface AssetListResponse {
   items: AssetListItem[];
   next_cursor: string | null;
+  // First page only: the number of photos matching the request (#365).
+  total?: number | null;
 }
 
 // Apple Photos' Hidden album (P1.13): the only list a hidden asset appears
@@ -192,7 +218,17 @@ export function getHidden(libraryId: number, cursor: string | null = null, limit
 // that month instead of from the top of the whole library.
 // `filter` (#132, desktop Filter By) maps onto the server's `type` and
 // `favorite` query params; "all" sends neither.
-export type AssetFilter = "all" | "favorites" | "photos" | "videos";
+export type AssetFilter =
+  | "all"
+  | "favorites"
+  | "edited"
+  | "photos"
+  | "videos"
+  | "screenshots"
+  | "shared"
+  | "not-in-album";
+// Kinds the "Show" toggles can hide from any view (`?hide=`).
+export type AssetHide = "screenshots" | "shared";
 
 export const PERSON_PREFIX = "person:";
 // P2.3: `place:<west,south,east,north>` selects the photos inside a map
@@ -208,6 +244,7 @@ export function getAssets(
   to: string | null = null,
   filter: AssetFilter = "all",
   album: string | null = null,
+  hide: readonly AssetHide[] = [],
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (album?.startsWith(SEARCH_PREFIX)) {
@@ -225,6 +262,8 @@ export function getAssets(
   if (filter === "favorites") params.set("favorite", "true");
   else if (filter === "photos") params.set("type", "photo");
   else if (filter === "videos") params.set("type", "video");
+  else if (filter !== "all") params.set("filter", filter);
+  if (hide.length > 0) params.set("hide", hide.join(","));
   return request<AssetListResponse>(`/api/libraries/${libraryId}/assets?${params.toString()}`);
 }
 
@@ -277,6 +316,8 @@ export interface Person {
   label: string;
   count: number;
   cover: FaceCrop | null;
+  // Optional: the server does not send it yet. When it does, the face wears a heart.
+  favorite?: boolean;
 }
 
 export function getPeople(libraryId: number): Promise<{ people: Person[] }> {
@@ -295,7 +336,7 @@ export interface SummaryPeriodBucket extends SummaryBucket {
 export interface SummaryResponse {
   years: SummaryPeriodBucket[];
   months: SummaryPeriodBucket[];
-  days: SummaryBucket[];
+  days: SummaryPeriodBucket[];
 }
 
 // #91: the mobile Years/Months tiles -- counts and a few key-photo

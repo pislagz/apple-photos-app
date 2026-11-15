@@ -16,9 +16,11 @@ export default function LibrarySwitcher({
   onChange: (id: number) => void;
   className: string;
 }) {
-  const activeName = libraries.find((library) => library.id === activeLibraryId)?.display_name ?? "Library";
+  // No library: nothing to name or switch, so no stray "Library" caption (#263).
+  if (libraries.length === 0) return null;
+  const activeName = libraries.find((library) => library.id === activeLibraryId)?.display_name ?? libraries[0].display_name;
 
-  if (libraries.length <= 1) {
+  if (libraries.length === 1) {
     return (
       <div className={className} aria-label="Library switcher">
         {activeName}

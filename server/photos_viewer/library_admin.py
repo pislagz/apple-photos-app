@@ -26,11 +26,21 @@ import os
 import pathlib
 import re
 import sqlite3
+import threading
+import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import app_db, indexer, libraries, library_prewarm, library_watch, session_auth
+from . import (
+    app_db,
+    indexer,
+    libraries,
+    library_folders,
+    library_prewarm,
+    library_watch,
+    session_auth,
+)
 from .libraries import UnsupportedPhotosVersionError, open_library_readonly
 
 logger = logging.getLogger(__name__)
@@ -234,6 +244,11 @@ def _suggest_replacements(
     ]
 
 
+class IndexProgress(BaseModel):
+    done: int
+    total: int
+
+
 class LibraryStatusResponse(BaseModel):
     id: int
     display_name: str
@@ -242,9 +257,19 @@ class LibraryStatusResponse(BaseModel):
     video_count: int | None = None
     people_count: int | None = None
     total_size_bytes: int | None = None
+    # Real bytes under the package on disk (a capped, cached walk; see
+    # `_tree_size`). `disk_size_estimated` means the walk hit its cap, so the
+    # number is a lower bound. None when the path is missing.
+    disk_size_bytes: int | None = None
+    disk_size_estimated: bool = False
+    # Bytes of this library's thumbnail cache under the data dir (same capped
+    # walk); None when the route has no cache dir.
+    thumb_cache_bytes: int | None = None
     last_indexed_at: str | None = None
     index_state: str | None = None
     index_error: str | None = None
+    # #252: while a walk runs, assets walked so far and the library's total.
+    index_progress: IndexProgress | None = None
     prewarm_progress: float | None = None
     prewarm: library_prewarm.PrewarmStatus | None = None
     warnings: list[LibraryWarning]
@@ -259,7 +284,9 @@ class LibraryStatusResponse(BaseModel):
     alternatives: list[ReplaceSuggestion] = []
 
 
-def _validate_library_path(path: pathlib.Path) -> None:
+def _validate_library_path(
+    path: pathlib.Path, db: sqlite3.Connection | None = None
+) -> None:
     """Raise a 400 with an admin-facing message for a bad path, a missing
     mount, an unsupported Photos version, or an unreadable library. Returns
     normally only when `path` is a readable, supported `.photoslibrary`."""
@@ -269,7 +296,10 @@ def _validate_library_path(path: pathlib.Path) -> None:
                 status_code=400,
                 detail=f"{path.parent} does not exist -- is the drive mounted?",
             )
-        raise HTTPException(status_code=400, detail=f"{path} does not exist")
+        detail = f"{path} does not exist"
+        if db is not None:
+            detail += ". " + library_folders.nearby_hint(db, path)
+        raise HTTPException(status_code=400, detail=detail)
     if path.suffix != ".photoslibrary":
         raise HTTPException(
             status_code=400, detail=f"{path} does not end in .photoslibrary"
@@ -332,6 +362,53 @@ def _total_size_bytes(
         (library_id,),
     ).fetchone()[0]
     return total or 0
+
+
+# A package can hold millions of files, so a size walk stops after this many
+# entries or seconds and reports a lower bound; results are cached so polling
+# the status route does not re-walk the tree on every request.
+_WALK_MAX_ENTRIES = 200_000
+_WALK_MAX_SECONDS = 1.0
+_DISK_SIZE_TTL_SECONDS = 600.0
+_CACHE_SIZE_TTL_SECONDS = 30.0
+_size_cache: dict[str, tuple[float, int, bool]] = {}
+_size_cache_lock = threading.Lock()
+
+
+def _tree_size(root: pathlib.Path, ttl: float) -> tuple[int, bool]:
+    """(bytes, estimated) for the files under `root`, read-only (stat only,
+    symlinks not followed). `estimated` is True when a cap cut the walk."""
+    key = str(root)
+    now = time.monotonic()
+    with _size_cache_lock:
+        hit = _size_cache.get(key)
+        if hit is not None and now - hit[0] < ttl:
+            return hit[1], hit[2]
+    deadline = now + _WALK_MAX_SECONDS
+    total = 0
+    seen = 0
+    estimated = False
+    stack = [str(root)]
+    while stack and not estimated:
+        try:
+            with os.scandir(stack.pop()) as entries:
+                for entry in entries:
+                    seen += 1
+                    if seen > _WALK_MAX_ENTRIES or time.monotonic() > deadline:
+                        estimated = True
+                        break
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    with _size_cache_lock:
+        _size_cache[key] = (time.monotonic(), total, estimated)
+    return total, estimated
 
 
 def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
@@ -474,7 +551,20 @@ def _index_counts(
     }
 
 
-def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResponse:
+def _index_progress(row: sqlite3.Row) -> IndexProgress | None:
+    if row["index_state"] != "indexing":
+        return None
+    progress = indexer.index_progress(row["id"])
+    if progress is None:
+        return None
+    return IndexProgress(done=progress[0], total=progress[1])
+
+
+def _build_status(
+    db: sqlite3.Connection,
+    row: sqlite3.Row,
+    cache_dir: pathlib.Path | None = None,
+) -> LibraryStatusResponse:
     path = pathlib.Path(row["path"])
     _maybe_reindex(db, row)
     row = _get_library_or_404(db, row["id"])
@@ -500,14 +590,25 @@ def _build_status(db: sqlite3.Connection, row: sqlite3.Row) -> LibraryStatusResp
             )
         )
     suggestions = _suggest_replacements(db, path, row["last_indexed_signature"])
+    disk_size: int | None = None
+    disk_estimated = False
+    if path.exists():
+        disk_size, disk_estimated = _tree_size(path, _DISK_SIZE_TTL_SECONDS)
+    thumb_cache: int | None = None
+    if cache_dir is not None:
+        thumb_cache = _tree_size(cache_dir / str(row["id"]), _CACHE_SIZE_TTL_SECONDS)[0]
     return LibraryStatusResponse(
         id=row["id"],
         display_name=row["display_name"],
         path=row["path"],
         total_size_bytes=_total_size_bytes(db, row["id"], path),
+        disk_size_bytes=disk_size,
+        disk_size_estimated=disk_estimated,
+        thumb_cache_bytes=thumb_cache,
         last_indexed_at=row["last_indexed_at"],
         index_state=row["index_state"],
         index_error=row["index_error"],
+        index_progress=_index_progress(row),
         prewarm_progress=library_prewarm.progress(prewarm),
         prewarm=prewarm,
         warnings=warnings,
@@ -537,7 +638,7 @@ def add_library(
     # Resolve first so `x/../Lib.photoslibrary` and symlinks can't register
     # the same package twice.
     path = pathlib.Path(payload.path).resolve()
-    _validate_library_path(path)
+    _validate_library_path(path, db)
     display_name = payload.display_name or _default_display_name(path)
     if path in _registered_paths(db):
         raise HTTPException(status_code=409, detail="this path is already registered")
@@ -632,6 +733,18 @@ def remove_library(
     )
 
 
+@router.get("/api/admin/libraries/status", response_model=list[LibraryStatusResponse])
+def all_library_status(
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
+) -> list[LibraryStatusResponse]:
+    """Every library's status in one request (same rows as the per-library
+    route, ordered by id)."""
+    rows = db.execute("SELECT * FROM libraries ORDER BY id").fetchall()
+    return [_build_status(db, row, cache_dir) for row in rows]
+
+
 @router.get(
     "/api/admin/libraries/{library_id}/status", response_model=LibraryStatusResponse
 )
@@ -639,9 +752,10 @@ def library_status(
     library_id: int,
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
+    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
 ) -> LibraryStatusResponse:
     row = _get_library_or_404(db, library_id)
-    return _build_status(db, row)
+    return _build_status(db, row, cache_dir)
 
 
 class CheckNowResponse(BaseModel):
@@ -772,7 +886,7 @@ def _preview_replace(
     """Reads the new package on `open_library_readonly`'s temp copy only.
     With `keep_open` the handle is returned (caller closes or hands it to the
     indexer) so a confirm does not copy a big package a second time."""
-    _validate_library_path(new_path)
+    _validate_library_path(new_path, db)
     if new_path in _registered_paths(db, exclude_id=row["id"]):
         raise HTTPException(
             status_code=409, detail="this path is already registered as another library"

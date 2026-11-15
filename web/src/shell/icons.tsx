@@ -44,17 +44,6 @@ function ringDashes(cx: number, cy: number, r: number, count: number, half: numb
   return d;
 }
 
-// Closed stadium (pill) outline of overall `len` x `wid`, centred on (cx, cy)
-// and turned by `deg`. Used by the chain link.
-function stadium(cx: number, cy: number, len: number, wid: number, deg: number): string {
-  const r = wid / 2;
-  const h = len / 2 - r;
-  const a = (deg * Math.PI) / 180;
-  const pt = (u: number, v: number) =>
-    `${n(cx + u * Math.cos(a) - v * Math.sin(a))} ${n(cy + u * Math.sin(a) + v * Math.cos(a))}`;
-  return `M${pt(-h, -r)}L${pt(h, -r)}A${n(r)} ${n(r)} 0 0 1 ${pt(h, r)}L${pt(-h, r)}A${n(r)} ${n(r)} 0 0 1 ${pt(-h, -r)}Z`;
-}
-
 // Approved sample shapes (sample sheet v1), used as drawn.
 const LIBRARY_BACK = "M6.5 6.3V5.6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-.8";
 const LIBRARY_FRONT = "M4.5 6.5h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z";
@@ -75,8 +64,10 @@ const INFO_STEM = "M10 9.2v4.6";
 const INFO_DOT = "M10 7.4a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9Z";
 
 const LIVE_DASHES = ringDashes(10, 10, 8.5, 8, 1);
-const LINK_A = stadium(7.5, 12.5, 10.4, 5.6, -45);
-const LINK_B = stadium(12.5, 7.5, 10.4, 5.6, -45);
+// Chain link: two open hooks (r 2.9 caps) on the 45 degree diagonal, tips
+// facing each other across a small gap where the links interlock.
+const LINK_A = "M11.2 12.9L8.59 15.52A2.9 2.9 0 0 1 4.48 11.41L7.1 8.8";
+const LINK_B = "M12.9 11.2L15.52 8.59A2.9 2.9 0 0 0 11.41 4.48L8.8 7.1";
 const VIDEO_BODY = rr(2.5, 5.5, 10.5, 9, 2);
 const VIDEO_LENS = "M13 8.7l3.3-1.9a.8.8 0 0 1 1.2.7v5a.8.8 0 0 1-1.2.7L13 11.3";
 const DOC_BODY =
@@ -97,6 +88,7 @@ const CALENDAR_RINGS = "M7 2.8v3 M13 2.8v3";
 const CLOCK = circle(10, 10, 7.2);
 const CLOCK_HANDS = "M10 6v4.2l2.6 1.6";
 const PHOTO_FRAME = rr(3, 3.5, 14, 13, 2.5);
+const FILTER_LINES = "M6.4 7.4h7.2 M7.8 10h4.4 M9.1 12.6h1.8";
 
 export const ICONS = {
   // --- Approved sample sheet ---
@@ -247,31 +239,80 @@ export const ICONS = {
       [rr(11, 11, 5.5, 5.5, 1.6), "fs"],
     ],
   },
+  // Own drawing in the spirit of icloud.and.arrow.down: an outline cloud (small
+  // left bump, large middle bump, medium right bump, tangent fillets between
+  // them) that is OPEN at the bottom centre. The down arrow starts inside the
+  // cloud and passes through that gap, so its chevron sits below the base.
   download: {
     parts: [
-      ["M10 3v9.6 M6.8 9.5l3.2 3.2 3.2-3.2", "s"],
-      ["M4 13.6v.6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-.6", "s"],
+      [
+        "M7.1 12.7H4.8A3 3 0 0 1 3.53 6.98A.8.8 0 0 0 3.98 6.4A4.9 4.9 0 0 1 13.26 5.27A.8.8 0 0 0 14.1 5.74A3.5 3.5 0 1 1 14.6 12.7H12.9",
+        "s",
+      ],
+      ["M10 7.8V17.3M7.7 15L10 17.3L12.3 15", "s"],
     ],
   },
+  // Photos' "Filter By": a circle with three lines of decreasing length.
   filter: {
     parts: [
-      ["M3 6h5.8 M13.2 6H17 M3 14h2.8 M10.2 14H17", "s"],
-      [circle(11, 6, 2.2), "s"],
-      [circle(8, 14, 2.2), "s"],
+      [circle(10, 10, 7.2), "s"],
+      [FILTER_LINES, "s"],
     ],
     filled: [
-      ["M3 6h5.8 M13.2 6H17 M3 14h2.8 M10.2 14H17", "s"],
-      [circle(11, 6, 2.2), "fs"],
-      [circle(8, 14, 2.2), "fs"],
+      [circle(10, 10, 7.2), "f"],
+      [FILTER_LINES, "k"],
     ],
   },
   chevron: { parts: [["M7.5 4.5 13 10l-5.5 5.5", "s"]] },
-  rotate: {
+  // "Show whole photos": a wide photo shown entire inside the corners of a
+  // square tile, instead of cropped to fill it.
+  aspect: {
     parts: [
-      ["M16 10a6 6 0 1 1-1.9-4.4", "s"],
-      ["M14.6 2.9v3.1h-3.1", "s"],
+      [rr(2.5, 4.5, 15, 11, 2.4), "s"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "s"],
+    ],
+    filled: [
+      [rr(2.5, 4.5, 15, 11, 2.4), "fs"],
+      ["M6.4 9.2V7.9a.6.6 0 0 1 .6-.6h1.5 M13.6 10.8v1.3a.6.6 0 0 1-.6.6h-1.5", "k"],
     ],
   },
+  // Filter menu rows (iPhone Library menu).
+  edited: {
+    parts: [
+      ["M3.5 5.5h4.4 M11.7 5.5h4.8 M3.5 10h7.3 M14.6 10h1.9 M3.5 14.5h1.6 M8.9 14.5h7.6", "s"],
+      [circle(9.8, 5.5, 1.9), "s"],
+      [circle(12.7, 10, 1.9), "s"],
+      [circle(7, 14.5, 1.9), "s"],
+    ],
+  },
+  zoomIn: {
+    parts: [
+      [circle(8.7, 8.7, 5.3), "s"],
+      ["M12.6 12.6l4.2 4.2 M6.4 8.7h4.6 M8.7 6.4v4.6", "s"],
+    ],
+  },
+  zoomOut: {
+    parts: [
+      [circle(8.7, 8.7, 5.3), "s"],
+      ["M12.6 12.6l4.2 4.2 M6.4 8.7h4.6", "s"],
+    ],
+  },
+  shared: {
+    parts: [
+      [circle(12.4, 7.2, 2.3), "s"],
+      ["M8.3 16a4.1 4.1 0 0 1 8.2 0Z", "s"],
+      [circle(5.6, 8.6, 1.6), "s"],
+      ["M2.6 14.6a3.1 3.1 0 0 1 3.3-2.9", "s"],
+    ],
+  },
+  notInAlbum: {
+    parts: [
+      [rr(3.5, 5.5, 13, 10, 2), "s"],
+      ["M6 3.5h8 M3 3l14 14", "s"],
+    ],
+  },
+  plus: { parts: [["M10 4.5v11 M4.5 10h11", "s"]] },
+  minus: { parts: [["M4.5 10h11", "s"]] },
   more: {
     parts: [
       [circle(4.5, 10, 1.3), "f"],

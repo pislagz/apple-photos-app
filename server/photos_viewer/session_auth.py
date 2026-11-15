@@ -68,7 +68,22 @@ _COOKIE_SECURE_ENV = "PHOTOS_VIEWER_COOKIE_SECURE"
 
 _DEFAULT_DESKTOP_LIFETIME_SECONDS = 12 * 3600
 _DEFAULT_PWA_LIFETIME_SECONDS = 30 * 24 * 3600
-_DEFAULT_REMEMBER_ME_LIFETIME_SECONDS = 180 * 24 * 3600
+# "Keep me signed in": a persistent cookie that lasts until sign-out in
+# practice. 400 days is the longest Max-Age browsers honour, and the session
+# row expires then too; sign-out and admin session revoke still end it at once.
+_DEFAULT_REMEMBER_ME_LIFETIME_SECONDS = 400 * 24 * 3600
+
+# Admin setting for the sign-in checkbox: ticked by default, unticked by
+# default, or not offered (every sign-in is then a browser-session cookie).
+KEEP_SIGNED_IN_SETTING = "keep_signed_in_mode"
+KEEP_SIGNED_IN_MODES = ("default_on", "default_off", "disabled")
+DEFAULT_KEEP_SIGNED_IN_MODE = "default_on"
+
+
+def keep_signed_in_mode(conn: sqlite3.Connection) -> str:
+    stored = app_db.get_setting(conn, KEEP_SIGNED_IN_SETTING)
+    return stored if stored in KEEP_SIGNED_IN_MODES else DEFAULT_KEEP_SIGNED_IN_MODE
+
 
 # A session is considered idle-refreshed at most once a minute, so a user
 # scrolling the grid doesn't turn every request into a write.
@@ -311,13 +326,35 @@ def max_failed_logins_per_peer() -> int:
     return value
 
 
-def _cookie_secure() -> bool:
-    """Default true: the cookie is only safe to send over HTTPS (Tailscale
-    Serve). Set `PHOTOS_VIEWER_COOKIE_SECURE=false` for local plain-HTTP dev
-    only -- never inferred from the request, since a reverse proxy can make
-    an HTTP request look however it likes."""
-    raw = os.environ.get(_COOKIE_SECURE_ENV, "true").strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+def _request_is_https(request: Request) -> bool:
+    """True when the browser reached us over https. `request.url.scheme` is
+    already corrected by uvicorn's proxy-headers handling for its allowed
+    proxies; on top of that, `X-Forwarded-Proto` is honoured only when the
+    direct peer is loopback or a `PHOTOS_VIEWER_TRUSTED_PROXIES` entry. From
+    any other peer the header is client-controlled and ignored."""
+    if request.url.scheme.lower() == "https":
+        return True
+    peer = _client_ip(request)
+    if peer in _LOOPBACK_HOSTS or _is_trusted_proxy(peer):
+        forwarded = request.headers.get("x-forwarded-proto", "")
+        return forwarded.split(",", 1)[0].strip().lower() == "https"
+    return False
+
+
+def _cookie_secure(request: Request | None = None) -> bool:
+    """`PHOTOS_VIEWER_COOKIE_SECURE`: `true`/`false` force the flag; unset or
+    `auto` (the default) sets `Secure` only when the request arrived over
+    https, so plain-http home-network logins work while Tailscale Serve /
+    reverse-proxy https installs stay Secure. Without a request (no way to
+    tell) it stays Secure."""
+    raw = os.environ.get(_COOKIE_SECURE_ENV, "auto").strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if request is None:
+        return True
+    return _request_is_https(request)
 
 
 def _setting_or_env_seconds(
@@ -395,20 +432,25 @@ def start_session(
     response: Response,
     user_id: int,
     *,
+    request: Request | None = None,
     client: Literal["desktop", "pwa"] = "desktop",
     remember_me: bool = False,
 ) -> None:
     """Create a session and set its cookie. The one place the cookie flags
     live, so password and passkey sign-in (P3.1) can never drift apart."""
+    # The admin can turn the option off; a client that still sends it is ignored.
+    remember_me = remember_me and keep_signed_in_mode(conn) != "disabled"
     raw_token, max_age = create_session(
         conn, user_id, client=client, remember_me=remember_me
     )
     response.set_cookie(
         key=COOKIE_NAME,
         value=raw_token,
-        max_age=max_age,
+        # No Max-Age without "keep me signed in": a browser-session cookie.
+        # The server-side expiry (the client's normal lifetime) still applies.
+        max_age=max_age if remember_me else None,
         httponly=True,
-        secure=_cookie_secure(),
+        secure=_cookie_secure(request),
         samesite="strict",
         path="/",
     )
@@ -792,6 +834,30 @@ def validate_public_origins_env() -> None:
     _public_origins_from_env()  # parse (and warn about any invalid entries) now, at startup
 
 
+def _origin_matches_host_header(origin: _Origin, request: Request) -> bool:
+    """Same-host check: the Origin's host and port equal the Host header the
+    browser sent. The Origin header is set by the browser and can't be forged
+    by a page on another site, so a cross-site page never matches (its Origin
+    names its own host, not ours). This is what lets
+    http://192.168.1.20:8000 or http://homeserver.local:8000 sign in with no
+    configured origin list. The scheme must equal the scheme the request
+    actually arrived with (`request.url.scheme`, which uvicorn corrects only
+    for trusted proxies): a same-host Origin with the other scheme is
+    rejected, and an untrusted peer's `X-Forwarded-Proto` never counts. A
+    TLS-terminating proxy that doesn't forward the scheme needs
+    `PHOTOS_VIEWER_PUBLIC_ORIGINS`."""
+    scheme, hostname, port = origin
+    if scheme != request.url.scheme.lower():
+        return False
+    host_header = request.headers.get("host", "").strip().lower()
+    if not host_header:
+        return False
+    parsed = _parse_origin(f"{scheme}://{host_header}")
+    if parsed is None:
+        return False
+    return parsed[1] == hostname and parsed[2] == port
+
+
 def reject_cross_site_requests(request: Request) -> None:
     """CSRF defense for every state-changing (POST) route, including logout.
 
@@ -840,6 +906,9 @@ def reject_cross_site_requests(request: Request) -> None:
     parsed_origin = _parse_origin(origin)
     if parsed_origin is None:
         raise HTTPException(status_code=403, detail="cross-origin request rejected")
+
+    if _origin_matches_host_header(parsed_origin, request):
+        return
 
     allowed = {_request_origin(request)}
     public_origins = _public_origins_from_env()
@@ -1116,6 +1185,7 @@ class AuthUserResponse(BaseModel):
 
 class SetupStatusResponse(BaseModel):
     needs_setup: bool
+    keep_signed_in: Literal["default_on", "default_off", "disabled"] = "default_on"
 
 
 @router.get(
@@ -1127,7 +1197,9 @@ def setup_status(db: sqlite3.Connection = Depends(get_db)) -> SetupStatusRespons
     """Whether `POST /api/setup/admin` is still open, so the web app can show
     "Create admin account" instead of "Sign in" before any user row exists."""
     (existing_users,) = db.execute("SELECT COUNT(*) FROM users").fetchone()
-    return SetupStatusResponse(needs_setup=existing_users == 0)
+    return SetupStatusResponse(
+        needs_setup=existing_users == 0, keep_signed_in=keep_signed_in_mode(db)
+    )
 
 
 @router.post(
@@ -1236,7 +1308,12 @@ def login(
         db.commit()
 
     start_session(
-        db, response, user["id"], client=payload.client, remember_me=payload.remember_me
+        db,
+        response,
+        user["id"],
+        request=request,
+        client=payload.client,
+        remember_me=payload.remember_me,
     )
     return AuthUserResponse(username=user["username"], role=user["role"])
 

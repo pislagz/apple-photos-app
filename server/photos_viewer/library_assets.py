@@ -144,6 +144,9 @@ class MeResponse(BaseModel):
     # Whether the admin agreed to "Map & place names"; the Info panel explains
     # a missing place name with it.
     osm_consent: bool = False
+    # Set while the user has an avatar; changes with every new one so the
+    # browser re-fetches it. The picture is /api/users/{username}/avatar.
+    avatar_version: int | None = None
 
 
 def _updated_note(
@@ -227,8 +230,12 @@ def read_me(
         "WHERE library_assignments.user_id = ? ORDER BY libraries.display_name",
         (session["user_id"],),
     ).fetchall()
+    avatar = db.execute(
+        "SELECT avatar_version FROM users WHERE id = ?", (session["user_id"],)
+    ).fetchone()
     return MeResponse(
         username=session["username"],
+        avatar_version=avatar["avatar_version"] if avatar else None,
         role=session["role"],
         libraries=[_library_summary(db, row, session["user_id"]) for row in rows],
         layout_override=session["layout_override"],
@@ -271,11 +278,17 @@ class AssetListItem(BaseModel):
     width: int | None
     height: int | None
     duration: float | None
+    # The original is HEIC/HEIF, so a zip can offer "HEIC as JPEG" (#254).
+    is_heic: bool = False
 
 
 class AssetListResponse(BaseModel):
     items: list[AssetListItem]
     next_cursor: str | None
+    # Rows matching the request's filters, set on the first page only (no
+    # cursor). The oldest-first grid (#365) needs it to cut rows from the
+    # oldest photo while older pages are still unloaded.
+    total: int | None = None
 
 
 def _encode_cursor(date_created: str, asset_row_id: int) -> str:
@@ -293,6 +306,25 @@ def _decode_cursor(cursor: str) -> tuple[str, int]:
         raise HTTPException(status_code=400, detail="invalid cursor") from exc
 
 
+_HEIC_UTIS = {"public.heic", "public.heif", "public.heics", "public.heifs"}
+_HEIC_SUFFIXES = (".heic", ".heif")
+
+
+def _is_heic(row: sqlite3.Row) -> bool:
+    """By the original's UTI (what Photos recorded); rows indexed before the
+    UTI columns existed fall back to the file extension."""
+    keys = row.keys()
+    uti = (row["uti_original"] if "uti_original" in keys else None) or (
+        row["uti"] if "uti" in keys else None
+    )
+    if uti:
+        return uti.lower() in _HEIC_UTIS
+    names = [row["filename"]]
+    if "original_filename" in keys:
+        names.append(row["original_filename"])
+    return any(name and name.lower().endswith(_HEIC_SUFFIXES) for name in names)
+
+
 def _to_list_item(row: sqlite3.Row) -> AssetListItem:
     return AssetListItem(
         id=row["uuid"],
@@ -305,7 +337,29 @@ def _to_list_item(row: sqlite3.Row) -> AssetListItem:
         width=row["width"],
         height=row["height"],
         duration=row["duration"],
+        is_heic=_is_heic(row),
     )
+
+
+# Filter menu: `filter=` picks one of these, `hide=` drops kinds from any view.
+# "Not in an Album" means no user album; smart albums are not in `asset_albums`.
+_KIND_SQL = {
+    "edited": "path_edited IS NOT NULL",
+    "screenshots": "is_screenshot = 1",
+    "shared": "is_syndicated = 1",
+    "not-in-album": "NOT EXISTS (SELECT 1 FROM asset_albums aa WHERE aa.asset_id = assets.id)",
+}
+_HIDE_SQL = {
+    "screenshots": "is_screenshot = 0",
+    "shared": "is_syndicated = 0",
+}
+
+
+def _parse_hide(hide: str | None) -> frozenset[str]:
+    names = frozenset(part for part in (hide or "").split(",") if part)
+    if not names <= _HIDE_SQL.keys():
+        raise HTTPException(status_code=422, detail="unknown hide value")
+    return names
 
 
 def _list_assets(
@@ -319,6 +373,8 @@ def _list_assets(
     from_: str | None,
     to: str | None,
     favorite: bool | None = None,
+    kind: str | None = None,
+    hide: frozenset[str] = frozenset(),
     extra: tuple[str, list[object]] | None = None,
 ) -> AssetListResponse:
     clauses = ["library_id = ?", "hidden = ?"]
@@ -332,12 +388,20 @@ def _list_assets(
         clauses.append("is_video = 1")
     if favorite:
         clauses.append("favorite = 1")
+    if kind:
+        clauses.append(_KIND_SQL[kind])
+    clauses.extend(_HIDE_SQL[name] for name in sorted(hide))
     if from_:
         clauses.append(f"{_LOCAL_DAY_SQL} >= ?")
         params.append(from_)
     if to:
         clauses.append(f"{_LOCAL_DAY_SQL} <= ?")
         params.append(to)
+    total: int | None = None
+    if not cursor:
+        total = db.execute(
+            f"SELECT COUNT(*) FROM assets WHERE {' AND '.join(clauses)}", params
+        ).fetchone()[0]
     if cursor:
         cursor_date, cursor_row_id = _decode_cursor(cursor)
         clauses.append("(date_created < ? OR (date_created = ? AND id < ?))")
@@ -359,7 +423,9 @@ def _list_assets(
         _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
     )
     return AssetListResponse(
-        items=[_to_list_item(row) for row in page], next_cursor=next_cursor
+        items=[_to_list_item(row) for row in page],
+        next_cursor=next_cursor,
+        total=total,
     )
 
 
@@ -374,6 +440,10 @@ def list_assets(
     from_: str | None = Query(None, alias="from"),
     to: str | None = None,
     favorite: bool | None = None,
+    filter_: Literal["edited", "screenshots", "shared", "not-in-album"] | None = Query(
+        None, alias="filter"
+    ),
+    hide: str | None = None,
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
@@ -404,6 +474,8 @@ def list_assets(
         from_=from_,
         to=to,
         favorite=favorite,
+        kind=filter_,
+        hide=_parse_hide(hide),
         extra=extra,
     )
 
@@ -447,15 +519,14 @@ class SummaryPeriodBucket(SummaryBucket):
     # aesthetic score, so the client can cycle a tile through a few
     # candidates instead of pinning one "best shot" (Pawel declined a
     # curated-best-shot feature; this only re-orders assets already in the
-    # bucket). Days stays plain `SummaryBucket`: it keeps cursor paging and
-    # has no tiles to feed.
+    # bucket). Days (#301) carries one key photo per day for its cards.
     key_asset_ids: list[str]
 
 
 class SummaryResponse(BaseModel):
     years: list[SummaryPeriodBucket]
     months: list[SummaryPeriodBucket]
-    days: list[SummaryBucket]
+    days: list[SummaryPeriodBucket]
 
 
 _KEY_ASSETS_PER_BUCKET = 5
@@ -473,7 +544,10 @@ def _buckets(
 
 
 def _period_buckets(
-    db: sqlite3.Connection, library_id: int, length: int
+    db: sqlite3.Connection,
+    library_id: int,
+    length: int,
+    per_bucket: int = _KEY_ASSETS_PER_BUCKET,
 ) -> list[SummaryPeriodBucket]:
     buckets = _buckets(db, library_id, length)
     # Ranked within each bucket -- favorite first, then score, then most
@@ -497,7 +571,7 @@ def _period_buckets(
         WHERE rn <= ?
         ORDER BY key, rn
         """,
-        (length, length, library_id, _KEY_ASSETS_PER_BUCKET),
+        (length, length, library_id, per_bucket),
     ).fetchall()
     key_asset_ids: dict[str, list[str]] = {}
     for row in key_rows:
@@ -520,7 +594,7 @@ def library_summary(
     return SummaryResponse(
         years=_period_buckets(db, library["id"], 4),
         months=_period_buckets(db, library["id"], 7),
-        days=_buckets(db, library["id"], 10),
+        days=_period_buckets(db, library["id"], 10, per_bucket=1),
     )
 
 
@@ -614,15 +688,20 @@ def asset_detail(
     # media (#151).
     asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
     response.headers.update(_media_cache_headers(asset))
-    people = [
-        row["display_name"] or row["name"]
-        for row in db.execute(
-            "SELECT people.name, people.display_name FROM asset_people "
-            "JOIN people ON people.id = asset_people.person_id WHERE asset_people.asset_id = ? "
-            "ORDER BY people.display_name, people.name",
-            (asset["id"],),
-        ).fetchall()
-    ]
+    # An unnamed face group has neither name nor display_name (NULL or ""); it
+    # has no string to list, and a None in `people: list[str]` fails response
+    # validation (HTTP 500), so it is skipped.
+    people = sorted(
+        {
+            label
+            for row in db.execute(
+                "SELECT people.name, people.display_name FROM asset_people "
+                "JOIN people ON people.id = asset_people.person_id WHERE asset_people.asset_id = ?",
+                (asset["id"],),
+            ).fetchall()
+            if (label := row["display_name"] or row["name"])
+        }
+    )
     albums = [
         row["title"]
         for row in db.execute(
@@ -812,16 +891,14 @@ def _original_not_available(library_path: str, raw_path: str | None) -> bool:
     return False
 
 
-@router.get("/api/libraries/{library_id}/thumb/{asset_id}")
-def asset_thumb(
-    asset_id: str,
-    size: Literal["grid", "grid2x", "preview"] = "grid",
-    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
-    session: sqlite3.Row = Depends(session_auth.require_session),
-    db: sqlite3.Connection = Depends(session_auth.get_db),
-    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
-) -> Response:
-    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+def render_thumb(
+    db: sqlite3.Connection,
+    cache_dir: pathlib.Path,
+    library: sqlite3.Row,
+    asset: sqlite3.Row,
+    size: str,
+) -> media.GeneratedImage:
+    """Shared by the thumb route and the avatar crop (user_avatar)."""
     edited, original, derivative = (
         asset["path_edited"],
         asset["path_original"],
@@ -868,6 +945,20 @@ def asset_thumb(
         # exists but no backend here could decode it (an unsupported RAW
         # variant, a corrupt file, a decompression-bomb guard trip).
         raise HTTPException(status_code=415, detail=str(exc)) from exc
+    return result
+
+
+@router.get("/api/libraries/{library_id}/thumb/{asset_id}")
+def asset_thumb(
+    asset_id: str,
+    size: Literal["grid", "grid2x", "preview"] = "grid",
+    library: sqlite3.Row = Depends(session_auth.require_library_assignment),
+    session: sqlite3.Row = Depends(session_auth.require_session),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    cache_dir: pathlib.Path = Depends(session_auth.get_media_cache_dir),
+) -> Response:
+    asset = _get_media_asset_or_404(db, library["id"], asset_id, session)
+    result = render_thumb(db, cache_dir, library, asset, size)
     return Response(
         content=result.data,
         media_type=result.content_type,

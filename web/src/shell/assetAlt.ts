@@ -8,7 +8,7 @@ export function assetAlt(asset: { title?: string | null; date?: string | null; i
   if (asset.date) {
     const parsed = new Date(asset.date);
     if (!Number.isNaN(parsed.getTime())) {
-      const when = parsed.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      const when = parsed.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
       return `${kind} from ${when}`;
     }
   }

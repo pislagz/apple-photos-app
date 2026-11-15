@@ -36,6 +36,22 @@ export function formatPlaceName(detail: Pick<AssetDetailResponse, "place" | "pla
   return detail.place_address || detail.place || detail.place_offline || "";
 }
 
+// Short name for the viewer title (Apple Photos shows "Selva", never an
+// address): Photos' own `place` (its POI / locality name) first; else the city
+// of the offline "City, Country" name; else the first component of the full
+// address that is not a street line (no digit), else its first component.
+export function formatShortPlaceName(detail: Pick<AssetDetailResponse, "place" | "place_address" | "place_offline">): string {
+  const place = detail.place?.trim();
+  if (place) return place;
+  const offline = detail.place_offline?.split(",")[0]?.trim();
+  if (offline) return offline;
+  const parts = (detail.place_address ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.find((part) => !/\d/.test(part)) ?? parts[0] ?? "";
+}
+
 // The Info "Location" row. A name if there is one; nothing is ever geocoded
 // online, so with GPS and no name it is the coordinates ("Unknown place" if
 // they are unusable); with no GPS either, empty.
@@ -48,8 +64,8 @@ export function formatLocationLine(
   return formatCoordinates(detail.latitude, detail.longitude) ?? "Unknown place";
 }
 
-export function formatFileSize(bytes: number | null): string {
-  if (bytes === null) return "";
+export function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes == null) return "";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unitIndex = 0;
@@ -77,7 +93,9 @@ export function buildInfoRows(detail: AssetDetailResponse, options: { includeFil
   if (date) rows.push({ label: "Date", value: date });
   const camera = formatCameraLine(detail);
   if (camera) rows.push({ label: "Camera", value: camera });
-  if (detail.people.length > 0) rows.push({ label: "People", value: detail.people.join(", ") });
+  // Unnamed faces must not render as "null"/"undefined" or an empty entry.
+  const people = (detail.people ?? []).filter((name): name is string => typeof name === "string" && name.trim() !== "");
+  if (people.length > 0) rows.push({ label: "People", value: people.join(", ") });
   if (detail.albums.length > 0) rows.push({ label: "Albums", value: detail.albums.join(", ") });
   const location = formatLocationLine(detail);
   if (location) {

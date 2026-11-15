@@ -1,115 +1,156 @@
-import { useState } from "react";
-import { ApiError, replaceLibrary, type LibraryResponse, type ReplacePreview } from "../api";
+import { useEffect, useState } from "react";
+import { type LibraryResponse, replaceLibrary, type ReplacePreview, type ReplaceSuggestion } from "../api";
+import { describeError } from "../sharing";
+import { GroupedList, Row } from "../ui/GroupedList";
+import Sheet from "../ui/Sheet";
+import LibraryPicker, { type PickedFile } from "./LibraryPicker";
 
-// Warnings that need an explicit "Replace anyway". The server does not count
+// Warnings that need an explicit "Replace Anyway". The server does not count
 // originals_missing as a blocker, so neither do we.
 const INFO_ONLY_CODES = new Set(["originals_missing"]);
 
-function describeError(err: unknown): string {
-  return err instanceof ApiError ? err.message : "something went wrong";
-}
+const stripSuffix = (name: string) => name.replace(/\.photoslibrary$/i, "");
 
+// Two steps in one sheet: choose the new file (the server's suggestions first), then see
+// what would change and confirm. Nothing happens until the last button.
 export default function ReplaceDialog({
   library,
-  initialPath = "",
+  initial,
+  suggestions = [],
   onClose,
   onReplaced,
 }: {
   library: LibraryResponse;
-  initialPath?: string;
+  /** A file to preview straight away, for example the server's suggestion. */
+  initial?: PickedFile;
+  suggestions?: ReplaceSuggestion[];
   onClose: () => void;
   onReplaced: () => void;
 }) {
-  const [path, setPath] = useState(initialPath);
+  const [picked, setPicked] = useState<PickedFile | null>(initial ?? null);
+  const [typedPath, setTypedPath] = useState("");
   const [preview, setPreview] = useState<ReplacePreview | null>(null);
-  const [anyway, setAnyway] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const blockers = preview?.warnings.filter((w) => !INFO_ONLY_CODES.has(w.code)) ?? [];
-
-  async function handlePreview(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
+  // A preview belongs to the file it was made for: choosing another file starts over.
+  useEffect(() => {
+    if (picked === null) return;
+    let cancelled = false;
     setPreview(null);
-    setAnyway(false);
+    setError(null);
     setBusy(true);
-    try {
-      setPreview(await replaceLibrary(library.id, path.trim()));
-    } catch (err) {
-      setError(describeError(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+    replaceLibrary(library.id, picked.path)
+      .then((result) => !cancelled && setPreview(result))
+      .catch((err: unknown) => !cancelled && setError(describeError(err)))
+      .finally(() => !cancelled && setBusy(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [picked, library.id]);
 
-  async function handleConfirm() {
+  const blockers = preview?.warnings.filter((w) => !INFO_ONLY_CODES.has(w.code)) ?? [];
+  const anyway = blockers.length > 0;
+
+  async function confirm() {
+    if (picked === null) return;
     setError(null);
     setBusy(true);
     try {
-      await replaceLibrary(library.id, path.trim(), { confirm: true, replaceAnyway: anyway });
+      await replaceLibrary(library.id, picked.path, { confirm: true, replaceAnyway: anyway });
       onReplaced();
     } catch (err) {
       setError(describeError(err));
-    } finally {
       setBusy(false);
     }
   }
 
-  return (
-    <div role="dialog" aria-label={`Replace library file for ${library.display_name}`}>
-      <h2>Replace library file: {library.display_name}</h2>
-      <p>
-        Points this library at a new package. Its id, name, sharing and settings stay; photos are matched by their
-        Photos id. Currently: {library.path}
-      </p>
-      {error && <p role="alert">{error}</p>}
-      <form onSubmit={handlePreview}>
-        <label>
-          New path
-          <input value={path} onChange={(event) => {
-              // A preview (and any "Replace anyway") belongs to the path it was made for.
-              setPath(event.target.value);
-              setPreview(null);
-              setAnyway(false);
-            }} placeholder="/libraries/Alice 2026.photoslibrary" />
-        </label>
-        <button type="submit" disabled={busy || path.trim() === ""}>
-          Preview
-        </button>
-      </form>
+  const errorLine = error && (
+    <p role="alert" className="admin-sheet__error">
+      {error}
+    </p>
+  );
 
+  if (picked === null) {
+    return (
+      <Sheet title="Replace Library File" cancelLabel="Close" onClose={onClose} actions={[]}>
+        <p>Choose the new file for “{library.display_name}”. Its name, who can see it and its settings stay the same.</p>
+        {errorLine}
+        <LibraryPicker
+          refreshKey={0}
+          buttonLabel="Choose"
+          suggestions={suggestions}
+          onError={setError}
+          onPick={(file) => setPicked(file)}
+        >
+          <form
+            className="admin-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setPicked({ path: typedPath.trim(), name: typedPath.trim() });
+            }}
+          >
+            <label className="admin-field">
+              New path
+              <input className="admin-input" value={typedPath} onChange={(event) => setTypedPath(event.target.value)} placeholder="/libraries/Alice 2026.photoslibrary" />
+            </label>
+            <button type="submit" className="admin-btn" disabled={typedPath.trim() === ""}>
+              Preview
+            </button>
+          </form>
+        </LibraryPicker>
+      </Sheet>
+    );
+  }
+
+  const title = `Replace “${library.display_name}” with “${stripSuffix(picked.name.split("/").pop() ?? picked.name)}”?`;
+  return (
+    <Sheet
+      title={title}
+      onClose={onClose}
+      actions={[
+        {
+          label: anyway ? "Replace Anyway" : "Replace",
+          kind: anyway ? "destructive" : "neutral",
+          disabled: busy || preview === null,
+          onClick: () => void confirm(),
+        },
+      ]}
+    >
+      {errorLine}
+      {preview === null && !error && <p role="status">Looking at the new file…</p>}
+      {preview === null && error && (
+        <button type="button" className="admin-btn" onClick={() => setPicked(null)}>
+          Choose a Different File
+        </button>
+      )}
       {preview && (
-        <div>
-          <ul aria-label="Replace preview">
-            <li>{preview.new_asset_count} photos in the new file</li>
-            <li>{preview.would_add} would be added</li>
-            <li>{preview.would_remove} would be removed</li>
-            <li>{Math.round(preview.overlap * 100)}% of the current photos are in the new file</li>
-            <li>
-              Same library store:{" "}
-              {preview.store_uuid_match === null ? "unknown" : preview.store_uuid_match ? "yes" : "no"}
-            </li>
-          </ul>
+        <>
+          <GroupedList label="Replace preview">
+            <Row label="In the new file" value={`${preview.new_asset_count.toLocaleString()} photos`} />
+            <Row label="Will be added" value={preview.would_add.toLocaleString()} />
+            <Row label="Will be removed" value={preview.would_remove.toLocaleString()} />
+            <Row label="Already in this library" value={`${Math.round(preview.overlap * 100)}%`} />
+            <Row
+              label="Same library as before"
+              value={preview.store_uuid_match === null ? "Can't tell" : preview.store_uuid_match ? "Yes" : "No"}
+            />
+          </GroupedList>
           {preview.warnings.map((warning) => (
-            <p key={warning.code} role="alert">
+            <p key={warning.code} role="alert" className="admin-hint admin-hint--warn">
               {warning.message}
             </p>
           ))}
-          {blockers.length > 0 && (
-            <label>
-              <input type="checkbox" checked={anyway} onChange={(event) => setAnyway(event.target.checked)} />
-              Replace anyway
-            </label>
+          {anyway && (
+            <p className="admin-hint">
+              These look like different libraries. Anyone who had photos in the old one may lose them from their view.
+            </p>
           )}
-          <button type="button" onClick={handleConfirm} disabled={busy || (blockers.length > 0 && !anyway)}>
-            {blockers.length > 0 ? "Replace anyway" : "Replace"}
+          <button type="button" className="admin-btn" onClick={() => setPicked(null)}>
+            Choose a Different File
           </button>
-        </div>
+        </>
       )}
-      <button type="button" onClick={onClose}>
-        Cancel
-      </button>
-    </div>
+    </Sheet>
   );
 }

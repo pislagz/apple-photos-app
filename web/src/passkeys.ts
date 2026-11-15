@@ -16,10 +16,23 @@ interface OptionsResponse {
   options: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
+// Why passkeys can't be offered on this page, in plain words, or null when the
+// connection is fine. WebAuthn needs a secure context, and its relying-party id
+// must be a domain name, so a bare IP address never works even on 127.0.0.1.
+export function passkeyConnectionNote(): string | null {
+  if (typeof window === "undefined") return null;
+  const host = window.location?.hostname ?? "";
+  const bareIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":");
+  if (window.isSecureContext === false || bareIp) {
+    return "Passkeys need a secure (https) connection and a host name, not an IP address.";
+  }
+  return null;
+}
+
 export function passkeysSupported(): boolean {
   return (
     typeof window !== "undefined" &&
-    window.isSecureContext !== false &&
+    passkeyConnectionNote() === null &&
     typeof window.PublicKeyCredential === "function" &&
     typeof navigator !== "undefined" &&
     !!navigator.credentials

@@ -30,6 +30,7 @@ describe("mobile view-switch pill (#117)", () => {
 
   it("reserves bottom padding so the pill never covers the last Days caption", () => {
     const scroll = rule(".mobile-library__scroll");
+    // #367: the tab bar is in flow, so only the pill's own room is reserved.
     const pad = Number(scroll.match(/padding-bottom:\s*(\d+)px/)?.[1]);
     expect(pad).toBeGreaterThanOrEqual(64);
   });

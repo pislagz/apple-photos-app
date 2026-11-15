@@ -158,3 +158,24 @@ def test_migration_17_flags_already_indexed_libraries_for_a_reindex(
         assert flags == {"A": 1, "B": 0}
     finally:
         conn.close()
+
+
+def test_missing_fts5_fails_startup_with_a_clear_message(tmp_path, monkeypatch, caplog):
+    # A module name SQLite does not have stands in for a build without FTS5.
+    monkeypatch.setattr(
+        app_db, "_MIGRATIONS", [["CREATE VIRTUAL TABLE t USING fts5_absent(a)"]]
+    )
+
+    with (
+        caplog.at_level("ERROR", logger="photos_viewer.app_db"),
+        pytest.raises(RuntimeError, match="without FTS5"),
+    ):
+        app_db.connect(tmp_path)
+
+    assert "without FTS5" in caplog.text
+    # The failed migration left nothing behind.
+    conn = sqlite3.connect(app_db.db_path(tmp_path))
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 0
+    finally:
+        conn.close()

@@ -65,8 +65,6 @@ describe("alt text", () => {
         me={ME}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -101,8 +99,6 @@ describe("keyboard", () => {
         me={ME}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -116,18 +112,31 @@ describe("keyboard", () => {
     expect(screen.getByRole("button", { name: "Show sidebar" }).getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector(".shell--sidebar-collapsed")).not.toBeNull();
     expect(localStorage.getItem("photos-viewer.sidebar-collapsed")).toBe("1");
+    // #349: the same toggle brings it back.
+    fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
+    expect(sidebar.hasAttribute("inert")).toBe(false);
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
+    expect(localStorage.getItem("photos-viewer.sidebar-collapsed")).toBe("0");
   });
 });
 
 describe("focus ring and motion CSS", () => {
   it("has a global :focus-visible ring and never removes outlines on controls", () => {
     expect(css).toMatch(/:focus-visible\s*{[^}]*outline:\s*2px solid var\(--accent\)/);
-    // Only the search input (own ring) and the programmatically focused viewer may set outline: none.
+    // Only the search input (the ring is drawn around the whole field) and the programmatically focused viewer may set outline: none.
     const nones = css.match(/[^{}]+{[^}]*outline:\s*none/g) ?? [];
     expect(nones.map((rule) => rule.trim().split("\n")[0])).toEqual([
       ".search-box__input {",
+      ".search-box__input:focus-visible {",
       ".desktop-viewer:focus {",
     ]);
+  });
+
+  it("keeps a forced-colors-visible outline on fields whose ring is a box-shadow", () => {
+    // Apple-style field rings use box-shadow, which forced-colors mode removes; a transparent outline stays visible there.
+    const adminCss = readFileSync(join(__dirname, "../admin/admin.css"), "utf-8");
+    expect(css).toMatch(/\.login-card input:focus-visible\s*{\s*outline:\s*2px solid transparent/);
+    expect(adminCss).toMatch(/\.admin-input:focus-visible\s*{[^}]*outline:\s*2px solid transparent/);
   });
 
   it("switches motion off under prefers-reduced-motion", () => {

@@ -180,6 +180,7 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
         first_body = first_page.json()
         assert [item["id"] for item in first_body["items"]] == ["newest", "middle"]
         assert first_body["next_cursor"] is not None
+        assert first_body["total"] == 3
 
         # Simulate a re-index inserting a row newer than anything paged so far --
         # it sorts "above" the cursor and must not perturb the next page.
@@ -195,6 +196,7 @@ def test_list_assets_pagination_is_stable_against_inserts_above_the_cursor(tmp_p
         second_body = second_page.json()
         assert [item["id"] for item in second_body["items"]] == ["oldest"]
         assert second_body["next_cursor"] is None
+        assert second_body["total"] is None
     finally:
         conn.close()
 
@@ -215,6 +217,59 @@ def test_list_assets_filters_by_type(tmp_path):
 
         assert response.status_code == 200
         assert [item["id"] for item in response.json()["items"]] == ["a-video"]
+    finally:
+        conn.close()
+
+
+def test_list_assets_flags_heic_originals_by_uti_then_extension(tmp_path):
+    """#254: the web shows "HEIC as JPEG" only when a selected item is HEIC."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _insert_asset(
+            conn,
+            library_id,
+            "heic-by-uti",
+            filename="IMG_1.JPG",
+            uti="public.jpeg",
+            uti_original="public.heic",
+            date_created="2024-01-05T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "jpeg-by-uti",
+            filename="IMG_2.HEIC",
+            uti="public.jpeg",
+            uti_original="public.jpeg",
+            date_created="2024-01-04T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "heif-by-name",
+            filename="IMG_3.HEIF",
+            date_created="2024-01-03T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "png-by-name",
+            filename="IMG_4.png",
+            date_created="2024-01-02T00:00:00",
+        )
+        _login(client, "alice")
+
+        items = client.get(f"/api/libraries/{library_id}/assets").json()["items"]
+
+        assert {item["id"]: item["is_heic"] for item in items} == {
+            "heic-by-uti": True,
+            "jpeg-by-uti": False,
+            "heif-by-name": True,
+            "png-by-name": False,
+        }
     finally:
         conn.close()
 
@@ -388,7 +443,7 @@ def test_summary_counts_by_year_month_day(tmp_path):
         )
         assert months_2024_01["count"] == 2
         assert set(months_2024_01["key_asset_ids"]) == {"a", "b"}
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
+        assert {"key": "2024-01-01", "count": 1, "key_asset_ids": ["a"]} in body["days"]
     finally:
         conn.close()
 
@@ -473,7 +528,10 @@ def test_summary_excludes_hidden(tmp_path):
         )
         assert months_2024_01["count"] == 1
         assert months_2024_01["key_asset_ids"] == ["visible"]
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
+        # Days carry exactly one key photo, never the hidden one (#301).
+        assert {"key": "2024-01-01", "count": 1, "key_asset_ids": ["visible"]} in body[
+            "days"
+        ]
     finally:
         conn.close()
 
@@ -524,8 +582,7 @@ def test_summary_buckets_by_local_day_not_utc_day(tmp_path):
 
         assert response.status_code == 200
         body = response.json()
-        assert {"key": "2024-01-01", "count": 1} in body["days"]
-        assert {"key": "2024-01-02", "count": 1} not in body["days"]
+        assert [(d["key"], d["count"]) for d in body["days"]] == [("2024-01-01", 1)]
     finally:
         conn.close()
 
@@ -604,6 +661,46 @@ def test_asset_detail_includes_people_and_albums(tmp_path):
         assert body["albums"] == ["Trip"]
     finally:
         conn.close()
+
+
+def _detail_people(tmp_path, people):
+    """people: [(name, display_name), ...] tagged on asset "a"; returns the response."""
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        asset_row_id = _insert_asset(conn, library_id, "a")
+        for index, (name, display_name) in enumerate(people):
+            cursor = conn.execute(
+                "INSERT INTO people (library_id, uuid, name, display_name) VALUES (?, ?, ?, ?)",
+                (library_id, f"p{index}", name, display_name),
+            )
+            conn.execute(
+                "INSERT INTO asset_people (asset_id, person_id) VALUES (?, ?)",
+                (asset_row_id, cursor.lastrowid),
+            )
+        conn.commit()
+        _login(client, "alice")
+        return client.get(f"/api/libraries/{library_id}/assets/a")
+    finally:
+        conn.close()
+
+
+def test_asset_detail_with_only_an_unnamed_face_does_not_500(tmp_path):
+    response = _detail_people(tmp_path, [(None, None)])
+
+    assert response.status_code == 200
+    assert response.json()["people"] == []
+
+
+def test_asset_detail_skips_unnamed_faces_among_named_ones(tmp_path):
+    response = _detail_people(
+        tmp_path, [(None, None), ("Bob", None), ("", ""), (None, "Carol")]
+    )
+
+    assert response.status_code == 200
+    assert response.json()["people"] == ["Bob", "Carol"]
 
 
 def test_asset_detail_includes_camera_make_and_model(tmp_path):
@@ -1751,5 +1848,65 @@ def test_list_items_expose_original_filename(tmp_path):
         _login(client, "alice")
         items = client.get(f"/api/libraries/{library_id}/assets").json()["items"]
         assert items[0]["original_filename"] == "IMG_1234.HEIC"
+    finally:
+        conn.close()
+
+
+def test_filter_menu_kinds_and_hide_toggles(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        plain = _insert_asset(
+            conn, library_id, "plain", date_created="2024-01-05T00:00:00"
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "edited",
+            path_edited="e.jpg",
+            date_created="2024-01-04T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "shot",
+            is_screenshot=1,
+            date_created="2024-01-03T00:00:00",
+        )
+        _insert_asset(
+            conn,
+            library_id,
+            "shared",
+            is_syndicated=1,
+            date_created="2024-01-02T00:00:00",
+        )
+        cur = conn.execute(
+            "INSERT INTO albums (library_id, uuid, title) VALUES (?, 'a1', 'A')",
+            (library_id,),
+        )
+        conn.execute(
+            "INSERT INTO asset_albums (asset_id, album_id) VALUES (?, ?)",
+            (plain, cur.lastrowid),
+        )
+        conn.commit()
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/assets"
+
+        def ids(**params):
+            response = client.get(url, params=params)
+            assert response.status_code == 200, response.text
+            return [item["id"] for item in response.json()["items"]]
+
+        assert ids(filter="edited") == ["edited"]
+        assert ids(filter="screenshots") == ["shot"]
+        assert ids(filter="shared") == ["shared"]
+        assert ids(filter="not-in-album") == ["edited", "shot", "shared"]
+        assert ids(hide="screenshots") == ["plain", "edited", "shared"]
+        assert ids(hide="screenshots,shared") == ["plain", "edited"]
+        assert ids(filter="screenshots", hide="shared") == ["shot"]
+        assert client.get(url, params={"hide": "bogus"}).status_code == 422
+        assert client.get(url, params={"filter": "bogus"}).status_code == 422
     finally:
         conn.close()

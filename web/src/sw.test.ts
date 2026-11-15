@@ -207,7 +207,7 @@ describe("public/sw.js", () => {
   it("deletes stale cache names and claims clients on activate", async () => {
     const origin = "http://localhost:3000";
     const fakeCaches = {
-      keys: vi.fn().mockResolvedValue(["photos-viewer-shell-v1", "photos-viewer-shell-v2"]),
+      keys: vi.fn().mockResolvedValue(["photos-viewer-shell-v1", "photos-viewer-shell-v3"]),
       delete: vi.fn().mockResolvedValue(true),
     };
 
@@ -218,7 +218,7 @@ describe("public/sw.js", () => {
 
     expect(fakeCaches.delete).toHaveBeenCalledTimes(1);
     expect(fakeCaches.delete).toHaveBeenCalledWith("photos-viewer-shell-v1");
-    expect(fakeCaches.delete).not.toHaveBeenCalledWith("photos-viewer-shell-v2");
+    expect(fakeCaches.delete).not.toHaveBeenCalledWith("photos-viewer-shell-v3");
     expect(fakeSelf.clients.claim).toHaveBeenCalledTimes(1);
   });
 });

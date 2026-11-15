@@ -1,30 +1,47 @@
 import HeicFallbackModal from "./HeicFallbackModal";
+import { CheckBadge, TileOverlays } from "./TileOverlays";
+import MobileGridHeader, { type MobileGridNav } from "./MobileGridHeader";
 import ZipStatus from "./ZipStatus";
-import { useZipDownload } from "./zipDownload";
+import { Icon } from "../icons";
+import { selectionCountLabel } from "./selectionText";
+import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages } from "./albumText";
-import { shareOrDownloadAssets } from "../viewer/download";
+import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import LibraryEmptyState from "./LibraryEmptyState";
+import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
-import { buildRows, buildTileRows, type LibraryRow } from "./rows";
-import SummaryTile from "./SummaryTile";
+import PeriodCardGrid from "./PeriodCards";
+import { buildPeriodCards, buildRows, type LibraryRow } from "./rows";
+import FilterMenu from "./FilterMenu";
+import { useLibraryFilter } from "./useLibraryFilter";
 import { useDeepLinkOpen } from "./useDeepLinkOpen";
 import { useLibraryAssets } from "./useLibraryAssets";
+import { useLandOnPeriod, useOldestFirstScroll, useViewerIndex } from "./useOldestFirstScroll";
 import { useLibrarySummary } from "./useLibrarySummary";
 import { anchoredScrollTop, assetIdAtPoint, findRowIndexByAsset, type PinchAnchor } from "./pinchAnchor";
-import { usePinchColumns } from "./usePinchColumns";
+import DateTitle from "./DateTitle";
+import { phoneTitle, titleScrimProgress } from "./libraryTitle";
+import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
+import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
+import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
+import { isTypingTarget, shortcutAction } from "../shortcuts";
+import { shouldKeepEndAboveBar } from "./selectBarShift";
+import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
+import SharpImage from "./SharpImage";
+import { sharpSizeFor } from "./gridMetrics";
 import { useSlidingPill } from "./useSlidingPill";
 
 const HEADER_ROW_HEIGHT = 32;
-const DEFAULT_COLUMNS = 4;
-// Years/Months tiles are full-width cards, sized off the container alone --
-// independent of pinch-zoom's `columns`, which only ever applies to Days
-// and All Photos.
-const TILE_ASPECT_RATIO = 0.66;
+// Must equal --grid-gap in tokens.css.
+const MOBILE_GRID_GAP = 2;
+// One column shows whole photos; keep very tall or wide ones on screen.
+const MIN_SINGLE_ASPECT = 0.5;
+const MAX_SINGLE_ASPECT = 1.5;
 // Keep fetching the next page well before the user reaches the physical
 // bottom of what's loaded, since a page covers many virtual rows.
 const LOAD_MORE_ROW_MARGIN = 3;
@@ -39,8 +56,11 @@ export default function MobileLibrary({
   onInitialAssetOpened,
   resetSignal = 0,
   album,
+  isAdmin = false,
+  nav,
 }: {
   libraryId: number;
+  isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
   // Bumped by the shell when the already-active Library tab is tapped again.
@@ -48,60 +68,168 @@ export default function MobileLibrary({
   // P2.1: an album's id (or `smart:<slug>`). Lists only that album, as one
   // All Photos grid -- no Years/Months/Days switch, no summary.
   album?: string;
+  // A pushed grid (an album, a media type, a person, a place): back button
+  // and title in the grid's own top bar instead of a header above it.
+  nav?: MobileGridNav;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [view, setView] = useState<ViewKey>(album ? "all" : "years");
-  // Set right before drilling Months -> Days (#126): anchors the Days/All
-  // Photos feed's first page at that month instead of the top of the whole
-  // library. `/assets`'s `to` bound is a string compare on the local-day
-  // column, so "-31" is always a safe upper bound regardless of the real
-  // month length.
-  const [daysAnchor, setDaysAnchor] = useState<string | null>(null);
-  const { items, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
+  // Opens on All Photos like iOS Photos (#304); Years/Months/Days stay in the switch.
+  const [view, setView] = useState<ViewKey>("all");
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // Set when a Day card is tapped: All Photos scrolls to that day once the
+  // pages back to it are loaded.
+  const [pendingDayKey, setPendingDayKey] = useState<string | null>(null);
+  // #224: the Library (no album) lists oldest first and opens at the newest
+  // photos; albums, search, people and places keep newest first.
+  const oldestFirst = !album;
+  const filterState = useLibraryFilter();
+  // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
+  const [wholePhotos, setWholePhotos] = useState(false);
+  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, loadAll } = useLibraryAssets(
     libraryId,
-    daysAnchor,
-    "all",
+    null,
+    filterState.filter,
     album ?? null,
+    filterState.hide,
+    oldestFirst,
   );
   const { summary, error: summaryError, retry: retrySummary } = useLibrarySummary(libraryId, !album);
+  const libraryEmpty = summary !== null && summary.years.length === 0;
   const pinchAnchor = useRef<PinchAnchor | null>(null);
-  const { columns, touchHandlers } = usePinchColumns(DEFAULT_COLUMNS, (midpoint) => {
-    // #93: remember the asset under the fingers; the layout effect below
-    // scrolls it back into place once the new column count has reflowed.
+  const [columns, setColumns] = useState<GridColumns>(DEFAULT_COLUMNS);
+  const layerRef = useRef<HTMLDivElement | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
+
+  // #93: remember the asset under the point being zoomed; the layout effect
+  // below scrolls it back into place once the new level has laid out.
+  function rememberAnchor(point: PinchPoint) {
     const element = scrollRef.current;
     if (!element) return;
     const rect = element.getBoundingClientRect();
-    const viewportY = midpoint.clientY - rect.top;
+    const viewportY = point.clientY - rect.top;
     const y = element.scrollTop + viewportY;
     const row = rowVirtualizer.getVirtualItems().find((r) => r.start <= y && y < r.start + r.size);
-    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, midpoint.clientX - rect.left, cellSize);
+    const assetId = assetIdAtPoint(row ? rows[row.index] : undefined, point.clientX - rect.left, cellSize + MOBILE_GRID_GAP);
     if (row && assetId) pinchAnchor.current = { assetId, rowFraction: (y - row.start) / row.size, viewportY };
+  }
+
+  // Pinch and the zoom buttons share this: move `steps` levels along
+  // Years / Months / 5 / 3 / 1 columns, keeping `point` where it was.
+  function zoomLevels(steps: number, point: PinchPoint) {
+    const next = levelAfter(view, columns, steps);
+    if (next.view === view && next.columns === columns) return false;
+    rememberAnchor(point);
+    if (!isTileView && next.view !== "all") {
+      // Zooming out to Months: land on the month of the photo under the point.
+      const date = items.find((item) => item.id === pinchAnchor.current?.assetId)?.date;
+      setPendingScrollKey(date ? date.slice(0, 7) : null);
+    } else if (isTileView) {
+      // Out of Years/Months/Days: no photo under the fingers, so start at the newest.
+      setPendingScrollKey(null);
+      if (next.view === "all") backToNewest("all");
+    }
+    setColumns(next.columns);
+    setView(next.view);
+    return true;
+  }
+
+  const pinchRef = useRef<{ tapBlocked: () => boolean } | null>(null);
+  const pinch = usePinchZoom({
+    onStart: (point) => {
+      const element = scrollRef.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      origin.current = { x: point.clientX - rect.left, y: element.scrollTop + point.clientY - rect.top };
+    },
+    onScale: (scale) => {
+      if (layerRef.current) scaleLayer(layerRef.current, scale, origin.current);
+    },
+    onEnd: (scale, point) => {
+      const layer = layerRef.current;
+      const scroller = scrollRef.current;
+      const steps = stepsForScale(scale);
+      if (!layer || !scroller) return;
+      const next = levelAfter(view, columns, steps);
+      if (steps === 0 || (next.view === view && next.columns === columns)) {
+        snapBack(layer);
+        return;
+      }
+      fadeGhost(layer, scroller, scale, steps > 0);
+      resetLayer(layer);
+      zoomLevels(steps, point);
+      if (!reducedMotion()) {
+        setFadeIn(true);
+        window.setTimeout(() => setFadeIn(false), tokenMs("--dur-zoom", 280));
+      }
+    },
   });
-  // #146: back to the newest photos -- drop the Month -> Days anchor and
-  // scroll to the top. Re-selecting a zoom tab or the Library tab does this.
-  const backToNewest = useCallback(() => {
-    setDaysAnchor(null);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, []);
+  pinchRef.current = pinch;
+  const [fadeIn, setFadeIn] = useState(false);
+  const canZoomIn = levelIndex(view, columns) < ZOOM_LEVELS.length - 1;
+  const canZoomOut = levelIndex(view, columns) > 0;
+  const zoomBy = (steps: number) => {
+    const rect = scrollRef.current?.getBoundingClientRect();
+    zoomLevels(steps, { clientX: (rect?.left ?? 0) + (rect?.width ?? 0) / 2, clientY: (rect?.top ?? 0) + (rect?.height ?? 0) / 2 });
+  };
+  // #146: back to the newest photos. Re-selecting a zoom tab or the Library
+  // tab does this. The Library, Years and Months are oldest first (#224, #307),
+  // so their newest end is the bottom; newest-first lists start at the top.
+  const backToNewest = useCallback(
+    (target: ViewKey) => {
+      setPendingDayKey(null);
+      setPendingScrollKey(null);
+      const element = scrollRef.current;
+      if (element) element.scrollTop = target !== "all" || oldestFirst ? element.scrollHeight : 0;
+    },
+    [oldestFirst],
+  );
+  // A new filter lists different photos: start at the top, not mid-library.
+  const filterKey = `${filterState.filter}|${filterState.hide.join(",")}`;
+  const lastFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+    backToNewest(view);
+  }, [filterKey, backToNewest, view]);
   const lastResetSignal = useRef(resetSignal);
   useEffect(() => {
     if (lastResetSignal.current === resetSignal) return;
     lastResetSignal.current = resetSignal;
-    backToNewest();
+    backToNewest(viewRef.current);
   }, [resetSignal, backToNewest]);
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  // Set right before drilling Years -> Months, so the scroll effect below
-  // can land on the tapped year's own tile once Months' rows exist.
-  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
-  const isTileView = view === "years" || view === "months";
 
-  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, setOpenIndex, onInitialAssetOpened);
+  // Set right before drilling Years -> Months, so Months can land on the
+  // tapped year's first card.
+  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
+  const isTileView = view === "years" || view === "months" || view === "days";
+
+  const [openIndex, setOpenIndex] = useViewerIndex(items);
+  // A pasted link opens the Viewer and also scrolls the grid behind it to the photo.
+  const [revealId, setRevealId] = useState<string | null>(null);
+  const openFromLink = useCallback(
+    (index: number) => {
+      setOpenIndex(index);
+      setRevealId(items[index]?.id ?? null);
+    },
+    [items, setOpenIndex],
+  );
+  useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, openFromLink, onInitialAssetOpened);
   const [selectMode, setSelectMode] = useState(false);
   const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sharing, setSharing] = useState(false);
+  // Files already fetched for a share the browser blocked (expired tap); the
+  // next Share tap hands them to the share sheet with no await in between.
+  const [readyFiles, setReadyFiles] = useState<File[] | null>(null);
+  const selectBarRef = useRef<HTMLDivElement | null>(null);
+  const [selectBarHeight, setSelectBarHeight] = useState(0);
+
+  const itemOrder = useMemo(() => items.map((item) => item.id), [items]);
+  useSwipeSelect(selectMode && !isTileView, scrollRef, itemOrder, selectedIds, setSelectedIds);
 
   const toggleSelected = useCallback((id: string) => {
+    setReadyFiles(null);
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -110,9 +238,26 @@ export default function MobileLibrary({
     });
   }, []);
 
+  // #366: Cmd/Ctrl+A on a hardware keyboard selects everything in the view.
+  useEffect(() => {
+    if (isTileView || openIndex !== null) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (shortcutAction(event) !== "selectAll" || isTypingTarget(event.target)) return;
+      event.preventDefault();
+      void loadAll().then((all) => {
+        setReadyFiles(null);
+        setSelectMode(true);
+        setSelectedIds(new Set(all.map((item) => item.id)));
+      });
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isTileView, openIndex, loadAll]);
+
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
+    setReadyFiles(null);
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
@@ -120,6 +265,7 @@ export default function MobileLibrary({
   // Years/Months tiles drill down instead, via `openTile` below (R3, #126).
   const openItem = useCallback(
     (item: AssetListItem) => {
+      if (pinchRef.current?.tapBlocked()) return;
       if (selectMode) {
         toggleSelected(item.id);
         return;
@@ -134,32 +280,87 @@ export default function MobileLibrary({
   // that month (#126). Neither ever opens the Viewer.
   const openTile = useCallback(
     (bucketKey: string) => {
+      if (pinchRef.current?.tapBlocked()) return;
       if (view === "years") {
         setPendingScrollKey(bucketKey);
         setView("months");
         return;
       }
-      setDaysAnchor(`${bucketKey}-31`);
-      setView("days");
+      if (view === "months") {
+        // Month -> Days lands on that month's first day card (#301).
+        setPendingScrollKey(bucketKey);
+        setView("days");
+        return;
+      }
+      // Day -> All Photos at that day (#224: loads back to it, then scrolls there).
+      setPendingDayKey(bucketKey);
+      setView("all");
     },
     [view],
   );
 
   async function handleShareSelection() {
+    if (readyFiles) {
+      const outcome = await shareReadyFiles(readyFiles).catch(() => null);
+      setReadyFiles(outcome?.status === "ready" ? outcome.files : null);
+      return;
+    }
     const toShare = items.filter((item) => selectedIds.has(item.id));
     if (toShare.length === 0) return;
     setSharing(true);
     try {
-      await shareOrDownloadAssets(
+      const outcome = await shareOrDownloadAssets(
         libraryId,
         toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })),
       );
+      setReadyFiles(outcome.status === "ready" ? outcome.files : null);
     } finally {
       setSharing(false);
     }
   }
 
   const zip = useZipDownload(libraryId);
+  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
+
+  // One selected item downloads as the plain file; 2+ keep the archive flow.
+  async function handleDownloadSelection() {
+    const ids = [...selectedIds];
+    if (ids.length !== 1) {
+      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
+      return;
+    }
+    const item = items.find((candidate) => candidate.id === ids[0]);
+    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+  }
+
+  // The bar's height changes with its caption, progress line and HEIC row, so
+  // the grid's bottom padding follows the measured height (#281 F12).
+  useLayoutEffect(() => {
+    const bar = selectBarRef.current;
+    if (!selectMode || !bar) {
+      setSelectBarHeight(0);
+      return;
+    }
+    const measure = () => setSelectBarHeight(Math.ceil(bar.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [selectMode]);
+
+  // The Library opens at its end (#224): when the Select bar appears (more
+  // bottom padding), keep the newest row above it instead of underneath.
+  const lastBarHeight = useRef(0);
+  useLayoutEffect(() => {
+    const previous = lastBarHeight.current;
+    lastBarHeight.current = selectBarHeight;
+    const element = scrollRef.current;
+    if (!element) return;
+    if (shouldKeepEndAboveBar(previous, selectBarHeight, oldestFirst, element.scrollHeight - element.clientHeight - element.scrollTop)) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [selectBarHeight, oldestFirst]);
 
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -177,29 +378,91 @@ export default function MobileLibrary({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  // #91: Years/Months tiles come straight from `/summary`, not from
-  // `buildRows` over the cursor-paged `items` -- so they render instantly
-  // without paging through the whole library, and a `summary` still
-  // loading renders zero rows rather than a stale grid.
-  const rows = useMemo<LibraryRow[]>(() => {
-    if (view === "years") return summary ? buildTileRows(summary.years, "years") : [];
-    if (view === "months") return summary ? buildTileRows(summary.months, "months") : [];
-    return buildRows(items, view, columns);
-  }, [view, summary, items, columns]);
-  const cellSize = containerWidth > 0 ? containerWidth / columns : 0;
-  const tileHeight = containerWidth > 0 ? containerWidth * TILE_ASPECT_RATIO : 0;
+  // #307: Years/Months are cards built straight from `/summary`, not rows
+  // over the cursor-paged `items`; Days and All Photos use the virtualized rows.
+  const periodCards = useMemo(() => {
+    if (!isTileView) return [];
+    return summary ? buildPeriodCards(view === "years" ? summary.years : summary.days, view === "months" ? "days" : view) : [];
+  }, [view, summary]);
+  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst, total)), [isTileView, view, items, columns, oldestFirst, total]);
+  // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
+  // what is left of the width; dividing the full width overflowed the
+  // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
+  const cellSize = containerWidth > 0 ? (containerWidth - (columns - 1) * MOBILE_GRID_GAP) / columns : 0;
 
+  const sharpSize = sharpSizeFor(cellSize, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+
+  // One column shows whole photos at their aspect ratio; otherwise squares.
+  const cellHeight = (item: AssetListItem) =>
+    columns === 1 && item.width && item.height
+      ? cellSize * Math.min(MAX_SINGLE_ASPECT, Math.max(MIN_SINGLE_ASPECT, item.height / item.width))
+      : cellSize;
+
+  const rowSize = (row: LibraryRow) => {
+    if (row.type === "header") return HEADER_ROW_HEIGHT;
+    return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
+  };
+  // #415: the All Photos rows start below the floating header; the CSS inset
+  // is measured through a probe box because env() is not readable from JS.
+  const insetProbeRef = useRef<HTMLDivElement | null>(null);
+  const [topInset, setTopInset] = useState(0);
+  useLayoutEffect(() => {
+    // Computed height (resolved px in browsers) rather than offsetHeight.
+    const measure = () => setTopInset(Number.parseFloat(getComputedStyle(insetProbeRef.current ?? document.body).height) || 0);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
   const rowVirtualizer = useVirtualizer({
+    paddingStart: isTileView ? 0 : topInset,
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => {
-      const row = rows[index];
-      if (row.type === "header") return HEADER_ROW_HEIGHT;
-      if (row.type === "tile") return tileHeight;
-      return row.type === "feature" ? cellSize * 2 : cellSize;
-    },
+    estimateSize: (index) => rowSize(rows[index]),
     overscan: 6,
   });
+  const { scrollToEnd } = useOldestFirstScroll({ scrollRef, rows, rowSize, ready: oldestFirst && !isTileView && containerWidth > 0 });
+  const clearPendingDay = useCallback(() => setPendingDayKey(null), []);
+  const scrollToRowStart = useCallback((rowIndex: number) => rowVirtualizer.scrollToIndex(rowIndex, { align: "start" }), [rowVirtualizer]);
+  useLandOnPeriod({
+    key: pendingDayKey,
+    active: oldestFirst && view === "all",
+    items,
+    rows,
+    loading,
+    done,
+    loadMore,
+    scrollToRow: scrollToRowStart,
+    onLanded: clearPendingDay,
+  });
+  useLayoutEffect(() => {
+    if (!revealId) return;
+    const row = findRowIndexByAsset(rows, revealId);
+    if (row !== -1) {
+      rowVirtualizer.scrollToIndex(row, { align: "center" });
+      setRevealId(null);
+    }
+  }, [revealId, rows, rowVirtualizer]);
+
+  // The virtualizer caches row sizes per index and `estimateSize` is not part
+  // of its memo key, so a resize left the old heights (black gaps between
+  // rows) until a reload. Drop the cache when the width or columns change and
+  // keep the row at the top of the viewport (and the fraction scrolled into
+  // it) anchored. Runs before measure(), so the cache is still the old one.
+  const lastLayout = useRef({ cellSize, columns });
+  useLayoutEffect(() => {
+    const prev = lastLayout.current;
+    if (prev.cellSize === cellSize && prev.columns === columns) return;
+    lastLayout.current = { cellSize, columns };
+    const element = scrollRef.current;
+    const top = element?.scrollTop ?? 0;
+    const old = rowVirtualizer.measurementsCache.find((m) => m.start + m.size > top);
+    const fraction = old && old.size > 0 ? (top - old.start) / old.size : 0;
+    rowVirtualizer.measure();
+    // A column change is re-anchored by the pinch effect below.
+    if (!old || !element || prev.columns !== columns) return;
+    const next = rowVirtualizer.measurementsCache[old.index];
+    if (next) rowVirtualizer.scrollToOffset(next.start + fraction * next.size);
+  }, [rowVirtualizer, cellSize, columns]);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
   // `virtualRows[0]` is the first row in the *overscanned* range, which
@@ -207,15 +470,18 @@ export default function MobileLibrary({
   // topmost row actually scrolled to, found by scroll offset instead.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const topmostRow = virtualRows.find((row) => row.start + row.size > scrollOffset) ?? virtualRows[0];
-  const pinnedLabel = topmostRow ? rows[topmostRow.index]?.label ?? "" : "";
+  const topRow = topmostRow ? rows[topmostRow.index] : undefined;
+  const topDate = topRow && (topRow.type === "grid" || topRow.type === "feature") ? topRow.items[0]?.date : undefined;
+  const { subtitle: pinnedSubtitle, pill: pinnedPill } = phoneTitle(columns, topDate || undefined);
 
   useEffect(() => {
     // Years/Months never page -- `/summary` already carries every bucket.
     if (isTileView) return;
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
-    if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [isTileView, virtualRows, rows.length, loading, done, loadMore]);
+    // Oldest first: the unloaded pages are above the first row.
+    if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
+  }, [isTileView, virtualRows, rows.length, loading, done, loadMore, oldestFirst]);
 
   useLayoutEffect(() => {
     const anchor = pinchAnchor.current;
@@ -230,45 +496,67 @@ export default function MobileLibrary({
     // Only columns changing should re-anchor.
   }, [columns]);
 
-  // Lands Months scrolled to the year tile that was tapped, not back at the
-  // top -- see `openTile` above. A month's own key ("2022-01") always
-  // starts with its year's key ("2022").
-  useEffect(() => {
-    if (!pendingScrollKey) return;
-    const rowIndex = rows.findIndex((row) => row.type === "tile" && row.key.startsWith(pendingScrollKey));
-    if (rowIndex !== -1) {
-      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
-      setPendingScrollKey(null);
-    }
-  }, [pendingScrollKey, rows, rowVirtualizer]);
-
   const showSummaryError = isTileView && summaryError;
   // #147: Days / All Photos page `/assets`; a failed first page is an error, not an empty library.
   const showAssetsError = !isTileView && assetsError && items.length === 0;
-  const isEmpty = isTileView ? summary !== null && rows.length === 0 : items.length === 0 && done;
+  const isEmpty = isTileView ? summary !== null && periodCards.length === 0 : items.length === 0 && done;
 
   return (
     <div className="mobile-library">
-      {(view === "all" || !isTileView) && (
+      <div ref={insetProbeRef} className="mobile-library__inset-probe" aria-hidden="true" />
+      {(nav || view === "all" || !isTileView) && (
         // One flex row so the title can never sit under Select: the title
         // shrinks and ellipsizes, Select keeps its natural width. The scrim is
         // always on: Days has the white Select over a bright hero photo too (#176).
-        <div className="mobile-library__top-bar" data-testid="top-bar" data-scrim="true">
-          {view === "all" && (
-            <div className="mobile-library__pinned-header" data-testid="pinned-header">
-              {pinnedLabel}
+        <MobileGridHeader
+          nav={nav}
+          scrim={view === "all" ? titleScrimProgress(scrollOffset) : 1}
+          showSelect={!isTileView}
+          actions={
+            !isTileView && !selectMode ? (
+              <FilterMenu
+                state={filterState}
+                variant="mobile"
+                viewOptions={{
+                  canZoomIn,
+                  canZoomOut,
+                  onZoomIn: () => zoomBy(1),
+                  onZoomOut: () => zoomBy(-1),
+                  wholePhotos,
+                  onToggleWholePhotos: () => setWholePhotos((value) => !value),
+                }}
+              />
+            ) : undefined
+          }
+          selectMode={selectMode}
+          onToggleSelect={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+        >
+          {(view === "all" || selectMode) && (
+            <div className="mobile-library__title-block">
+              {selectMode ? (
+                <>
+                  <div key="select" className="mobile-library__large-title" data-testid="header-title">
+                    Select Items
+                  </div>
+                  <div className="mobile-library__subtitle" data-testid="header-subtitle" aria-live="polite">
+                    <span key={selectedIds.size} className="date-title__text">
+                      {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "None Selected"}
+                    </span>
+                  </div>
+                </>
+              ) : pinnedPill ? (
+                <DateTitle text={pinnedPill} className="mobile-library__pill" testId="header-subtitle" />
+              ) : (
+                <>
+                  <div className="mobile-library__large-title" data-testid="header-title">
+                    Library
+                  </div>
+                  <DateTitle text={pinnedSubtitle} className="mobile-library__subtitle" testId="header-subtitle" />
+                </>
+              )}
             </div>
           )}
-          {!isTileView && (
-            <button
-              type="button"
-              className="mobile-library__select-button"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            >
-              {selectMode ? "Cancel" : "Select"}
-            </button>
-          )}
-        </div>
+        </MobileGridHeader>
       )}
       {!selectMode && !album && (
         <div ref={segmentRef} className="mobile-library__view-switch" role="tablist" aria-label="Library zoom">
@@ -278,13 +566,28 @@ export default function MobileLibrary({
               type="button"
               role="tab"
               aria-selected={view === item.key}
+              // #263: nothing to group into years or months yet.
+              disabled={libraryEmpty && (item.key === "years" || item.key === "months")}
               className="mobile-library__view-switch-item"
               onClick={() => {
                 // A direct tab tap is not a drill-down (`openTile` below) --
                 // clear any stale Month -> Days anchor so tapping Days here
                 // starts at the top of the library, not back at the last
                 // drilled-into month.
-                backToNewest();
+                // Re-tapping "All" glides to the newest photo (instant when
+                // the user asked for reduced motion).
+                if (item.key === "all" && view === "all" && scrollRef.current) {
+                  setPendingDayKey(null);
+                  setPendingScrollKey(null);
+                  if (oldestFirst) {
+                    scrollToEnd(true);
+                  } else {
+                    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                    scrollRef.current.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+                  }
+                  return;
+                }
+                backToNewest(item.key);
                 setView(item.key);
               }}
             >
@@ -297,9 +600,15 @@ export default function MobileLibrary({
         ref={scrollRef}
         className="mobile-library__scroll"
         data-testid="library-scroll"
-        style={{ touchAction: "pan-y" }}
-        {...touchHandlers}
+        data-virtual-inset={!isTileView ? "" : undefined}
+        data-view={view}
+        style={{
+          touchAction: "pan-y",
+          ...(selectBarHeight > 0 ? { paddingBottom: selectBarHeight } : {}),
+        }}
+        {...pinch.touchHandlers}
       >
+        <div ref={layerRef} className={`mobile-library__zoom-layer${fadeIn ? " is-fading-in" : ""}`}>
         {showSummaryError || showAssetsError ? (
           <div className="mobile-library__empty" role="alert">
             <p>{albumMessages(album).error}</p>
@@ -312,7 +621,23 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <p className="mobile-library__empty">{albumMessages(album).empty}</p>
+          <LibraryEmptyState
+            title={albumMessages(album).empty}
+            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+            adminLink={isWholeLibraryEmpty(album) && isAdmin}
+          />
+        ) : isTileView ? (
+          <PeriodCardGrid
+            key={view}
+            libraryId={libraryId}
+            view={view}
+            phone
+            cards={periodCards}
+            scrollRef={scrollRef}
+            landOnKey={view !== "years" ? pendingScrollKey : null}
+            onLanded={() => setPendingScrollKey(null)}
+            onOpen={openTile}
+          />
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
@@ -336,38 +661,20 @@ export default function MobileLibrary({
                   </div>
                 );
               }
-              if (row.type === "tile") {
-                return (
-                  <div key={row.key} style={style}>
-                    <SummaryTile
-                      libraryId={libraryId}
-                      label={row.label}
-                      count={row.count}
-                      keyAssetIds={row.keyAssetIds}
-                      onOpen={() => openTile(row.key)}
-                    />
-                  </div>
-                );
-              }
               if (row.type === "feature") {
                 const hero = row.items[0];
                 return (
-                  <div key={row.key} style={style} className="mobile-library__row-feature">
+                  <div key={row.key} style={style} className="mobile-library__row-feature" data-selected={selectMode ? selectedIds.has(hero.id) : undefined}>
                     <FadeImage
                       src={`/api/libraries/${libraryId}/thumb/${hero.id}?size=grid2x`}
                       alt={assetAlt(hero)}
+                      data-asset-id={hero.id}
                       loading="lazy"
                       className="mobile-library__feature-image"
                       onClick={() => openItem(hero)}
                     />
                     <div className="mobile-library__feature-caption">{row.label}</div>
-                    {selectMode && (
-                      <span
-                        className="mobile-library__select-badge"
-                        data-selected={selectedIds.has(hero.id)}
-                        aria-label={selectedIds.has(hero.id) ? "Selected" : "Select"}
-                      />
-                    )}
+                    {selectMode && <CheckBadge prefix="mobile-library" selected={selectedIds.has(hero.id)} />}
                   </div>
                 );
               }
@@ -377,7 +684,8 @@ export default function MobileLibrary({
                     <div
                       key={item.id}
                       className="mobile-library__cell-wrap"
-                      style={{ width: cellSize, height: cellSize }}
+                      data-selected={selectedIds.has(item.id)}
+                      style={{ width: cellSize, height: cellHeight(item) }}
                     >
                       <FadeImage
                         src={`/api/libraries/${libraryId}/thumb/${item.id}?size=grid`}
@@ -386,16 +694,14 @@ export default function MobileLibrary({
                         tabIndex={-1}
                         loading="lazy"
                         className="mobile-library__cell"
-                        style={{ width: cellSize, height: cellSize }}
+                        style={{ width: cellSize, height: cellHeight(item), objectFit: wholePhotos ? "contain" : "cover" }}
                         onClick={() => openItem(item)}
                       />
-                      {selectMode && (
-                        <span
-                          className="mobile-library__select-badge"
-                          data-selected={selectedIds.has(item.id)}
-                          aria-label={selectedIds.has(item.id) ? "Selected" : "Select"}
-                        />
+                      {sharpSize !== "grid" && (
+                        <SharpImage src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${sharpSize}`} fit={wholePhotos ? "contain" : "cover"} />
                       )}
+                      <TileOverlays item={item} tileWidth={cellSize} prefix="mobile-library" />
+                      {selectMode && <CheckBadge prefix="mobile-library" selected={selectedIds.has(item.id)} />}
                     </div>
                   ))}
                 </div>
@@ -411,28 +717,53 @@ export default function MobileLibrary({
             </button>
           </div>
         )}
+        </div>
       </div>
       {selectMode && (
-        <div className="mobile-library__select-bar" data-testid="select-bar">
-          <span className="mobile-library__select-count">
-            {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "Select Items"}
-          </span>
-          <button
-            type="button"
-            onClick={handleShareSelection}
-            disabled={selectedIds.size === 0 || sharing}
-          >
-            Share
-          </button>
-          <button
-            type="button"
-            onClick={() => void zip.start([...selectedIds])}
-            disabled={selectedIds.size === 0 || zip.busy}
-          >
-            Zip
-          </button>
+        // Laid out like Photos' select toolbar (#259): Share at the left, the
+        // count in the middle, the action at the right, 44pt targets.
+        <div ref={selectBarRef} className="mobile-library__select-bar" data-testid="select-bar">
+          <div className="mobile-library__select-row">
+            <button
+              type="button"
+              className="mobile-library__glass-button mobile-library__bar-button"
+              aria-label="Share"
+              onClick={handleShareSelection}
+              disabled={selectedIds.size === 0 || sharing}
+            >
+              <Icon name="share" />
+            </button>
+            <span className="mobile-library__select-count" aria-live="polite">
+              {selectionCountLabel(items, selectedIds)}
+            </span>
+            <button
+              type="button"
+              className="mobile-library__glass-button mobile-library__bar-button mobile-library__bar-button--end"
+              aria-label="Download"
+              onClick={() => void handleDownloadSelection()}
+              disabled={selectedIds.size === 0 || zip.busy}
+            >
+              <Icon name="download" />
+            </button>
+          </div>
+          {selectedIds.size > 0 && zip.state.phase === "idle" && (
+            <p className="mobile-library__select-caption">
+              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
+            </p>
+          )}
+          {readyFiles && (
+            <p className="mobile-library__select-caption" role="status">
+              Ready to share. Tap Share again.
+            </p>
+          )}
           {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
-            <ZipStatus state={zip.state} jpeg={zip.jpeg} onJpegChange={zip.setJpeg} />
+            <ZipStatus
+              state={zip.state}
+              jpeg={zip.jpeg}
+              onJpegChange={zip.setJpeg}
+              showHeicOption={selectionHasHeicPhoto}
+              variant="row"
+            />
           )}
         </div>
       )}
@@ -446,6 +777,10 @@ export default function MobileLibrary({
           index={openIndex}
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
+          revealItem={(id) => {
+            const row = findRowIndexByAsset(rows, id);
+            if (row !== -1) rowVirtualizer.scrollToIndex(row, { align: "auto" });
+          }}
         />
       )}
     </div>

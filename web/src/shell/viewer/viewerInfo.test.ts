@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInfoRows, buildSelectionRows, formatCoordinates, formatDateRange, formatLocationLine, formatPlaceName } from "./viewerInfo";
+import { buildInfoRows, buildSelectionRows, formatCoordinates, formatDateRange, formatFileSize, formatLocationLine, formatPlaceName } from "./viewerInfo";
 
 const none = { place: null, place_address: null, latitude: null, longitude: null };
 
@@ -49,5 +49,24 @@ describe("selection summary rows (D21)", () => {
     expect(buildSelectionRows({ ...base, count: 3, photos: 2, videos: 1 })[0].value).toBe("3 items (2 photos, 1 video)");
     expect(buildSelectionRows({ ...base, count: 2, photos: 2, videos: 0 })[0].value).toBe("2 photos");
     expect(buildSelectionRows({ ...base, count: 2, photos: 0, videos: 2 })[0].value).toBe("2 videos");
+  });
+});
+
+describe("people row with unnamed faces", () => {
+  it("skips null/empty names and drops the row when none are named", () => {
+    const base = { ...none, albums: [], date_created: null };
+    expect(buildInfoRows({ ...base, people: [null, "", "Bob"] } as never)).toEqual([{ label: "People", value: "Bob" }]);
+    expect(buildInfoRows({ ...base, people: [null, ""] } as never)).toEqual([]);
+  });
+});
+
+describe("formatFileSize", () => {
+  it("returns an empty string for a missing size (null or undefined)", () => {
+    expect(formatFileSize(null)).toBe("");
+    expect(formatFileSize(undefined)).toBe("");
+  });
+  it("formats known sizes", () => {
+    expect(formatFileSize(512)).toBe("512 B");
+    expect(formatFileSize(1536)).toBe("1.5 KB");
   });
 });

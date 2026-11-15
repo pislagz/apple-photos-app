@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem, MeResponse } from "../api";
-import { getThumb, jsonResponse, mockFetch, noContentResponse, queryThumb } from "../testHelpers";
+import { getThumb, jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
 import MobileShell from "./MobileShell";
 import { useFakeLayout } from "../testLayout";
 
@@ -39,8 +39,6 @@ describe("MobileShell layout", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -50,6 +48,8 @@ describe("MobileShell layout", () => {
     expect(shell?.querySelector(".shell__header")).not.toBeNull();
     expect(shell?.querySelector(".shell__content")).not.toBeNull();
     expect(shell?.querySelector(".tab-bar")).not.toBeNull();
+    // #367: the Library tab bar is the plain in-flow bar, same as Albums.
+    expect(shell?.querySelector(".tab-bar--overlay")).toBeNull();
     // The library's own scroll area is nested inside the bounded content
     // area, not a sibling of it -- that's what keeps the header and tab
     // bar from scrolling off-screen with the grid.
@@ -65,7 +65,9 @@ describe("MobileShell layout", () => {
   // only thing that scrolls.
   it("bounds the mobile shell to the viewport and clips the content area", () => {
     const shellRule = css.match(/\.shell--mobile\s*\{[^}]*\}/)?.[0] ?? "";
-    expect(shellRule).toMatch(/height:\s*100dvh/);
+    // #387: pinned to the viewport edges (not 100dvh, which iOS standalone gets wrong).
+    expect(shellRule).toMatch(/position:\s*fixed/);
+    expect(shellRule).toMatch(/inset:\s*0/);
     expect(shellRule).toMatch(/flex-direction:\s*column/);
 
     const contentRule = css.match(/\.shell--mobile \.shell__content\s*\{[^}]*\}/)?.[0] ?? "";
@@ -102,20 +104,18 @@ describe("MobileShell tab switching", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
 
-    fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
-    expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(await screen.findByRole("tab", { name: "Days" }));
+    expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByText("More", { selector: ".mobile-screen__title" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    expect(await screen.findByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true");
   });
 });
 
@@ -157,7 +157,11 @@ describe("MobileShell Library tab re-tap (#146)", () => {
             count,
             key_asset_ids: items.filter((i) => (i.date ?? "").startsWith(key)).slice(0, 5).map((i) => i.id),
           })),
-          days: bucket(10).map(([key, count]) => ({ key, count })),
+          days: bucket(10).map(([key, count]) => ({
+            key,
+            count,
+            key_asset_ids: items.filter((i) => (i.date ?? "").startsWith(key)).slice(0, 1).map((i) => i.id),
+          })),
         };
       }
       const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
@@ -177,8 +181,6 @@ describe("MobileShell Library tab re-tap (#146)", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -186,27 +188,33 @@ describe("MobileShell Library tab re-tap (#146)", () => {
 
   async function drillToOlderMonth() {
     fireEvent.click(await screen.findByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("January 2022"));
-    await waitFor(() => expect(queryThumb("recent")).toBeNull());
+    // Months (Day cards) -> Days -> the newest day opens All Photos at that day.
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    // All Photos is oldest first (#224): it scrolls to that day, away from the newest end.
+    const scrollEl = await screen.findByTestId("library-scroll");
+    await waitFor(() => expect(scrollEl.scrollTop).not.toBe(scrollEl.scrollHeight));
     expect(getThumb("jan22-0")).toBeInTheDocument();
+    return scrollEl;
   }
 
   it("returns to the newest photos when the already-active Library tab is tapped", async () => {
     mockLibrary();
     renderMobile();
-    await drillToOlderMonth();
+    const scrollEl = await drillToOlderMonth();
 
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
     fireEvent.click(primary.getByRole("button", { name: "Library" }));
 
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
+    await waitFor(() => expect(scrollEl.scrollTop).toBe(scrollEl.scrollHeight));
   });
 
   it("only navigates, without resetting, when Library is tapped from another tab", async () => {
     mockLibrary();
     renderMobile();
-    await drillToOlderMonth();
+    const scrollEl = await drillToOlderMonth();
+    const landed = scrollEl.scrollTop;
 
     const primary = within(screen.getByRole("navigation", { name: "Primary" }));
     fireEvent.click(primary.getByRole("button", { name: "More" }));
@@ -215,9 +223,9 @@ describe("MobileShell Library tab re-tap (#146)", () => {
 
     expect(window.location.pathname).toBe("/");
     expect(primary.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
-    // Still on the older month: the anchor survived the round trip.
+    // Still on the older month: the scroll position survived the round trip.
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(landed);
     expect(getThumb("jan22-0")).toBeInTheDocument();
-    expect(queryThumb("recent")).toBeNull();
   });
 });
 
@@ -228,8 +236,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -251,6 +257,18 @@ describe("MobileShell More tab", () => {
     expect(switcher?.parentElement?.lastElementChild).toBe(switcher);
   });
 
+  it("has no manual Layout choice (#386) and the switcher scrolls with the list (#389)", async () => {
+    const { container } = render(
+      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} onLogout={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findByText("More", { selector: ".mobile-screen__title" });
+    expect(screen.queryByLabelText("Layout")).toBeNull();
+    expect(screen.queryByText("Layout")).toBeNull();
+    const switcher = container.querySelector(".more-screen__library-switcher");
+    expect(switcher?.parentElement).toHaveClass("more-screen__body");
+  });
+
   it("lets a multi-library account pick the active library from the bottom of More", async () => {
     const onActiveLibraryChange = vi.fn();
     const twoLibraries = { ...ME_RESPONSE, libraries: [{ id: 1, display_name: "Family" }, { id: 2, display_name: "Travel" }] };
@@ -259,8 +277,6 @@ describe("MobileShell More tab", () => {
         me={twoLibraries}
         activeLibraryId={1}
         onActiveLibraryChange={onActiveLibraryChange}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -282,8 +298,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -304,8 +318,6 @@ describe("MobileShell More tab", () => {
         me={ME_RESPONSE}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
       />,
     );
@@ -396,5 +408,82 @@ describe("MobileShell More tab", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Hidden/ }));
     expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+  });
+});
+
+describe("MobileShell with no library (#263)", () => {
+  it("shows the welcome and friendly empty tabs instead of developer text", async () => {
+    mockFetch(() => []);
+    render(
+      <MobileShell
+        me={{ ...ME_RESPONSE, role: "user", libraries: [] }}
+        onActiveLibraryChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Welcome to Photos" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Albums" }));
+    expect(await screen.findByText(/Photos appear once a library has been added/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/later phase/i);
+  });
+});
+
+describe("MobileShell more menu moved into More (#303)", () => {
+  function renderAt(path: string, role: "user" | "admin") {
+    window.history.replaceState({}, "", path);
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    return render(
+      <MobileShell
+        me={{ ...ME_RESPONSE, role }}
+        activeLibraryId={1}
+        onActiveLibraryChange={() => {}}
+        onLogout={() => {}}
+      />,
+    );
+  }
+
+  it("has no Account menu (...) button on Library or More", async () => {
+    renderAt("/", "user");
+    expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
+    cleanup();
+    renderAt("/more", "user");
+    expect(screen.queryByRole("button", { name: "Account menu" })).not.toBeInTheDocument();
+  });
+
+  it("lists the former menu actions in More", () => {
+    renderAt("/more", "user");
+    expect(screen.getByText("Signed in as alice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change password" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Passkeys" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Layout")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Admin link in More only for admins", () => {
+    renderAt("/more", "admin");
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
+  });
+
+  it("opens the Change password dialog from More and logs out", () => {
+    const onLogout = vi.fn();
+    window.history.replaceState({}, "", "/more");
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return { years: [], months: [], days: [] };
+      if (url.startsWith("/api/libraries/1/assets")) return { items: [], next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(
+      <MobileShell me={ME_RESPONSE} activeLibraryId={1} onActiveLibraryChange={() => {}} onLogout={onLogout} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    expect(onLogout).toHaveBeenCalled();
   });
 });

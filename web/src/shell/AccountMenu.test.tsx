@@ -12,8 +12,6 @@ describe("AccountMenu (#189)", () => {
     render(
       <AccountMenu
         me={ME}
-        layoutOverride="auto"
-        onLayoutOverrideChange={() => {}}
         onLogout={() => {}}
         compact
       />,
@@ -25,5 +23,22 @@ describe("AccountMenu (#189)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Change password" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Account menu" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("lists Choose avatar… and, once set, Remove avatar, as actionable buttons (#256)", () => {
+    const lib = { id: 1, display_name: "Family", updating: false, updating_reason: null, updated_note: null };
+    render(
+      <AccountMenu
+        me={{ ...ME, libraries: [lib], avatar_version: 3 }}
+        onLogout={() => {}}
+        compact
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    for (const name of ["Choose avatar…", "Remove avatar", "Change password", "Passkeys", "Log out"]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Choose avatar" }));
+    expect(screen.getByRole("dialog", { name: "Choose a photo" })).toBeInTheDocument();
   });
 });

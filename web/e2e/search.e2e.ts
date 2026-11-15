@@ -8,7 +8,7 @@ async function signIn(page: Page) {
   await page.goto("/");
   await page.getByLabel("Username").fill(ADMIN.username);
   await page.getByLabel("Password").fill(ADMIN.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Username")).toHaveCount(0);
 }
 
@@ -23,16 +23,21 @@ test("search by label shows results in the grid and opens the viewer", async ({ 
     await expect(page).toHaveURL(/\/search$/);
   }
   const field = page.getByRole("searchbox", { name: "Search photos" });
-  await field.fill("dog");
+  // The phone runs a search on Search/Enter (typing only suggests, #225).
+  const search = async (q: string) => {
+    await field.fill(q);
+    if (mobile) await field.press("Enter");
+  };
+  await search("dog");
   // Wait for the settled query: the route (phone) or the results heading (desktop).
   if (mobile) await expect(page).toHaveURL(/\/search\/dog$/);
   else await expect(page.getByRole("heading", { name: /Results for .dog./ })).toBeVisible();
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await expect(page.locator('img[src*="/thumb/"]').first()).toBeVisible();
   await page.screenshot({ path: `e2e/screenshots/${info.project.name}-search-results.png` });
 
   // Case-insensitive, and a second term narrows (AND).
-  await field.fill("DOG beach");
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await search("DOG beach");
+  await expect(page.locator('img[src*="/thumb/"]').first()).toBeVisible();
   const me = await (await page.request.get("/api/me")).json();
   const lib = me.libraries[0].id;
   const total = async (q: string) =>
@@ -43,24 +48,24 @@ test("search by label shows results in the grid and opens the viewer", async ({ 
   expect(await total("dog beach")).toBeGreaterThan(0);
   expect(await total("dog beach")).toBeLessThan(dogs);
   expect(await total("")).toBe(0);
-  await field.fill("sports field");
+  await search("sports field");
   if (!mobile) await expect(page.getByRole("heading", { name: /Results for .sports field./ })).toBeVisible();
-  await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+  await expect(page.locator('img[src*="/thumb/"]').first()).toBeVisible();
 
   // Nothing matches.
-  await field.fill("zzzz");
+  await search("zzzz");
   await expect(page.getByText(/No results for .zzzz./)).toBeVisible();
   await page.screenshot({ path: `e2e/screenshots/${info.project.name}-search-empty.png` });
 
   if (mobile) {
     // Deep link: reload keeps the search.
-    await field.fill("dog");
+    await search("dog");
     await expect(page).toHaveURL(/\/search\/dog$/);
     await page.reload();
     await expect(page.getByRole("searchbox", { name: "Search photos" })).toHaveValue("dog");
-    await expect(page.locator('img[alt^="IMG_"], img[alt^="MOV_"]').first()).toBeVisible();
+    await expect(page.locator('img[src*="/thumb/"]').first()).toBeVisible();
   } else {
-    await field.fill("dog");
+    await search("dog");
     await page.locator('[data-testid="library-cell"]').first().dblclick();
     await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
     await page.keyboard.press("Escape");

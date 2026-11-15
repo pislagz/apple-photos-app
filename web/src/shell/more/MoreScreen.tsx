@@ -1,4 +1,8 @@
-import type { LibrarySummary } from "../../api";
+import { useState } from "react";
+import { type LibrarySummary, type MeResponse, removeAvatar } from "../../api";
+import AvatarPicker from "../AvatarPicker";
+import ChangePasswordDialog from "../ChangePasswordDialog";
+import PasskeysDialog from "../PasskeysDialog";
 import { Icon } from "../icons";
 import LibrarySwitcher from "../LibrarySwitcher";
 import { MEDIA_TYPES } from "./mediaTypes";
@@ -13,12 +17,21 @@ export default function MoreScreen({
   activeLibraryId,
   onActiveLibraryChange,
   onNavigate,
+  me,
+  onLogout,
+  onAvatarChanged,
 }: {
   libraries: LibrarySummary[];
   activeLibraryId: number | undefined;
   onActiveLibraryChange: (id: number) => void;
   onNavigate: (path: "/people" | "/places" | `/media/${string}` | "/hidden") => void;
+  me: MeResponse;
+  onLogout: () => void;
+  onAvatarChanged?: () => void;
 }) {
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [managingPasskeys, setManagingPasskeys] = useState(false);
+  const [choosingAvatar, setChoosingAvatar] = useState(false);
   return (
     <div className="more-screen">
       <header className="mobile-screen__header mobile-screen__header--root">
@@ -63,13 +76,72 @@ export default function MoreScreen({
             </button>
           </li>
         </ul>
+        {/* #303: everything the old top-right "..." menu offered. */}
+        <ul className="more-screen__group">
+          <li className="more-screen__group-label">Account</li>
+          <li>
+            <p className="more-screen__item more-screen__item--static">Signed in as {me.username}</p>
+          </li>
+          {me.libraries.length > 0 && (
+            <li>
+              <button type="button" className="more-screen__item" onClick={() => setChoosingAvatar(true)}>
+                Choose avatar…
+              </button>
+            </li>
+          )}
+          {me.avatar_version != null && (
+            <li>
+              <button
+                type="button"
+                className="more-screen__item"
+                onClick={() => removeAvatar().then(() => onAvatarChanged?.(), () => {})}
+              >
+                Remove avatar
+              </button>
+            </li>
+          )}
+          <li>
+            <button type="button" className="more-screen__item" onClick={() => setChangingPassword(true)}>
+              Change password
+            </button>
+          </li>
+          <li>
+            <button type="button" className="more-screen__item" onClick={() => setManagingPasskeys(true)}>
+              Passkeys
+            </button>
+          </li>
+          <li>
+            <button type="button" className="more-screen__item more-screen__item--danger" onClick={onLogout}>
+              Log out
+            </button>
+          </li>
+        </ul>
+        {me.role === "admin" && (
+          <ul className="more-screen__group">
+            <li className="more-screen__group-label">Settings</li>
+            <li>
+              <a href="/admin" className="more-screen__item more-screen__item--link">
+                Admin
+              </a>
+            </li>
+          </ul>
+        )}
+        <LibrarySwitcher
+          libraries={libraries}
+          activeLibraryId={activeLibraryId}
+          onChange={onActiveLibraryChange}
+          className="more-screen__library-switcher"
+        />
       </div>
-      <LibrarySwitcher
-        libraries={libraries}
-        activeLibraryId={activeLibraryId}
-        onChange={onActiveLibraryChange}
-        className="more-screen__library-switcher"
-      />
+      {choosingAvatar && (
+        <AvatarPicker
+          libraries={me.libraries}
+          onClose={() => setChoosingAvatar(false)}
+          onSaved={() => onAvatarChanged?.()}
+        />
+      )}
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+      {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
     </div>
   );
 }

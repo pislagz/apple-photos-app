@@ -1,0 +1,66 @@
+import { expect, test } from "@playwright/test";
+
+// #403: the viewer's Back chevron and the sidebar toggle sit side by side (Back first).
+const USER = { username: "demo-user", password: "demo-user-pass-1" };
+const SHOTS = "e2e/screenshots/403";
+
+const cases = [
+  { scheme: "light", width: 1440, name: "wide-light" },
+  { scheme: "dark", width: 1440, name: "wide-dark" },
+  { scheme: "light", width: 900, name: "narrow-light" },
+  { scheme: "dark", width: 900, name: "narrow-dark" },
+] as const;
+
+for (const c of cases) {
+  test.describe(c.name, () => {
+    test.use({ colorScheme: c.scheme, viewport: { width: c.width, height: 800 } });
+
+    test("toggle and Back do not overlap and both work", async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== "desktop", "desktop viewer only");
+      await page.goto("/");
+      await page.getByLabel("Username").fill(USER.username);
+      await page.getByLabel("Password").fill(USER.password);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await expect(page.getByLabel("Username")).toHaveCount(0);
+      // Below 980px the sidebar is hidden and Library is already the start view.
+      if (await page.locator("aside.sidebar").isVisible()) await page.locator("aside.sidebar").getByRole("button", { name: "Library" }).click();
+      await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+      const open = async () => {
+        await page.locator('[data-testid="library-cell"]').nth(2).dblclick();
+        await expect(page.getByTestId("desktop-viewer")).toBeVisible();
+      };
+      const check = async () => {
+        if (c.width >= 980) {
+          // #444: wide windows keep the sidebar and its toggle in the viewer.
+          await expect(page.locator(".sidebar-toggle")).toBeVisible();
+          return;
+        }
+        const toggle = page.locator(".sidebar-toggle");
+        const back = page.getByRole("button", { name: "Back" });
+        const t = (await toggle.boundingBox())!;
+        const b = (await back.boundingBox())!;
+        // pp 2026-11-14: Back first, toggle right after it.
+        expect(t.x).toBeGreaterThanOrEqual(b.x + b.width + 4);
+        expect(Math.abs(t.y + t.height / 2 - (b.y + b.height / 2))).toBeLessThanOrEqual(1);
+        // Both are the topmost element at their centres, i.e. clickable.
+        for (const [el, box] of [["sidebar-toggle", t], ["desktop-viewer__back", b]] as const) {
+          const hit = await page.evaluate(
+            ([x, y]) => (() => { const e = document.elementFromPoint(x, y); return e?.closest("button")?.className ?? `NOBTN:${e?.tagName}.${e?.className}`; })(),
+            [box.x + box.width / 2, box.y + box.height / 2],
+          );
+          expect(hit).toContain(el);
+        }
+      };
+
+      await open();
+      await check();
+      await page.screenshot({ path: `${SHOTS}/${c.name}.png` });
+
+      await page.getByRole("button", { name: "Back" }).click();
+      await expect(page.getByTestId("desktop-viewer")).toHaveCount(0);
+      await open();
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("desktop-viewer")).toHaveCount(0);
+    });
+  });
+}

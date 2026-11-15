@@ -28,7 +28,13 @@ export interface LibraryStatusResponse {
   video_count: number | null;
   people_count: number | null;
   total_size_bytes: number | null;
+  // Size of this library's thumbnail cache, when the server reports it.
+  thumb_cache_bytes?: number | null;
   last_indexed_at: string | null;
+  index_state?: string | null;
+  index_error?: string | null;
+  // #252: while a walk runs, assets walked so far and the library's total.
+  index_progress?: { done: number; total: number } | null;
   prewarm_progress: number | null;
   prewarm?: PrewarmStatus | null;
   warnings: LibraryWarning[];
@@ -144,6 +150,8 @@ export interface UserResponse {
   role: Role;
   disabled: boolean;
   created_at: string;
+  // True while too many wrong passwords have locked the account for a while.
+  locked?: boolean;
 }
 
 export function listUsers(): Promise<UserResponse[]> {
@@ -197,6 +205,10 @@ export function createInvite(role: Role): Promise<InviteCreateResponse> {
   return mutate<InviteCreateResponse>("POST", "/api/admin/invites", { role });
 }
 
+export function cancelInvite(id: string): Promise<void> {
+  return mutate<void>("DELETE", `/api/admin/invites/${encodeURIComponent(id)}`);
+}
+
 // -- Access matrix ------------------------------------------------------------------
 
 export interface AccessMatrixResponse {
@@ -227,6 +239,8 @@ export interface SessionResponse {
   last_seen_at: string;
   expires_at: string;
   remember_me: boolean;
+  /** The session making this request. Optional for older servers. */
+  is_current?: boolean;
 }
 
 export function listSessions(): Promise<SessionResponse[]> {
@@ -257,6 +271,11 @@ export interface AuditLogFilters {
   libraryId?: number;
   dateFrom?: string;
   dateTo?: string;
+  /** How many newest entries to skip, for "Load more". */
+  offset?: number;
+  /** Only entries older than this id: the cursor for "Load more". */
+  beforeId?: number;
+  limit?: number;
 }
 
 function auditLogQuery(filters: AuditLogFilters): string {
@@ -265,6 +284,9 @@ function auditLogQuery(filters: AuditLogFilters): string {
   if (filters.libraryId !== undefined) params.set("library_id", String(filters.libraryId));
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
+  if (filters.beforeId !== undefined) params.set("before_id", String(filters.beforeId));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -275,7 +297,8 @@ export async function readAuditLog(filters: AuditLogFilters = {}): Promise<Audit
 }
 
 export function auditLogCsvUrl(filters: AuditLogFilters = {}): string {
-  return `/api/admin/audit-log.csv${auditLogQuery(filters)}`;
+  // The export always covers the whole filtered list, not just the pages shown.
+  return `/api/admin/audit-log.csv${auditLogQuery({ ...filters, offset: undefined, beforeId: undefined, limit: undefined })}`;
 }
 
 // -- Settings ------------------------------------------------------------------
@@ -286,10 +309,12 @@ export interface SettingsResponse {
   session_lifetime_desktop_seconds: number;
   session_lifetime_pwa_seconds: number;
   session_lifetime_remember_me_seconds: number;
+  keep_signed_in_mode: "default_on" | "default_off" | "disabled";
   thumb_size_grid: number;
   thumb_size_grid2x: number;
   thumb_size_preview: number;
   thumb_quality: number;
+  media_cache_size_limit_bytes: number;
   zip_size_limit_bytes: number;
   map_tiles_mode: MapTilesMode;
   map_tiles_pmtiles_path: string | null;
@@ -303,8 +328,9 @@ export function readSettings(): Promise<SettingsResponse> {
   return request<SettingsResponse>("/api/admin/settings");
 }
 
-export function writeSettings(settings: SettingsResponse): Promise<SettingsResponse> {
-  return mutate<SettingsResponse>("PUT", "/api/admin/settings", settings);
+// Each Settings control saves on its own: only the changed field is sent.
+export function patchSettings(changes: Partial<SettingsResponse>): Promise<SettingsResponse> {
+  return mutate<SettingsResponse>("PATCH", "/api/admin/settings", changes);
 }
 
 // Offline place names (GeoNames), gated by the "Map & place names" consent.
@@ -347,4 +373,44 @@ export function readTailnetAllowlist(): Promise<TailnetAllowlistResponse> {
 
 export function writeTailnetAllowlist(identities: string[]): Promise<TailnetAllowlistResponse> {
   return mutate<TailnetAllowlistResponse>("PUT", "/api/admin/settings/tailnet-allowlist", { identities });
+}
+
+// -- Library folders and the picker -----------------------------------------
+
+export interface LibraryFolder {
+  path: string;
+  reachable: boolean;
+}
+
+export interface LibraryCandidate {
+  name: string;
+  path: string;
+  folder: string;
+  registered: boolean;
+  library_id: number | null;
+  library_name: string | null;
+  status: "ready" | "not_added" | "cannot_open";
+  asset_count: number | null;
+  size_bytes: number | null;
+}
+
+export interface LibraryCandidates {
+  folders: LibraryFolder[];
+  candidates: LibraryCandidate[];
+}
+
+export function listLibraryCandidates(): Promise<LibraryCandidates> {
+  return request<LibraryCandidates>("/api/admin/library-candidates");
+}
+
+export function candidateSize(path: string): Promise<{ path: string; size_bytes: number | null }> {
+  return request(`/api/admin/library-candidates/size?path=${encodeURIComponent(path)}`);
+}
+
+export function addLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("POST", "/api/admin/library-folders", { path });
+}
+
+export function removeLibraryFolder(path: string): Promise<LibraryFolder[]> {
+  return mutate<LibraryFolder[]>("DELETE", `/api/admin/library-folders?path=${encodeURIComponent(path)}`);
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AssetListItem } from "../../api";
 
 export interface ZipProgress {
   received: number;
@@ -29,6 +30,27 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+// #254: "HEIC as JPEG" only means something when the selection has a HEIC.
+// A selected id that isn't in `items` (not loaded here) or an item from a
+// server that doesn't send `is_heic` counts as "might be": showing the option
+// once too often is harmless, hiding it when it matters is not.
+export function selectionHasHeic(
+  items: readonly Pick<AssetListItem, "id" | "filename" | "is_heic">[],
+  selectedIds: Iterable<string>,
+): boolean {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  for (const id of selectedIds) {
+    const item = byId.get(id);
+    if (!item) return true;
+    if (item.is_heic === undefined) {
+      if (/\.hei[cf]$/i.test(item.filename ?? "")) return true;
+    } else if (item.is_heic) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // D47: at or above this estimated size the browser itself streams the zip to

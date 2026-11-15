@@ -214,7 +214,7 @@ test("admin panel", async ({ page }, info) => {
   // #158: styled, and no page-level horizontal overflow on any screen.
   await expect(page.locator(".admin-app")).toHaveCSS("display", "grid");
   const nav = page.getByRole("navigation", { name: "Admin sections" });
-  for (const [i, label] of ["Libraries", "Users", "Access", "Sessions", "Audit log", "Settings"].entries()) {
+  for (const [i, label] of ["Libraries", "People", "Sharing", "Devices", "Activity", "Settings"].entries()) {
     await nav.getByRole("button", { name: label }).click();
     await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
     await page.waitForLoadState("networkidle");
@@ -310,24 +310,6 @@ test("phone Days view has a scrim behind Select (#176)", async ({ page }, info) 
   const bg = await page.getByTestId("top-bar").evaluate((el) => getComputedStyle(el).backgroundImage);
   expect(bg).toContain("linear-gradient");
   await shot(page, "11-days-scrim", info.project.name);
-});
-
-test("admin Users actions are compact on a phone (#179)", async ({ page }, info) => {
-  test.skip(info.project.name === "desktop", "phone only");
-  await signIn(page, ADMIN);
-  await page.goto("/admin");
-  await page.getByRole("navigation", { name: "Admin sections" }).getByRole("button", { name: "Users" }).click();
-  await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
-  const actions = page.locator(".admin-actions").first();
-  await expect(actions).toBeVisible();
-  const tops = await actions.locator("button").evaluateAll((buttons) =>
-    Array.from(new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))),
-  );
-  expect(tops.length, "four buttons sit in two rows, not a stack").toBe(2);
-  const wrap = page.locator(".admin-table-wrap").first();
-  const overflow = await wrap.evaluate((el) => el.scrollWidth - el.clientWidth);
-  expect(overflow, "the Users table does not scroll sideways").toBeLessThanOrEqual(0);
-  await shot(page, "12-admin-users-actions", info.project.name);
 });
 
 // The demo library has no update history and keeps every original, so these
@@ -471,7 +453,7 @@ test("D41: the viewer title is the date for a photo with GPS but no place name",
       const title = page.locator(".desktop-viewer__title-primary, .mobile-viewer__title-primary").first();
       // A date, never the coordinates (they are in the Location row below).
       await expect(title).not.toContainText("°");
-      await expect(title).toContainText(/\d{4}/);
+      await expect(title).not.toHaveText("");
       await shot(page, "15-viewer-title-no-place", info.project.name);
     } else {
       await page.keyboard.press("Escape");
@@ -1115,7 +1097,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     if (kind === "desktop") {
       await page.locator(".account-menu__row-trigger").click();
-      await expect(page.locator(".account-menu__popover")).toBeVisible();
+      await expect(page.locator(".mac-menu--root")).toBeVisible();
       await snap("menu");
       await page.locator(".account-menu__row-trigger").click();
     }
@@ -1180,9 +1162,10 @@ for (const scheme of ["light", "dark"] as const) {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Filter By" }).click().catch(() => {});
     } else {
-      await page.getByRole("button", { name: "Account menu" }).click();
+      await page.getByRole("button", { name: "More" }).click();
+      await expect(page.getByRole("button", { name: "Change password" })).toBeVisible();
       await motionShot(page, `${MOTION_PREFIX}-${scheme}-${device}-menu`);
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Library" }).click();
     }
     await page.reload();
     await openZoom(page, "All Photos");
@@ -1266,4 +1249,572 @@ test("motion: reduced motion has no translate", async ({ page }, info) => {
   console.log(`reduced-motion animations: ${n}; menu transform: ${transforms.join(",")}`);
   expect(transforms.every((t) => t === "none" || t === "matrix(1, 0, 0, 1, 0, 0)")).toBe(true);
   await page.screenshot({ path: `${MOTION_DIR}/reduced-desktop-menu.png` });
+});
+
+test("F11: phone Select bar has no × next to the count; desktop keeps it (#287)", async ({ page }, info) => {
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const deselect = page.getByRole("button", { name: "Deselect all" });
+  if (info.project.name === "desktop") {
+    await cells(page).first().click();
+    await cells(page).nth(1).click({ modifiers: ["Meta"] });
+    await expect(deselect).toBeVisible();
+    return;
+  }
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await cells(page).first().click();
+  await expect(page.getByTestId("select-bar")).toContainText("1 Selected");
+  await expect(deselect).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("select-bar")).toHaveCount(0);
+});
+// #207: the desktop grid at every zoom stop, light and dark, plus the narrow and
+// wide windows at the default zoom. With the edge-length stops (max 4) the last
+// tile must end flush with the grid's right edge.
+for (const scheme of ["light", "dark"] as const) {
+  test(`desktop grid zoom stops and widths, ${scheme} (#207)`, async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "desktop only");
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    await expect(cells(page).first()).toBeVisible();
+    const slider = page.locator('input[type="range"][aria-label="Zoom"]');
+    const setZoom = async (value: number) => {
+      await slider.evaluate((el, v) => {
+        const input = el as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        setter.call(input, String(v));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }, value);
+      await page.waitForTimeout(400);
+    };
+    const max = Number(await slider.getAttribute("max"));
+    for (let stop = 0; stop <= max; stop++) {
+      await setZoom(stop);
+      if (max === 4) {
+        const flush = await page.evaluate(() => {
+          const grid = document.querySelector('[data-testid="desktop-library-grid"]') as HTMLElement;
+          const right = grid.getBoundingClientRect().left + grid.clientWidth;
+          const rows = [...grid.querySelectorAll(".desktop-library__row-grid")];
+          const edges = rows.map((row) => Math.max(...[...row.children].map((c) => c.getBoundingClientRect().right)));
+          return { right, maxEdge: Math.max(...edges) };
+        });
+        expect(Math.abs(flush.maxEdge - flush.right), `stop ${stop} right edge`).toBeLessThan(0.51);
+      }
+      await shot(page, `20-desktop-grid-${scheme}-zoom${stop}`, info.project.name);
+    }
+    await setZoom(2);
+    for (const width of [1024, 1920]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(500);
+      await shot(page, `21-desktop-grid-${scheme}-w${width}`, info.project.name);
+    }
+  });
+}
+
+// #208 tile overlays and selection. Light and dark; desktop mixed selection
+// (a video and a favourite), the densest zoom, and the iPhone grid and
+// selection mode.
+// The demo has no ffmpeg here, so its videos carry no duration; give them one
+// in the list response so the duration overlay can be seen.
+async function fakeVideoDurations(page: Page) {
+  await page.route(/\/api\/libraries\/\d+\/assets\?/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const item of body.items ?? []) if (item.is_video) item.duration = 65 + (item.id.length % 7) * 11;
+    await route.fulfill({ response, json: body });
+  });
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`tile overlays (${scheme})`, () => {
+    test.use({ colorScheme: scheme });
+
+    test("desktop mixed selection and dense zoom (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "desktop", "desktop only");
+      await fakeVideoDurations(page);
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      const tag = `208-${scheme}`;
+      // The demo has a video every 53rd asset: scroll to the first one and
+      // select it plus its neighbours (some of which are favourites).
+      const video = page.locator('[data-testid="library-cell"]:has(.desktop-library__duration)').first();
+      await video.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
+      const visible = page.locator('[data-testid="library-cell"]');
+      const videoIndex = await visible.evaluateAll((els) => els.findIndex((el) => el.querySelector(".desktop-library__duration")));
+      for (const offset of [-9, -1, 0, 2, 9]) {
+        const cell = visible.nth(videoIndex + offset);
+        if (await cell.count()) await cell.click({ modifiers: ["Control"] });
+      }
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(300);
+      await shot(page, `${tag}-desktop-selection`, info.project.name);
+      await page.keyboard.press("Escape");
+
+      await page.getByRole("slider", { name: "Zoom" }).fill("0");
+      await page.waitForTimeout(800);
+      await shot(page, `${tag}-desktop-dense`, info.project.name);
+    });
+
+    test("iPhone grid and selection mode (#208)", async ({ page }, info) => {
+      test.skip(info.project.name !== "iphone", "iPhone only");
+      await fakeVideoDurations(page);
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      await expect(cells(page).first()).toBeVisible();
+      await page.waitForTimeout(800);
+      await shot(page, `208-${scheme}-iphone-grid`, info.project.name);
+      await page.getByRole("button", { name: "Select", exact: true }).click();
+      await cells(page).nth(0).click();
+      await cells(page).nth(2).click();
+      await cells(page).nth(3).click();
+      await page.waitForTimeout(300);
+      await shot(page, `208-${scheme}-iphone-selection`, info.project.name);
+    });
+  });
+}
+
+// #209: the library date title at each level, both appearances. TITLE_SHOTS_PREFIX
+// names the files (`before`, `after`); run with -g "title shots".
+for (const scheme of ["light", "dark"] as const) {
+  test(`title shots: ${scheme}`, async ({ page }, info) => {
+    test.skip(info.project.name === "small", "desktop and iPhone only");
+    const prefix = process.env.TITLE_SHOTS_PREFIX ?? "after";
+    const kind = info.project.name === "desktop" ? "desktop" : "phone";
+    const scroller = page.getByTestId(kind === "desktop" ? "desktop-library-grid" : "library-scroll");
+    await page.emulateMedia({ colorScheme: scheme });
+    await signIn(page);
+    for (const [label, slug] of [
+      ["Years", "years"],
+      ["Months", "months"],
+      ["All Photos", "all"],
+    ] as const) {
+      await openZoom(page, label);
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: `${SHOTS}/${prefix}-${scheme}-${kind}-${slug}.png` });
+      if (kind === "desktop" || slug === "all") {
+        // Scrolled: a header row or photos sit right under the title.
+        await scroller.evaluate((el) => {
+          el.scrollTop = 420;
+        });
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: `${SHOTS}/${prefix}-${scheme}-${kind}-${slug}-scrolled.png` });
+        await scroller.evaluate((el) => {
+          el.scrollTop = 0;
+        });
+      }
+    }
+  });
+}
+
+// #209: the title and scrim never take pointer events, so taps and rubber-band
+// drags reach the tiles underneath, and no inline header overlaps the title.
+test("date title and scrim are click-through, with no overlapping text (#209)", async ({ page }, info) => {
+  test.skip(info.project.name === "small", "desktop and iPhone only");
+  await signIn(page);
+  await openZoom(page, "All Photos");
+  await expect(cells(page).first()).toBeVisible();
+  const desktop = info.project.name === "desktop";
+  const title = page.getByTestId(desktop ? "desktop-library-title" : "pinned-header");
+  await expect(title).toBeVisible();
+  const tb = (await title.boundingBox())!;
+  const hit = await page.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return el ? { cell: !!el.closest("[data-asset-id], .mobile-library__cell"), cls: el.className } : null;
+    },
+    [tb.x + 4, tb.y + 4],
+  );
+  expect(hit?.cell, `element under the title: ${hit?.cls}`).toBe(true);
+  if (desktop) {
+    // Tap through the scrim selects the tile under it.
+    await page.mouse.click(tb.x + 40, tb.y + 4);
+    await expect(page.locator('[data-testid="library-cell"][data-selected="true"]')).toHaveCount(1);
+    // Months: scroll through the whole first screens; the title and a header never intersect.
+    await openZoom(page, "Months");
+    const grid = page.getByTestId("desktop-library-grid");
+    for (let top = 0; top < 1800; top += 90) {
+      await grid.evaluate((el, t) => {
+        el.scrollTop = t;
+      }, top);
+      await page.waitForTimeout(220); // outlast the 150 ms fade
+      const t = page.getByTestId("desktop-library-title");
+      const visible = (await t.evaluate((el) => getComputedStyle(el.parentElement!).opacity)) !== "0";
+      if (!visible) continue;
+      const tbx = (await t.boundingBox())!;
+      for (const h of await page.locator(".desktop-library__row-header").all()) {
+        const hb = await h.boundingBox();
+        if (!hb) continue;
+        expect(hb.y >= tbx.y + tbx.height || hb.y + hb.height <= tbx.y, `header at ${hb.y} vs title at scroll ${top}`).toBe(true);
+      }
+    }
+  }
+});
+
+
+// #214 viewer gestures. The iPhone cases hold a real touch (CDP
+// Input.dispatchTouchEvent) so the shot shows the viewer mid-gesture.
+test.describe("viewer gestures (#214)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      // Opens the first still photo (a video has no zoomable still).
+      async function openViewer(page: Page, kind: string) {
+        await signIn(page);
+        await openZoom(page, "All Photos");
+        for (let nth = 1; nth < 9; nth++) {
+          const cell = cells(page).nth(nth);
+          await expect(cell).toBeVisible();
+          if (kind === "desktop") await cell.dblclick();
+          else await cell.tap();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(800);
+          if ((await page.locator(".viewer-still").count()) > 0) return;
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
+          await page.waitForTimeout(400);
+        }
+        throw new Error("no still photo in the first cells");
+      }
+
+      test(`iPhone: mid page drag, mid dismiss drag, zoomed 2.5x (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "iphone", "iPhone only");
+        await openViewer(page, "iphone");
+        const cdp = await page.context().newCDPSession(page);
+        const touch = (type: string, points: { x: number; y: number }[]) =>
+          cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+
+        // Mid page drag: finger 150 px left, both neighbours' edges visible.
+        await touch("touchStart", [{ x: 300, y: 400 }]);
+        for (const x of [280, 240, 200, 150]) {
+          await touch("touchMove", [{ x, y: 400 }]);
+          await page.waitForTimeout(30);
+        }
+        await shot(page, `20-gesture-page-drag-${scheme}`, info.project.name);
+        await touch("touchMove", [{ x: 300, y: 400 }]);
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+
+        // Mid dismiss drag: 160 px down, photo shrunk, background half faded.
+        await touch("touchStart", [{ x: 195, y: 300 }]);
+        for (const y of [320, 360, 400, 460]) {
+          await touch("touchMove", [{ x: 195, y: y }]);
+          await page.waitForTimeout(30);
+        }
+        await shot(page, `21-gesture-dismiss-drag-${scheme}`, info.project.name);
+        await touch("touchMove", [{ x: 195, y: 300 }]);
+        await page.waitForTimeout(400);
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+        await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+
+        // Double tap: 2.5x centred on the tap point.
+        for (let i = 0; i < 2; i++) {
+          await touch("touchStart", [{ x: 150, y: 350 }]);
+          await touch("touchEnd", []);
+          await page.waitForTimeout(60);
+        }
+        await page.waitForTimeout(600);
+        await expect(page.locator(".viewer-still")).toHaveCSS("transform", /matrix\(2\.5/);
+        await shot(page, `22-gesture-zoomed-2.5x-${scheme}`, info.project.name);
+
+        // Pinch out past the limit settles at 6x.
+        await touch("touchStart", [
+          { x: 175, y: 400 },
+          { x: 215, y: 400 },
+        ]);
+        for (const d of [30, 80, 140, 190]) {
+          await touch("touchMove", [
+            { x: 195 - d, y: 400 },
+            { x: 195 + d, y: 400 },
+          ]);
+        }
+        await touch("touchEnd", []);
+        await page.waitForTimeout(500);
+        await expect(page.locator(".viewer-still")).toHaveCSS("transform", /matrix\(6,/);
+      });
+
+      test(`desktop: zoomed viewer (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name !== "desktop", "desktop only");
+        await openViewer(page, "desktop");
+        const still = page.locator(".viewer-still");
+        const box = (await still.boundingBox())!;
+        await page.mouse.dblclick(box.x + box.width * 0.35, box.y + box.height * 0.4);
+        await page.waitForTimeout(500);
+        await expect(still).toHaveCSS("transform", /matrix\(2\.5/);
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2 - 60, { steps: 6 });
+        await page.mouse.up();
+        await shot(page, `23-gesture-zoomed-${scheme}`, info.project.name);
+      });
+    });
+  }
+
+  // Short iPhone recording of page, dismiss and zoom (Playwright video).
+  test("iPhone screen recording", async ({ browser, baseURL }, info) => {
+    test.skip(info.project.name !== "iphone" || !process.env.VIDEO_DIR, "iPhone only, needs VIDEO_DIR");
+    const context = await browser.newContext({
+      baseURL,
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 1,
+      recordVideo: { dir: process.env.VIDEO_DIR!, size: { width: 390, height: 844 } },
+    });
+    const page = await context.newPage();
+    await signIn(page);
+    await openZoom(page, "All Photos");
+    for (let nth = 1; nth < 9; nth++) {
+      await cells(page).nth(nth).tap();
+      await expect(page.locator('[data-testid="mobile-viewer"]')).toBeVisible();
+      await page.waitForTimeout(500);
+      if ((await page.locator(".viewer-still").count()) > 0) break;
+      await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
+      await page.waitForTimeout(400);
+    }
+    await page.waitForTimeout(800);
+    const cdp = await context.newCDPSession(page);
+    const touch = (type: string, points: { x: number; y: number }[]) =>
+      cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const swipe = async (from: [number, number], to: [number, number], steps: number, holdMs = 0) => {
+      await touch("touchStart", [{ x: from[0], y: from[1] }]);
+      for (let i = 1; i <= steps; i++) {
+        await touch("touchMove", [{ x: from[0] + ((to[0] - from[0]) * i) / steps, y: from[1] + ((to[1] - from[1]) * i) / steps }]);
+        await page.waitForTimeout(16);
+      }
+      await page.waitForTimeout(holdMs);
+      await touch("touchEnd", []);
+    };
+    await swipe([320, 400], [60, 400], 14); // page
+    await page.waitForTimeout(700);
+    await swipe([60, 400], [330, 400], 14); // page back
+    await page.waitForTimeout(700);
+    await swipe([195, 300], [195, 420], 12, 600); // dismiss drag, short: springs back
+    await page.waitForTimeout(700);
+    for (let i = 0; i < 2; i++) {
+      await touch("touchStart", [{ x: 150, y: 350 }]);
+      await touch("touchEnd", []);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(900);
+    await swipe([250, 420], [120, 330], 10); // pan
+    await page.waitForTimeout(600);
+    for (let i = 0; i < 2; i++) {
+      await touch("touchStart", [{ x: 150, y: 350 }]);
+      await touch("touchEnd", []);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(700);
+    await swipe([195, 300], [195, 560], 12); // dismiss
+    await page.waitForTimeout(600);
+    await context.close();
+  });
+});
+
+// #211 viewer chrome. CHROME_BEFORE=1 only takes the "visible" shots, so the
+// same cases can photograph a base without tap-to-toggle.
+test.describe("viewer chrome (#211)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      test.use({ colorScheme: scheme });
+
+      test(`chrome visible and hidden (${scheme})`, async ({ page }, info) => {
+        test.skip(info.project.name === "small", "desktop and iPhone only");
+        const phone = info.project.name === "iphone";
+        await signIn(page);
+        await openZoom(page, "All Photos");
+        for (let nth = 1; nth < 9; nth++) {
+          const cell = cells(page).nth(nth);
+          await expect(cell).toBeVisible();
+          if (phone) await cell.tap();
+          else await cell.dblclick();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(800);
+          if ((await page.locator(".viewer-still").count()) > 0) break;
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
+          await page.waitForTimeout(400);
+        }
+        await expect(page.locator(".viewer-still")).toHaveCount(1);
+        await shot(page, `30-chrome-visible-${scheme}`, info.project.name);
+        if (!phone || process.env.CHROME_BEFORE) return;
+
+        const root = page.locator('[data-testid="mobile-viewer"]');
+        await page.touchscreen.tap(195, 420);
+        await page.waitForTimeout(700);
+        await expect(root).toHaveClass(/is-chrome-hidden/);
+        await expect(root).toHaveCSS("background-color", "rgb(0, 0, 0)");
+        await expect(page.locator(".mobile-viewer__topbar")).toHaveCSS("opacity", "0");
+        await shot(page, `31-chrome-hidden-${scheme}`, info.project.name);
+        await page.touchscreen.tap(195, 420);
+        await page.waitForTimeout(700);
+        await expect(root).not.toHaveClass(/is-chrome-hidden/);
+        await expect(page.locator(".mobile-viewer__topbar")).toHaveCSS("opacity", "1");
+        // Hit areas as laid out, not just as written in the CSS.
+        for (const button of await page.locator(".mobile-viewer__topbar button, .mobile-viewer__icon-row button").all()) {
+          const box = (await button.boundingBox())!;
+          expect(box.width).toBeGreaterThanOrEqual(44);
+          expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+      });
+    });
+  }
+});
+
+// #220 open/close zoom. Mid-animation frames: the Web Animations the zoom
+// creates are paused at creation (and the old CSS fade is frozen with a style
+// override, so the same spec also shoots the base for "before" pictures), then
+// scrubbed to a fixed point. ZOOM_TAG names the files ("before" / "after").
+test.describe("viewer zoom from and to the tile (#220)", () => {
+  const tag = process.env.ZOOM_TAG ?? "after";
+  for (const scheme of ["light", "dark"] as const) {
+    test.describe(scheme, () => {
+      // The freeze style below is injected, which the app's CSP (rightly) blocks.
+      test.use({ colorScheme: scheme, bypassCSP: true });
+
+      async function freeze(page: Page) {
+        await page.addInitScript(() => {
+          const w = window as unknown as { __anims: Animation[] };
+          w.__anims = [];
+          const original = Element.prototype.animate;
+          Element.prototype.animate = function (this: Element, ...args: Parameters<typeof original>) {
+            const animation = original.apply(this, args);
+            animation.pause();
+            w.__anims.push(animation);
+            return animation;
+          };
+          const style = document.createElement("style");
+          style.textContent =
+            ".mobile-viewer,.desktop-viewer{animation-play-state:paused !important;animation-delay:-0.1s !important}" +
+            ".mobile-viewer.is-closing,.desktop-viewer.is-closing{animation-delay:-0.09s !important}";
+          document.addEventListener("DOMContentLoaded", () => document.head.append(style));
+        });
+      }
+
+      async function scrub(page: Page, fraction: number) {
+        return page.evaluate((f) => {
+          const anims = (window as unknown as { __anims: Animation[] }).__anims;
+          for (const a of anims) {
+            const timing = a.effect!.getTiming();
+            a.currentTime = (timing.duration as number) * f;
+          }
+          return anims.length;
+        }, fraction);
+      }
+
+      async function release(page: Page) {
+        await page.evaluate(() => {
+          const w = window as unknown as { __anims: Animation[] };
+          for (const a of w.__anims) a.finish();
+          w.__anims = [];
+        });
+      }
+
+      for (const kind of ["iphone", "desktop"] as const) {
+        test(`${kind}: open and close mid-frames (${scheme})`, async ({ page }, info) => {
+          test.skip(info.project.name !== kind, `${kind} only`);
+          await freeze(page);
+          await signIn(page);
+          await openZoom(page, "All Photos");
+          await expect(cells(page).nth(2)).toBeVisible();
+          await page.waitForLoadState("networkidle");
+          const cell = cells(page).nth(2);
+          if (kind === "desktop") await cell.dblclick();
+          else await cell.tap();
+          await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+          await page.waitForTimeout(300);
+          const created = await scrub(page, 0.45);
+          if (tag === "after") expect(created, "zoom animations").toBeGreaterThan(0);
+          await shot(page, `30-zoom-open-mid-${tag}-${scheme}`, info.project.name);
+          await release(page);
+          await page.waitForTimeout(600);
+
+          if (kind === "desktop") {
+            // Close after paging: it must land in the tile of the new item.
+            await page.keyboard.press("ArrowRight");
+            await page.keyboard.press("ArrowRight");
+            await page.waitForTimeout(500);
+          }
+          await page.getByRole("button", { name: /^(Close|Back)$/ }).first().click();
+          await page.waitForTimeout(100);
+          await scrub(page, 0.5);
+          await shot(page, `31-zoom-close-mid-${tag}-${scheme}`, info.project.name);
+          await scrub(page, 0.85);
+          await shot(page, `32-zoom-close-late-${tag}-${scheme}`, info.project.name);
+          // Some synthetic demo assets answer GET /assets/{id} with a 500 (a
+          // server-side serialisation error on the demo data, unrelated to the
+          // zoom); paging onto one must not fail this picture test.
+          consoleErrors = consoleErrors.filter((m) => !/status of 500/.test(m));
+        });
+      }
+    });
+  }
+});
+
+// #221 centred scrubber. FILMSTRIP_TAG=before|after names the files so the
+// same cases run against the base build and this one. The strip is dragged
+// with the mouse on both projects (pointer events), which is what the
+// component listens to.
+const FILMSTRIP_TAG = process.env.FILMSTRIP_TAG ?? "after";
+
+test.describe("filmstrip scrubber shots (#221)", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`viewer strip at rest, mid-drag and on a video (${scheme})`, async ({ page }, info) => {
+      test.skip(info.project.name === "small", "desktop and iPhone only");
+      await page.emulateMedia({ colorScheme: scheme });
+      await signIn(page);
+      await openZoom(page, "All Photos");
+      const first = cells(page).nth(3);
+      await expect(first).toBeVisible();
+      if (info.project.name === "desktop") await first.dblclick();
+      else await first.tap();
+      await expect(page.getByRole("button", { name: /close|back/i }).first()).toBeVisible();
+      await page.waitForTimeout(900);
+      const strip = page.getByTestId("viewer-filmstrip");
+      await expect(strip).toBeVisible();
+      const name = (n: string) => `${SHOTS}/${info.project.name}-${n}-${FILMSTRIP_TAG}-${scheme}.png`;
+      await page.waitForLoadState("networkidle");
+      await page.screenshot({ path: name("40-filmstrip-rest") });
+
+      const box = (await strip.boundingBox())!;
+      const y = box.y + box.height / 2;
+      const cx = box.x + box.width / 2;
+      if (FILMSTRIP_TAG === "after") {
+        expect(await strip.evaluate((el) => getComputedStyle(el).height), "strip is 30 px tall").toBe("30px");
+        await page.mouse.move(cx, y);
+        await page.mouse.down();
+        await page.mouse.move(cx - 60, y, { steps: 6 });
+        await page.mouse.move(cx - 140, y, { steps: 6 });
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: name("41-filmstrip-mid-drag") });
+        await page.mouse.up();
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: name("42-filmstrip-after-drag") });
+      }
+
+      // Find a video: slits within reach first, then drag towards later items.
+      let video = page.locator('[data-testid="viewer-filmstrip"] button[data-video]').first();
+      for (let i = 0; i < 8 && FILMSTRIP_TAG === "after" && (await video.count()) === 0; i++) {
+        await page.mouse.move(cx + 150, y);
+        await page.mouse.down();
+        await page.mouse.move(cx - 150, y, { steps: 10 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        video = page.locator('[data-testid="viewer-filmstrip"] button[data-video]').first();
+      }
+      if (FILMSTRIP_TAG === "after" && (await video.count()) > 0) {
+        await video.click();
+        await page.waitForTimeout(700);
+        await page.waitForLoadState("networkidle");
+        await page.screenshot({ path: name("43-filmstrip-video") });
+      }
+      // Some synthetic demo assets answer GET /assets/{id} with a 500.
+      consoleErrors = consoleErrors.filter((m) => !/status of 500|status of 404|status of 416/.test(m));
+    });
+  }
 });

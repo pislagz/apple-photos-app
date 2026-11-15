@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetListItem } from "../../api";
 import { getThumb, mockFetch, queryThumb } from "../../testHelpers";
@@ -23,6 +25,7 @@ function makeItem(id: string, date: string): AssetListItem {
 }
 
 afterEach(() => {
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
 
@@ -46,7 +49,7 @@ function computeSummary(items: AssetListItem[]) {
   return {
     years: bucket(4).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
     months: bucket(7).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
-    days: bucket(10).map(([key, { count }]) => ({ key, count })),
+    days: bucket(10).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids.slice(0, 1) })),
   };
 }
 
@@ -82,6 +85,15 @@ function mockAssets(items: AssetListItem[]) {
 }
 
 describe("MobileLibrary", () => {
+  it("opens on All Photos by default, with Years, Months and Days one tap away (#304)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    for (const name of ["All Photos", "Years", "Months", "Days"]) {
+      expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", String(name === "All Photos"));
+    }
+  });
+
   it("renders thumbnails from the thumb endpoint and never requests an original or /hidden", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     const fetchMock = mockAssets(items);
@@ -109,22 +121,29 @@ describe("MobileLibrary", () => {
     const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
 
+    expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelectorAll(".mobile-library__tile").length).toBe(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
-    expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0);
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBe(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBe(0));
     expect(container.querySelectorAll(".mobile-library__row-grid").length).toBeGreaterThan(0);
 
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
+
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__tile").length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByRole("tab", { name: "Days" }));
-    await waitFor(() => expect(container.querySelectorAll(".mobile-library__row-feature").length).toBeGreaterThan(0));
+    await waitFor(() => expect(container.querySelectorAll(".period-card--days").length).toBeGreaterThan(0));
   });
 
-  it("updates the pinned date header to the topmost visible day while scrolling All Photos", async () => {
+  it("updates the header subtitle to the topmost visible date while scrolling All Photos", async () => {
     const items = [
       makeItem("may-1", "2024-05-10T10:00:00"),
       makeItem("may-2", "2024-05-09T10:00:00"),
@@ -137,15 +156,19 @@ describe("MobileLibrary", () => {
     // Years/Months no longer have a pinned header (each tile already shows
     // its own label); only All Photos' uniform grid still needs one.
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("May 10, 2024"));
-
+    // Oldest first (#224): the grid starts with the oldest photo, 1 Apr.
     const scrollEl = screen.getByTestId("library-scroll");
-    // One grid row (cellSize 200px with the mocked 800px-wide container / 4
-    // columns) comfortably clears the first row (may-1, may-2, apr-0, apr-1).
-    scrollEl.scrollTop = 220;
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Apr 2024"));
+
+    // Eight rows of 3 (#365: the last one holds the odd photo, 10 May), ~267 px
+    // each (cellSize 265px with the mocked 800px-wide container, 2 px gap):
+    // scrolled to the last row, the title names the newest photo's day.
+    scrollEl.scrollTop = 1900;
     fireEvent.scroll(scrollEl);
 
-    await waitFor(() => expect(screen.getByTestId("pinned-header")).toHaveTextContent("April 18, 2024"));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
   });
 
   it("puts the pinned title and Select in one flex top bar (#159)", async () => {
@@ -153,48 +176,186 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    const title = await screen.findByTestId("pinned-header");
+    const title = await screen.findByTestId("header-title");
     const select = screen.getByRole("button", { name: "Select" });
     const bar = screen.getByTestId("top-bar");
-    expect(title.parentElement).toBe(bar);
-    expect(select.parentElement).toBe(bar);
+    expect(title).toHaveTextContent("Library");
+    // The title block (large title + subtitle) and Select share the bar.
+    expect(title.closest(".mobile-library__title-block")?.parentElement).toBe(bar);
+    expect(bar.contains(select)).toBe(true);
     // Select follows the title in flow, so the two cannot overlap.
-    expect(title.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(title.closest(".mobile-library__title-block")!.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(select);
-    expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toBe(bar);
+    expect(bar.contains(screen.getByRole("button", { name: "Cancel" }))).toBe(true);
   });
 
-  it("keeps the scrim behind Select on the Days view too (#176)", async () => {
+  it("uses the same glass Select button in a pushed grid as in the Library (#417)", async () => {
     mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
-    render(<MobileLibrary libraryId={1} />);
+    const { unmount } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
-    fireEvent.click(screen.getByRole("tab", { name: "Days" }));
-    const bar = await screen.findByTestId("top-bar");
-    expect(bar).toHaveAttribute("data-scrim", "true");
-    expect(screen.getByRole("button", { name: "Select" }).parentElement).toBe(bar);
+    const main = screen.getByRole("button", { name: "Select" }).className;
+    unmount();
+    render(<MobileLibrary libraryId={1} album="smart:videos" nav={{ title: "Videos", backLabel: "More", onBack: vi.fn() }} />);
+    await screen.findAllByRole("img");
+    expect(screen.getByRole("button", { name: "Select" }).className).toBe(main);
+    expect(main).toContain("mobile-library__glass-button");
   });
 
-  it("changes the column count on a pinch gesture", async () => {
-    const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
-    mockAssets(items);
+  it("puts a pushed grid's back button, Select and title in the same one top bar (#260)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const onBack = vi.fn();
+    const { container } = render(
+      <MobileLibrary libraryId={1} album="smart:videos" nav={{ title: "Videos", backLabel: "More", onBack }} />,
+    );
+    await screen.findAllByRole("img");
+    const bars = screen.getAllByTestId("top-bar");
+    expect(bars).toHaveLength(1);
+    const [bar] = bars;
+    const back = screen.getByRole("button", { name: "More" });
+    const select = screen.getByRole("button", { name: "Select" });
+    const title = screen.getByRole("heading", { name: "Videos" });
+    for (const element of [back, select]) expect(bar.contains(element)).toBe(true);
+    expect(title.parentElement).toBe(bar);
+    // Back and Select share the first row; the title wraps below them.
+    expect(back.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(select.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bar).toHaveClass("mobile-library__top-bar--nav");
+    expect(bar).not.toHaveAttribute("data-scrim");
+    expect(screen.queryByTestId("header-subtitle")).toBeNull();
+    expect(container.querySelector(".mobile-library__view-switch")).toBeNull();
+    fireEvent.click(back);
+    expect(onBack).toHaveBeenCalledOnce();
+  });
 
+  it("Days is a card grid under a Days header with the item count, oldest first, opening at the newest (#301)", async () => {
+    mockAssets([
+      makeItem("a1", "2024-05-10T10:00:00"),
+      makeItem("a2", "2024-05-10T09:00:00"),
+      makeItem("a3", "2024-05-10T08:00:00"),
+      makeItem("a4", "2024-05-10T07:00:00"),
+      makeItem("b1", "2023-02-02T10:00:00"),
+    ]);
     const { container } = render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
-    // Pinch-to-zoom only applies to the uniform grid, not Years/Months tiles.
-    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Days" }));
+    await waitFor(() => expect(container.querySelectorAll(".period-card--days")).toHaveLength(2));
+
+    const cards = Array.from(container.querySelectorAll(".period-card--days"));
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-02-02", "2024-05-10"]);
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("Days");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("5 Items");
+    // Count pill only on the day with more than 3 photos.
+    expect(cards[0].querySelector(".period-card__pill")).toBeNull();
+    expect(cards[1].querySelector(".period-card__pill")).toHaveTextContent("4");
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(1_000_000);
+    // One key-photo thumbnail per card, no per-asset requests.
+    expect(container.querySelectorAll(".period-card__image")).toHaveLength(2);
+  });
+
+  it("fades the title scrim in over the first 48 px of All Photos scroll (#261)", async () => {
+    mockAssets(Array.from({ length: 40 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(28 - (i % 28)).padStart(2, "0")}T10:00:00`)));
+    render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
-
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const bar = await screen.findByTestId("top-bar");
     const scrollEl = screen.getByTestId("library-scroll");
-    const initialWidth = (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
-    expect(initialWidth).toBe("200px"); // 800px container / 4 default columns
+    // The Library opens scrolled to its end (#224); go to the very top first.
+    scrollEl.scrollTop = 0;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0"));
+    scrollEl.scrollTop = 24;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("0.5"));
+    scrollEl.scrollTop = 400;
+    fireEvent.scroll(scrollEl);
+    await waitFor(() => expect(bar.style.getPropertyValue("--title-scrim")).toBe("1"));
+  });
 
-    // Pinch in (fingers moving together): zoom out to more, smaller columns.
-    fireEvent.touchStart(scrollEl, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 200, clientY: 0 }] });
-    fireEvent.touchMove(scrollEl, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] });
+  describe("pinch zoom levels (#213)", () => {
+    const pinchTo = (scrollEl: HTMLElement, endX: number) => {
+      const a = { clientX: 0, clientY: 0 };
+      fireEvent.touchStart(scrollEl, { touches: [a, { clientX: 100, clientY: 0 }] });
+      fireEvent.touchMove(scrollEl, { touches: [a, { clientX: endX, clientY: 0 }] });
+      fireEvent.touchEnd(scrollEl, { touches: [] });
+    };
+    const cellWidth = (container: HTMLElement) => (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
+    async function setup() {
+      const items = Array.from({ length: 12 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+      mockAssets(items);
+      const view = render(<MobileLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+      await screen.findAllByRole("img");
+      return { ...view, scrollEl: screen.getByTestId("library-scroll") };
+    }
 
-    await waitFor(() => {
-      const width = (container.querySelector(".mobile-library__cell") as HTMLImageElement).style.width;
-      expect(width).not.toBe(initialWidth);
+    it("starts at 3 columns with a 2px gap", async () => {
+      const { container } = await setup();
+      expect(parseFloat(cellWidth(container))).toBeCloseTo(265.3333, 3); // (800 - 2 * 2) / 3
+    });
+
+    it("changes level only on release, using the issue thresholds", async () => {
+      const { container, scrollEl } = await setup();
+      const before = cellWidth(container);
+      const a = { clientX: 0, clientY: 0 };
+      fireEvent.touchStart(scrollEl, { touches: [a, { clientX: 100, clientY: 0 }] });
+      fireEvent.touchMove(scrollEl, { touches: [a, { clientX: 300, clientY: 0 }] });
+      // Scaled in place while the fingers are down; no re-layout yet.
+      expect(container.querySelector<HTMLElement>(".mobile-library__zoom-layer")!.style.transform).toBe("scale(3)");
+      expect(cellWidth(container)).toBe(before);
+      fireEvent.touchEnd(scrollEl, { touches: [] });
+      await waitFor(() => expect(cellWidth(container)).not.toBe(before));
+      expect(parseFloat(cellWidth(container))).toBe(800);
+      expect(container.querySelector<HTMLElement>(".mobile-library__zoom-layer")!.style.transform).toBe("");
+    });
+
+    it("pinching in goes to 4 columns, then 5, then Months (#433)", async () => {
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 70); // scale 0.7: one level out
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBeCloseTo(198.5, 1)); // (800 - 3 * 2) / 4
+      pinchTo(scrollEl, 70);
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBeCloseTo(158.4, 1));
+      pinchTo(scrollEl, 70);
+      await screen.findByTestId("period-grid");
+      expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("snaps back when the pinch is too small", async () => {
+      const { container, scrollEl } = await setup();
+      const before = cellWidth(container);
+      pinchTo(scrollEl, 105);
+      expect(cellWidth(container)).toBe(before);
+    });
+
+    it("ignores a tap right after a pinch, then opens the viewer again", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        const { container, scrollEl } = await setup();
+        pinchTo(scrollEl, 105); // too small to change level, still a pinch
+        fireEvent.click(container.querySelector(".mobile-library__cell") as HTMLElement);
+        expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+        vi.setSystemTime(Date.now() + 700);
+        fireEvent.click(container.querySelector(".mobile-library__cell") as HTMLElement);
+        await screen.findByTestId("mobile-viewer");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("zooms in without animation under prefers-reduced-motion", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), addEventListener: () => {}, removeEventListener: () => {}, media: query }));
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 300);
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBe(800));
+      expect(document.querySelector(".mobile-library__zoom-ghost")).toBeNull();
+      expect(container.querySelector(".is-fading-in")).toBeNull();
+    });
+
+    it("leaves a ghost copy that fades out when animations are on", async () => {
+      const { container, scrollEl } = await setup();
+      pinchTo(scrollEl, 300);
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBe(800));
+      expect(container.querySelector(".mobile-library__zoom-ghost")).not.toBeNull();
     });
   });
 
@@ -288,34 +449,85 @@ describe("MobileLibrary", () => {
     expect(document.activeElement).toBe(document.querySelector('[data-asset-id="a2"]'));
   });
 
-  it("tapping a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+  it("opens Years as a multi-card grid, oldest first, scrolled to the newest (#307)", async () => {
+    mockAssets([
+      makeItem("a1", "2024-05-10T10:00:00"),
+      makeItem("a2", "2023-02-02T10:00:00"),
+      makeItem("a3", "2021-02-02T10:00:00"),
+    ]);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(container.querySelectorAll(".period-card").length).toBe(3));
+    const cards = Array.from(container.querySelectorAll(".period-card"));
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2021", "2023", "2024"]);
+    expect(screen.getByTestId("library-scroll").scrollTop).toBe(1_000_000);
+    expect(container.querySelector(".period-grid--years")).not.toBeNull();
+  });
+
+  it("tapping a Year card drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
 
     // Tapping anywhere in the tile (its label text bubbles up to the
-    // SummaryTile button) drills in -- not an individual photo, since Years
+    // period card button) drills in -- not an individual photo, since Years
     // tiles no longer render a per-asset grid.
     fireEvent.click(screen.getByText("2022"));
 
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(screen.getByText("January 2022")).toBeInTheDocument());
-    // 2022's own tile is the older (second, since newest sorts first) of
-    // the two Month tiles -- scrolled past the top only if the drill-down
-    // actually scrolled Months to it instead of leaving it at the default
-    // top-of-list position.
-    const scrollEl = screen.getByTestId("library-scroll");
-    await waitFor(() => expect(scrollEl.scrollTop).toBeGreaterThan(0));
+    // Oldest on top: the drill-down lands on 2022's own first month card
+    // instead of the default newest-at-the-bottom position.
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
   });
 
-  it("tapping a Month tile anchors Days to that tile's month, without opening the Viewer", async () => {
+  it("tapping a Month card lands Days on that month's first day; a Day card opens All Photos at that day (#301)", async () => {
+    const items = [
+      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+    ];
+    mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    await screen.findByText("January 2022");
+
+    // Months lists Day cards under month headers; a Day card goes to Days at that day.
+    fireEvent.click(screen.getByText(/Jan 1, 2022/));
+
+    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01-01");
+
+    // All Photos (oldest first, #224) scrolls so that day's photo is at the top of the viewport.
+    fireEvent.click(screen.getByText(/Jan 20, 2022/));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
+    const scrollEl = screen.getByTestId("library-scroll");
+    await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
+    // jsdom does not clamp scrollTop or fire a scroll event: put the offset where a browser would, then let the grid settle.
+    await waitFor(() => {
+      const row = getThumb("jan22-0").closest(".mobile-library__row-grid") as HTMLElement;
+      expect(Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1])).toBe(scrollEl.scrollTop);
+    });
+  });
+
+  it("re-tapping All Photos after landing on an older day glides to the newest photos (#146, #224)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
@@ -325,45 +537,18 @@ describe("MobileLibrary", () => {
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await screen.findByText("January 2022");
-
-    fireEvent.click(screen.getByText("January 2022"));
-
-    expect(screen.queryByTestId("mobile-viewer")).toBeNull();
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
-    // The anchor (`to=2022-01-31`) must exclude "recent" (2024-05-10) and
-    // land Days at the top of January 2022 -- its newest day
-    // (2022-01-20, "jan22-0"), not scrolled to a specific older day.
-    await waitFor(() => expect(screen.getByText("January 20, 2022")).toBeInTheDocument());
-    expect(getThumb("jan22-0")).toBeInTheDocument();
-    expect(queryThumb("recent")).toBeNull();
-  });
-
-  it("re-selecting All Photos after jumping to an older month clears the anchor and loads the newest photos (#146)", async () => {
-    const items = [
-      makeItem("recent", "2024-05-10T10:00:00"),
-      ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
-    ];
-    const fetchMock = mockAssets(items);
-
-    render(<MobileLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
-    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("January 2022"));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
-    expect(queryThumb("recent")).toBeNull();
 
+    const scrollEl = screen.getByTestId("library-scroll");
+    const scrollTo = vi.fn();
+    scrollEl.scrollTo = scrollTo as unknown as typeof scrollEl.scrollTo;
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
-    const lastAssetsUrl = String(
-      fetchMock.mock.calls.map((call) => String(call[0])).filter((url) => url.includes("/assets?")).at(-1),
-    );
-    expect(new URLSearchParams(lastAssetsUrl.split("?")[1]).get("to")).toBeNull();
-    expect(screen.getByTestId("library-scroll").scrollTop).toBe(0);
+    expect(scrollTo).toHaveBeenCalledWith({ top: scrollEl.scrollHeight, behavior: "smooth" });
   });
 
-  it("bumping resetSignal (Library tab re-tap) drops the anchor and returns to the newest photos (#146)", async () => {
+  it("bumping resetSignal (Library tab re-tap) returns to the newest photos at the bottom (#146, #224)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
@@ -372,14 +557,12 @@ describe("MobileLibrary", () => {
 
     const { rerender } = render(<MobileLibrary libraryId={1} resetSignal={0} />);
     await screen.findAllByRole("img");
-    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    fireEvent.click(await screen.findByText("January 2022"));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Days" })).toHaveAttribute("aria-selected", "true"));
-    await waitFor(() => expect(queryThumb("recent")).toBeNull());
+    const scrollEl = screen.getByTestId("library-scroll");
+    scrollEl.scrollTop = 500;
 
     rerender(<MobileLibrary libraryId={1} resetSignal={1} />);
 
-    await waitFor(() => expect(getThumb("recent")).toBeInTheDocument());
+    await waitFor(() => expect(scrollEl.scrollTop).toBe(scrollEl.scrollHeight));
   });
 
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
@@ -461,12 +644,167 @@ describe("MobileLibrary", () => {
     fireEvent.click(a1Image);
     fireEvent.click(a2Image);
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
-    expect(screen.getByText("2 Selected")).toBeInTheDocument();
+    expect(screen.getByText("2 Photos Selected")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
     expect(canShare).toHaveBeenCalledTimes(1);
     expect(share.mock.calls[0][0].files).toHaveLength(2);
+  });
+
+  it("has no × deselect button next to the count on mobile; Cancel exits Select mode", async () => {
+    mockLibraryFetch([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    fireEvent.click(images[0]);
+    expect(screen.getByText("1 Photo Selected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("select-bar")).toBeNull();
+  });
+
+  it("shows heart and duration always, and empty badges that fill when selected in Select mode (#208)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), favorite: true },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_video: true, duration: 7 },
+    ];
+    mockLibraryFetch(items);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    expect(screen.getByLabelText("Favorite")).toBeInTheDocument();
+    expect(screen.getByText("0:07")).toBeInTheDocument();
+    expect(container.querySelector(".mobile-library__check")).toBeNull();
+
+    fireEvent.click(screen.getByText("Select"));
+    const badges = () => [...container.querySelectorAll(".mobile-library__check")].map((b) => b.getAttribute("data-selected"));
+    expect(badges()).toEqual(["false", "false"]);
+    fireEvent.click(images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLElement);
+    // Oldest first (#224): a2 is listed before a1.
+    expect(badges()).toEqual(["false", "true"]);
+    expect(container.querySelector('.mobile-library__cell-wrap[data-selected="true"]')).not.toBeNull();
+  });
+
+  it("offers HEIC as JPEG only once a HEIC photo is selected (#254)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: false },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: true },
+    ];
+    mockAssets(items);
+
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    fireEvent.click(image("a1"));
+    expect(screen.getByTestId("zip-status")).toBeInTheDocument();
+    expect(screen.queryByLabelText("HEIC as JPEG")).toBeNull();
+
+    fireEvent.click(image("a2"));
+    expect(screen.getByLabelText("HEIC as JPEG")).toBeInTheDocument();
+  });
+
+  it("lays the select bar out like Photos: Share left, count centred, Download right (#259)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
+      { ...makeItem("v1", "2024-05-09T10:00:00"), is_video: true },
+    ];
+    mockAssets(items);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    const bar = screen.getByTestId("select-bar");
+    const row = bar.querySelector(".mobile-library__select-row")!;
+    const [share, count, download] = [...row.children];
+    expect(share).toBe(screen.getByRole("button", { name: "Share" }));
+    expect(count).toHaveTextContent("Select Items");
+    expect(download).toBe(screen.getByRole("button", { name: "Download" }));
+    expect(screen.queryByRole("button", { name: "Zip" })).toBeNull();
+    expect(share).toBeDisabled();
+    expect(download).toBeDisabled();
+
+    fireEvent.click(image("a1"));
+    expect(count).toHaveTextContent("1 Photo Selected");
+    expect(bar).toHaveTextContent("Downloads the original file.");
+    // The HEIC option is a whole-row switch, not a small checkbox.
+    const option = screen.getByRole("switch", { name: "HEIC as JPEG" });
+    expect(option.closest("label")).toHaveClass("zip-status__option--row");
+
+    fireEvent.click(image("v1"));
+    expect(count).toHaveTextContent("2 Items Selected");
+    expect(bar).toHaveTextContent("Downloads all selected items in a ZIP file.");
+    expect(share).toBeEnabled();
+    expect(download).toBeEnabled();
+  });
+
+  it("downloads a single selected item as the plain file, not an archive (#259)", async () => {
+    const items = [
+      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
+      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: false },
+    ];
+    const fetchMock = mockAssets(items);
+    const hrefs: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      hrefs.push(this.getAttribute("href") ?? "");
+    });
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    fireEvent.click(screen.getByText("Select"));
+    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
+
+    fireEvent.click(image("a1"));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(hrefs).toEqual(["/api/libraries/1/original/a1?download=1"]));
+
+    fireEvent.click(screen.getByRole("switch", { name: "HEIC as JPEG" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(hrefs).toHaveLength(2));
+    expect(hrefs[1]).toBe("/api/libraries/1/original/a1?format=jpeg&download=1");
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("/zip"))).toBe(false);
+    click.mockRestore();
+  });
+
+  it("styles the select bar buttons as the shared glass buttons (#371)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    const bar = screen.getByTestId("select-bar");
+    const share = within(bar).getByRole("button", { name: "Share" });
+    const download = within(bar).getByRole("button", { name: "Download" });
+    expect(share.className).toContain("mobile-library__glass-button");
+    expect(download.className).toContain("mobile-library__glass-button");
+    // Order in the DOM is Share, count, actions.
+    const row = bar.querySelector(".mobile-library__select-row")!;
+    expect(row.children[0]).toBe(share);
+    expect(row.children[1].className).toContain("select-count");
+    expect(row.children[2]).toBe(download);
+  });
+
+  it("gives every select bar control a 44pt target (#259)", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const rule = (selector: string) => {
+      const match = css.match(new RegExp(`${selector.replace(/[.[\]"]/g, "\\$&")} \\{([^}]*)\\}`));
+      return match?.[1] ?? "";
+    };
+    expect(rule(".mobile-library__select-row")).toMatch(/min-height: 49px/);
+    expect(rule(".mobile-library__bar-button")).toMatch(/width: 44px/);
+    expect(rule(".mobile-library__glass-button")).toMatch(/height: 44px/);
+    expect(rule(".zip-status__option--row")).toMatch(/min-height: 44px/);
   });
 
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
@@ -482,8 +820,27 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByText("Select"));
     expect(screen.queryByRole("tablist", { name: "Library zoom" })).toBeNull();
 
-    fireEvent.click(screen.getByText("Cancel"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("tablist", { name: "Library zoom" })).toBeInTheDocument();
+  });
+
+  it("swaps the header to Select Items with a live count in selection mode (#212)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")]);
+    render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    const images = await screen.findAllByRole("img");
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Select Items");
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("None Selected");
+    expect(screen.queryByRole("button", { name: "Select" })).toBeNull();
+    fireEvent.click(images[0]);
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Selected");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
+    // The title names the top row, the oldest photo (#224).
+    expect(screen.getByTestId("header-subtitle")).toHaveTextContent("9 May 2024");
   });
 
   it("falls back to download links per item when the Web Share API is unavailable", async () => {
@@ -502,7 +859,7 @@ describe("MobileLibrary", () => {
     fireEvent.click(a1Image);
     fireEvent.click(a2Image);
 
-    fireEvent.click(screen.getByText("Share"));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
     clickSpy.mockRestore();
   });
@@ -520,20 +877,20 @@ describe("MobileLibrary summary failure (#147)", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<MobileLibrary libraryId={1} />);
-    if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    fireEvent.click(screen.getByRole("tab", { name }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
   });
 });
 
 describe("MobileLibrary assets failure (#147)", () => {
-  it.each(["Days", "All Photos"])("shows an error and Retry in %s instead of 'No photos yet.', then recovers", async (name) => {
+  it.each(["All Photos"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     let fail = true;
     mockFetch((url) => {
@@ -547,12 +904,12 @@ describe("MobileLibrary assets failure (#147)", () => {
     fireEvent.click(screen.getByRole("tab", { name }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
   });
 });
 
@@ -573,7 +930,7 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load more photos.");
     expect(queryThumb("a1")).not.toBeNull();
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -581,7 +938,7 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
     await waitFor(() => expect(queryThumb("a2")).not.toBeNull());
   });
 
-  it("still says 'No photos yet.' for an empty library", async () => {
+  it("still says 'No Photos or Videos' for an empty library", async () => {
     mockFetch((url) => {
       if (url === "/api/libraries/1/summary") return computeSummary([]);
       if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items: [], next_cursor: null };
@@ -589,8 +946,12 @@ describe("MobileLibrary later-page failure and empty library (#89)", () => {
     });
     render(<MobileLibrary libraryId={1} />);
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    expect(await screen.findByText("No photos yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No Photos or Videos")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
+    // #263: nothing to group into years or months yet.
+    expect(screen.getByRole("tab", { name: "Years" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Months" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Days" })).toBeEnabled();
   });
 });
 
@@ -612,5 +973,56 @@ describe("MobileLibrary person grid text (#193)", () => {
     });
     render(<MobileLibrary libraryId={1} album="person:p1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this person's photos.");
+  });
+
+  it("re-lays out rows live when the container width changes (no reload)", async () => {
+    const items = Array.from({ length: 40 }, (_, n) => makeItem(`r${n}`, "2024-05-10T10:00:00"));
+    mockAssets(items);
+    const callbacks: ResizeObserverCallback[] = [];
+    const Original = globalThis.ResizeObserver;
+    class CapturingObserver {
+      constructor(cb: ResizeObserverCallback) {
+        callbacks.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", CapturingObserver);
+    try {
+      const { container } = render(<MobileLibrary libraryId={1} />);
+      fireEvent.click(await screen.findByRole("tab", { name: "All Photos" }));
+      await waitFor(() => expect(container.querySelectorAll(".mobile-library__row-grid").length).toBeGreaterThan(1));
+      const rowTops = () =>
+        [...container.querySelectorAll<HTMLElement>(".mobile-library__row-grid")].map((r) => ({
+          top: Number(/translateY\(([\d.]+)px\)/.exec(r.style.transform)?.[1]),
+          height: parseFloat(r.style.height),
+        }));
+      // 800px wide, 3 columns -> square rows (2px gap between cells), back to back.
+      expect(rowTops()[0].height).toBeCloseTo(265.3333, 3);
+
+      const narrow = () =>
+        ({ width: 400, height: 600, top: 0, left: 0, right: 400, bottom: 600, x: 0, y: 0, toJSON() {} }) as DOMRect;
+      Element.prototype.getBoundingClientRect = narrow;
+      act(() => callbacks.forEach((cb) => cb([], {} as ResizeObserver)));
+
+      await waitFor(() => expect(rowTops()[0].height).toBeCloseTo(132, 3));
+      const rows = rowTops();
+      rows.slice(1).forEach((row, n) => expect(row.top).toBe(rows[n].top + rows[n].height));
+    } finally {
+      vi.stubGlobal("ResizeObserver", Original);
+    }
+  });
+});
+
+describe("MobileLibrary date title follows the zoom level (#209)", () => {
+  it("shows Library with a D Mon YYYY subtitle at 3 columns and no pill", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const { container } = render(<MobileLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+    await waitFor(() => expect(screen.getByTestId("header-subtitle")).toHaveTextContent("10 May 2024"));
+    expect(container.querySelector(".mobile-library__large-title")).toHaveTextContent("Library");
+    expect(container.querySelector(".mobile-library__pill")).toBeNull();
   });
 });

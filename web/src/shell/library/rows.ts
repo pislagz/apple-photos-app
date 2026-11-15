@@ -1,4 +1,5 @@
 import type { AssetListItem, SummaryPeriodBucket } from "../../api";
+import type { PeriodCardData } from "./PeriodCards";
 import { type ViewKey, formatGroupLabel, groupAssets } from "./grouping";
 
 export interface HeaderRow {
@@ -26,23 +27,7 @@ export interface FeatureRow {
   items: AssetListItem[];
 }
 
-// #91: one compact, full-width tile per Years/Months bucket -- the server's
-// `/summary` already carries the count and a few cycling key-photo
-// candidates, so there is no per-asset grid to build here at all.
-export interface TileRow {
-  type: "tile";
-  key: string;
-  label: string;
-  count: number;
-  keyAssetIds: string[];
-}
-
-export type LibraryRow = HeaderRow | GridRow | FeatureRow | TileRow;
-
-// Desktop (`DesktopLibrary.tsx`) only ever calls `buildRows`, never
-// `buildTileRows` -- narrow its return type so Desktop's Years/Months,
-// unchanged by #91, don't have to handle a `TileRow` case that can't occur.
-type PagedRow = HeaderRow | GridRow | FeatureRow;
+export type LibraryRow = HeaderRow | GridRow | FeatureRow;
 
 function gridRows(items: AssetListItem[], columns: number, label: string, keyPrefix: string): GridRow[] {
   const rows: GridRow[] = [];
@@ -52,10 +37,36 @@ function gridRows(items: AssetListItem[], columns: number, label: string, keyPre
   return rows;
 }
 
-export function buildRows(items: AssetListItem[], view: ViewKey, columns: number): PagedRow[] {
+// `oldestFirst` (#224, #365): `items` run oldest to newest and All Photos rows
+// start at the library's OLDEST photo, like Apple Photos: every row is full
+// and only the last (newest) one can be short, empty on the right. `total` is
+// the library's photo count; with it the loaded items' position from the
+// oldest photo is known, so rows are cut at global multiples of `columns`. An
+// older page added on top then never moves a row boundary below it, and only
+// the top row (not yet reaching the oldest photo) can be short until it
+// arrives. Row keys use the row's last item, which stays put.
+export function buildRows(
+  items: AssetListItem[],
+  view: ViewKey,
+  columns: number,
+  oldestFirst = false,
+  total: number | null = null,
+): LibraryRow[] {
+  if (view === "all" && oldestFirst) {
+    const unloaded = total !== null && total > items.length ? total - items.length : 0;
+    const head = (columns - (unloaded % columns)) % columns;
+    const rows: GridRow[] = [];
+    for (let start = 0; start < items.length; start = start === 0 && head > 0 ? head : start + columns) {
+      const slice = items.slice(start, start === 0 && head > 0 ? head : start + columns);
+      const label = formatGroupLabel(slice[0]?.date ? slice[0].date.slice(0, 10) : "", "days");
+      rows.push({ type: "grid", key: `all-${slice[slice.length - 1].id}`, label, items: slice });
+    }
+    return rows;
+  }
   if (view === "all") {
-    // Uniform square grid, no inline headers -- the pinned header still
-    // tracks a day-level label per row for the topmost-visible lookup.
+    // Uniform square grid, no inline headers -- the overlaid title (#209)
+    // already names the period, so a year row header would sit under it. The
+    // label per row is the day (All Photos) or the year (Years).
     const rows: GridRow[] = [];
     for (let i = 0; i < items.length; i += columns) {
       const slice = items.slice(i, i + columns);
@@ -65,7 +76,7 @@ export function buildRows(items: AssetListItem[], view: ViewKey, columns: number
     return rows;
   }
 
-  const rows: PagedRow[] = [];
+  const rows: LibraryRow[] = [];
   for (const group of groupAssets(items, view)) {
     if (view === "days") {
       const [hero, ...rest] = group.items;
@@ -79,17 +90,65 @@ export function buildRows(items: AssetListItem[], view: ViewKey, columns: number
   return rows;
 }
 
-// #91: Years and Months read `/summary`'s buckets directly, newest period
-// first like every other view -- the server returns them oldest-first
-// (`ORDER BY key`), suited to its own `WHERE key >= ... AND key <= ...`
-// range queries, not to display order.
-export function buildTileRows(buckets: SummaryPeriodBucket[], view: "years" | "months"): TileRow[] {
-  return [...buckets].reverse().map((bucket) => ({
-    type: "tile",
+// #307: Years and Months read `/summary`'s buckets directly. The server
+// returns them oldest first (`ORDER BY key`) and that is the display order:
+// oldest on top, the view opens scrolled down to the newest.
+// "Jan 2007", the Apple Photos card label.
+function formatShortMonth(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, 1)).toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+// "May 12" for the current year, "May 12, 2022" otherwise (Apple Photos).
+function formatDayCardLabel(key: string, currentYear: number): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(year === currentYear ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  });
+}
+
+// "Saturday", the iPhone Day card title when no place name is known (#219).
+function formatWeekday(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1)).toLocaleDateString("en-US", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+}
+
+// "May 2024", the month header above a month's Day cards on iPhone (#219).
+export function formatMonthHeader(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+export function buildPeriodCards(
+  buckets: SummaryPeriodBucket[],
+  view: "years" | "months" | "days",
+  currentYear = new Date().getFullYear(),
+): PeriodCardData[] {
+  return buckets.map((bucket) => ({
     key: bucket.key,
-    label: formatGroupLabel(bucket.key, view),
+    label:
+      view === "months"
+        ? formatShortMonth(bucket.key)
+        : view === "days"
+          ? formatDayCardLabel(bucket.key, currentYear)
+          : formatGroupLabel(bucket.key, view),
     count: bucket.count,
-    keyAssetIds: bucket.key_asset_ids,
+    keyAssetIds: bucket.key_asset_ids ?? [],
+    weekday: view === "days" ? formatWeekday(bucket.key) : undefined,
   }));
 }
 
@@ -110,22 +169,21 @@ export function columnOf(rows: LibraryRow[], id: string): number | null {
 // so without it the column is lost after the Days lead photo. Omitted, it is the
 // column `fromId` sits in (0 on a full-width row). `null`: already at the top
 // edge. `"end"`: at the bottom edge, where the caller decides whether to load
-// more (#96). `"unknown"`: `fromId` is not in the row model (e.g. a header or
-// tile row), so the caller falls back to flat +-columns movement.
+// more (#96). `"unknown"`: `fromId` is not in the row model (e.g. a header row), so the caller falls back to flat +-columns movement.
 export function verticalTarget(
   rows: LibraryRow[],
   fromId: string,
   direction: 1 | -1,
   column?: number,
 ): string | null | "end" | "unknown" {
-  const rowIndex = rows.findIndex((row) => row.type !== "header" && row.type !== "tile" && row.items.some((i) => i.id === fromId));
+  const rowIndex = rows.findIndex((row) => row.type !== "header" && row.items.some((i) => i.id === fromId));
   if (rowIndex === -1) return "unknown";
   const row = rows[rowIndex];
-  if (row.type === "header" || row.type === "tile") return "unknown";
+  if (row.type === "header") return "unknown";
   const goal = column ?? (row.type === "feature" ? 0 : row.items.findIndex((i) => i.id === fromId));
   for (let i = rowIndex + direction; i >= 0 && i < rows.length; i += direction) {
     const next = rows[i];
-    if (next.type === "header" || next.type === "tile") continue;
+    if (next.type === "header") continue;
     return next.items[Math.min(goal, next.items.length - 1)].id;
   }
   return direction === 1 ? "end" : null;

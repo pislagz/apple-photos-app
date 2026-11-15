@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import type { MeResponse } from "../api";
-import AccountMenu from "./AccountMenu";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
 import { Icon, type IconName } from "./icons";
 import MobileLibrary from "./library/MobileLibrary";
-import LibraryPlaceholder from "./LibraryPlaceholder";
 import LibraryUpdating from "./LibraryUpdating";
 import PeopleScreen from "./people/PeopleScreen";
 import PlacesScreen from "./map/PlacesScreen";
@@ -16,7 +14,7 @@ import MoreScreen from "./more/MoreScreen";
 import { type MobileRoute, type MobileTab, mobileRoutePath, parseMobileRoute } from "./route";
 import SearchScreen from "./search/SearchScreen";
 import TabPlaceholderScreen from "./TabPlaceholderScreen";
-import type { LayoutOverride } from "./useLayout";
+import WelcomeScreen from "./WelcomeScreen";
 import { LibraryNoteFrame } from "./library/LibraryUpdatedNote";
 
 // #125, tracker R1: Library, Albums, More, Search -- no "For You" (Apple's
@@ -34,22 +32,20 @@ export default function MobileShell({
   me,
   activeLibraryId,
   onActiveLibraryChange,
-  layoutOverride,
-  onLayoutOverrideChange,
   onLogout,
   deepLinkAssetId,
   onDeepLinkConsumed,
   onNoteDismissed,
+  onAvatarChanged,
 }: {
   me: MeResponse;
   activeLibraryId?: number;
   onActiveLibraryChange: (id: number) => void;
-  layoutOverride: LayoutOverride;
-  onLayoutOverrideChange: (value: LayoutOverride) => void;
   onLogout: () => void;
   deepLinkAssetId?: string;
   onDeepLinkConsumed?: () => void;
   onNoteDismissed?: () => void;
+  onAvatarChanged?: () => void;
 }) {
   const [route, setRoute] = useState<MobileRoute>(() => parseMobileRoute(window.location.pathname));
   // Resets on every navigation (including browser back/forward into
@@ -80,11 +76,16 @@ export default function MobileShell({
     setRoute(parseMobileRoute(path));
   }
 
+  const unavailable =
+    activeLibraryId === undefined
+      ? "Nothing here yet. Photos appear once a library has been added."
+      : "Your library is being prepared. This will appear when it's ready.";
+
   function renderContent() {
     if (route.tab === "library") return null;
     if (route.tab === "albums") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <TabPlaceholderScreen title="Albums" />;
+        return <TabPlaceholderScreen title="Albums" message={unavailable} />;
       }
       return (
         <AlbumsTab
@@ -98,7 +99,7 @@ export default function MobileShell({
     }
     if (route.tab === "search") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <TabPlaceholderScreen title="Search" />;
+        return <TabPlaceholderScreen title="Search" message={unavailable} />;
       }
       return (
         <SearchScreen
@@ -118,12 +119,15 @@ export default function MobileShell({
           activeLibraryId={activeLibraryId}
           onActiveLibraryChange={onActiveLibraryChange}
           onNavigate={navigate}
+          me={me}
+          onLogout={onLogout}
+          onAvatarChanged={onAvatarChanged}
         />
       );
     }
     if (route.screen === "people") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <MorePlaceholderScreen title="People & Pets" onBack={() => navigate("/more")} />;
+        return <MorePlaceholderScreen title="People & Pets" message={unavailable} onBack={() => navigate("/more")} />;
       }
       return (
         <PeopleScreen
@@ -136,7 +140,7 @@ export default function MobileShell({
     }
     if (route.screen === "places") {
       if (activeLibraryId === undefined || me.libraries.find((l) => l.id === activeLibraryId)?.updating) {
-        return <MorePlaceholderScreen title="Places" onBack={() => navigate("/more")} />;
+        return <MorePlaceholderScreen title="Places" message={unavailable} onBack={() => navigate("/more")} />;
       }
       return <PlacesScreen key={activeLibraryId} libraryId={activeLibraryId} bbox={route.bbox} onNavigate={navigate} />;
     }
@@ -154,7 +158,14 @@ export default function MobileShell({
           />
         );
       }
-      return <MorePlaceholderScreen title={title} onBack={() => navigate("/more")} />;
+      const known = MEDIA_TYPES.some((t) => t.slug === route.mediaType);
+      return (
+        <MorePlaceholderScreen
+          title={title}
+          message={known ? unavailable : "This page doesn't exist."}
+          onBack={() => navigate("/more")}
+        />
+      );
     }
     // route.screen === "hidden"
     if (!hiddenConfirmed) {
@@ -193,13 +204,6 @@ export default function MobileShell({
     <div className="shell shell--mobile">
       <header className="shell__header">
         <h1 className="sr-only">{TABS.find((tab) => tab.key === route.tab)?.label ?? "Library"}</h1>
-        <AccountMenu
-          me={me}
-          layoutOverride={layoutOverride}
-          onLayoutOverrideChange={onLayoutOverrideChange}
-          onLogout={onLogout}
-          compact
-        />
       </header>
       <main className="shell__content">
         {/* Stays mounted across tab switches so the grid's segment and scroll
@@ -218,12 +222,13 @@ export default function MobileShell({
                 key={activeLibraryId}
                 libraryId={activeLibraryId}
                 resetSignal={libraryResetSignal}
+                isAdmin={me.role === "admin"}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
               />
             </LibraryNoteFrame>
           ) : (
-            <LibraryPlaceholder />
+            <WelcomeScreen isAdmin={me.role === "admin"} />
           )}
         </div>
         {route.tab !== "library" && renderContent()}

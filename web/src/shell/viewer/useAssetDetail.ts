@@ -13,26 +13,30 @@ export interface AssetDetailState {
 // `/original` -- it never affects the "preview thumb first" rule the media
 // itself follows.
 export function useAssetDetailState(libraryId: number, assetId: string | null): AssetDetailState {
-  const [state, setState] = useState<AssetDetailState>({ detail: null, failed: false });
+  // Tagged with the asset it belongs to: on the render where `assetId`
+  // changes, the effect below has not reset the state yet, and the previous
+  // asset's detail/failed flag must not be read as the new asset's (#408).
+  const [state, setState] = useState<AssetDetailState & { key: string | null }>({ detail: null, failed: false, key: null });
+  const key = assetId === null ? null : `${libraryId}/${assetId}`;
 
   useEffect(() => {
-    setState({ detail: null, failed: false });
+    setState({ detail: null, failed: false, key });
     if (!assetId) return;
     let cancelled = false;
     getAssetDetail(libraryId, assetId).then(
       (response) => {
-        if (!cancelled) setState({ detail: response, failed: false });
+        if (!cancelled) setState({ detail: response, failed: false, key });
       },
       () => {
-        if (!cancelled) setState({ detail: null, failed: true });
+        if (!cancelled) setState({ detail: null, failed: true, key });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [libraryId, assetId]);
+  }, [libraryId, assetId, key]);
 
-  return state;
+  return state.key === key ? { detail: state.detail, failed: state.failed } : { detail: null, failed: false };
 }
 
 export function useAssetDetail(libraryId: number, assetId: string | null): AssetDetailResponse | null {

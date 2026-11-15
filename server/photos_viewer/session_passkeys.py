@@ -477,6 +477,7 @@ def login_verify(
         db,
         response,
         row["user_id"],
+        request=request,
         client=payload.client,
         remember_me=payload.remember_me,
     )

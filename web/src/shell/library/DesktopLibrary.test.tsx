@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { jsonResponse, mockFetch } from "../../testHelpers";
@@ -6,7 +6,8 @@ import DesktopLibrary from "./DesktopLibrary";
 import { useFakeLayout } from "../../testLayout";
 
 // Virtualized grids need a sized viewport; jsdom has none (#88).
-useFakeLayout();
+// 912 px at the default 150 px edge (2 px gap) is exactly 6 columns, which these key-move tests assume.
+useFakeLayout({ width: 912 });
 
 function makeItem(id: string, date: string, overrides: Partial<AssetListItem> = {}): AssetListItem {
   return {
@@ -24,11 +25,38 @@ function makeItem(id: string, date: string, overrides: Partial<AssetListItem> = 
 }
 
 afterEach(() => {
+  delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
 
+// Mirrors the server's `/summary` buckets (oldest first, up to 5 key photos).
+function computeSummary(items: AssetListItem[]) {
+  const bucket = (length: number) => {
+    const byKey = new Map<string, { count: number; ids: string[] }>();
+    for (const item of items) {
+      if (!item.date) continue;
+      const key = item.date.slice(0, length);
+      const entry = byKey.get(key) ?? { count: 0, ids: [] };
+      entry.count += 1;
+      if (entry.ids.length < 5) entry.ids.push(item.id);
+      byKey.set(key, entry);
+    }
+    return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : 1));
+  };
+  return {
+    years: bucket(4).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
+    months: bucket(7).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
+    days: bucket(10).map(([key, { count, ids }]) => ({ key, count, key_asset_ids: ids })),
+  };
+}
+
+function periodCards(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll('[data-testid="period-card"]'));
+}
+
 function mockAssets(items: AssetListItem[]) {
   return mockFetch((url) => {
+    if (url === "/api/libraries/1/summary") return computeSummary(items);
     const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
     if (match) {
       const params = new URLSearchParams(match[1]);
@@ -68,22 +96,58 @@ describe("DesktopLibrary", () => {
     }
   });
 
-  it("switches between Years, Months, and All Photos (no Days tab) with date headers", async () => {
+  it("switches between Years, Months, and All Photos (no Days tab); Years and Months are card grids, not photo grids", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
     mockAssets(items);
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
 
-    expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
+    // Opens on All Photos so a double-click on a tile opens the photo (#265).
+    expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("tab", { name: "Days" })).toBeNull();
-    expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0);
+    expect(periodCards(container)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    // Oldest on top; no photo cells in this view.
+    expect(periodCards(container).map((c) => c.getAttribute("data-period-key"))).toEqual(["2023", "2024"]);
+    expect(cells(container)).toHaveLength(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBe(0));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(0));
+    expect(cells(container).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await waitFor(() => expect(container.querySelectorAll(".desktop-library__row-header").length).toBeGreaterThan(0));
+    await waitFor(() => expect(periodCards(container).map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-02", "2024-05"]));
+    expect(screen.getByText("Feb 2023")).toBeInTheDocument();
+  });
+
+  it("Years and Months open scrolled to the newest card, also when switching in (#307)", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Years" }));
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    expect(grid.scrollTop).toBe(1_000_000);
+
+    grid.scrollTop = 0;
+    fireEvent.click(screen.getByRole("tab", { name: "Months" }));
+    await waitFor(() => expect(screen.getByText("Feb 2023")).toBeInTheDocument());
+    expect(grid.scrollTop).toBe(1_000_000);
+  });
+
+  it("requests only the summary and key-photo thumbnails for Years, never the full photo list again", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2023-02-02T10:00:00")];
+    const fetchMock = mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="years" />);
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((u) => u.includes("/summary"))).toHaveLength(1);
+    expect(urls.some((u) => u.includes("/original/"))).toBe(false);
   });
 
   it("shows a favorite heart and video duration from asset data", async () => {
@@ -100,6 +164,43 @@ describe("DesktopLibrary", () => {
     expect(screen.getByText("2:05")).toBeInTheDocument();
   });
 
+  it("selected tile has no check badge, exposes aria-selected, and never flashes on click (F2)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00", { favorite: true }), makeItem("a2", "2024-05-09T10:00:00")]);
+      const { container } = render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const [first, second] = cells(container);
+      expect(first.querySelector(".desktop-library__check")).toBeNull();
+      expect(first).toHaveAttribute("aria-selected", "false");
+
+      fireEvent.click(first);
+      expect(first).toHaveAttribute("data-selected", "true");
+      expect(first).not.toHaveAttribute("data-flash");
+      expect(first).toHaveAttribute("aria-selected", "true");
+      expect(second).toHaveAttribute("aria-selected", "false");
+      expect(container.querySelector(".desktop-library__check")).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(160);
+      });
+      expect(first).toHaveAttribute("data-selected", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the keyboard-focused cell selected and focusable (#208)", async () => {
+    mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const [cell] = cells(container);
+    fireEvent.click(cell);
+    cell.focus();
+    expect(document.activeElement).toBe(cell);
+    expect(cell).toHaveAttribute("data-selected", "true");
+  });
+
   it("zoom slider changes the requested thumb size between grid and grid2x", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockAssets(items);
@@ -109,7 +210,7 @@ describe("DesktopLibrary", () => {
     expect(img.getAttribute("src")).toContain("size=grid");
     expect(img.getAttribute("src")).not.toContain("size=grid2x");
 
-    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "4" } });
     await waitFor(() => expect(img.getAttribute("src")).toContain("size=grid2x"));
   });
 
@@ -124,20 +225,65 @@ describe("DesktopLibrary", () => {
     const grid = screen.getByTestId("desktop-library-grid");
 
     fireEvent.click(cells(container)[0]);
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
     expect(cells(container)[0]).toHaveAttribute("data-selected", "true");
 
     fireEvent.click(cells(container)[2], { metaKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
 
     fireEvent.click(cells(container)[4], { shiftKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("3 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^3 of [0-9]+\+? selected/);
 
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("5 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^5 of [0-9]+\+? selected/));
 
     fireEvent.keyDown(grid, { key: "Escape" });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("");
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+  });
+
+  it("clicking empty grid space deselects; clicking a tile or a modifier-click does not", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.click(cells(container)[1], { metaKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
+    fireEvent.click(grid, { metaKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
+    fireEvent.click(grid);
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+    expect(cells(container)[0]).toHaveAttribute("data-selected", "false");
+  });
+
+  it("Escape anywhere deselects, but not while the context menu is open", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.contextMenu(cells(container)[0]);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+  });
+
+  it("the Deselect button clears the selection and disappears", async () => {
+    const items = Array.from({ length: 3 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.click(cells(container)[1], { metaKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Deselect all" }));
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+    expect(screen.queryByRole("button", { name: "Deselect all" })).toBeNull();
   });
 
   it("moves focus/selection with arrow keys and zooms with +", async () => {
@@ -150,11 +296,16 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
     const grid = screen.getByTestId("desktop-library-grid");
 
+    // Oldest first (#224): the first press picks the newest photo, the last cell;
+    // Left goes toward older photos, Right back toward newer.
     fireEvent.keyDown(grid, { key: "ArrowRight" });
-    expect(cells(container)[1]).toHaveAttribute("data-selected", "true");
+    expect(cells(container)[3]).toHaveAttribute("data-selected", "true");
+
+    fireEvent.keyDown(grid, { key: "ArrowLeft" });
+    expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
 
     fireEvent.keyDown(grid, { key: "ArrowRight" });
-    expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
+    expect(cells(container)[3]).toHaveAttribute("data-selected", "true");
 
     const firstImage = screen.getAllByRole("img")[0];
     expect(firstImage.getAttribute("src")).toContain("size=grid");
@@ -191,7 +342,7 @@ describe("DesktopLibrary", () => {
     const grid = screen.getByTestId("desktop-library-grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
 
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("300 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of [0-9]+\+? selected/));
     for (const call of fetchMock.mock.calls) {
       expect(String(call[0])).not.toContain("/hidden");
     }
@@ -207,13 +358,15 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img", undefined, SLOW_WAIT);
     const grid = screen.getByTestId("desktop-library-grid");
 
-    // Each ArrowDown moves focus a full row (6 columns at the default
-    // zoom); 40 presses lands far outside the virtualizer's overscan
-    // window, so this only passes if the focused row gets scrolled into
-    // view rather than just updated in state. The first press only selects
-    // the first photo (D13), so 41 presses land on row 40.
+    // Oldest first (#224): the Library opens at the newest photos, so each
+    // ArrowUp moves focus a full row toward older photos (6 columns at the
+    // default zoom), through the page that has to be loaded on the way. 40
+    // presses land far outside the virtualizer's overscan window, so this
+    // only passes if the focused row gets scrolled into view rather than just
+    // updated in state. The first press only selects the newest photo (D13),
+    // so 41 presses land on row 40.
     for (let i = 0; i < 41; i++) {
-      fireEvent.keyDown(grid, { key: "ArrowDown" });
+      fireEvent.keyDown(grid, { key: "ArrowUp" });
     }
 
     // 300 cells plus 40 re-renders: the one wait that outlasts the 1 s default
@@ -225,6 +378,36 @@ describe("DesktopLibrary", () => {
       },
       SLOW_WAIT,
     );
+  });
+
+  it("keeps the item at the viewport centre at the centre after a zoom change (#207)", async () => {
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    const grid = screen.getByTestId("desktop-library-grid");
+    // The Library opens scrolled to its end; jsdom fires no scroll event for that.
+    fireEvent.scroll(grid);
+
+    // Fake layout: 600 px viewport, so centre = scrollTop + 300. Put the
+    // centre inside the row holding p20 (6 columns, ~152 px rows).
+    const rowOf = (id: string) => {
+      const row = (container.querySelector(`[data-asset-id="${id}"]`) as HTMLElement).parentElement as HTMLElement;
+      const top = Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1]);
+      return { top, bottom: top + parseFloat(row.style.height) };
+    };
+    const before = rowOf("p20");
+    grid.scrollTop = (before.top + before.bottom) / 2 - 300;
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p20"]')).not.toBeNull());
+
+    fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "3" } });
+    await waitFor(() => {
+      const row = rowOf("p20");
+      const centre = grid.scrollTop + 300;
+      expect(row.top).toBeLessThanOrEqual(centre);
+      expect(row.bottom).toBeGreaterThan(centre);
+    });
   });
 
   it("keeps a hidden asset out of the grid, cmd-A selection, and the count", async () => {
@@ -242,7 +425,7 @@ describe("DesktopLibrary", () => {
 
     const grid = screen.getByTestId("desktop-library-grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected"));
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/));
     expect(container.innerHTML).not.toContain("hidden-1");
   });
 
@@ -285,10 +468,92 @@ describe("DesktopLibrary", () => {
     };
   }
 
+  describe("double-click reliability (#265)", () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00"), makeItem("a3", "2024-05-08T10:00:00")];
+    function mockWithDetail() {
+      mockFetch((url) => {
+        // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+        if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
+        const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+        if (match) return mockDetail(match[1]);
+        throw new Error(`unexpected request: ${url}`);
+      });
+    }
+
+    async function renderAllPhotos() {
+      mockWithDetail();
+      const view = render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
+      await screen.findAllByRole("img");
+      return view;
+    }
+
+    it("opens an unselected photo on the first double-click, even before the browser's dblclick", async () => {
+      const { container } = await renderAllPhotos();
+      const target = cells(container)[2];
+      fireEvent.click(target, { detail: 1 });
+      fireEvent.click(target, { detail: 2 });
+      const viewer = await screen.findByTestId("desktop-viewer");
+      expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a3");
+    });
+
+    it("opens the first photo when a re-layout moved another tile under the same spot", async () => {
+      const { container } = await renderAllPhotos();
+      fireEvent.click(cells(container)[0], { clientX: 40, clientY: 40 });
+      fireEvent.click(cells(container)[1], { clientX: 42, clientY: 41 });
+      const viewer = await screen.findByTestId("desktop-viewer");
+      expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a1");
+    });
+
+    it("two clicks on different tiles far apart only select", async () => {
+      const { container } = await renderAllPhotos();
+      fireEvent.click(cells(container)[0], { clientX: 10, clientY: 10 });
+      fireEvent.click(cells(container)[2], { clientX: 300, clientY: 10 });
+      expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+      expect(cells(container)[2]).toHaveAttribute("data-selected", "true");
+    });
+
+    it("the browser's dblclick after our own detection does not open twice", async () => {
+      const { container } = await renderAllPhotos();
+      const target = cells(container)[1];
+      fireEvent.click(target);
+      fireEvent.click(target);
+      await screen.findByTestId("desktop-viewer");
+      fireEvent.click(screen.getByLabelText("Back"));
+      fireEvent.doubleClick(target);
+      expect(screen.queryByTestId("desktop-viewer")).toBeNull();
+    });
+
+    it("selecting a tile keeps every tile and image element (no remount, no re-decode)", async () => {
+      const { container } = await renderAllPhotos();
+      const before = cells(container).map((cell) => [cell, cell.querySelector("img")]);
+      fireEvent.click(cells(container)[1]);
+      expect(cells(container)[1]).toHaveAttribute("data-selected", "true");
+      const after = cells(container).map((cell) => [cell, cell.querySelector("img")]);
+      after.forEach(([cell, img], i) => {
+        expect(cell).toBe(before[i][0]);
+        expect(img).toBe(before[i][1]);
+      });
+    });
+
+    it("a click doesn't scroll the grid to the clicked tile", async () => {
+      const { container } = await renderAllPhotos();
+      const grid = screen.getByTestId("desktop-library-grid");
+      const scrollTo = vi.fn();
+      grid.scrollTo = scrollTo as unknown as typeof grid.scrollTo;
+      const before = grid.scrollTop;
+      fireEvent.click(cells(container)[2]);
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect(grid.scrollTop).toBe(before);
+    });
+  });
+
   it("opens the Viewer on a double-click in All Photos, at the clicked item's position, and closing it restores the grid", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -305,57 +570,88 @@ describe("DesktopLibrary", () => {
     const viewer = await screen.findByTestId("desktop-viewer");
     expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
 
-    fireEvent.click(screen.getByLabelText("Close"));
+    fireEvent.click(screen.getByLabelText("Back"));
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     expect(screen.getByTestId("desktop-library-grid")).toBeInTheDocument();
   });
 
-  it("double-clicking a Year tile drills into Months scrolled to that tile's year, without opening the Viewer", async () => {
+  it("opens the photo on a double-click right after a fresh single-click selection change (#265)", async () => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+    mockFetch((url) => {
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
+      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (match) return mockDetail(match[1]);
+      throw new Error(`unexpected request: ${url}`);
+    });
+
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const first = cells(container)[0];
+    const second = cells(container)[1];
+    // Select a1, then immediately click+dblclick a2 with no await between,
+    // as a real fast double-click on a different tile does.
+    fireEvent.click(first, { clientX: 10, clientY: 10 });
+    fireEvent.click(second, { clientX: 300, clientY: 10 });
+    fireEvent.click(second, { clientX: 300, clientY: 10 });
+    fireEvent.doubleClick(second, { clientX: 300, clientY: 10 });
+
+    const viewer = await screen.findByTestId("desktop-viewer");
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("a2");
+  });
+
+  it("clicking a Year card drills into Months, landing on that year's first month, without opening the Viewer", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
     ];
     mockAssets(items);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
 
-    const { container } = render(<DesktopLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="years" />);
+    await waitFor(() => expect(periodCards(container)).toHaveLength(2));
     expect(screen.getByRole("tab", { name: "Years" })).toHaveAttribute("aria-selected", "true");
-    const grid = screen.getByTestId("desktop-library-grid");
 
-    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
-    fireEvent.doubleClick(oldestCell);
+    fireEvent.click(periodCards(container)[0]);
 
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "Months" })).toHaveAttribute("aria-selected", "true"));
-    // Overscan keeps every row mounted for a list this small, so DOM order
-    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
-    await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView.mock.contexts[0]).toHaveAttribute("data-period-key", "2022-01");
   });
 
-  it("double-clicking a Month tile drills into All Photos scrolled to that tile's date, without opening the Viewer", async () => {
+  it("clicking a Month card drills into All Photos at that month's newest photo, without opening the Viewer", async () => {
     const items = [
-      makeItem("recent", "2024-05-10T10:00:00"),
+      ...Array.from({ length: 60 }, (_, i) => makeItem(`recent-${i}`, "2024-05-10T10:00:00")),
       ...Array.from({ length: 20 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(20 - i).padStart(2, "0")}T10:00:00`)),
+      ...Array.from({ length: 30 }, (_, i) => makeItem(`dec21-${i}`, "2021-12-10T10:00:00")),
     ];
     mockAssets(items);
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
-    await screen.findAllByRole("img");
+    await waitFor(() => expect(periodCards(container)).toHaveLength(3));
     const grid = screen.getByTestId("desktop-library-grid");
+    grid.scrollTop = 0;
 
-    const oldestCell = cells(container).find((cell) => cell.getAttribute("data-asset-id") === "jan22-19") as HTMLElement;
-    fireEvent.doubleClick(oldestCell);
+    // Oldest first (#224): Dec 2021, then Jan 2022, then the recent photos.
+    fireEvent.click(periodCards(container)[1]);
 
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
     await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
-    // Overscan keeps every row mounted for a list this small, so DOM order
-    // alone can't prove a scroll happened -- `scrollTop` is the real signal.
+    // The landing scrolls past the older "dec21" rows to the month's oldest
+    // photo. `scrollTop` is the real signal in jsdom.
     await waitFor(() => expect(grid.scrollTop).toBeGreaterThan(0));
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="jan22-19"]')).not.toBeNull());
+    // The month's first photo sits at the very top of the viewport.
+    const row = (container.querySelector('[data-asset-id="jan22-19"]') as HTMLElement).parentElement as HTMLElement;
+    expect(Number(/translateY\((-?[\d.]+)px\)/.exec(row.style.transform)![1])).toBe(grid.scrollTop);
   });
 
-  it("in the Days view, double-click and Enter hand the day to onOpenDay instead of opening the Viewer (#152)", async () => {
+  it("in the Days view a day card hands its day key to onOpenDay instead of opening the Viewer (#301)", async () => {
     const items = [makeItem("recent", "2024-05-10T10:00:00"), makeItem("old", "2022-01-08T10:00:00")];
     mockAssets(items);
     const onOpenDay = vi.fn();
@@ -364,17 +660,13 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
     expect(screen.queryByRole("tab")).toBeNull();
 
-    const cell = cells(container).find((c) => c.getAttribute("data-asset-id") === "old") as HTMLElement;
-    fireEvent.doubleClick(cell);
-    expect(onOpenDay).toHaveBeenLastCalledWith("old");
-
-    fireEvent.click(cell);
-    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "Enter" });
-    expect(onOpenDay).toHaveBeenCalledTimes(2);
+    const card = periodCards(container).find((c) => c.getAttribute("data-period-key") === "2022-01-08") as HTMLElement;
+    fireEvent.click(card);
+    expect(onOpenDay).toHaveBeenCalledWith("2022-01-08");
     expect(screen.queryByTestId("desktop-viewer")).toBeNull();
   });
 
-  it("in the Days view every card is labelled with its own single day, never a range (#157)", async () => {
+  it("in the Days view every day is one card with its own date label, oldest first, under a Days header (#301)", async () => {
     const items = [
       makeItem("d1a", "2025-09-19T10:00:00"),
       makeItem("d1b", "2025-09-19T09:00:00"),
@@ -387,32 +679,31 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
 
     expect(container.querySelector(".desktop-library__date-range")).toBeNull();
-    const captions = Array.from(container.querySelectorAll(".desktop-library__feature-caption")).map(
-      (el) => el.textContent ?? "",
-    );
-    expect(captions).toHaveLength(3);
-    expect(new Set(captions).size).toBe(3);
-    for (const text of captions) expect(text).not.toMatch(/[–-]\s/);
-    expect(captions[0]).toContain("19");
-    expect(captions[0]).toContain("2025");
-    expect(captions[2]).toContain("2023");
+    const cards = periodCards(container);
+    expect(cards.map((c) => c.getAttribute("data-period-key"))).toEqual(["2023-09-05", "2024-01-02", "2025-09-19"]);
+    expect(cards[0].textContent).toContain("Sep 5, 2023");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("Days");
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent("4 Items");
+    // Each card uses the key photo thumbnail, never a full-size request per asset.
+    expect(container.querySelector('img[src*="/thumb/"]')).not.toBeNull();
   });
 
   it("keeps the date-range title in All Photos", async () => {
     mockAssets([makeItem("a", "2025-09-19T10:00:00"), makeItem("b", "2023-09-05T10:00:00")]);
-    const { container } = render(<DesktopLibrary libraryId={1} />);
+    const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByRole("img");
     expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–");
   });
 
-  it("starts on initialView and scrolls to initialScrollAssetId (#152)", async () => {
+  it("starts on initialView and scrolls to initialScrollDayKey (#152, #301)", async () => {
     const items = [
       makeItem("recent", "2024-05-10T10:00:00"),
       ...Array.from({ length: 8 }, (_, i) => makeItem(`jan22-${i}`, `2022-01-${String(8 - i).padStart(2, "0")}T10:00:00`)),
+      ...Array.from({ length: 30 }, (_, i) => makeItem(`dec21-${i}`, "2021-12-10T10:00:00")),
     ];
     mockAssets(items);
 
-    render(<DesktopLibrary libraryId={1} initialView="all" initialScrollAssetId="jan22-7" />);
+    render(<DesktopLibrary libraryId={1} initialView="all" initialScrollDayKey="2022-01-01" />);
     await screen.findAllByRole("img");
 
     expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true");
@@ -423,7 +714,8 @@ describe("DesktopLibrary", () => {
   it("opens the Viewer on initialAssetId (Copy Link's deep link) and reports it consumed", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -440,7 +732,8 @@ describe("DesktopLibrary", () => {
   it("silently ignores an initialAssetId that never shows up in this grid (hidden or foreign)", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
     const onInitialAssetOpened = vi.fn();
@@ -455,7 +748,8 @@ describe("DesktopLibrary", () => {
   it("opens the Viewer on the focused cell with Space or Enter", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -484,7 +778,8 @@ describe("DesktopLibrary", () => {
   it("right-click opens a context menu to download the asset, independent of the multi-selection", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1]);
       throw new Error(`unexpected request: ${url}`);
@@ -511,7 +806,8 @@ describe("DesktopLibrary", () => {
   it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1], { has_edited: true });
       throw new Error(`unexpected request: ${url}`);
@@ -536,7 +832,8 @@ describe("DesktopLibrary", () => {
   it("right-click's menu has no Download Original for a photo that was never edited", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
       if (match) return mockDetail(match[1], { has_edited: false });
       throw new Error(`unexpected request: ${url}`);
@@ -554,7 +851,8 @@ describe("DesktopLibrary", () => {
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       throw new Error(`unexpected request: ${url}`);
     });
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -575,6 +873,66 @@ describe("DesktopLibrary", () => {
     expect(screen.queryByTestId("context-menu")).toBeNull();
   });
 
+  describe("toolbar icons and placement (#264)", () => {
+    it("puts the whole-photos toggle right next to the size slider, with a tooltip and label", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+
+      const slider = screen.getByRole("slider", { name: "Zoom" });
+      const toggle = screen.getByRole("button", { name: "Show Whole Photos" });
+      expect(slider.nextElementSibling?.nextElementSibling).toBe(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      expect(toggle).toHaveAttribute("title", "Show Whole Photos");
+
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      expect(toggle).toHaveAttribute("title", "Show Square Tiles");
+    });
+
+    it("steps zoom with the minus and plus buttons next to the slider", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const slider = screen.getByRole("slider", { name: "Zoom" }) as HTMLInputElement;
+      const start = Number(slider.value);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom In" }));
+      expect(Number(slider.value)).toBe(start + 1);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      fireEvent.click(screen.getByRole("button", { name: "Zoom Out" }));
+      expect(Number(slider.value)).toBe(start - 1);
+    });
+
+    it("hides Share when the browser can't share files (e.g. plain http)", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+      vi.unstubAllGlobals();
+    });
+
+    it("enables Share only with a selection when file sharing is supported", async () => {
+      vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      const cell = (await screen.findAllByRole("img"))[0];
+      expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+      fireEvent.click(cell);
+      expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
+      vi.unstubAllGlobals();
+    });
+
+    it("labels the Filter By button and gives it a tooltip", async () => {
+      mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      const filter = screen.getByRole("button", { name: "Filter By" });
+      expect(filter).toHaveAttribute("aria-label", "Filter By");
+      expect(filter).toHaveAttribute("title", "Filter By");
+    });
+  });
+
   describe("Filter By menu", () => {
     function assetCalls(fetchMock: ReturnType<typeof vi.fn>): URLSearchParams[] {
       return fetchMock.mock.calls
@@ -583,26 +941,30 @@ describe("DesktopLibrary", () => {
         .map((url) => new URLSearchParams(url.split("?")[1]));
     }
 
-    it("offers the four options and reloads the grid with the matching params", async () => {
+    it("offers every option and reloads the grid with the matching params", async () => {
       const fetchMock = mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
       render(<DesktopLibrary libraryId={1} />);
       await screen.findAllByRole("img");
 
       const button = screen.getByRole("button", { name: "Filter By" });
-      expect(button).toHaveAttribute("aria-pressed", "false");
+      expect(button).toHaveAttribute("data-active", "false");
       fireEvent.click(button);
       const menu = screen.getByRole("menu", { name: "Filter By" });
       expect(within(menu).getAllByRole("menuitemradio").map((el) => el.textContent?.replace("✓", ""))).toEqual([
         "All Items",
         "Favorites",
+        "Edited",
         "Photos",
         "Videos",
+        "Screenshots",
+        "Shared with You",
+        "Not in an Album",
       ]);
 
       fireEvent.click(within(menu).getByRole("menuitemradio", { name: /Videos/ }));
       expect(screen.queryByRole("menu")).toBeNull();
       await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("type")).toBe("video"));
-      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("data-active", "true");
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
       fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
@@ -613,7 +975,19 @@ describe("DesktopLibrary", () => {
       fireEvent.click(screen.getByRole("menuitemradio", { name: /All Items/ }));
       await waitFor(() => expect(assetCalls(fetchMock).length).toBe(4));
       expect(assetCalls(fetchMock).at(-1)?.get("favorite")).toBeNull();
-      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByRole("button", { name: "Filter By" })).toHaveAttribute("data-active", "false");
+    });
+
+    it("sends filter and hide params for the new options", async () => {
+      const fetchMock = mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
+      render(<DesktopLibrary libraryId={1} />);
+      await screen.findAllByRole("img");
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /Not in an Album/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("filter")).toBe("not-in-album"));
+      fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
+      fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Screenshots/ }));
+      await waitFor(() => expect(assetCalls(fetchMock).at(-1)?.get("hide")).toBe("screenshots"));
     });
 
     it("closes on Escape and on outside click", async () => {
@@ -623,7 +997,7 @@ describe("DesktopLibrary", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
       expect(screen.getByRole("menu")).toBeInTheDocument();
-      fireEvent.keyDown(window, { key: "Escape" });
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.queryByRole("menu")).toBeNull();
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
@@ -659,15 +1033,16 @@ describe("DesktopLibrary", () => {
       fireEvent.click(screen.getByRole("menuitemradio", { name: /Favorites/ }));
       await waitFor(() => expect(cells(container)).toHaveLength(3));
 
+      // Oldest first (#224): f3, f2, f1; Right steps toward newer photos.
       fireEvent.doubleClick(cells(container)[0]);
       const viewer = await screen.findByTestId("desktop-viewer");
       const src = () => viewer.querySelector(".desktop-viewer__media")?.getAttribute("src") ?? "";
-      expect(src()).toContain("f1");
+      expect(src()).toContain("f3");
 
       fireEvent.keyDown(viewer, { key: "ArrowRight" });
       await waitFor(() => expect(src()).toContain("f2"));
       fireEvent.keyDown(viewer, { key: "ArrowRight" });
-      await waitFor(() => expect(src()).toContain("f3"));
+      await waitFor(() => expect(src()).toContain("f1"));
       fireEvent.keyDown(viewer, { key: "ArrowLeft" });
       await waitFor(() => expect(src()).toContain("f2"));
       expect(src()).not.toContain("n1");
@@ -675,8 +1050,31 @@ describe("DesktopLibrary", () => {
   });
 });
 
+describe("DesktopLibrary summary failure (#147)", () => {
+  it.each(["Years", "Months"])("shows an error and Retry in %s instead of 'No Photos or Videos', then recovers", async (name) => {
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    let fail = true;
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return fail ? new Response("boom", { status: 500 }) : computeSummary(items);
+      if (url.match(/^\/api\/libraries\/1\/assets\?/)) return { items, next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    fireEvent.click(screen.getByRole("tab", { name }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByText("No photos yet.")).toBeNull();
+    await waitFor(() => expect(periodCards(container)).toHaveLength(1));
+  });
+});
+
 describe("DesktopLibrary assets failure (#147)", () => {
-  it.each(["Years", "Months"])("shows an error and Retry in %s instead of 'No photos yet.', then recovers", async (name) => {
+  it("shows an error and Retry in All Photos instead of 'No photos yet.', then recovers", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     let fail = true;
     mockFetch((url) => {
@@ -686,16 +1084,89 @@ describe("DesktopLibrary assets failure (#147)", () => {
       throw new Error(`unexpected request: ${url}`);
     });
     render(<DesktopLibrary libraryId={1} />);
-    if (name === "Months") fireEvent.click(screen.getByRole("tab", { name: "Months" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your library.");
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
 
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.queryByText("No photos yet.")).toBeNull();
+    expect(screen.queryByText("No Photos or Videos")).toBeNull();
     expect(await screen.findAllByRole("img")).not.toHaveLength(0);
+  });
+});
+
+describe("DesktopLibrary oldest first (#224)", () => {
+  it("lists the oldest photo first and the newest last", async () => {
+    const items = [makeItem("new", "2024-05-10T10:00:00"), makeItem("mid", "2024-05-09T10:00:00"), makeItem("old", "2024-05-08T10:00:00")];
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    expect(cells(container).map((cell) => cell.getAttribute("data-asset-id"))).toEqual(["old", "mid", "new"]);
+  });
+
+  it("opens scrolled to the end and glides back there with End or Cmd-Down", async () => {
+    mockAssets(Array.from({ length: 60 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00")));
+    render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+    expect(grid.scrollTop).toBe(grid.scrollHeight);
+
+    const scrollTo = vi.fn();
+    grid.scrollTo = scrollTo as unknown as typeof grid.scrollTo;
+    grid.scrollTop = 0;
+    fireEvent.keyDown(window, { key: "End" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: grid.scrollHeight, behavior: "smooth" });
+    fireEvent.keyDown(window, { key: "ArrowDown", metaKey: true });
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+  });
+
+  it("a deep link to an old photo on a later page loads back to it, opens the Viewer and scrolls the grid there", async () => {
+    // 300 photos; p250 is on the second page (the Library loads the newest 200 first).
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/summary") return computeSummary(items);
+      const match = url.match(/^\/api\/libraries\/1\/assets\?(.*)$/);
+      if (match) {
+        const params = new URLSearchParams(match[1]);
+        const cursor = params.get("cursor");
+        const start = cursor ? items.findIndex((item) => item.id === cursor) + 1 : 0;
+        const page = items.slice(start, start + 200);
+        return { items: page, next_cursor: start + 200 < items.length ? page[page.length - 1].id : null };
+      }
+      const detail = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
+      if (detail) return { id: detail[1], filename: `${detail[1]}.jpg`, original_filename: `${detail[1]}.jpg`, date_created: "2024-05-10T10:00:00", people: [], albums: [] };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const onOpened = vi.fn();
+    const { container } = render(<DesktopLibrary libraryId={1} initialAssetId="p250" onInitialAssetOpened={onOpened} />);
+    const viewer = await screen.findByTestId("desktop-viewer", undefined, SLOW_WAIT);
+    expect(viewer.querySelector(".desktop-viewer__media")?.getAttribute("src")).toContain("p250");
+    expect(onOpened).toHaveBeenCalled();
+    // The grid behind the Viewer sits on p250's row, not at the newest end.
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p250"]')).not.toBeNull(), SLOW_WAIT);
+  });
+
+  it("Shift-click selects a range that spans pages added on top", async () => {
+    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
+    mockAssets(items);
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    // The grid opens at the newest end in a later effect, so p0 (the newest) may not be mounted yet.
+    const cell = async (id: string) => {
+      await waitFor(() => expect(container.querySelector(`[data-asset-id="${id}"]`)).not.toBeNull(), SLOW_WAIT);
+      return container.querySelector(`[data-asset-id="${id}"]`) as HTMLElement;
+    };
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.click(await cell("p0"));
+    // Everything older loads in front (cmd-A pages the whole library); the anchor stays p0.
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of 300 selected/), SLOW_WAIT);
+    fireEvent.click(await cell("p0"));
+    fireEvent.click(await cell("p3"), { shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of 300 selected/);
   });
 });
 
@@ -712,11 +1183,15 @@ describe("DesktopLibrary date-range title (#118)", () => {
     await screen.findAllByRole("img");
 
     const label = () => container.querySelector(".desktop-library__date-range")?.textContent ?? "";
+    // Opens scrolled to the newest end; jsdom does not clamp scrollTop or fire
+    // a scroll event, so put it at the real end (20 rows of 152 px, 600 px viewport).
+    const grid = screen.getByTestId("desktop-library-grid");
+    grid.scrollTop = 20 * 152 - 600;
+    fireEvent.scroll(grid);
     await waitFor(() => expect(label()).toContain("2025"));
     expect(label()).not.toContain("2016");
 
-    const grid = screen.getByTestId("desktop-library-grid");
-    grid.scrollTop = 135 * 18;
+    grid.scrollTop = 1200;
     fireEvent.scroll(grid);
     await waitFor(() => expect(label()).not.toContain("2025"));
     expect(label()).toMatch(/20(1\d|2[0-3])/);
@@ -756,16 +1231,16 @@ describe("DesktopLibrary drag-select (#97)", () => {
 
       fireEvent.mouseMove(window, { clientX: 150, clientY: 50 });
       expect(screen.getByTestId("marquee")).toBeInTheDocument();
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("2 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
 
       fireEvent.mouseMove(window, { clientX: 150, clientY: 150 });
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of [0-9]+\+? selected/);
 
       fireEvent.mouseUp(window);
       expect(screen.queryByTestId("marquee")).toBeNull();
       // The click that follows a drag must not collapse the selection.
       fireEvent.click(first);
-      expect(screen.getByTestId("selection-count")).toHaveTextContent("4 selected");
+      expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of [0-9]+\+? selected/);
     } finally {
       restore();
     }
@@ -780,7 +1255,7 @@ describe("DesktopLibrary drag-select (#97)", () => {
     fireEvent.mouseDown(second, { button: 0, clientX: 5, clientY: 5 });
     fireEvent.mouseUp(window);
     fireEvent.click(second);
-    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 selected");
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^1 of [0-9]+\+? selected/);
   });
 });
 
@@ -788,7 +1263,8 @@ describe("DesktopLibrary Info panel (#98)", () => {
   it("opens an inspector for the focused cell with the asset's details", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/assets/a1")
         return {
           id: "a1", filename: "a1.jpg", original_filename: "a1.jpg", title: null, description: null,
@@ -819,7 +1295,8 @@ describe("DesktopLibrary Info panel errors (#98)", () => {
   it("says the info could not be loaded instead of Loading forever", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/assets/a1") return jsonResponse({ detail: "boom" }, 500);
       throw new Error("unexpected request: " + url);
     });
@@ -861,7 +1338,8 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
 
   function mockWithSummary(summary: object | null) {
     return mockFetch((url, init) => {
-      if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
       if (url === "/api/libraries/1/selection-summary") {
         if (!summary) return jsonResponse({ detail: "boom" }, 500);
         return summary;
@@ -929,5 +1407,84 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     fireEvent.click(cells[0]);
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
     expect(screen.getByTestId("library-info-panel")).not.toHaveTextContent("3 photos");
+  });
+});
+
+describe("DesktopLibrary Photos shortcuts (#217)", () => {
+  const photos = () =>
+    Array.from({ length: 5 }, (_, i) => makeItem(`p${i}`, `2024-05-${String(20 - i).padStart(2, "0")}T10:00:00`));
+
+  it("Shift+arrows extend the selection, and the subtitle reads 'K of N selected'", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const grid = screen.getByTestId("desktop-library-grid");
+    fireEvent.click(cells(container)[0]);
+    fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("3 of 5 selected");
+    fireEvent.keyDown(grid, { key: "ArrowLeft", shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("2 of 5 selected");
+    fireEvent.keyDown(grid, { key: "ArrowRight" });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent("1 of 5 selected");
+  });
+
+  it("Space opens the viewer for the selected tile and a second Space closes it", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.click(cells(container)[1]);
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: " " });
+    const viewer = await screen.findByTestId("desktop-viewer");
+    fireEvent.keyDown(viewer, { key: " " });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+  });
+
+  it("Cmd Up closes the viewer; Cmd I toggles Info in the grid", async () => {
+    mockAssets(photos());
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const info = screen.getByRole("button", { name: "Info" });
+    expect(info).toHaveAttribute("aria-pressed", "false");
+    fireEvent.keyDown(window, { key: "i", metaKey: true });
+    expect(info).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(window, { key: "i", metaKey: true });
+    expect(info).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(cells(container)[0]);
+    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "Enter" });
+    const viewer = await screen.findByTestId("desktop-viewer");
+    fireEvent.keyDown(viewer, { key: "ArrowUp", metaKey: true });
+    await waitFor(() => expect(screen.queryByTestId("desktop-viewer")).toBeNull());
+  });
+
+  it("Cmd + / Cmd - step the zoom slider", async () => {
+    mockAssets(photos());
+    render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    const slider = screen.getByLabelText("Zoom") as HTMLInputElement;
+    const start = Number(slider.value);
+    fireEvent.keyDown(window, { key: "=", metaKey: true });
+    await waitFor(() => expect(Number(slider.value)).toBe(start + 1));
+    fireEvent.keyDown(window, { key: "-", metaKey: true });
+    await waitFor(() => expect(Number(slider.value)).toBe(start));
+  });
+
+  it("does nothing while typing in a field", async () => {
+    mockAssets(photos());
+    render(
+      <>
+        <input aria-label="Search" />
+        <DesktopLibrary libraryId={1} />
+      </>,
+    );
+    await screen.findAllByRole("img");
+    const field = screen.getByLabelText("Search");
+    field.focus();
+    fireEvent.keyDown(field, { key: "a", metaKey: true });
+    fireEvent.keyDown(field, { key: "i", metaKey: true });
+    fireEvent.keyDown(field, { key: "=", metaKey: true });
+    expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
+    expect(screen.getByRole("button", { name: "Info" })).toHaveAttribute("aria-pressed", "false");
   });
 });

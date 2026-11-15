@@ -4,6 +4,102 @@
   box-sizing: border-box;
 }
 
+/* #255: like Photos, the arrow stays the arrow over buttons, menu items, rows
+   and tiles -- including their padding and gaps, so it never flickers to the
+   hand. Only links in running text keep the browser's hand. */
+button,
+summary,
+label,
+select,
+input[type="checkbox"],
+input[type="radio"],
+[role="button"],
+[role="menuitem"],
+[role="menuitemradio"],
+[role="option"],
+[role="tab"],
+.account-menu a {
+  cursor: default;
+}
+
+/* #236: the app shell never rubber-bands as a whole; the scroll areas inside it
+   keep their own natural scrolling. No grey flash when a control is tapped. */
+html {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* #236: chrome is not selectable text, like a native app. Captions, metadata,
+   file names and text fields are left out on purpose so they can be copied. */
+button,
+summary,
+[role="button"],
+[role="menu"],
+[role="menuitem"],
+[role="menuitemradio"],
+[role="tab"],
+[role="tablist"],
+[role="toolbar"],
+[role="option"],
+.sidebar,
+.tab-bar,
+.toolbar-button,
+.desktop-library__cell,
+.mobile-library__cell-wrap,
+.album-tile {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* #236: no long-press save sheet or drag ghost on a photo tile. */
+.fade-image,
+.desktop-library__cell img,
+.mobile-library__cell-wrap img,
+.album-tile img {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+/* #387: iPhone home-screen (standalone) mode. The page fills the real screen
+   (viewport-fit=cover), so the root chain is exactly the viewport tall and
+   paints the app background -- no black strip can show below the tab bar. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* #407: one name for the home-indicator inset so it can be simulated in tests
+   (Playwright has no real safe area). iOS standalone sizes `100%` of html
+   from the layout viewport, which can stop short of the screen bottom;
+   -webkit-fill-available makes the chain match the visible height. */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* One place for the top inset (#414): every phone Library header and the
+     content below it read this, so a test can mock a notch. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  /* Title block (8px gap + 62px) the phone Library header occupies, and the
+     breathing room under it (#415). */
+  --library-header-h: 70px;
+  --library-content-gap: 8px;
+  /* Where the first header / row of EVERY phone Library view starts (#414),
+     so switching Years / Months / Days / All never makes the top jump. */
+  --library-top-inset: calc(var(--safe-top) + var(--library-header-h) + var(--library-content-gap));
+}
+
+html {
+  background: var(--color-bg);
+}
+
+@supports (-webkit-touch-callout: none) {
+  html,
+  body,
+  #root {
+    height: -webkit-fill-available;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -28,16 +124,57 @@ body {
    area (.mobile-library__scroll) scrolls -- header and tab bar stay put,
    and the virtualizer only renders what the bounded area can show. */
 .shell--mobile {
-  position: relative;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* #387: pinned to the viewport edges instead of `100dvh`, which iOS
+     standalone mode resolves to a different height than the visible screen
+     (app shifted up, black strip under the tab bar). The tab bar's own
+     safe-area padding then lands on the real bottom edge. */
+  position: fixed;
+  inset: 0;
   min-height: 0;
+  /* #364: the tab bar slides 100% below the shell while selecting; without
+     this that transform grew the document and added a page scrollbar. */
+  overflow: hidden;
   background: var(--color-bg);
+}
+
+/* #418: iOS standalone cold start reports a viewport ~59px short. appHeight.ts
+   sets --app-height (and this class) only there; everywhere else the rules
+   above apply unchanged. */
+html.has-app-height,
+html.has-app-height body,
+html.has-app-height #root {
+  height: var(--app-height, 100dvh);
+}
+
+html.has-app-height .shell--mobile {
+  bottom: auto;
+  height: var(--app-height, 100dvh);
+}
+
+.shell--mobile {
+  /* Tab row height; the Library's zoom pill and scroll padding stack on it. */
+  --tab-bar-h: calc(56px + var(--safe-bottom));
 }
 
 .shell--mobile .tab-bar {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-height: var(--tab-bar-h);
+}
+
+/* #367: the Library uses the same in-flow tab bar as Albums, so the grid and
+   the zoom pill end above it and nothing overlaps. Selecting slides the bar
+   out of the flow (no extra scrollbar, #364); the select bar replaces it. */
+.shell--mobile:has(.mobile-library__select-bar) .tab-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  transform: translateY(100%);
+  pointer-events: none;
 }
 
 /* The title + account button float over the top of the grid (see
@@ -48,7 +185,8 @@ body {
   top: 0;
   right: 0;
   z-index: 5;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-8)) var(--space-12) 0 0;
+  /* Centred on the 62px title block: 8px top gap + (62 - 44) / 2. */
+  padding: calc(var(--safe-top) + var(--space-8) + var(--space-9)) var(--space-20) 0 0;
 }
 
 .shell--mobile .shell__content {
@@ -77,9 +215,10 @@ body {
    gradient scrim keeps the white text legible over whatever photo scrolls
    underneath. The grid fills the full height behind it (no top padding),
    so this must stay position:absolute rather than taking flex space. */
-/* Title (left) and Select (right) share one flex row. The right padding
-   keeps the row clear of the account button that .shell__header floats at
-   the top-right (32px wide + 12px inset). */
+/* Title block (left) and Select (right) share one flex row. The right padding
+   is the iOS trailing inset (16pt, or the notch side in landscape); the phone
+   header no longer floats an account button there (#351). Height is the safe-area
+   top + 8px + the 62px title block + a 30px fade (#212). */
 .mobile-library__top-bar {
   position: absolute;
   top: 0;
@@ -88,33 +227,222 @@ body {
   z-index: 3;
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-10);
   box-sizing: border-box;
-  min-height: 44px;
   pointer-events: none;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-10)) 56px 28px var(--space-16);
+  padding: calc(var(--safe-top) + var(--space-8)) max(var(--space-16), env(safe-area-inset-right, 0px)) 30px
+    max(var(--space-20), env(safe-area-inset-left, 0px));
 }
 
-.mobile-library__top-bar[data-scrim="true"] {
-  background: linear-gradient(to bottom, var(--scrim-medium) 0%, var(--scrim-clear) 100%);
+/* #209 scrim: a blur that is fully strong over the top 45 % and fades to clear
+   at the bottom, plus a black 0.5 -> 0 gradient for bright photos. Both are
+   pseudo-elements behind the content and take no pointer events. */
+.mobile-library__top-bar[data-scrim="true"]::before,
+.mobile-library__top-bar[data-scrim="true"]::after,
+.desktop-library__title-scrim::before,
+.desktop-library__title-scrim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 
-.mobile-library__pinned-header {
-  flex: 1 1 0;
+/* A pushed grid (album, media type, person, place, #260): same box and first
+   row as above, so Select lands where it does in the Library, but on the
+   grouped background with the title on its own line below. */
+.mobile-library__top-bar--nav {
+  position: relative;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  row-gap: 0;
+  pointer-events: auto;
+  padding-bottom: var(--space-8);
+  background: var(--color-bg-grouped);
+}
+
+.mobile-library__back {
+  min-height: 32px;
+  margin: 0 0 0 -4px;
+  padding: 0;
+}
+
+.mobile-library__nav-title {
+  flex: 1 0 100%;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--title-ink, var(--color-white));
+}
+
+.mobile-library__title,
+.mobile-library__subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* #370: Mac Photos / iOS Photos style. No blur band: a soft dark-to-clear
+   gradient behind the bold white title, so it reads over light photos too.
+   Fades in over the first 48 px of scroll (--title-scrim 0 -> 1, set inline from
+   the scroll offset); the top keeps 45 % of the tint at rest. Scroll-linked, so
+   no transition. */
+.mobile-library__top-bar[data-scrim="true"]::before,
+.desktop-library__title-scrim::before {
+  display: none;
+}
+
+.mobile-library__top-bar[data-scrim="true"]::after,
+.desktop-library__title-scrim::after {
+  background: linear-gradient(
+    to bottom,
+    var(--scrim-header) 0%,
+    var(--scrim-header-mid) 55%,
+    var(--scrim-clear) 100%
+  );
+  opacity: var(--title-scrim-alpha, calc(0.45 + 0.55 * var(--title-scrim, 1)));
+}
+
+/* #423 title colour, one rule for every phone grid. Light mode: white over the
+   scrim while photos are under the title, the label colour at the top where
+   nothing is (iOS Photos). Colour, shadow and tint all follow --title-scrim, so
+   they move together with no transition. Dark mode: tokens.css keeps the title
+   white and the tint at rest. A pushed grid's title sits on the grouped
+   background, never over photos, so it stays at the "top" colour. */
+.mobile-library__top-bar[data-scrim="true"] {
+  --title-scrim-alpha: calc(var(--title-scrim-floor) + (1 - var(--title-scrim-floor)) * var(--title-scrim, 1));
+  --title-ink: color-mix(in srgb, var(--color-white) calc(var(--title-scrim, 1) * 100%), var(--title-ink-top));
+  --title-ink-secondary: color-mix(
+    in srgb,
+    var(--color-white) calc(var(--title-scrim, 1) * 100%),
+    var(--title-ink-top-secondary)
+  );
+}
+
+.mobile-library__top-bar--nav {
+  --title-ink: var(--title-ink-top);
+}
+
+/* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
+   in data-prev, fades out over it. 150 ms is --motion-fast once #206 lands. */
+.date-title__text {
+  animation: date-title-in var(--dur-fade-open) ease-out;
+}
+
+[data-prev]::after {
+  content: attr(data-prev);
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: date-title-out var(--dur-fade-open) ease-out forwards;
+}
+
+@keyframes date-title-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes date-title-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .date-title__text,
+  [data-prev]::after {
+    animation: none;
+  }
+}
+
+/* iPhone title: 34 px large title with a 17 px subtitle 2 px below that
+   carries the zoom-dependent date (#209). */
+.mobile-library__title-block {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--title-ink, var(--color-white));
+  text-shadow: 0 1px 3px
+    color-mix(in srgb, var(--scrim-header) calc(var(--title-scrim-alpha, var(--title-scrim, 1)) * 100%), transparent);
+  pointer-events: none;
+}
+
+.mobile-library__large-title {
+  font-size: var(--font-size-title-large);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-title-large);
+}
+
+.mobile-library__subtitle {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: 1.2em;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+  color: var(--title-ink-secondary, inherit);
+}
+
+/* Coarsest levels: the label alone, in a translucent pill. */
+.mobile-library__pill {
+  position: relative;
+  margin-left: calc(14px - var(--space-16));
+  padding: 6px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--material-pill);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  color: var(--color-label-pill);
   font-size: var(--font-size-title);
   font-weight: var(--font-weight-bold);
-  color: var(--color-white);
-  letter-spacing: -0.3px;
+  letter-spacing: var(--tracking-title);
+  line-height: 1.2;
+}
+
+.mobile-library__pill[data-prev]::after {
+  left: 16px;
+  top: 6px;
+}
+
+/* Round and pill controls over photos: translucent plus blur, so they stay
+   readable over white, black and mid-tone pictures. */
+.mobile-library__glass-button {
+  flex: 0 0 auto;
+  height: 44px;
+  min-width: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--glass-button);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
+  color: var(--color-on-glass);
+  cursor: default;
+  transition: opacity var(--dur-press) var(--ease-press);
+}
+
+.mobile-library__glass-button:active {
+  opacity: 0.6;
 }
 
 .mobile-library__view-switch {
   position: absolute;
   left: 50%;
-  bottom: 14px;
+  bottom: 8px;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
@@ -125,8 +453,8 @@ body {
   box-sizing: border-box;
   border-radius: var(--radius-16);
   background: var(--material-pill);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
   box-shadow: var(--shadow-pill);
 }
 
@@ -138,7 +466,7 @@ body {
   font-weight: var(--font-weight-medium);
   padding: var(--space-6) var(--space-12);
   border-radius: var(--radius-13);
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   flex: 0 0 auto;
   position: relative;
@@ -153,6 +481,11 @@ body {
     font-size: var(--font-size-caption);
     padding: var(--space-6) var(--space-8);
   }
+}
+
+.mobile-library__view-switch-item:disabled,
+.segmented-control__item:disabled {
+  opacity: 0.35;
 }
 
 .mobile-library__view-switch-item[aria-selected="true"] {
@@ -173,11 +506,45 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* #351: with overflow-y set, overflow-x computes to auto, so a sub-pixel of
+     row width was enough to let iOS Safari pan the grid sideways. */
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   overscroll-behavior: contain;
   /* Room below the last row so the floating view-switch pill (about 44px
      tall, 14px off the bottom) never covers the last Days hero caption. */
   padding-bottom: 72px;
+  /* #414/#415: the floating title block overlays the top of the scroller, so
+     content starts below it. Padding (not margin) lets the user scroll the
+     first row up under the header, and scroll back past it. The virtualised
+     All Photos list takes this inset as its paddingStart instead (see
+     MobileLibrary), so it is not doubled. */
+  padding-top: var(--library-top-inset);
   box-sizing: border-box;
+}
+
+.mobile-library__scroll[data-virtual-inset] {
+  padding-top: 0;
+}
+
+/* #431/#446: the 78px --library-top-inset reserves the "Library" title block,
+   which only All Photos has. Years, Months and Days each carry their own large
+   title inside the grid, so all three start right below the safe area. */
+.mobile-library__scroll[data-view="days"],
+.mobile-library__scroll[data-view="months"],
+.mobile-library__scroll[data-view="years"] {
+  padding-top: calc(var(--safe-top) + var(--space-8));
+}
+
+/* Measured by MobileLibrary: env() cannot be read from JS, a box can. */
+.mobile-library__inset-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: var(--library-top-inset);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .mobile-library__row-header {
@@ -191,7 +558,7 @@ body {
 
 
 .mobile-library__row-grid {
-  gap: var(--grid-gap-dense);
+  gap: var(--grid-gap);
 }
 
 .mobile-library__row-feature {
@@ -218,7 +585,7 @@ body {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-body);
   background: linear-gradient(to top, var(--scrim-strong) 0%, var(--scrim-clear) 75%);
   pointer-events: none;
 }
@@ -232,61 +599,314 @@ body {
 }
 
 
-/* #91 Years/Months tiles: one rounded card per period, title+count over
-   the photo like Apple's own Years/Months (design-refs/ios17-library-days.png
-   is the closest reference for the overlay treatment, applied here to a
-   full card instead of an edge-to-edge hero). */
-.mobile-library__tile {
-  display: block;
-  position: relative;
-  width: 100%;
-  height: 100%;
-  padding: var(--space-6) var(--space-16);
+/* #307 Years/Months period cards (shared card style, reused by #301): a
+   multi-column grid of rounded, square-ish cards. Column count comes from the
+   container width via auto-fill, so there is never a single full-width card. */
+.period-grid {
+  --period-card-min: 168px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--period-card-min), 1fr));
+  gap: var(--space-12);
+  padding: var(--space-16);
   box-sizing: border-box;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
+  align-content: start;
 }
 
-.mobile-library__tile-image {
+/* Years and Months share one desktop card size (pp, #323); only the phone
+   layout packs Months tighter, below. */
+@media (max-width: 600px) {
+  .period-grid {
+    --period-card-min: 130px;
+    gap: var(--space-8);
+    padding: var(--space-12);
+  }
+
+  .period-grid--months {
+    --period-card-min: 88px;
+  }
+}
+
+.period-grid--days {
+  --period-card-min: 150px;
+}
+
+.period-grid__header {
+  grid-column: 1 / -1;
+  padding: var(--space-8) var(--space-4) var(--space-4);
+}
+
+.period-grid__title {
+  margin: 0;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-title-large);
+  color: var(--color-label);
+}
+
+.period-grid__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-body-sm);
+  color: var(--color-label-secondary);
+}
+
+.period-card {
+  transition: transform var(--motion-duration) var(--motion-ease);
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--color-placeholder);
+  color: var(--color-white);
+  text-align: left;
+  font: inherit;
+}
+
+.period-card__image {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: var(--radius-large);
-  background: var(--color-placeholder);
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration) var(--motion-ease),
+    transform var(--motion-duration) var(--motion-ease);
 }
 
-.mobile-library__tile-caption {
+.period-card__image.is-loaded {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .period-card:hover .period-card__image {
+    transform: scale(1.04);
+  }
+}
+
+.period-card:active {
+  transform: scale(0.98);
+}
+
+/* Top gradient so the label reads on bright and dark photos alike. */
+.period-card__scrim {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 6px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-8);
-  padding: var(--space-16) 18px var(--space-14);
-  color: var(--color-white);
-  background: linear-gradient(to top, var(--scrim-medium) 0%, var(--scrim-clear) 80%);
-  border-radius: 0 0 var(--radius-large) var(--radius-large);
+  inset: 0 0 auto 0;
+  height: 55%;
+  background: linear-gradient(to bottom, var(--scrim-soft) 0%, var(--scrim-clear) 100%);
   pointer-events: none;
 }
 
-.mobile-library__tile-label {
-  font-size: var(--font-size-title-3);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.3px;
+.period-card__caption {
+  position: absolute;
+  top: var(--space-12);
+  left: var(--space-12);
+  right: var(--space-12);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-shadow: var(--text-shadow-overlay);
+  pointer-events: none;
 }
 
-.mobile-library__tile-count {
-  font-size: var(--font-size-body-sm);
+.period-card__label {
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-title-3);
+  line-height: 1.15;
+}
+
+.period-grid--years .period-card__label {
+  font-size: var(--font-size-title-2);
+}
+
+.period-card__count {
+  font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
-  opacity: 0.85;
+  opacity: 0.9;
   font-variant-numeric: tabular-nums;
 }
 
+/* Days (#301): the date sits bottom-left over a bottom gradient. */
+.period-card--days .period-card__scrim {
+  inset: auto 0 0 0;
+  height: 60%;
+  background: linear-gradient(to top, var(--scrim-medium) 0%, var(--scrim-clear) 100%);
+}
+
+.period-card--days .period-card__caption {
+  top: auto;
+  bottom: var(--space-12);
+  text-shadow: var(--text-shadow-label);
+}
+
+.period-card--days .period-card__label {
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.period-card__pill {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-8);
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--scrim-badge);
+  -webkit-backdrop-filter: var(--blur-medium);
+  backdrop-filter: var(--blur-medium);
+  color: var(--color-white);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .period-grid--days {
+    --period-card-min: 140px;
+  }
+
+  .period-grid--months .period-card__label {
+    font-size: var(--font-size-body-sm);
+  }
+
+  .period-grid--months .period-card__count {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .period-card,
+  .period-card__image {
+    transition: none;
+  }
+
+  .period-card:hover .period-card__image {
+    transform: none;
+  }
+}
+
+/* #219 iPhone cards: one column of rounded cards at a fixed final size, so
+   placeholders never shift the layout when thumbnails arrive. */
+.period-grid--phone {
+  --period-card-min: 100%;
+  grid-template-columns: 1fr;
+  gap: var(--space-8);
+  /* No top padding: .mobile-library__scroll's inset is the one top offset. */
+  padding: 0 var(--space-16) var(--space-8);
+}
+
+.period-grid--phone.period-grid--years {
+  gap: var(--space-16);
+}
+
+.period-grid--phone .period-grid__header {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.period-grid--phone .period-grid__header + .period-grid__month {
+  padding-top: 0;
+}
+
+.period-grid__month {
+  margin: 0;
+  padding: var(--space-14) var(--space-4) var(--space-4);
+  font-size: var(--font-size-title-2-lg);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-title);
+  color: var(--color-label);
+}
+
+.period-card--phone {
+  aspect-ratio: auto;
+  height: 230px;
+  border-radius: var(--radius-24);
+  /* Continuous corners where the browser has them; radius is the fallback. */
+  corner-shape: squircle;
+}
+
+.period-grid--years .period-card--phone {
+  height: 300px;
+  border-radius: var(--radius-28);
+}
+
+.period-grid--years .period-card--phone .period-card__caption {
+  top: var(--space-20);
+  left: var(--space-20);
+}
+
+.period-grid--years .period-card--phone .period-card__label {
+  font-size: var(--font-size-title-lg);
+}
+
+.period-card--phone.period-card--days .period-card__caption {
+  left: var(--space-18);
+  right: var(--space-18);
+  bottom: var(--space-18);
+}
+
+.period-card--phone.period-card--days .period-card__label {
+  font-size: var(--font-size-title-2);
+  font-weight: var(--font-weight-bold);
+}
+
+.period-card--phone.period-card--days .period-card__count {
+  display: block;
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.85;
+}
+
+.period-card--phone.period-card--days .period-card__pill {
+  top: var(--space-12);
+  right: var(--space-12);
+  padding: 5px 10px;
+  font-size: var(--font-size-subhead);
+}
+
+/* The key photo fills the left; two small photos stack on the right. */
+.period-card--mosaic .period-card__image {
+  right: 120px;
+  width: calc(100% - 120px);
+}
+
+.period-card--mosaic .period-card__scrim {
+  right: 120px;
+}
+
+.period-card--mosaic .period-card__pill {
+  right: 132px;
+}
+
+.period-card__mosaic {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 118px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.period-card__mosaic-image {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+  background: var(--color-placeholder);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .period-card--phone:active {
+    transform: none;
+  }
+}
 
 .mobile-library__empty {
   text-align: center;
@@ -300,45 +920,140 @@ body {
   color: var(--accent);
 }
 
-/* P1.17 multi-select: a top-left text button mirroring iOS Photos'
-   "Select"/"Cancel", symmetric with the account avatar the Shell already
-   floats at the top-right. */
+/* P1.17 multi-select, #212, #391, #417: the one Select / Cancel glass pill on
+   every phone grid (Library and pushed grids). Pinned to the top of the bar,
+   not centred on the title block, whose height differs between grids; Cancel
+   keeps Select's box via min-width. */
 .mobile-library__select-button {
   flex: 0 0 auto;
+  align-self: flex-start;
   margin-left: auto;
-  min-height: 32px;
-  padding: 0 var(--space-4);
+  min-height: 44px;
+  min-width: 92px;
+  padding: 0 var(--space-18);
   pointer-events: auto;
   border: none;
-  background: transparent;
-  color: var(--color-white);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
+  background: var(--glass-button);
+  color: var(--color-on-glass);
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
-.mobile-library__cell-wrap {
+.mobile-library__cell-wrap,
+.mobile-library__row-feature {
   position: relative;
+  background: var(--color-placeholder);
 }
 
-.mobile-library__select-badge {
+/* #208 overlays shared by both layouts. Local motion constants (120 ms
+   dim/check fade) until the #206 motion tokens land. */
+.mobile-library__heart,
+.mobile-library__duration,
+.desktop-library__heart,
+.desktop-library__duration {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-white);
-  background: var(--scrim-badge);
-  transition:
-    background-color var(--dur-select) var(--ease-select),
-    border-color var(--dur-select) var(--ease-select);
+  bottom: 4px;
+  color: var(--color-white);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-caption);
+  line-height: 1;
+  text-shadow: var(--text-shadow-tile);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 1;
 }
 
-.mobile-library__select-badge[data-selected="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
+.mobile-library__heart,
+.desktop-library__heart {
+  left: 5px;
+  display: flex;
+  filter: var(--filter-tile-shadow);
+}
+
+.mobile-library__duration,
+.desktop-library__duration {
+  right: 5px;
+}
+
+/* A selected video's duration steps left of the check badge (22 px + 5 px
+   inset + 4 px gap) so the two never overlap. */
+.mobile-library__cell-wrap[data-selected="true"] .mobile-library__duration {
+  right: 31px;
+}
+
+/* Selected: a 25 % white dim plus a 22 px accent check, bottom-right. */
+.mobile-library__cell-wrap::after,
+.mobile-library__row-feature::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tile-dim);
+  opacity: 0;
+  transition: opacity var(--dur-select) ease;
+  pointer-events: none;
+}
+
+.mobile-library__cell-wrap[data-selected="true"]::after,
+.mobile-library__row-feature[data-selected="true"]::after {
+  opacity: 1;
+}
+
+/* Desktop (Photos for Mac): a selected tile shows only a blue frame, with no
+   dim and no check badge. The badge is the iPhone selection look. */
+.desktop-library__cell[data-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* F10: the badge is one 22 x 22 SVG on whole pixels (circle, ring and tick all
+   drawn inside it), with no border, margin, transform or opacity transition,
+   so the tick is centred and does not settle by a pixel after appearing. */
+.mobile-library__check {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 22px;
+  height: 22px;
+  line-height: 0;
+  color: var(--color-white);
+  filter: drop-shadow(var(--shadow-check));
+  z-index: 1;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mobile-library__check svg {
+  display: block;
+}
+
+.mobile-library__check__fill {
+  fill: var(--accent);
+}
+
+.mobile-library__check__ring {
+  fill: none;
+  stroke: var(--color-white);
+  stroke-width: 1.5;
+}
+
+.mobile-library__check[data-selected="true"] {
+  visibility: visible;
+}
+
+/* iPhone selection mode: an empty outlined circle on every tile that fills
+   when selected. */
+.mobile-library__check[data-selected="false"] {
+  visibility: visible;
+}
+
+.mobile-library__check[data-selected="false"] .mobile-library__check__fill {
+  fill: var(--scrim-badge);
+}
+
+.mobile-library__check[data-selected="false"] path {
+  stroke: transparent;
 }
 
 /* Bottom action bar for multi-select, replacing the tab bar's role while
@@ -352,33 +1067,64 @@ body {
   bottom: 0;
   z-index: 3;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-10) var(--space-16) calc(var(--space-10) + env(safe-area-inset-bottom, 0px));
+  flex-direction: column;
+  padding: var(--space-4) var(--space-8) calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
   background: var(--material-bar-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
 }
 
+/* Photos' toolbar row: 49pt tall, the count centred between equal-width
+   ends so it stays centred whatever the buttons' widths (#259). */
+.mobile-library__select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 49px;
+}
+
 .mobile-library__select-count {
-  font-size: var(--font-size-subhead);
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-label);
   font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.mobile-library__select-bar button {
-  border: none;
-  background: transparent;
-  color: var(--accent);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
+/* Glass look comes from .mobile-library__glass-button (the filter and Select
+   buttons); this only sets the size and the grid placement. */
+.mobile-library__bar-button {
+  gap: var(--space-6);
+  width: 44px;
+  padding: 0;
+  font-size: var(--font-size-headline);
 }
 
-.mobile-library__select-bar button:disabled {
+.mobile-library__bar-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mobile-library__bar-button:first-child {
+  justify-self: start;
+}
+
+.mobile-library__bar-button--end {
+  justify-self: end;
+}
+
+.mobile-library__bar-button:disabled {
   color: var(--color-label-tertiary);
-  cursor: default;
+  opacity: 0.6;
+}
+
+.mobile-library__select-caption {
+  margin: 0 var(--space-8) var(--space-4);
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  text-align: center;
 }
 
 
@@ -388,10 +1134,10 @@ body {
 .tab-bar {
   display: flex;
   background: var(--material-bar);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
   border-top: 1px solid var(--color-bar-line);
-  padding: var(--space-6) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+  padding: var(--space-6) var(--space-4) calc(var(--space-6) + var(--safe-bottom));
 }
 
 .tab-bar__item {
@@ -404,7 +1150,7 @@ body {
   background: transparent;
   color: var(--color-label-tab);
   padding: var(--space-2) 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .tab-bar__item[aria-current="page"] {
@@ -457,7 +1203,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-screen__back-icon {
@@ -469,7 +1215,7 @@ body {
   margin: 0;
   font-size: var(--font-size-title-2);
   font-weight: var(--font-weight-bold);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-title-2);
 }
 
 .mobile-screen__body {
@@ -489,11 +1235,13 @@ body {
   background: var(--color-bg-grouped);
 }
 
+/* #389: the whole list scrolls to its end, library switcher included, and the
+   in-flow tab bar already owns the bottom safe-area inset -- no second one here. */
 .more-screen__body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 var(--space-16);
+  padding: 0 var(--space-16) var(--space-20);
 }
 
 .more-screen__group {
@@ -506,7 +1254,10 @@ body {
 }
 
 .more-screen__group-label {
-  padding: var(--space-6) var(--space-14);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: var(--space-6) var(--space-16);
   font-size: var(--font-size-subhead);
   color: var(--color-label-tertiary);
   background: transparent;
@@ -520,11 +1271,13 @@ body {
   border: none;
   border-bottom: 1px solid var(--color-separator);
   background: transparent;
-  padding: 11px var(--space-14);
+  /* #389: iOS Settings rows: 44pt minimum hit target, roomier at 52. */
+  min-height: 52px;
+  padding: var(--space-8) var(--space-16);
   font-size: var(--font-size-body-lg);
   color: var(--color-label);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .more-screen__group li:last-child .more-screen__item {
@@ -537,8 +1290,7 @@ body {
 }
 
 .more-screen__library-switcher {
-  flex: 0 0 auto;
-  padding: var(--space-10) var(--space-16) calc(var(--space-14) + env(safe-area-inset-bottom, 0px));
+  padding: var(--space-10) var(--space-16) var(--space-14);
   text-align: center;
   font-size: var(--font-size-subhead);
   color: var(--color-label-tertiary);
@@ -610,7 +1362,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .hidden-unlock__submit {
@@ -639,15 +1391,19 @@ body {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: var(--color-dim-light);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 
 .hidden-unlock--desktop .hidden-unlock__card {
   width: 300px;
   padding: var(--space-24);
-  border-radius: var(--radius-card);
+  border-radius: var(--radius-popup);
   background: var(--color-card-raised);
-  box-shadow: var(--shadow-sheet);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
 }
 
 .hidden-unlock--desktop .hidden-unlock__input {
@@ -732,10 +1488,20 @@ body {
   margin-top: var(--space-20);
 }
 
-.login-screen--mobile .login-card form {
+/* The fields are one inset group; the submit button sits below it on the
+   grouped background, not fused onto the group's bottom edge. */
+.login-screen--mobile .login-card form > label {
   background: var(--color-card);
-  border-radius: var(--radius-10);
-  overflow: hidden;
+}
+
+.login-screen--mobile .login-card form > label:first-of-type {
+  border-top-left-radius: var(--radius-10);
+  border-top-right-radius: var(--radius-10);
+}
+
+.login-screen--mobile .login-card form > label:last-of-type {
+  border-bottom-left-radius: var(--radius-10);
+  border-bottom-right-radius: var(--radius-10);
 }
 
 .login-card label {
@@ -747,12 +1513,12 @@ body {
   padding: var(--space-8) var(--space-12);
 }
 
-.login-screen--mobile .login-card label {
+.login-screen--mobile .login-card form > label {
   border-bottom: 1px solid var(--color-separator);
   padding: var(--space-10) var(--space-14);
 }
 
-.login-screen--mobile .login-card label:last-of-type {
+.login-screen--mobile .login-card form > label:last-of-type {
   border-bottom: none;
 }
 
@@ -771,16 +1537,64 @@ body {
   font-size: var(--font-size-headline);
 }
 
+/* Desktop: as wide as the fields (inside the labels' side padding) and
+   the same height as them, like a macOS sheet's default button. */
 .login-card button[type="submit"] {
-  margin-top: var(--space-16);
+  margin: var(--space-16) var(--space-12) 0;
   background: var(--accent);
   color: var(--color-white);
-  border: none;
-  border-radius: var(--radius-10);
-  padding: var(--space-12);
+  /* Same box as the inputs' 1px border, so the heights match. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-8);
+  padding: var(--space-8) var(--space-12);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-semibold);
-  cursor: pointer;
+  cursor: default;
+}
+
+.login-card button[type="submit"]:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.login-card button[type="submit"]:active:not(:disabled) {
+  background: var(--color-accent-pressed);
+}
+
+.login-card button[type="submit"]:disabled {
+  opacity: 0.5;
+}
+
+/* #390: on the phone the ring wraps the whole field row (label + value). */
+.login-screen--mobile .login-card form > label:focus-within {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: var(--ring-field);
+}
+
+.login-screen--mobile .login-card input:focus-visible {
+  outline: 2px solid transparent; /* the row draws the ring; transparent stays visible in forced-colors */
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.login-card input:focus-visible {
+  outline: 2px solid transparent; /* box-shadow ring is dropped in forced-colors; the transparent outline becomes visible there */
+  border-color: var(--accent);
+  box-shadow: var(--ring-field);
+}
+
+.login-card input:disabled {
+  opacity: 0.5;
+}
+
+/* Phone: the width of the fields group, iOS's 44pt minimum height. */
+.login-screen--mobile .login-card button[type="submit"] {
+  margin: var(--space-20) 0 0;
+  min-height: var(--size-control-touch);
+  border-radius: var(--radius-10);
+  font-size: var(--font-size-headline);
 }
 
 .login-card__passkey {
@@ -791,7 +1605,54 @@ body {
   border: none;
   padding: var(--space-10);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
+}
+
+/* "Keep me signed in": box and label on one line, box vertically centred, row centred under the fields (#373). */
+.login-card label.login-card__keep {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  color: var(--color-label);
+}
+
+.login-card label.login-card__keep input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+/* Passkey availability footnote: small secondary text under the Sign in button,
+   as wide as the form (the card's own padding sets the width). */
+.login-card .login-card__passkey-note {
+  margin: var(--space-12) 0 0;
+  text-align: center;
+  font-size: var(--font-size-footnote);
+  line-height: 1.4;
+  color: var(--color-label-secondary);
+  text-wrap: balance;
+}
+
+/* The hint is the shared (i) button with its text inside, so hover or tap on
+   either one opens the popover. */
+.login-card .login-card__passkey-note .info-button--labelled {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: var(--space-4) var(--space-8);
+  font: inherit;
+  color: inherit;
+}
+.login-card .login-card__passkey-note .info-button--labelled:hover,
+.login-card .login-card__passkey-note .info-button--labelled[aria-expanded="true"] {
+  color: var(--color-label);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -810,8 +1671,8 @@ body {
 }
 
 .shell--desktop .sidebar {
-  flex: 0 0 220px;
-  width: 220px;
+  flex: 0 0 var(--sidebar-width, 220px);
+  width: var(--sidebar-width, 220px);
   box-sizing: border-box;
   overflow-x: hidden;
   overflow-y: auto;
@@ -821,29 +1682,12 @@ body {
     padding var(--dur-zoom) var(--ease-zoom),
     opacity var(--dur-chrome) var(--ease-chrome);
   background: var(--material-sidebar);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: var(--blur-thick);
+  backdrop-filter: var(--blur-thick);
   border-right: 1px solid var(--color-hairline);
   padding: 44px var(--space-8) var(--space-12);
   display: flex;
   flex-direction: column;
-}
-
-.sidebar__library-switcher {
-  flex: 0 0 auto;
-  font-size: var(--font-size-caption);
-  padding: var(--space-8) var(--space-8) var(--space-2);
-  text-align: center;
-  color: var(--color-label-secondary);
-}
-
-.sidebar__library-switcher select {
-  background: transparent;
-  border: none;
-  font-size: var(--font-size-caption);
-  color: var(--color-label-secondary);
-  text-align: center;
-  text-align-last: center;
 }
 
 .sidebar nav,
@@ -858,6 +1702,10 @@ body {
 }
 
 .sidebar__group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
   font-size: var(--font-size-footnote);
   font-weight: var(--font-weight-semibold);
   color: var(--color-label-secondary);
@@ -865,24 +1713,59 @@ body {
   cursor: default;
 }
 
+.sidebar__group > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* #217: an 8px chevron at the right, only on hover or keyboard focus; it
+   turns down when the section is open. */
+.sidebar__group-chevron {
+  opacity: 0;
+  transition:
+    opacity var(--dur-tint) var(--ease-tint),
+    transform var(--dur-tint) var(--ease-tint);
+}
+
+.sidebar__group[open] > summary > .sidebar__group-chevron {
+  transform: rotate(90deg);
+}
+
+.sidebar__group > summary:hover .sidebar__group-chevron,
+.sidebar__group > summary:focus-visible .sidebar__group-chevron {
+  opacity: 1;
+}
+
 .sidebar__item {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   width: 100%;
+  height: 28px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   text-align: left;
   font-size: var(--font-size-subhead);
   color: var(--color-label);
-  padding: var(--space-5) var(--space-8);
+  padding: 0 var(--space-8);
   border-radius: var(--radius-small);
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__icon {
   flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
   color: var(--accent);
+}
+
+.sidebar__cover {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-3);
+  object-fit: cover;
+  background: var(--color-placeholder);
 }
 
 .sidebar__item:disabled {
@@ -895,7 +1778,7 @@ body {
 }
 
 .sidebar__item[aria-current="page"] {
-  background: var(--color-selected);
+  background: var(--color-sidebar-selected);
   color: var(--color-label);
 }
 
@@ -903,14 +1786,29 @@ body {
   color: var(--accent);
 }
 
-.sidebar__item--sub {
-  padding-left: 22px;
-  font-size: var(--font-size-caption-lg);
+/* Drag edge for the sidebar width (#217). Sits on the sidebar's right border. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 220px) - 3px);
+  width: 6px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none;
 }
 
-.sidebar__item--sub .sidebar__icon {
-  width: 15px;
-  height: 15px;
+.sidebar-resizer:hover,
+.shell--resizing .sidebar-resizer {
+  background: var(--color-hover);
+}
+
+.shell--resizing {
+  user-select: none;
+}
+
+.shell--resizing .sidebar {
+  transition: none;
 }
 
 .sidebar .account-menu {
@@ -935,13 +1833,13 @@ body {
   display: flex;
   align-items: center;
   padding: var(--space-8) var(--space-16);
-  border-bottom: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   background: var(--material-toolbar);
 }
 
 .shell--desktop .toolbar h1 {
   font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-regular);
   margin: 0;
 }
 
@@ -959,12 +1857,27 @@ body {
   align-items: center;
   gap: var(--space-10);
   padding: var(--space-8) var(--space-16);
-  border-bottom: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   background: var(--material-toolbar);
 }
 
 .desktop-library__spacer {
   flex: 1 1 auto;
+}
+
+/* #217: left group | centred Years/Months/All Photos | right group. The two
+   groups share the free width equally, so the switch sits in the middle. */
+.desktop-library__bar-left,
+.desktop-library__bar-right {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.desktop-library__bar-right {
+  justify-content: flex-end;
 }
 
 .desktop-library__zoom-slider {
@@ -974,9 +1887,67 @@ body {
   color: var(--color-label-secondary);
 }
 
+.desktop-library__zoom-end {
+  padding: 0;
+  background: transparent;
+}
+
+/* Slim slider: 3px grey track, 18px white thumb with a soft shadow. */
 .desktop-library__zoom-slider input[type="range"] {
-  width: 90px;
-  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--size-zoom-slider-w);
+  height: var(--size-zoom-slider-h);
+  margin: 0 var(--space-2);
+  background: transparent;
+}
+
+.desktop-library__zoom-slider input[type="range"]:focus-visible {
+  outline-offset: 0;
+}
+
+.desktop-library__zoom-slider input[type="range"]:disabled {
+  opacity: 0.5;
+}
+
+.desktop-library__zoom-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: var(--size-slider-track);
+  border-radius: var(--radius-2);
+  background: linear-gradient(var(--color-slider-fill), var(--color-slider-fill)) 0 / var(--range-fill, 0%) 100% no-repeat,
+    var(--color-slider-track);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-track {
+  height: var(--size-slider-track);
+  border-radius: var(--radius-2);
+  background: var(--color-slider-track);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-progress {
+  height: var(--size-slider-track);
+  border-radius: var(--radius-2);
+  background: var(--color-slider-fill);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--size-slider-thumb);
+  height: var(--size-slider-thumb);
+  margin-top: -7.5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-slider-thumb);
+  box-shadow: var(--shadow-slider-thumb);
+}
+
+.desktop-library__zoom-slider input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-slider-thumb);
+  box-shadow: var(--shadow-slider-thumb);
 }
 
 .segmented-control {
@@ -987,6 +1958,10 @@ body {
   padding: var(--space-2);
 }
 
+.segmented-control__item:not(:disabled):not([aria-selected="true"]):active {
+  background: var(--color-hover);
+}
+
 .segmented-control__item {
   border: none;
   background: transparent;
@@ -994,7 +1969,7 @@ body {
   font-size: var(--font-size-caption);
   padding: var(--space-4) var(--space-12);
   border-radius: var(--radius-xs-2);
-  cursor: pointer;
+  cursor: default;
   position: relative;
   z-index: 1;
 }
@@ -1047,34 +2022,49 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  /* #413: icon buttons are 1:1, so the hover background is a square. */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--size-toolbar-button);
+  height: var(--size-toolbar-button);
+  aspect-ratio: 1 / 1;
+  padding: 0;
   border: none;
   background: transparent;
-  border-radius: var(--radius-small);
+  border-radius: var(--radius-8);
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
+  transition: background-color var(--dur-press) var(--ease-press);
+}
+
+/* Text buttons (Retry) are the one place a toolbar button is not a square. */
+.map-view__state .toolbar-button {
+  width: auto;
+  aspect-ratio: auto;
+  padding: 0 var(--space-12);
+}
+
+.toolbar-button--small {
+  color: var(--color-label-secondary);
 }
 
 .toolbar-button:hover:not(:disabled) {
   background: var(--color-hover);
 }
 
+.toolbar-button:active:not(:disabled) {
+  background: var(--color-pressed);
+}
+
 .toolbar-button:disabled {
-  color: var(--color-label-secondary);
+  color: var(--color-label-tertiary);
+  opacity: 0.5;
   cursor: default;
 }
 
 .toolbar-button[aria-pressed="true"] {
   background: var(--color-accent-soft);
   color: var(--accent);
-}
-
-.desktop-library__selection-count {
-  font-size: var(--font-size-caption);
-  color: var(--color-label-secondary);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .desktop-library__body {
@@ -1123,6 +2113,11 @@ body {
 }
 
 .desktop-library__grid {
+  /* F6: reserve the scrollbar's width always. Otherwise it appears when a
+     column-count change adds rows, which narrows the grid, which changes the
+     column count back: an endless resize loop at some zoom steps. */
+  scrollbar-gutter: stable;
+  -webkit-tap-highlight-color: transparent;
   flex: 1 1 auto;
   min-width: 0;
   user-select: none;
@@ -1131,7 +2126,6 @@ body {
   overscroll-behavior: contain;
   position: relative;
   background: var(--color-bg-window);
-  padding: 0 1px;
 }
 
 /* Date-range large title overlaid on the grid's first row, like
@@ -1145,76 +2139,86 @@ body {
   height: 0;
   z-index: 1;
   pointer-events: none;
+  transition: opacity var(--dur-tint) ease-out;
 }
 
-/* Sticky, so the title stays on the top edge while the grid scrolls (#118);
-   the zero-height wrapper keeps it out of the row layout. */
-.desktop-library__date-range > span {
+/* A month header sits where the title would be: the title and its scrim step
+   aside instead of drawing over it (#209). */
+.desktop-library__date-range[data-hidden="true"] {
+  opacity: 0;
+}
+
+/* Scrim and title are siblings inside the zero-height sticky wrapper (#118). */
+.desktop-library__title-scrim {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 112px;
+  pointer-events: none;
+}
+
+.desktop-library__title {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
-  padding: var(--space-14) var(--space-10) 36px;
-  background: linear-gradient(to bottom, var(--scrim-soft) 0%, var(--scrim-clear) 100%);
-  font-size: var(--font-size-title-3);
+  padding: var(--space-14) var(--space-10) 0;
+  font-size: var(--font-size-title-2-lg);
+  text-shadow: var(--text-shadow-overlay);
   font-weight: var(--font-weight-bold);
   color: var(--color-white);
-  letter-spacing: -0.2px;
+  letter-spacing: var(--tracking-title-3);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
+.desktop-library__title-sub {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  padding: 0 var(--space-10);
+  font-size: var(--font-size-subhead);
+  color: var(--color-white);
+  text-shadow: var(--text-shadow-overlay);
+  white-space: nowrap;
+}
+
+.desktop-library__title[data-prev]::after {
+  left: var(--space-10);
+  top: var(--space-14);
+}
+
+/* Month section headers: 40 px rows, 15 px / 700 (#209). */
 .desktop-library__row-header {
   display: flex;
   align-items: center;
-  padding: 0 var(--space-8);
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--font-size-subhead);
+  padding: 0 var(--space-10);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
 }
 
 .desktop-library__cell {
   position: relative;
   overflow: hidden;
-  border-radius: var(--radius-xs);
+  /* Shown while the thumbnail fades in, so a slow thumb is a grey tile, not a hole. */
+  background: var(--color-placeholder);
+  border-radius: var(--radius-tile);
   cursor: default;
-}
-
-.desktop-library__cell {
-  /* A transparent ring at rest so selecting only changes its colour (#206). */
-  box-shadow: 0 0 0 3px transparent;
-  transition: box-shadow var(--dur-select) var(--ease-select);
-}
-
-.desktop-library__cell[data-selected="true"] {
-  border-radius: var(--radius-small);
-  box-shadow: 0 0 0 3px var(--accent);
+  /* F2: no white tap/active/focus flash; the blue frame alone marks selection.
+     The keyboard ring stays on :focus-visible only. */
+  -webkit-tap-highlight-color: transparent;
+  /* A transparent frame at rest so selecting only changes its colour (#206);
+     the selected outline itself comes from the #258 rule above. */
+  outline: 3px solid transparent;
+  outline-offset: -3px;
+  transition: outline-color var(--dur-select) var(--ease-select);
 }
 
 .desktop-library__thumb {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.desktop-library__heart,
-.desktop-library__duration {
-  position: absolute;
-  opacity: 0;
-  color: var(--color-white);
-  font-size: var(--font-size-caption);
-  text-shadow: var(--text-shadow-overlay);
-  transition: opacity var(--dur-tint) var(--ease-tint);
-  font-variant-numeric: tabular-nums;
-}
-
-.desktop-library__cell:hover .desktop-library__heart,
-.desktop-library__cell:hover .desktop-library__duration {
-  opacity: 1;
-}
-
-.desktop-library__heart {
-  top: 4px;
-  left: 4px;
-}
-
-.desktop-library__duration {
-  bottom: 4px;
-  right: 4px;
 }
 
 /* Days hero (#127): the same one-photo-per-day row the phone uses, with the
@@ -1281,7 +2285,7 @@ body {
   border: 0;
   overflow: hidden;
   background: var(--color-placeholder);
-  cursor: pointer;
+  cursor: default;
 }
 
 .hidden-view__thumb {
@@ -1316,13 +2320,13 @@ body {
   z-index: 8;
   display: flex;
   flex-direction: column;
-  min-width: 160px;
-  padding: var(--space-6);
-  border-radius: var(--radius-10);
+  min-width: 180px;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
@@ -1330,39 +2334,209 @@ body {
   border: none;
   background: transparent;
   text-align: left;
-  padding: var(--space-6) var(--space-10);
-  border-radius: var(--radius-small);
-  font-size: var(--font-size-subhead);
+  min-height: 28px;
+  padding: var(--space-5) var(--space-10);
+  border-radius: var(--radius-10);
+  font-size: var(--font-size-body-sm);
+  line-height: 20px;
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 .desktop-library__context-menu button:hover {
   background: var(--color-hover);
 }
 
-.desktop-library__filter {
-  position: relative;
+.desktop-library__context-menu button:active {
+  background: var(--color-pressed);
 }
 
-.desktop-library__filter-menu {
+/* Keyboard focus is an inset accent ring, as in the measured menu. */
+.desktop-library__context-menu button:focus-visible {
+  outline-color: transparent; /* the inset ring is the indicator; keeps a ring in forced-colours */
+  box-shadow: var(--ring-menu-item);
+}
+
+/* Filter menu (FilterMenu.tsx): Filter By on desktop, Filter on iPhone. */
+.filter-menu {
+  position: relative;
+  pointer-events: auto;
+}
+
+.filter-menu__button {
+  padding: 0;
+}
+
+.filter-menu__button[data-active="true"] {
+  color: var(--accent);
+}
+
+/* Desktop: Mac Photos "Filter By: All Items" pill floating over the grid. */
+.desktop-library__grid-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.desktop-library__filter-pill {
+  position: absolute;
+  top: var(--space-8);
+  /* #405: the toolbar's own side padding, so the pill and the search box
+     share one right edge. */
+  right: var(--space-16);
+  z-index: 6;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  /* #393: the same height, side padding and font size as the search box. */
+  height: var(--size-search-field);
+  /* #412: exactly the search box's resting width, so the two line up. */
+  width: var(--size-toolbar-rest-width);
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 var(--space-8);
+  border: none;
+  /* #381 review (pp): match the desktop search box corners, not a capsule. */
+  border-radius: var(--radius-small-2);
+  background: var(--material-filter-pill);
+  color: var(--color-on-filter-pill);
+  font-size: var(--font-size-subhead);
+  white-space: nowrap;
+  backdrop-filter: var(--blur-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-pill);
+  cursor: default;
+  transition: background var(--dur-tint) var(--ease-tint);
+}
+
+.filter-pill:hover,
+.filter-pill[aria-expanded="true"] {
+  background: var(--material-filter-pill-hover);
+}
+
+.filter-pill__label {
+  font-weight: var(--font-weight-regular);
+}
+
+.filter-pill__value {
+  font-weight: var(--font-weight-semibold);
+}
+
+.filter-pill__chevron {
+  transform: rotate(90deg);
+}
+
+.filter-menu__popup {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
   z-index: 8;
   display: flex;
   flex-direction: column;
-  min-width: 160px;
-  padding: var(--space-6);
-  border-radius: var(--radius-10);
+  min-width: 200px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
-.desktop-library__filter-menu button {
+.filter-menu--mobile {
+  position: static;
+}
+
+.filter-menu--mobile .filter-menu__button {
+  position: relative;
+  z-index: 1;
+}
+
+/* Transparent layer under the popup and button. It takes the closing tap so
+   the photo underneath never gets it, and stops the grid scrolling behind. */
+.filter-menu__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+/* Glass card, like the iOS Photos menu. */
+.filter-menu--mobile .filter-menu__popup {
+  z-index: 2;
+  top: calc(100% + var(--space-8));
+  width: min(300px, calc(100vw - 32px));
+  min-width: 0;
+  padding: var(--space-8) 0;
+  border-radius: var(--radius-26);
+  background: var(--glass-menu);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  transform-origin: top right;
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 var(--space-18) 0 0;
+  border-radius: 0;
+  font-size: var(--font-size-body);
+  white-space: normal;
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__row--parent,
+.filter-menu--mobile .filter-menu__popup .filter-menu__card-header {
+  padding-left: var(--space-20);
+}
+
+.filter-menu--mobile .filter-menu__popup .filter-menu__card-header {
+  min-height: 52px;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Leading column for the tick, then the icon, like iOS. */
+.filter-menu__lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  flex: 0 0 auto;
+  color: var(--color-label);
+}
+
+.filter-menu__icon {
+  display: flex;
+  width: 30px;
+  flex: 0 0 auto;
+  margin-right: var(--space-8);
+  color: var(--color-label);
+}
+
+.filter-menu__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filter-menu--mobile .filter-menu__separator {
+  margin: var(--space-4) var(--space-20);
+}
+
+.filter-menu--mobile .filter-menu__heading {
+  padding: var(--space-8) var(--space-20) var(--space-4);
+  font-size: var(--font-size-subhead);
+}
+
+.filter-menu__popup button {
   display: flex;
   align-items: center;
   border: none;
@@ -1372,16 +2546,94 @@ body {
   border-radius: var(--radius-small);
   font-size: var(--font-size-subhead);
   color: var(--color-label);
-  cursor: pointer;
+  white-space: nowrap;
+  cursor: default;
 }
 
-.desktop-library__filter-menu button:hover {
+.filter-menu--mobile .filter-menu__popup button {
+  min-height: 40px;
+  font-size: var(--font-size-body);
+}
+
+.filter-menu__popup button:hover,
+.filter-menu__popup button:focus-visible {
   background: var(--color-hover);
 }
 
-.desktop-library__filter-check {
+.filter-menu--mobile .filter-menu__popup button:hover {
+  background: transparent;
+}
+
+.filter-menu--mobile .filter-menu__popup button:active,
+.filter-menu--mobile .filter-menu__popup button:focus-visible {
+  background: var(--color-hover);
+}
+
+.filter-menu__popup button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.filter-menu__check {
   width: 18px;
+  flex: 0 0 auto;
   text-align: center;
+}
+
+/* Desktop menu: Mac-style row icons, same glyphs as the iPhone menu (#381). */
+.filter-menu__dicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 2px;
+  flex: 0 0 auto;
+  color: var(--color-label);
+}
+
+.filter-menu__dicon svg {
+  display: block;
+}
+
+.filter-menu__separator {
+  height: 1px;
+  margin: var(--space-4) var(--space-4);
+  background: var(--color-separator);
+}
+
+.filter-menu__heading {
+  padding: var(--space-4) var(--space-10) var(--space-4) var(--space-4);
+  font-size: var(--font-size-footnote, 12px);
+  color: var(--color-label-secondary);
+}
+
+.filter-menu__submenu {
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--space-10);
+}
+
+.filter-menu__chevron {
+  display: inline-flex;
+  margin-left: auto;
+  padding-left: var(--space-10);
+  color: var(--color-label-secondary);
+}
+
+/* Points right on a row that opens a card, down on the open card's header. */
+.filter-menu__chevron[data-open="true"] {
+  transform: rotate(90deg);
+}
+
+.mobile-library__top-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-left: auto;
+  flex: 0 0 auto;
+  align-self: flex-start;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1411,7 +2663,7 @@ body {
   border: none;
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+  cursor: default;
   padding: 0;
   font-size: var(--font-size-caption);
   text-align: left;
@@ -1442,19 +2694,20 @@ body {
   position: relative;
 }
 
-.account-menu__trigger {
-  width: 32px;
-  height: 32px;
+.account-menu .account-menu__trigger {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: var(--color-fill-strong);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  color: var(--color-label);
-  cursor: pointer;
+  background: var(--glass-button);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
+  color: var(--color-on-glass);
+  box-shadow: var(--shadow-segment);
+  cursor: default;
 }
 
 .account-menu__trigger-icon {
@@ -1463,7 +2716,7 @@ body {
 
 .account-menu__popover {
   position: absolute;
-  top: 38px;
+  top: 50px;
   right: 0;
   z-index: 6;
   display: flex;
@@ -1473,11 +2726,12 @@ body {
   padding: var(--space-12) var(--space-14);
   border-radius: var(--radius-card);
   background: var(--material-popover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: var(--shadow-menu);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
   color: var(--color-label);
   font-size: var(--font-size-subhead);
+  animation: menu-in var(--dur-menu) var(--ease-menu);
 }
 
 .account-menu__popover .account-menu__username {
@@ -1489,36 +2743,45 @@ body {
   font-size: var(--font-size-subhead);
 }
 
-/* Desktop sidebar footer: a tidy row instead of the plain stacked
-   controls -- avatar glyph, username, chevron, opening the popover
-   upward since the row sits at the bottom of the sidebar. */
+/* Desktop sidebar footer row (#292): avatar + name at sidebar-item size,
+   the whole row opens the macOS-style menu below. */
 .account-menu--row {
-  border-top: 1px solid var(--color-hairline);
-  padding: var(--space-6) var(--space-4);
+  border-top: none;
+  padding: 0;
   position: relative;
+  box-sizing: border-box;
 }
 
-.account-menu__row-trigger {
+/* .account-menu button (0,1,1) would zero this padding, so the selector is
+   qualified to out-rank it. The sidebar already insets 8px, so the row's
+   highlight lines up with the sidebar items above. */
+.account-menu--row .account-menu__row-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-8);
   width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   border-radius: var(--radius-small);
-  padding: var(--space-5) var(--space-6);
-  cursor: pointer;
+  padding: var(--space-5) var(--space-8);
+  cursor: default;
   color: var(--color-label);
+  font-size: var(--font-size-subhead);
+  text-align: left;
 }
 
-.account-menu__row-trigger:hover {
-  background: var(--color-hover-faint);
+.account-menu--row .account-menu__row-trigger:hover,
+.account-menu--row .account-menu__row-trigger[aria-expanded="true"] {
+  background: var(--color-hover);
 }
 
 .account-menu__avatar {
+  overflow: hidden;
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1531,25 +2794,104 @@ body {
 
 .account-menu__row-username {
   flex: 1 1 auto;
-  text-align: left;
-  font-size: var(--font-size-caption-lg);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-subhead);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.account-menu__row-chevron {
-  flex: 0 0 auto;
-  color: var(--color-label-secondary);
-  transform: rotate(-90deg);
+/* macOS menu: 13px, 22px rows, 5px padding, 6px radius, accent hover. */
+.mac-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--material-popover);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
+  color: var(--color-label);
+  font-size: var(--font-size-subhead);
+  box-sizing: border-box;
 }
 
-.account-menu__popover--row {
-  top: auto;
-  bottom: 44px;
-  left: 4px;
-  right: 4px;
+.mac-menu--root {
+  animation: menu-in var(--dur-menu) var(--ease-menu);
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+}
+
+.mac-menu--sub {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: -5px;
+}
+
+/* Invisible bridge over the 2px gap so the pointer never leaves the wrapper. */
+.mac-menu--sub::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.mac-menu__sub-wrap {
+  position: relative;
+}
+
+.mac-menu__row {
+  display: contents;
+}
+
+.mac-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 22px;
+  padding: 0 8px 0 4px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.mac-menu__item:hover,
+.mac-menu__item:focus-visible,
+.mac-menu__item[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--color-white);
+  /* The accent fill is the focus indicator, as in native menus. */
+  outline-width: 0;
+}
+
+.mac-menu__check {
+  flex: 0 0 16px;
+  text-align: center;
+  font-size: var(--font-size-caption);
+}
+
+.mac-menu__label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.mac-menu__chevron {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  font-size: var(--font-size-body-sm);
+}
+
+.mac-menu__separator {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--color-hairline);
 }
 
 .account-menu__popover .layout-override select {
@@ -1573,12 +2915,62 @@ body {
   color: var(--color-label);
 }
 
+/* #214: while a swipe-down dismiss drag runs, the chrome fades with the
+   background (--viewer-chrome-alpha is set inline from the drag distance). */
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  opacity: var(--viewer-chrome-alpha, 1);
+}
+
+/* #211: a single tap hides all chrome with a 200 ms ease-in-out fade and the
+   stage goes to pure black over the same time. 200 ms is a local constant
+   (CHROME_FADE_MS in useChromeVisibility.ts) until the #206 motion tokens
+   land. visibility drops after the fade so hidden controls cannot be tapped
+   or focused. */
+.mobile-viewer {
+  transition: background-color var(--dur-chrome) ease-in-out;
+}
+
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  transition:
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear 0s; /* motion-allow: visibility flips instantly, nothing animates */
+}
+
+.mobile-viewer.is-chrome-hidden {
+  background-color: var(--color-black);
+}
+
+.mobile-viewer.is-chrome-hidden .mobile-viewer__topbar,
+.mobile-viewer.is-chrome-hidden .mobile-viewer__bottombar {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear var(--dur-chrome); /* motion-allow: delay, not a duration */
+}
+
+/* Blurred bar material; the safe-area insets keep the controls off the notch,
+   the Dynamic Island and the home indicator. */
+.mobile-viewer__topbar,
+.mobile-viewer__bottombar {
+  background: var(--material-bar);
+  -webkit-backdrop-filter: var(--blur-bar);
+  backdrop-filter: var(--blur-bar);
+}
 
 .mobile-viewer__topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-10) var(--space-12);
+  padding: max(var(--space-8), env(safe-area-inset-top)) max(var(--space-8), env(safe-area-inset-right)) var(--space-8)
+    max(var(--space-8), env(safe-area-inset-left));
+}
+
+.mobile-viewer__bottombar {
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .mobile-viewer__title {
@@ -1592,7 +2984,7 @@ body {
 }
 
 .mobile-viewer__title-primary {
-  font-size: var(--font-size-subhead);
+  font-size: var(--font-size-body-lg);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
   overflow: hidden;
@@ -1601,33 +2993,49 @@ body {
 }
 
 .mobile-viewer__title-secondary {
-  font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
-  white-space: nowrap;
+  font-size: var(--font-size-caption);
+  opacity: 0.8;
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
 .mobile-viewer__icon-button {
-  width: 36px;
-  height: 36px;
+  /* 44 x 44 minimum touch target. */
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
   color: var(--color-label);
-  cursor: pointer;
+  cursor: default;
 }
 
 
 /* #131: read-only status (the library is view-only), not a tappable control:
    no pointer cursor, no button chrome. #190: a solid secondary-label tint
    (not an opacity fade) so the heart keeps its contrast on light chrome. */
+.mobile-viewer__status,
+.mobile-viewer__slot {
+  width: 44px;
+  height: 52px;
+}
+
+/* #394: the bottom buttons are the shared round glass buttons (#382); the
+   glass look comes from .mobile-library__glass-button, this only sets the
+   size. The 44 px hit area is the button itself. */
+.mobile-viewer__bar-button {
+  width: 44px;
+  padding: 0;
+}
+
 .mobile-viewer__status {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1649,6 +3057,68 @@ body {
   justify-content: center;
   overflow: hidden;
   touch-action: none;
+}
+
+/* #214 three-page strip: previous | current | next with a 16 px gap, moved
+   by the finger. The current page is first in the DOM, `order` lays it out
+   in the middle; the strip's own translateX (inline) recentres it. */
+.mobile-viewer__strip {
+  display: flex;
+  gap: 16px; /* = PAGE_GAP_PX in gestures.ts */
+  width: 100%;
+  height: 100%;
+  flex: 0 0 auto;
+  will-change: transform;
+}
+
+.mobile-viewer__page {
+  flex: 0 0 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-viewer__page--prev {
+  order: 0;
+}
+
+.mobile-viewer__page--current {
+  order: 1;
+}
+
+.mobile-viewer__page--next {
+  order: 2;
+}
+
+/* The still and, while the original loads, the preview beneath it.
+   #267: the single track must be minmax(0, 1fr); an auto row grows to the
+   image's natural height at full width, overflows the stage and is clipped,
+   so the photo looks "cover" and the pan bounds no longer match. */
+.viewer-still {
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  will-change: transform;
+  background: center / contain no-repeat;
+}
+
+.viewer-still > img {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+.viewer-still__main {
+  position: relative;
+  z-index: 1;
 }
 
 .mobile-viewer__original-badge {
@@ -1676,6 +3146,8 @@ body {
 
 .mobile-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1696,7 +3168,7 @@ body {
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-viewer__play-icon {
@@ -1704,37 +3176,23 @@ body {
   color: var(--color-on-dark-play);
 }
 
+/* Fixed slots (share, favourite, download original, info): a missing control
+   leaves its slot empty instead of moving the others. */
 .mobile-viewer__icon-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  justify-content: space-between;
   align-items: center;
-  justify-content: space-around;
-  padding: var(--space-8) var(--space-24);
+  padding: 0 var(--space-24);
+}
+
+.mobile-viewer__icon-row > * {
+  justify-self: center;
 }
 
 .mobile-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-6) var(--space-8) var(--space-10);
-}
-
-.mobile-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.mobile-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-}
-
-.mobile-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  --filmstrip-slit-bg: var(--color-slit-bg);
+  margin: var(--space-6) 0 var(--space-10);
 }
 
 .mobile-viewer__info-sheet {
@@ -1759,7 +3217,7 @@ body {
   border: none;
   background: transparent;
   color: var(--color-white);
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-viewer__info-rows__row {
@@ -1786,8 +3244,8 @@ body {
   inset: 0;
   z-index: 10;
   display: flex;
-  background: var(--surface-dark);
-  color: var(--color-white);
+  background: var(--color-viewer-bg);
+  color: var(--color-label);
 }
 
 .desktop-viewer__main {
@@ -1801,13 +3259,73 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-10) var(--space-14);
+  box-sizing: border-box;
+  height: var(--size-toolbar-desktop);
+  padding: 0 var(--space-16);
+  /* #434: same look as the grid toolbar. */
+  background: var(--material-toolbar);
+  border-bottom: 1px solid var(--color-toolbar-separator);
+  /* 200 ms is local until the #206 motion tokens land. */
+  transition:
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear 0s; /* motion-allow: visibility flips instantly, nothing animates */
 }
 
-/* Sequoia's viewer title: date/place centered in the top bar, like the
-   grid's own date-range title. */
+/* Video playback: fades after 2.5 s without pointer movement (#211). */
+.desktop-viewer__topbar.is-chrome-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--dur-chrome) ease-in-out,
+    visibility 0s linear var(--dur-chrome); /* motion-allow: delay, not a duration */
+}
+
+/* #302 Mac Photos top bar: back + zoom on the left, the title block centred
+   on the window (the side groups are equal-width), actions on the right. */
+.desktop-viewer__topbar-left,
+.desktop-viewer__topbar-right {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.desktop-viewer__topbar-right {
+  justify-content: flex-end;
+}
+
+/* #403: the shell's sidebar toggle (absolute, 30px wide, z-index 11) floats
+   over the viewer's top-left corner. pp 2026-11-14: Back comes first, the
+   toggle sits right after it, then the zoom group. While the viewer is open
+   the toggle moves past Back. */
+.desktop-viewer__back {
+  margin-right: calc(30px + var(--space-8));
+}
+
+/* #444: on a wide window the sidebar stays where it is while the viewer is
+   open: the fixed viewer layer starts after it, and the toggle keeps its
+   grid position. Collapsed (or narrow, where the sidebar is an overlay) the
+   viewer covers the full width and the toggle sits right after Back. */
+.shell--desktop:not(.shell--sidebar-narrow):not(.shell--sidebar-collapsed) .desktop-viewer {
+  left: var(--sidebar-width, 220px);
+}
+
+.shell--desktop:not(.shell--sidebar-narrow):not(.shell--sidebar-collapsed) .desktop-viewer__back {
+  margin-right: 0;
+}
+
+.shell--sidebar-narrow:has(.desktop-viewer) .sidebar-toggle,
+.shell--sidebar-collapsed:has(.desktop-viewer) .sidebar-toggle {
+  left: calc(var(--space-12) + var(--size-toolbar-button-w) + var(--space-2) + var(--space-8) / 2);
+}
+
+.desktop-viewer__back .icon-flip {
+  transform: scaleX(-1);
+}
+
 .desktop-viewer__title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1818,7 +3336,8 @@ body {
 
 .desktop-viewer__title-primary {
   font-size: var(--font-size-subhead);
-  font-weight: var(--font-weight-semibold);
+  line-height: 16px;
+  font-weight: var(--font-weight-regular);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1827,23 +3346,44 @@ body {
 
 .desktop-viewer__title-secondary {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  line-height: 13px;
+  font-weight: 400;
+  color: var(--color-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
+/* #372: Mac toolbar buttons are plain glyphs in the secondary label colour
+   that darken on hover, with a soft rounded-rect hover and pressed state. */
 .desktop-viewer__topbar .toolbar-button {
-  color: var(--color-white);
+  /* #395/#406: square hover target. Never flex-shrunk below its height in a
+     tight bar, and no UA padding or width token (--size-toolbar-button-w is
+     31px, for the wider shell toolbar buttons) may skew it. */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--size-toolbar-button);
+  min-width: var(--size-toolbar-button);
+  height: var(--size-toolbar-button);
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border-radius: var(--radius-6, 6px);
+  color: var(--color-label-secondary);
 }
 
 .desktop-viewer__topbar .toolbar-button:hover:not(:disabled) {
-  background: var(--color-on-dark-line);
+  color: var(--color-label);
 }
 
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
+  background: transparent;
   color: var(--accent);
+}
+
+/* Info sits apart from the other actions, as in Photos. */
+.desktop-viewer__topbar-right .toolbar-button:last-child {
+  margin-left: var(--space-8);
 }
 
 .desktop-viewer__stage {
@@ -1861,8 +3401,29 @@ body {
   object-fit: contain;
 }
 
+/* #286: the photos either side of the current one, parked a page away (plus
+   the gap) and moved with it while dragging. */
+.desktop-viewer__neighbour {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* #257: a pan or fit drag follows the mouse over the bars and filmstrip too;
+   keep the closed hand there instead of whatever they would show. */
+.desktop-viewer.is-dragging,
+.desktop-viewer.is-dragging * {
+  cursor: grabbing;
+}
+
 .desktop-viewer__media-wrap {
   position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1876,34 +3437,7 @@ body {
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
-}
-
-.desktop-viewer__filmstrip {
-  overflow-x: auto;
-  padding: var(--space-8) var(--space-14);
-  background: var(--color-filmstrip-bg);
-}
-
-.desktop-viewer__filmstrip__item {
-  flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  border: none;
-  padding: 0;
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.desktop-viewer__filmstrip__item[data-selected="true"] {
-  opacity: 1;
-  outline: 2px solid var(--color-white);
-}
-
-.desktop-viewer__filmstrip__item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  cursor: default;
 }
 
 .desktop-viewer__info-panel {
@@ -1923,7 +3457,7 @@ body {
 
 .desktop-viewer__info-rows__row dt {
   font-size: var(--font-size-footnote);
-  color: var(--color-on-dark-secondary);
+  color: var(--color-label-secondary);
 }
 
 .desktop-viewer__info-rows__row dd {
@@ -1939,7 +3473,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-dim);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 
 .change-password__card {
@@ -1949,9 +3486,11 @@ body {
   width: min(360px, calc(100vw - 48px));
   box-sizing: border-box;
   padding: var(--space-20);
-  border-radius: var(--radius-14);
+  border-radius: var(--radius-popup);
   background: var(--color-card-raised);
   color: var(--color-label-tertiary);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
 }
 
 .change-password h2 {
@@ -1994,7 +3533,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .passkeys__list {
@@ -2030,7 +3569,7 @@ body {
   background: transparent;
   color: var(--color-danger);
   font-size: var(--font-size-body);
-  cursor: pointer;
+  cursor: default;
 }
 
 .passkeys__add {
@@ -2044,7 +3583,7 @@ body {
   background: transparent;
   color: var(--accent);
   font-size: var(--font-size-body-lg);
-  cursor: pointer;
+  cursor: default;
 }
 
 .change-password__submit {
@@ -2070,12 +3609,12 @@ body {
   color: var(--accent);
   font-size: var(--font-size-caption);
   padding: 0;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__folder > summary {
   list-style: none;
-  cursor: pointer;
+  cursor: default;
 }
 
 .sidebar__folder > summary::-webkit-details-marker {
@@ -2113,6 +3652,7 @@ body {
 
 .albums-list__item {
   display: flex;
+  min-height: 44px;
   align-items: center;
   gap: var(--space-12);
   width: 100%;
@@ -2123,7 +3663,7 @@ body {
   font-size: var(--font-size-body-lg);
   color: var(--color-label);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .albums-list li:last-child .albums-list__item {
@@ -2172,7 +3712,8 @@ body {
 }
 
 
-/* P2.2: People & Pets -- circular faces with names underneath. */
+/* P2.2: People & Pets -- circular faces with names underneath.
+   Desktop metrics from #223: 120px cells, 18/22 gaps, 110px faces. */
 .people-grid {
   list-style: none;
   margin: 0;
@@ -2182,25 +3723,57 @@ body {
   gap: var(--space-16) var(--space-12);
 }
 
+.shell--desktop .people-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 22px 18px;
+}
+
 .people-grid__item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-6);
   width: 100%;
+  min-height: 44px;
   border: none;
   background: transparent;
   padding: 0;
   font: inherit;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
+}
+
+/* The wrapper is not clipped, so the heart can sit inside the circle's edge
+   without the circle's overflow:hidden cutting it. */
+.people-grid__face {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 140px;
+  transition: transform var(--dur-tint) var(--ease-tint);
+}
+
+.shell--desktop .people-grid__face {
+  max-width: 110px;
+}
+
+.shell--desktop .people-grid__item:hover .people-grid__face {
+  transform: scale(1.04);
+}
+
+.people-grid__heart {
+  position: absolute;
+  right: 12%;
+  bottom: 12%;
+  display: flex;
+  color: var(--color-white);
+  filter: drop-shadow(0 1px 2px var(--scrim-strong));
 }
 
 .people-face {
   position: relative;
   display: block;
   width: 100%;
-  max-width: 140px;
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: hidden;
@@ -2225,19 +3798,20 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-size-body-sm);
+  font-size: var(--font-size-subhead);
   font-weight: var(--font-weight-medium);
+  color: var(--color-label);
 }
 
 .people-grid__name--unnamed {
   font-weight: var(--font-weight-regular);
-  color: var(--color-label-tertiary);
+  color: var(--accent);
 }
 
 .people-grid__count {
   margin-top: -4px;
-  font-size: var(--font-size-caption);
-  color: var(--color-label-tertiary);
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2261,7 +3835,7 @@ body {
   vertical-align: -2px;
 }
 
-.shell--desktop .toolbar .toolbar-button {
+.shell--desktop .shell__toolbar-nav .toolbar-button {
   margin-right: var(--space-12);
 }
 
@@ -2343,7 +3917,7 @@ body {
   border-radius: var(--radius-10);
   background: var(--color-placeholder-map);
   box-shadow: var(--shadow-pin);
-  cursor: pointer;
+  cursor: default;
 }
 
 .map-pin img {
@@ -2377,6 +3951,17 @@ body {
   overflow: hidden;
 }
 
+.map-mini__off-note {
+  margin: var(--space-12) 0 0;
+  font-size: var(--font-size-footnote);
+  line-height: 1.35;
+  color: var(--color-label-secondary);
+}
+
+.mobile-viewer__info-sheet .map-mini__off-note {
+  color: var(--color-on-dark-secondary);
+}
+
 .map-minipin {
   width: 14px;
   height: 14px;
@@ -2402,32 +3987,45 @@ body {
   box-shadow: var(--shadow-banner);
 }
 
-/* P2.4 Search: one field on both layouts. */
+/* P2.4 / #225 Search: one field on both layouts. The field is a rounded box;
+   token chips, the input and the clear button sit inside it. */
 .search-box {
   position: relative;
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--color-fill-subtle);
 }
 
 .search-box__icon {
-  position: absolute;
-  left: 8px;
-  width: 15px;
-  height: 15px;
+  flex: 0 0 auto;
   pointer-events: none;
   color: var(--color-label-secondary);
 }
 
 .search-box__input {
+  flex: 1 1 16px;
+  min-width: 0;
   width: 100%;
-  box-sizing: border-box;
+  height: 100%;
   border: none;
   outline: none;
+  padding: 0;
   font: inherit;
   color: inherit;
-  background: var(--color-fill-subtle);
+  background: transparent;
   -webkit-appearance: none;
   appearance: none;
+}
+
+.search-box__input:focus-visible {
+  /* The ring is drawn around the whole field (:focus-within), not the input. */
+  outline: none;
+}
+
+.search-box--mobile:focus-within {
+  box-shadow: var(--ring-field);
 }
 
 .search-box__input::-webkit-search-cancel-button {
@@ -2435,52 +4033,464 @@ body {
 }
 
 .search-box__clear {
-  position: absolute;
-  right: 6px;
-  width: 18px;
-  height: 18px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: none;
+  background: transparent;
+  color: var(--color-label-secondary);
+}
+
+.search-box__clear svg {
+  width: 10px;
+  height: 10px;
+  padding: 3px;
+  box-sizing: content-box;
   border-radius: 50%;
   background: var(--color-fill-clear);
   color: var(--color-white);
   font-size: var(--font-size-subhead);
   line-height: 18px;
-  cursor: pointer;
+  cursor: default;
+}
+
+.search-box__tokens {
+  display: flex;
+  flex: 0 1 auto;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+}
+
+/* A chosen suggestion: blue pill, 30px tall (24px in the toolbar). */
+.token {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-4);
+  height: 30px;
+  max-width: 180px;
+  padding: 0 var(--space-4) 0 var(--space-10);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--color-label);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.token__icon {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.token__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token__remove {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+}
+
+.token__remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* #296: one fixed toolbar row above every desktop view; the page heading
+   sits below it. Search is a normal flex item at the row's right end, so its
+   box is identical in every view. */
+.shell__toolbar {
+  position: relative;
+  z-index: 10; /* the search popover hangs over the content below */
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  height: var(--size-toolbar-desktop); /* #434: as tall as the viewer bar */
+  box-sizing: border-box;
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--color-toolbar-separator);
+  background: var(--material-toolbar);
+}
+
+.shell__toolbar-nav {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.shell__toolbar-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.shell__toolbar-controls > * {
+  flex: 0 0 auto;
+}
+
+.shell__toolbar-controls > .desktop-library__bar-left,
+.shell__toolbar-controls > .desktop-library__bar-right {
+  flex: 1 1 0;
+}
+
+.shell__toolbar-controls > .desktop-library__spacer {
+  flex: 1 1 auto;
+}
+
+.shell__search {
+  flex: 0 0 auto;
+}
+
+.page-heading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16) var(--space-8);
+}
+
+/* #370: Library root: the title is drawn over the photos instead. */
+.page-heading[data-overlay] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.page-heading__text {
+  min-width: 0;
+}
+
+.page-heading__title {
+  margin: 0;
+  font-size: var(--font-size-title-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.15;
+}
+
+.page-heading__subtitle {
+  margin: 2px 0 0;
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  min-height: 1.3em;
+}
+
+.desktop-search {
+  position: relative;
 }
 
 .search-box--desktop {
-  margin: 0 var(--space-4) var(--space-10);
-}
-
-.search-box--desktop .search-box__input {
-  height: 28px;
-  padding: 0 26px 0 28px;
+  width: var(--size-toolbar-rest-width);
+  height: var(--size-search-field);
+  gap: var(--space-4);
+  padding: 0 var(--space-4) 0 var(--space-8);
   border-radius: var(--radius-small-2);
   font-size: var(--font-size-subhead);
+  margin-left: auto;
+  transition: width var(--dur-tint) var(--ease-tint);
 }
 
-.search-box--desktop .search-box__input:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+.search-box--desktop:focus-within {
+  width: 220px;
+  box-shadow: var(--ring-field);
+}
+
+/* With chips in it the field stays wider (the toolbar makes room for it) and,
+   while focused, grows left over the toolbar on a solid base. */
+.search-box--desktop.search-box--has-tokens {
+  width: 260px;
+}
+
+.search-box--desktop.search-box--has-tokens:focus-within {
+  width: 340px;
+  background: linear-gradient(var(--color-fill-subtle), var(--color-fill-subtle)), var(--color-bg-window);
+}
+
+.search-box--desktop .search-box__icon {
+  width: 15px;
+  height: 15px;
+}
+
+.search-box--desktop .token {
+  height: 22px;
+  padding-left: var(--space-8);
+  font-size: var(--font-size-caption);
+}
+
+.search-box--desktop .token__remove {
+  width: 18px;
+  height: 18px;
+}
+
+.search-box--desktop .search-box__clear {
+  width: var(--size-clear-button);
+  height: var(--size-clear-button);
+}
+
+.toolbar__count {
+  margin-left: var(--space-8);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-subhead);
+  white-space: nowrap;
+}
+
+/* Popover under the field: suggestions, or recents while it is empty. */
+.search-popover {
+  position: absolute;
+  top: calc(100% + var(--space-6));
+  right: 0;
+  width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  box-sizing: border-box;
+  border-radius: var(--radius-10);
+  background: var(--material-popover);
+  -webkit-backdrop-filter: var(--blur-bar-vivid);
+  backdrop-filter: var(--blur-bar-vivid);
+  box-shadow: var(--shadow-menu);
+  border: 0.5px solid var(--color-hairline);
+}
+
+.search-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Suggestion rows: 46px, 18px icon in a 26px column. */
+.suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.suggestions__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 46px;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-8);
+  color: var(--color-label);
+}
+
+.suggestions__row[aria-selected="true"],
+.suggestions__row:hover {
+  background: var(--color-accent-soft);
+}
+
+.suggestions__icon {
+  display: flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  color: var(--color-label-secondary);
+}
+
+.suggestions__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.suggestions__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-headline-sm);
+}
+
+.suggestions__detail {
+  flex: 0 0 auto;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-body-sm);
+}
+
+/* iPhone: 20px side padding, 34px bold title, 44-54px pill field. */
+.search-screen__header {
+  padding-left: var(--space-20);
+  padding-right: var(--space-20);
+}
+
+.search-screen__title {
+  font-size: var(--font-size-title-large);
+  font-weight: var(--font-weight-bold);
+}
+
+.search-screen__body {
+  padding-left: var(--space-20);
+  padding-right: var(--space-20);
+  color: var(--color-label);
+}
+
+.search-screen__hint {
+  margin: var(--space-20) 0 0;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-body-sm);
+  line-height: 1.4;
 }
 
 .search-box--mobile {
+  height: 44px;
   margin-top: var(--space-10);
+  gap: var(--space-6);
+  padding: 0 0 0 var(--space-12);
+  border-radius: var(--radius-pill);
 }
 
 .search-box--mobile .search-box__icon {
-  left: 10px;
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
   color: var(--color-label-tertiary);
 }
 
 .search-box--mobile .search-box__input {
-  height: 36px;
-  padding: 0 30px 0 34px;
-  border-radius: var(--radius-10);
   /* 16px stops iOS Safari from zooming the page when the field is focused. */
   font-size: var(--font-size-headline);
+}
+
+.search-box--mobile .search-box__clear {
+  width: 44px;
+  height: 44px;
+}
+
+.search-box--mobile .token {
+  max-width: 260px;
+}
+
+.search-box--mobile .token__remove {
+  width: 30px;
+  height: 30px;
+}
+
+.search-section {
+  margin-top: var(--space-16);
+}
+
+.search-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.search-section__title {
+  margin: 0 0 var(--space-8);
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-bold);
+}
+
+.search-section__action {
+  min-height: 44px;
+  padding: 0 var(--space-8);
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-body);
+}
+
+.search-popover__head .search-section__action {
+  min-height: 24px;
+  font-size: var(--font-size-subhead);
+}
+
+.recent-cards,
+.people-row {
+  display: flex;
+  gap: var(--space-10);
+  margin: 0 calc(-1 * var(--space-20));
+  padding: 0 var(--space-20) var(--space-4);
+  list-style: none;
+  overflow-x: auto;
+}
+
+.recent-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 128px;
+  height: 128px;
+  box-sizing: border-box;
+  padding: var(--space-12);
+  border: none;
+  border-radius: var(--radius-22);
+  background: var(--color-card);
+  color: var(--color-label);
+  text-align: left;
+}
+
+.recent-card__icon {
+  width: 20px;
+  height: 20px;
+  color: var(--color-label-secondary);
+}
+
+.recent-card__title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+}
+
+.people-row__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 80px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-label);
+}
+
+.people-row__item .people-face {
+  width: 76px;
+}
+
+.people-row__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-subhead);
+  font-weight: var(--font-weight-medium);
 }
 
 
@@ -2505,20 +4515,61 @@ body {
 .zip-status [role="status"] {
   white-space: nowrap;
 }
-/* iPhone select bar: the zip option/progress gets its own row so the
-   count and the Share/Zip buttons never get squeezed (P3.2 review). */
-.mobile-library__select-bar {
-  flex-wrap: wrap;
-  row-gap: var(--space-6);
+/* iPhone select bar: the HEIC option and the progress line sit on their own
+   full-width rows under the toolbar row, so nothing gets squeezed and the
+   option is a whole-row tap target with a switch, like a Settings row (#259). */
+.zip-status--row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  font-size: var(--font-size-subhead);
 }
-.mobile-library__select-bar .zip-status {
-  order: 10;
-  flex-basis: 100%;
-  min-width: 0;
+.zip-status--row:empty {
+  display: none;
 }
-.mobile-library__select-bar .zip-status progress {
-  flex: 1;
-  min-width: 0;
+.zip-status--row > [role="status"],
+.zip-status--row > [role="alert"] {
+  text-align: center;
+}
+.zip-status--row progress {
+  width: 100%;
+}
+.zip-status__option--row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  min-height: 44px;
+  padding: 0 var(--space-12);
+  border-radius: var(--radius-10);
+  background: var(--color-fill-subtle);
+  font-size: var(--font-size-headline);
+  color: var(--color-label);
+  cursor: default;
+}
+.zip-status__option--row input[role="switch"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 51px;
+  height: 31px;
+  margin: 0;
+  border-radius: var(--radius-16);
+  background:
+    radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
+    var(--color-fill-strong);
+  cursor: default;
+  transition: background var(--dur-chrome);
+}
+.zip-status__option--row input[role="switch"]:checked {
+  background:
+    radial-gradient(circle at calc(100% - 15.5px) 50%, var(--color-white) 0 13.5px, transparent 14px),
+    var(--accent);
+}
+.zip-status__option--row input[role="switch"]:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 
@@ -2536,21 +4587,93 @@ body {
 }
 
 .desktop-viewer :focus-visible {
-  outline-color: var(--color-white);
+  outline-color: var(--accent);
 }
 
 .mobile-viewer :focus-visible {
   outline-color: var(--color-focus-viewer);
 }
 
+/* #221 centred scrubber. Cells are placed by transform from the strip's
+   centre (filmstripGeometry.ts); 250 ms ease-out is the snap/expand time from
+   the issue, a local constant until the #206 motion tokens land. No transition
+   while a finger or mouse is dragging so the strip tracks it one-to-one. */
+.mobile-viewer__filmstrip {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.mobile-viewer__filmstrip[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.mobile-viewer__filmstrip__track {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 100%;
+}
+
+.mobile-viewer__filmstrip__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border: none;
+  padding: 0;
+  border-radius: var(--radius-2);
+  overflow: hidden;
+  background: var(--filmstrip-slit-bg);
+  cursor: inherit;
+  transition:
+    transform var(--dur-slide) ease-out,
+    width var(--dur-slide) ease-out;
+}
+
+[data-dragging="true"] > * > .mobile-viewer__filmstrip__item {
+  transition: none;
+}
+
+.mobile-viewer__filmstrip__item img,
+.mobile-viewer__filmstrip__frames {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Video cell: the thumbnail repeated side by side as frames. */
+.mobile-viewer__filmstrip__frames {
+  background-repeat: repeat-x;
+  background-size: auto 100%;
+}
+
+.mobile-viewer__filmstrip__playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: var(--radius-1-5);
+  background: var(--filmstrip-playhead, var(--color-white));
+  box-shadow: var(--shadow-playhead);
+  pointer-events: none;
+}
+
+
 /* Clipped or edge-to-edge containers: draw the ring inside. */
 .desktop-library__grid:focus-visible,
+.desktop-library__cell:focus-visible,
 .desktop-viewer:focus-visible,
 .sidebar__item:focus-visible,
 .tab-bar__item:focus-visible,
 .hidden-view__cell:focus-visible,
-.mobile-library__tile:focus-visible,
-.desktop-viewer__filmstrip__item:focus-visible,
+.period-card:focus-visible,
 .mobile-viewer__filmstrip__item:focus-visible {
   outline-offset: -2px;
 }
@@ -2561,9 +4684,11 @@ body {
 
 .sidebar-toggle {
   position: absolute;
-  top: 8px;
+  top: 12px; /* centred in the 52px desktop toolbar (#434) */
   left: 12px;
-  z-index: 5;
+  /* #349: above the toolbar row (z-index 10), which otherwise covers the
+     button once the sidebar is hidden and traps the user. */
+  z-index: 11;
   display: grid;
   place-items: center;
   width: 30px;
@@ -2573,18 +4698,62 @@ body {
   border-radius: var(--radius-small);
   background: transparent;
   color: var(--color-label-secondary);
-  cursor: pointer;
+  cursor: default;
 }
 
-.sidebar-toggle:hover {
+.sidebar-toggle:hover:not(:disabled) {
   background: var(--sidebar-toggle-hover);
+}
+
+/* #392: the zoom slider stays at every desktop width; it only shrinks when
+   the toolbar gets tight, so no item overlaps another (#368). */
+@media (max-width: 1100px) {
+  .desktop-library__zoom-slider input[type="range"] {
+    width: 64px;
+  }
+}
+
+@media (max-width: 900px) {
+  .desktop-library__zoom-slider input[type="range"] {
+    width: 44px;
+  }
+}
+
+/* #392: a narrow window never reflows the grid for the sidebar. It slides
+   in over the content and out again; the toolbar keeps its room for the
+   toggle either way. */
+.shell--desktop.shell--sidebar-narrow .sidebar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  flex: none;
+  width: var(--sidebar-width, 220px);
+  padding: 44px var(--space-8) var(--space-12);
+  opacity: 1;
+  border-right-width: 1px;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--dur-slide) var(--ease-slide),
+    visibility 0s linear var(--dur-slide); /* motion-allow: delay, not a duration */
+}
+
+.shell--desktop.shell--sidebar-narrow.shell--sidebar-overlay-open .sidebar {
+  transform: translateX(0);
+  visibility: visible;
+  box-shadow: var(--shadow-popup);
+  transition:
+    transform var(--dur-slide) var(--ease-slide),
+    visibility 0s; /* motion-allow: visibility flips instantly, nothing animates */
 }
 
 .shell--desktop {
   position: relative;
 }
 
-.shell--desktop .toolbar,
+.shell--desktop .shell__toolbar,
 .shell--desktop .desktop-library__toolbar {
   transition: padding-left var(--dur-zoom) var(--ease-zoom);
 }
@@ -2599,7 +4768,7 @@ body {
 }
 
 /* Room for the floating sidebar toggle in the toolbar row. */
-.shell--sidebar-collapsed .toolbar,
+.shell--sidebar-collapsed .shell__toolbar,
 .shell--sidebar-collapsed .desktop-library__toolbar {
   padding-left: 48px;
 }
@@ -2649,6 +4818,19 @@ body {
   }
 }
 
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--scale-dialog));
+  }
+}
+
 @keyframes sheet-in {
   from {
     opacity: 0;
@@ -2690,6 +4872,14 @@ body {
 .mobile-viewer,
 .desktop-viewer {
   animation: viewer-in var(--dur-fade-open) var(--ease-fade-open);
+}
+
+/* #220: the zoom from / to the tile (useZoomTransition) replaces the fade. */
+.mobile-viewer[data-zoom],
+.desktop-viewer[data-zoom],
+.mobile-viewer[data-zoomed],
+.desktop-viewer[data-zoomed] {
+  animation: none;
 }
 
 .mobile-viewer.is-closing,
@@ -2751,12 +4941,10 @@ body {
   border-bottom: 1px solid var(--color-hairline);
 }
 
-/* The account button floats over the top-right of the mobile screen (12px
-   inset + 32px). The banner starts below that row so nothing overlaps; the
-   title/Select bar is part of the grid below the banner. */
+/* No floating account button on the phone any more (#351), so the banner
+   starts at the top, below the status bar / notch only. */
 .library-note--mobile {
-  margin-top: calc(env(safe-area-inset-top, 0px) + 52px);
-  padding: var(--space-6) var(--space-8) var(--space-6) var(--space-16);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-6)) var(--space-8) var(--space-6) var(--space-16);
 }
 
 .library-note__close {
@@ -2764,13 +4952,16 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 44x44 hit area, round so hover/focus draw a circle; the negative margin
+     keeps the banner as slim as before. */
   width: 44px;
-  height: 32px;
+  height: 44px;
+  margin: -6px 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 
 /* D5: Info panel / sheet note for an asset with no full-size original. */
@@ -2799,16 +4990,20 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--space-16);
-  background: var(--color-dim-strong);
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
 }
 .heic-fallback__card {
   max-width: 420px;
   width: 100%;
   padding: var(--space-16);
-  border-radius: var(--radius-card);
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: var(--shadow-modal);
+  border-radius: var(--radius-popup);
+  background: var(--color-card-raised);
+  color: var(--color-label);
+  box-shadow: var(--shadow-popup);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
   overflow-wrap: anywhere;
 }
 .heic-fallback__card p {
@@ -2887,7 +5082,7 @@ body {
   color: inherit;
   font: italic var(--font-weight-semibold) var(--font-size-micro) / 1 serif;
   opacity: 0.65;
-  cursor: pointer;
+  cursor: default;
 }
 .place-hint__button:hover,
 .place-hint__button:focus-visible {
@@ -2934,4 +5129,801 @@ body {
   color: var(--color-warn-text-on-dark);
   background: var(--color-warn-bg-on-dark);
   z-index: 3;
+}
+
+/* #263: no library yet -- a centred welcome like Photos' empty library. */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  min-height: 100%;
+  padding: var(--space-24);
+  text-align: center;
+}
+
+.welcome__icon {
+  margin-bottom: var(--space-8);
+  color: var(--color-label-tertiary);
+}
+
+.welcome__title {
+  margin: 0;
+  font-size: var(--font-size-title-2);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-label);
+}
+
+.welcome__text {
+  max-width: 34ch;
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-label-secondary);
+}
+
+.welcome__action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-12);
+  padding: 0 var(--space-20);
+  border-radius: var(--radius-10);
+  background: var(--accent);
+  color: var(--color-white);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  cursor: default;
+}
+
+.welcome__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.welcome__hint {
+  max-width: 40ch;
+  margin: var(--space-8) 0 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-label-tertiary);
+}
+
+.empty-state {
+  margin: var(--space-24) 0 0;
+  text-align: center;
+  color: var(--color-label-secondary);
+}
+
+/* #263: centred empty grid, like Photos. */
+.library-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-8);
+  /* Fill the scroll area below the toolbar so the content is centred in
+     the visible space, not in a fixed fraction of the viewport. */
+  height: 100%;
+  min-height: 240px;
+  box-sizing: border-box;
+  padding: var(--space-24);
+  text-align: center;
+}
+
+.library-empty__icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-8);
+  color: var(--color-label-tertiary);
+}
+
+.library-empty__title {
+  margin: 0;
+  font-size: var(--font-size-title-3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label);
+}
+
+.library-empty__text {
+  max-width: 34ch;
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-label-secondary);
+}
+
+.library-empty__link {
+  margin-top: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  font-size: var(--font-size-body);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.library-empty__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (min-width: 700px) {
+  .library-empty__icon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .library-empty__title {
+    font-size: var(--font-size-title-2);
+  }
+}
+/* #268: the shared (i) button and its text. 20px visible, bigger hit area. */
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: -4px 0 -4px var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-label-secondary);
+  vertical-align: middle;
+}
+@media (pointer: coarse) {
+  .info-button {
+    width: 44px;
+    height: 44px;
+    margin: -12px -8px -12px -6px;
+  }
+}
+.info-button:hover,
+.info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}
+.info-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.info-tip {
+  position: fixed;
+  z-index: 60;
+  width: min(280px, calc(100vw - 16px));
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-10);
+  background: var(--surface-dark-raised);
+  color: var(--color-white);
+  font: var(--font-weight-regular) var(--font-size-caption) / 1.4 var(--font-sans);
+  box-shadow: var(--shadow-tip);
+  pointer-events: none;
+  animation: info-tip-in var(--dur-menu) var(--ease-menu);
+}
+.info-tip[hidden] {
+  display: none;
+}
+@keyframes info-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+/* A settings row: [label] (i) ---space---> [control]. The (i) sits right after the
+   label text; the control is pushed to the right edge. A long label wraps inside its
+   own box (the control keeps its width); on a phone the control drops to its own line. */
+.setting-row {
+  display: flex;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-6);
+  padding: var(--space-10) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.admin-main .setting-row > label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border-bottom: none;
+}
+.setting-row__control {
+  flex: 0 1 280px;
+  min-width: 120px;
+  margin-left: auto;
+}
+.setting-row__control > input:not([type="checkbox"]) {
+  width: 100%;
+  box-sizing: border-box;
+}
+.setting-row__control > input[type="checkbox"] {
+  display: block;
+  margin-left: auto;
+}
+.setting-row:has(input[type="checkbox"]) .setting-row__control {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .setting-row {
+    display: grid;
+    grid-template-columns: fit-content(calc(100% - 44px)) auto 0;
+    justify-items: start;
+  }
+  .setting-row__control {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
+  }
+  /* A checkbox stays on the label's line, at the right edge. */
+  .setting-row:has(input[type="checkbox"]) {
+    grid-template-columns: fit-content(calc(100% - 70px)) auto 1fr;
+    column-gap: var(--space-4);
+  }
+  .setting-row:has(input[type="checkbox"]) .setting-row__control {
+    grid-column: 3;
+    justify-self: end;
+    width: auto;
+  }
+}
+.setting-row--buttons {
+  display: flex;
+  padding: 0;
+  border-bottom: none;
+  justify-content: flex-start;
+}
+.info-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.account-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-4);
+}
+.account-menu__row.layout-override > select {
+  margin-left: auto;
+}
+/* Beat the generic admin and account-menu button rules. */
+.admin-main .info-button,
+.account-menu .info-button {
+  padding: 0;
+  background: transparent;
+  color: var(--color-label-secondary);
+}
+.admin-main .info-button:hover,
+.account-menu .info-button:hover,
+.admin-main .info-button[aria-expanded="true"] {
+  color: var(--color-label);
+}
+
+/* #256: avatar picture, the phone popover's identity row, the picker. */
+.account-menu__avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.account-menu__avatar--large {
+  width: 36px;
+  height: 36px;
+  font-size: var(--font-size-body);
+}
+
+.account-menu__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.account-menu .account-menu__avatar-button {
+  padding: 0;
+  border-radius: 50%;
+  line-height: 0;
+}
+
+.account-menu .account-menu__avatar-button:disabled {
+  opacity: 1;
+}
+
+.avatar-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-dim);
+}
+
+.avatar-picker__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-12);
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  box-sizing: border-box;
+  padding: var(--space-20);
+  border-radius: var(--radius-14);
+  background: var(--color-card-raised);
+  color: var(--color-label);
+  font-size: var(--font-size-subhead);
+}
+
+.avatar-picker h2 {
+  margin: 0;
+  font-size: var(--font-size-headline-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.avatar-picker p {
+  margin: 0;
+}
+
+.avatar-picker__error {
+  color: var(--color-danger);
+}
+
+.avatar-picker__library {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.avatar-picker__library select {
+  flex: 1;
+  font: inherit;
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--color-separator);
+  border-radius: var(--radius-10);
+  background: var(--color-card);
+  color: var(--color-label);
+}
+
+.avatar-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 2px;
+  grid-auto-rows: min-content;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+}
+
+.avatar-picker__thumb {
+  padding: 0;
+  border: none;
+  background: var(--color-fill-subtle);
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.avatar-picker__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-picker__stage {
+  position: relative;
+  align-self: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--color-fill-subtle);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.avatar-picker__photo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  pointer-events: none;
+}
+
+.avatar-picker__zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+}
+
+.avatar-picker__zoom input {
+  flex: 1;
+}
+
+.avatar-picker__actions {
+  display: flex;
+  gap: var(--space-12);
+}
+
+.avatar-picker__actions button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--font-size-body-lg);
+  padding: var(--space-8);
+}
+
+.avatar-picker__actions button:disabled {
+  opacity: 0.4;
+}
+
+.avatar-picker__actions .avatar-picker__save {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* #303: account actions in the More tab (the old iPhone "..." menu). */
+.more-screen__item--static {
+  margin: 0;
+  color: var(--color-label-secondary);
+}
+
+.more-screen__item--link {
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.more-screen__item--danger {
+  color: var(--color-danger-text);
+}
+
+/* #223: Albums. Covers are square; mosaics use 2px gaps. */
+.album-cover {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-card-raised);
+}
+
+.album-cover--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-label-tertiary);
+}
+
+.album-cover--mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+}
+
+.album-cover__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.album-cover__blank {
+  background: var(--color-separator);
+}
+
+/* Desktop overview. */
+.albums-overview {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-20);
+}
+
+.albums-overview__crumb {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-16);
+}
+
+.albums-overview__crumb h2 {
+  margin: 0;
+  font-size: var(--font-size-headline);
+}
+
+.albums-overview__note {
+  padding: var(--space-16);
+  color: var(--color-label-secondary);
+}
+
+.albums-overview__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 22px 18px;
+}
+
+.album-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--color-label);
+  text-align: left;
+}
+
+.album-tile .album-cover {
+  border-radius: var(--radius-8);
+  margin-bottom: var(--space-6);
+}
+
+.album-tile:hover .album-cover {
+  filter: brightness(0.95);
+}
+
+.album-tile:focus-visible .album-cover {
+  outline: 3px solid var(--accent);
+}
+
+.album-tile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-subhead);
+}
+
+.album-tile__count {
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.shell--desktop .toolbar__count {
+  margin-left: var(--space-8);
+  font-size: var(--font-size-footnote);
+  color: var(--color-label-secondary);
+}
+
+/* iPhone Albums tab. */
+.albums-home {
+  padding: 0 0 var(--space-24);
+  color: var(--color-label);
+}
+
+.albums-home section {
+  margin-bottom: var(--space-20);
+}
+
+.albums-home .albums-list {
+  margin: 0 20px;
+}
+
+.albums-home__heading {
+  margin: 0;
+  padding: 0 20px var(--space-8);
+  font-size: var(--font-size-title-2);
+  font-weight: var(--font-weight-bold);
+}
+
+.albums-home__heading-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 44px;
+  margin: -10px 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.albums-home__chevron {
+  color: var(--color-label-tertiary);
+}
+
+.albums-home__empty {
+  margin: 0;
+  padding: 0 20px;
+  color: var(--color-label-secondary);
+}
+
+.albums-home__row {
+  display: flex;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0 20px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 20px;
+}
+
+.albums-home__row > li {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.albums-home__row--people > li {
+  width: 76px;
+}
+
+.albums-home__row--people .people-grid__face {
+  max-width: 76px;
+  margin: 0 auto;
+}
+
+.albums-home__row--people .people-grid__name {
+  font-size: var(--font-size-subhead);
+}
+
+.album-card {
+  position: relative;
+  display: block;
+  width: 168px;
+  height: 168px;
+  border: none;
+  border-radius: var(--radius-22);
+  overflow: hidden;
+  padding: 0;
+  background: var(--color-card-raised);
+  color: var(--color-white);
+}
+
+.album-card .album-cover {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.album-card--places .album-cover {
+  color: var(--accent);
+}
+
+.album-card__title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 12px 12px;
+  background: linear-gradient(var(--scrim-clear), var(--scrim-soft));
+  text-align: left;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+  text-shadow: var(--text-shadow-overlay);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.album-card--places .album-card__title {
+  color: var(--color-label);
+  background: none;
+  text-shadow: none;
+}
+
+.albums-list__type-icon {
+  color: var(--accent);
+}
+
+/* #388: an empty (or failed) grid is centred in the free area between the
+   pinned header above and the view switch below, like iOS Photos. The scroll
+   area runs behind both, so the free area is its padding box minus them. */
+.mobile-library__scroll:has(.library-empty, .mobile-library__empty) {
+  display: flex;
+  flex-direction: column;
+  /* Header block (safe area + title + fade) above, view switch (33px tall, 8px
+     off the bottom) below. */
+  padding-top: calc(var(--safe-top) + 98px);
+  padding-bottom: 41px;
+}
+
+.mobile-library__scroll:has(.library-empty, .mobile-library__empty) .mobile-library__zoom-layer {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.mobile-library__scroll .library-empty {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+/* Empty phone screens (Albums/Search/More placeholders) centre the same way. */
+.mobile-screen__body--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: var(--space-24);
+  text-align: center;
+}
+
+.mobile-screen__body--empty .empty-state {
+  margin: 0;
+}
+
+/* #213 pinch zoom: the grid layer scales under the fingers; a copy of it
+   fades out over the re-laid-out grid when a new level is picked. */
+.mobile-library__zoom-layer {
+  position: relative;
+}
+
+.mobile-library__zoom-layer.is-snapping {
+  transition: transform var(--dur-chrome) var(--ease-chrome);
+}
+
+.mobile-library__zoom-layer.is-fading-in {
+  animation: zoom-layer-in var(--dur-zoom) var(--ease-zoom);
+}
+
+@keyframes zoom-layer-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.mobile-library__zoom-ghost {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 1;
+  transition: opacity var(--dur-zoom) var(--ease-zoom);
+}
+
+.mobile-library__zoom-ghost.is-leaving {
+  opacity: 0;
+}
+
+.mobile-library__zoom-ghost-layer {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transition: transform var(--dur-zoom) var(--ease-zoom);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-library__zoom-layer.is-snapping,
+  .mobile-library__zoom-layer.is-fading-in,
+  .mobile-library__zoom-ghost,
+  .mobile-library__zoom-ghost-layer {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* #366: no browser text/element selection anywhere in the app, like a native
+   app. Fields and the Info panel's metadata keep it so text can be copied. */
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+[data-selectable-text],
+[data-selectable-text] * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* #433: sharp overlay on big tiles. Same box as the tile, never takes taps. */
+.mobile-library__sharp,
+.mobile-library__sharp-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
 }

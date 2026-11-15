@@ -428,8 +428,10 @@ describe.each(["mobile", "desktop"] as const)("HiddenView grid (%s)", (variant) 
     });
     expect(urls.some((url) => url.includes("cursor=c1"))).toBe(false);
     if (variant === "mobile") {
+      // Past 25 % of the width, so it commits by distance; a short swipe only
+      // pages by velocity, which is 0 when both events land in the same ms.
       const stage = screen.getByTestId("mobile-viewer-stage");
-      fireEvent.touchStart(stage, { touches: [{ clientX: 300, clientY: 200 }] });
+      fireEvent.touchStart(stage, { touches: [{ clientX: 700, clientY: 200 }] });
       fireEvent.touchMove(stage, { touches: [{ clientX: 180, clientY: 200 }] });
       fireEvent.touchEnd(stage, { touches: [], changedTouches: [{ clientX: 180, clientY: 200 }] });
     } else {

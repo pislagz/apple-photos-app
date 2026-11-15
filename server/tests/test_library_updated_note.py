@@ -45,6 +45,18 @@ def test_note_counts_added_and_removed_and_never_hidden(tmp_path):
         conn.close()
 
 
+def test_unhiding_a_photo_counts_as_added(tmp_path):
+    a = [_asset(1), _asset(2, hidden=True)]
+    conn, client, package, lib = _setup(tmp_path, a)
+    try:
+        _replace_package(package, [_asset(1), _asset(2)])
+        _drive(conn, lib)
+        note = _note(client)
+        assert (note["added"], note["removed"]) == (1, 0)
+    finally:
+        conn.close()
+
+
 def test_hidden_only_update_shows_no_note(tmp_path):
     a = [_asset(1)]
     conn, client, package, lib = _setup(tmp_path, a)

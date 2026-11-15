@@ -3,9 +3,9 @@ import {
   ApiError,
   getMe,
   getSetupStatus,
+  type KeepSignedInMode,
   login as apiLogin,
   logout as apiLogout,
-  setLayoutOverride as apiSetLayoutOverride,
   type SetupChoices,
   setupAdmin as apiSetupAdmin,
   type MeResponse,
@@ -19,12 +19,13 @@ import MobileShell from "./MobileShell";
 import { parsePhotoPath } from "./route";
 import { PlaceInfoContext } from "./PlaceInfoContext";
 import SetupScreen from "./SetupScreen";
-import { isStandalone, type LayoutOverride, useLayout } from "./useLayout";
+import { isStandalone, useLayout } from "./useLayout";
 
 type Status = "loading" | "needs-setup" | "anonymous" | "authenticated";
 
 export default function AppShell() {
-  const { layout, override, setOverride, applyRemoteOverride } = useLayout();
+  const { layout } = useLayout();
+  const [keepSignedIn, setKeepSignedIn] = useState<KeepSignedInMode>("default_on");
   const [status, setStatus] = useState<Status>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -59,9 +60,6 @@ export default function AppShell() {
       const response = await getMe();
       setMe(response);
       setStatus("authenticated");
-      // The server is authoritative once it answers -- localStorage was
-      // only this render's fast default.
-      applyRemoteOverride(response.layout_override ?? "auto");
     } catch (error) {
       if (error instanceof ApiError && error.status === 403 && error.code === "tailnet_identity_not_allowed") {
         setBlocked(true);
@@ -70,14 +68,15 @@ export default function AppShell() {
       setMe(null);
       setStatus("anonymous");
     }
-  }, [applyRemoteOverride]);
+  }, []);
 
   useEffect(() => {
     (async () => {
       // Checked once up front, before `/api/me`: a fresh install has no
       // admin yet, so "Sign in" would have nothing to sign in to.
       try {
-        const { needs_setup } = await getSetupStatus();
+        const { needs_setup, keep_signed_in } = await getSetupStatus();
+        if (keep_signed_in) setKeepSignedIn(keep_signed_in);
         if (needs_setup) {
           setStatus("needs-setup");
           return;
@@ -107,14 +106,6 @@ export default function AppShell() {
     }
   }
 
-  function handleLayoutOverrideChange(value: LayoutOverride) {
-    setOverride(value);
-    apiSetLayoutOverride(value === "auto" ? null : value).catch(() => {
-      // Best-effort: the local choice still applies this session even if
-      // the server write fails (offline tab, expired session, ...).
-    });
-  }
-
   function reportLoginError(error: unknown) {
     if (!(error instanceof ApiError)) {
       setLoginError({ kind: "generic", message: "Sign in failed. Try again." });
@@ -135,20 +126,20 @@ export default function AppShell() {
     setLoginError({ kind: "generic", message: error.message });
   }
 
-  async function handleLogin(username: string, password: string) {
+  async function handleLogin(username: string, password: string, rememberMe: boolean) {
     setLoginError(null);
     try {
-      await apiLogin(username, password, false, isStandalone() ? "pwa" : "desktop");
+      await apiLogin(username, password, rememberMe, isStandalone() ? "pwa" : "desktop");
       await refreshMe();
     } catch (error) {
       reportLoginError(error);
     }
   }
 
-  async function handlePasskeyLogin() {
+  async function handlePasskeyLogin(rememberMe: boolean) {
     setLoginError(null);
     try {
-      await loginWithPasskey(false, isStandalone() ? "pwa" : "desktop");
+      await loginWithPasskey(rememberMe, isStandalone() ? "pwa" : "desktop");
       await refreshMe();
     } catch (error) {
       if (!isCancelled(error)) reportLoginError(error);
@@ -177,7 +168,7 @@ export default function AppShell() {
   }
 
   if (status === "anonymous" || me === null) {
-    return <LoginScreen layout={layout} error={loginError} onSubmit={handleLogin} onPasskey={handlePasskeyLogin} />;
+    return <LoginScreen layout={layout} keepSignedIn={keepSignedIn} error={loginError} onSubmit={handleLogin} onPasskey={handlePasskeyLogin} />;
   }
 
   const deepLinkAssetId = deepLink && activeLibraryId === deepLink.libraryId ? deepLink.assetId : undefined;
@@ -191,12 +182,11 @@ export default function AppShell() {
           me={me}
           activeLibraryId={activeLibraryId}
           onActiveLibraryChange={setActiveLibraryId}
-          layoutOverride={override}
-          onLayoutOverrideChange={handleLayoutOverrideChange}
           onLogout={handleLogout}
           deepLinkAssetId={deepLinkAssetId}
           onDeepLinkConsumed={consumeDeepLink}
           onNoteDismissed={refreshMe}
+          onAvatarChanged={refreshMe}
         />
       </PlaceInfoContext.Provider>
     );
@@ -208,12 +198,11 @@ export default function AppShell() {
         me={me}
         activeLibraryId={activeLibraryId}
         onActiveLibraryChange={setActiveLibraryId}
-        layoutOverride={override}
-        onLayoutOverrideChange={handleLayoutOverrideChange}
         onLogout={handleLogout}
         deepLinkAssetId={deepLinkAssetId}
         onDeepLinkConsumed={consumeDeepLink}
         onNoteDismissed={refreshMe}
+          onAvatarChanged={refreshMe}
       />
     </PlaceInfoContext.Provider>
   );

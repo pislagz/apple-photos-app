@@ -61,8 +61,6 @@ function renderDesktop() {
       me={ME}
       activeLibraryId={1}
       onActiveLibraryChange={() => {}}
-      layoutOverride="auto"
-      onLayoutOverrideChange={() => {}}
       onLogout={() => {}}
     />,
   );
@@ -74,8 +72,6 @@ function renderMobile() {
       me={ME}
       activeLibraryId={1}
       onActiveLibraryChange={() => {}}
-      layoutOverride="auto"
-      onLayoutOverrideChange={() => {}}
       onLogout={() => {}}
     />,
   );
@@ -178,7 +174,7 @@ describe("desktop Albums sidebar group", () => {
     );
     renderDesktop();
 
-    const group = (await screen.findByText("Media Types")).closest("details") as HTMLElement;
+    const group = (await screen.findByText("Media types")).closest("details") as HTMLElement;
     await waitFor(() => expect(within(group).getByRole("button", { name: "Videos" })).toBeInTheDocument());
     expect(within(group).getByRole("button", { name: "Panoramas" })).toBeInTheDocument();
     for (const empty of ["Selfies", "Live Photos", "Portrait", "Screenshots", "RAW"]) {
@@ -193,8 +189,27 @@ describe("desktop Albums sidebar group", () => {
   it("hides the Media Types group when no type has items, and while albums load or fail", async () => {
     mockFetch(handler([], () => ALBUMS)); // only Favorites
     renderDesktop();
+    expect(screen.queryByText("Media types")).not.toBeInTheDocument();
     expect(await screen.findByText("Trips")).toBeInTheDocument();
-    expect(screen.queryByText("Media Types")).not.toBeInTheDocument();
+    expect(screen.queryByText("Media types")).not.toBeInTheDocument();
+  });
+
+  it("hides media types whose count is 0 and shows none of the seven before albums load", async () => {
+    mockFetch(
+      handler([], () => ({
+        ...ALBUMS,
+        smart: [
+          { id: "smart:videos", title: "Videos", count: 2, cover_id: "p1" },
+          { id: "smart:selfies", title: "Selfies", count: 0, cover_id: null },
+        ],
+      })),
+    );
+    renderDesktop();
+    expect(screen.queryByRole("button", { name: "Videos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Selfies" })).not.toBeInTheDocument();
+    const group = (await screen.findByText("Media types")).closest("details") as HTMLElement;
+    expect(within(group).getAllByRole("button")).toHaveLength(1);
+    expect(within(group).getByRole("button", { name: "Videos" })).toBeEnabled();
   });
 
   it("says albums could not be loaded and retries", async () => {
@@ -253,5 +268,45 @@ describe("mobile Albums tab", () => {
 
     expect(await screen.findByRole("heading", { name: "Videos" })).toBeInTheDocument();
     await waitFor(() => expect(requested.some((url) => url.includes("album=smart%3Avideos"))).toBe(true));
+  });
+});
+
+describe("#223 Albums screens", () => {
+  it("desktop: Albums opens the cover grid, an album shows Back and its count, Cmd [ goes back", async () => {
+    mockFetch(handler([]));
+    renderDesktop();
+    const nav = (await screen.findAllByRole("button", { name: "Albums" }))[0];
+    fireEvent.click(nav);
+    const grid = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>(".albums-overview__grid");
+      if (!found) throw new Error("no overview yet");
+      return found;
+    });
+    const tile = within(grid).getByRole("button", { name: /Loose/ });
+    expect(tile.querySelector(".album-tile__name")).toHaveTextContent("Loose");
+    fireEvent.click(tile);
+    expect(await screen.findByRole("heading", { name: "Loose" })).toBeInTheDocument();
+    expect(document.querySelector(".page-heading__subtitle")).toHaveTextContent("1 item");
+    fireEvent.keyDown(window, { key: "[", metaKey: true });
+    await waitFor(() => expect(document.querySelector(".albums-overview__grid")).not.toBeNull());
+    expect(screen.queryByRole("heading", { name: "Loose" })).not.toBeInTheDocument();
+  });
+
+  it("phone: the Albums tab shows section rows, cards and Media Types", async () => {
+    window.history.replaceState({}, "", "/albums");
+    mockFetch((url) => {
+      if (url === "/api/libraries/1/people") return { people: [] };
+      return handler([])(url);
+    });
+    renderMobile();
+    const mine = await screen.findByRole("region", { name: "My Albums" });
+    expect(mine.querySelectorAll(".album-card")).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Places" })).toBeInTheDocument();
+    // No People section while there is nobody to show.
+    expect(screen.queryByRole("region", { name: "People & Pets" })).not.toBeInTheDocument();
+    // Only media types the library has.
+    expect(screen.queryByRole("region", { name: "Media Types" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Places" }));
+    expect(window.location.pathname).toBe("/places");
   });
 });
