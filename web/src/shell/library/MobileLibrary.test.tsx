@@ -309,9 +309,11 @@ describe("MobileLibrary", () => {
       expect(container.querySelector<HTMLElement>(".mobile-library__zoom-layer")!.style.transform).toBe("");
     });
 
-    it("pinching in goes to 5 columns, then Months", async () => {
+    it("pinching in goes to 4 columns, then 5, then Months (#433)", async () => {
       const { container, scrollEl } = await setup();
       pinchTo(scrollEl, 70); // scale 0.7: one level out
+      await waitFor(() => expect(parseFloat(cellWidth(container))).toBeCloseTo(198.5, 1)); // (800 - 3 * 2) / 4
+      pinchTo(scrollEl, 70);
       await waitFor(() => expect(parseFloat(cellWidth(container))).toBeCloseTo(158.4, 1));
       pinchTo(scrollEl, 70);
       await screen.findByTestId("period-grid");

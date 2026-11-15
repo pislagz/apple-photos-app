@@ -2,7 +2,7 @@ import type { ViewKey } from "./grouping";
 
 // iPhone zoom ladder (#213), coarsest first. The Years/Months/All Photos tabs
 // and the pinch are the same state: a pinch just moves along this list.
-export type GridColumns = 1 | 3 | 5;
+export type GridColumns = 1 | 3 | 4 | 5;
 export interface ZoomLevel {
   view: "years" | "months" | "all";
   columns: GridColumns;
@@ -13,6 +13,7 @@ export const ZOOM_LEVELS: readonly ZoomLevel[] = [
   { view: "years", columns: 5 },
   { view: "months", columns: 5 },
   { view: "all", columns: 5 },
+  { view: "all", columns: 4 },
   { view: "all", columns: 3 },
   { view: "all", columns: 1 },
 ];
@@ -39,7 +40,7 @@ export function levelIndex(view: ViewKey, columns: number): number {
   if (view === "years") return 0;
   if (view === "months") return 1;
   if (view === "days") return 2;
-  return columns <= 1 ? 4 : columns <= 3 ? 3 : 2;
+  return columns <= 1 ? 5 : columns <= 3 ? 4 : columns === 4 ? 3 : 2;
 }
 
 export function levelAfter(view: ViewKey, columns: number, steps: number): ZoomLevel {
