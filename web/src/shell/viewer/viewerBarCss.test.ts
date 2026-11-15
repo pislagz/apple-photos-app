@@ -7,9 +7,13 @@ const css = readFileSync(resolve(process.cwd(), "src/shell/shell.css"), "utf8");
 const tokens = readFileSync(resolve(process.cwd(), "src/shell/tokens.css"), "utf8");
 
 describe("desktop viewer top bar styling (#372)", () => {
-  it("has a hairline under the bar and a line colour for both appearances", () => {
-    expect(css).toMatch(/\.desktop-viewer__topbar \{[^}]*border-bottom: 0\.5px solid var\(--color-viewer-bar-line\)/s);
-    expect(tokens.match(/--color-viewer-bar-line:/g)).toHaveLength(2);
+  it("shares the grid toolbar's hairline and colours for both appearances (#434)", () => {
+    expect(css).toMatch(/\.desktop-viewer__topbar \{[^}]*border-bottom: 1px solid var\(--color-toolbar-separator\)/s);
+    expect(tokens.match(/--color-toolbar-separator:/g)).toHaveLength(2);
+  });
+
+  it("hides the sidebar toggle in the viewer unless the window is narrow (#430)", () => {
+    expect(css).toMatch(/\.shell:not\(\.shell--sidebar-narrow\):has\(\.desktop-viewer\) \.sidebar-toggle \{\s*display: none;/);
   });
 
   it("uses a bold date over a regular secondary line", () => {

@@ -3251,13 +3251,11 @@ html.has-app-height .shell--mobile {
   align-items: center;
   gap: var(--space-8);
   box-sizing: border-box;
-  height: 52px;
-  padding: 0 var(--space-12);
-  background: var(--material-viewer-bar);
-  -webkit-backdrop-filter: var(--blur-bar);
-  backdrop-filter: var(--blur-bar);
-  /* #372: the unified window toolbar ends in a hairline, like Mac Photos. */
-  border-bottom: 0.5px solid var(--color-viewer-bar-line);
+  height: var(--size-toolbar-desktop);
+  padding: 0 var(--space-16);
+  /* #434: same look as the grid toolbar. */
+  background: var(--material-toolbar);
+  border-bottom: 1px solid var(--color-toolbar-separator);
   /* 200 ms is local until the #206 motion tokens land. */
   transition:
     opacity var(--dur-chrome) ease-in-out,
@@ -3291,27 +3289,23 @@ html.has-app-height .shell--mobile {
 /* #403: the shell's sidebar toggle (absolute, 30px wide, z-index 11) floats
    over the viewer's top-left corner. pp 2026-11-14: Back comes first, the
    toggle sits right after it, then the zoom group. While the viewer is open
-   the toggle moves past Back and drops 4px so its centre matches the 52px bar
-   (the grid toolbar is 44px). */
+   the toggle moves past Back. */
 .desktop-viewer__back {
   margin-right: calc(30px + var(--space-8));
 }
 
+/* #430: on a wide window the viewer covers the sidebar, so the toggle does
+   nothing there; only the narrow overlay sidebar shows above the viewer. */
+.shell:not(.shell--sidebar-narrow):has(.desktop-viewer) .sidebar-toggle {
+  display: none;
+}
+
+.shell:not(.shell--sidebar-narrow):has(.desktop-viewer) .desktop-viewer__back {
+  margin-right: 0;
+}
+
 .shell:has(.desktop-viewer) .sidebar-toggle {
-  top: 12px;
   left: calc(var(--space-12) + var(--size-toolbar-button-w) + var(--space-2) + var(--space-8) / 2);
-}
-
-.desktop-viewer__zoom {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: var(--space-14);
-}
-
-.desktop-viewer__zoom-slider {
-  width: 96px;
-  accent-color: var(--accent);
 }
 
 .desktop-viewer__back .icon-flip {
@@ -4119,7 +4113,7 @@ html.has-app-height .shell--mobile {
   display: flex;
   align-items: center;
   gap: var(--space-10);
-  height: 44px;
+  height: var(--size-toolbar-desktop); /* #434: as tall as the viewer bar */
   box-sizing: border-box;
   padding: 0 var(--space-16);
   border-bottom: 1px solid var(--color-toolbar-separator);
@@ -4678,7 +4672,7 @@ html.has-app-height .shell--mobile {
 
 .sidebar-toggle {
   position: absolute;
-  top: 8px;
+  top: 12px; /* centred in the 52px desktop toolbar (#434) */
   left: 12px;
   /* #349: above the toolbar row (z-index 10), which otherwise covers the
      button once the sidebar is hidden and traps the user. */

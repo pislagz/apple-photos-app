@@ -10,6 +10,7 @@ import { useViewerMedia } from "./useViewerMedia";
 import { thumbnailFor, useFocusScope } from "./focusScope";
 import { prefersReducedMotion, useDismiss } from "./useDismiss";
 import { usePreloadNeighbours } from "./usePreloadNeighbours";
+import ZoomSlider from "../ZoomSlider";
 import { useZoomTransition } from "./useZoomTransition";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
@@ -334,37 +335,15 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             <button type="button" className="toolbar-button desktop-viewer__back" onClick={onClose} aria-label="Back">
               <Icon name="chevron" size={16} className="icon-flip" />
             </button>
-            <div className="desktop-viewer__zoom">
-              <button
-                type="button"
-                className="toolbar-button"
-                onClick={() => setZoom(scale - ZOOM_STEP)}
-                disabled={scale <= g.ZOOM_MIN}
-                aria-label="Zoom Out"
-              >
-                <Icon name="minus" size={16} />
-              </button>
-              <input
-                type="range"
-                className="desktop-viewer__zoom-slider"
-                min={g.ZOOM_MIN}
-                max={g.ZOOM_MAX}
-                step={0.01}
-                value={scale}
-                onChange={(event) => setZoom(Number(event.target.value))}
-                aria-label="Zoom"
-                data-testid="viewer-zoom-slider"
-              />
-              <button
-                type="button"
-                className="toolbar-button"
-                onClick={() => setZoom(scale + ZOOM_STEP)}
-                disabled={scale >= g.ZOOM_MAX}
-                aria-label="Zoom In"
-              >
-                <Icon name="plus" size={16} />
-              </button>
-            </div>
+            <ZoomSlider
+              min={g.ZOOM_MIN}
+              max={g.ZOOM_MAX}
+              step={0.01}
+              value={scale}
+              onChange={setZoom}
+              onStep={(direction) => setZoom(scale + direction * ZOOM_STEP)}
+              testId="viewer-zoom-slider"
+            />
           </div>
           <div className="desktop-viewer__title" data-testid="viewer-title">
             <span className="desktop-viewer__title-primary">{title.primary}</span>

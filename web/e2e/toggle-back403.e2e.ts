@@ -7,8 +7,8 @@ const SHOTS = "e2e/screenshots/403";
 const cases = [
   { scheme: "light", width: 1440, name: "wide-light" },
   { scheme: "dark", width: 1440, name: "wide-dark" },
-  { scheme: "light", width: 1000, name: "narrow-light" },
-  { scheme: "dark", width: 1000, name: "narrow-dark" },
+  { scheme: "light", width: 900, name: "narrow-light" },
+  { scheme: "dark", width: 900, name: "narrow-dark" },
 ] as const;
 
 for (const c of cases) {
@@ -22,13 +22,19 @@ for (const c of cases) {
       await page.getByLabel("Password").fill(USER.password);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
       await expect(page.getByLabel("Username")).toHaveCount(0);
-      await page.locator("aside.sidebar").getByRole("button", { name: "Library" }).click();
+      // Below 980px the sidebar is hidden and Library is already the start view.
+      if (await page.locator("aside.sidebar").isVisible()) await page.locator("aside.sidebar").getByRole("button", { name: "Library" }).click();
       await page.getByRole("tab", { name: "All Photos", exact: true }).click();
       const open = async () => {
         await page.locator('[data-testid="library-cell"]').nth(2).dblclick();
         await expect(page.getByTestId("desktop-viewer")).toBeVisible();
       };
       const check = async () => {
+        if (c.width >= 980) {
+          // #430: wide windows have nothing for the toggle to do in the viewer.
+          await expect(page.locator(".sidebar-toggle")).toBeHidden();
+          return;
+        }
         const toggle = page.locator(".sidebar-toggle");
         const back = page.getByRole("button", { name: "Back" });
         const t = (await toggle.boundingBox())!;
@@ -49,16 +55,6 @@ for (const c of cases) {
       await open();
       await check();
       await page.screenshot({ path: `${SHOTS}/${c.name}.png` });
-
-      if (c.width > 1100) {
-        const toggle = page.locator(".sidebar-toggle");
-        await toggle.click();
-        await expect(toggle).toHaveAttribute("aria-expanded", "false");
-        await check();
-        await page.screenshot({ path: `${SHOTS}/${c.name}-sidebar-hidden.png` });
-        await toggle.click();
-        await expect(toggle).toHaveAttribute("aria-expanded", "true");
-      }
 
       await page.getByRole("button", { name: "Back" }).click();
       await expect(page.getByTestId("desktop-viewer")).toHaveCount(0);
