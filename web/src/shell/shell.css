@@ -273,8 +273,7 @@ html.has-app-height .shell--mobile {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  color: var(--color-white);
-  text-shadow: var(--text-shadow-overlay);
+  color: var(--title-ink, var(--color-white));
 }
 
 .mobile-library__title,
@@ -302,7 +301,27 @@ html.has-app-height .shell--mobile {
     var(--scrim-header-mid) 55%,
     var(--scrim-clear) 100%
   );
-  opacity: calc(0.45 + 0.55 * var(--title-scrim, 1));
+  opacity: var(--title-scrim-alpha, calc(0.45 + 0.55 * var(--title-scrim, 1)));
+}
+
+/* #423 title colour, one rule for every phone grid. Light mode: white over the
+   scrim while photos are under the title, the label colour at the top where
+   nothing is (iOS Photos). Colour, shadow and tint all follow --title-scrim, so
+   they move together with no transition. Dark mode: tokens.css keeps the title
+   white and the tint at rest. A pushed grid's title sits on the grouped
+   background, never over photos, so it stays at the "top" colour. */
+.mobile-library__top-bar[data-scrim="true"] {
+  --title-scrim-alpha: calc(var(--title-scrim-floor) + (1 - var(--title-scrim-floor)) * var(--title-scrim, 1));
+  --title-ink: color-mix(in srgb, var(--color-white) calc(var(--title-scrim, 1) * 100%), var(--title-ink-top));
+  --title-ink-secondary: color-mix(
+    in srgb,
+    var(--color-white) calc(var(--title-scrim, 1) * 100%),
+    var(--title-ink-top-secondary)
+  );
+}
+
+.mobile-library__top-bar--nav {
+  --title-ink: var(--title-ink-top);
 }
 
 /* Cross-fade (#209): the incoming text fades in while the outgoing text, kept
@@ -349,7 +368,9 @@ html.has-app-height .shell--mobile {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
-  color: var(--color-white);
+  color: var(--title-ink, var(--color-white));
+  text-shadow: 0 1px 3px
+    color-mix(in srgb, var(--scrim-header) calc(var(--title-scrim-alpha, var(--title-scrim, 1)) * 100%), transparent);
   pointer-events: none;
 }
 
@@ -369,6 +390,7 @@ html.has-app-height .shell--mobile {
   min-height: 1.2em;
   font-size: var(--font-size-headline);
   font-weight: var(--font-weight-semibold);
+  color: var(--title-ink-secondary, inherit);
 }
 
 /* Coarsest levels: the label alone, in a translucent pill. */
