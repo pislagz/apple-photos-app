@@ -176,9 +176,9 @@ export default function PeriodCardGrid({
 
   return (
     <div ref={gridRef} className={`period-grid period-grid--${view}${phone ? " period-grid--phone" : ""}`} data-testid="period-grid">
-      {view === "days" && (
+      {(view === "days" || phone) && (
         <header className="period-grid__header" data-testid="period-grid-header">
-          <h1 className="period-grid__title">Days</h1>
+          <h1 className="period-grid__title">{view === "days" ? "Days" : view === "months" ? "Months" : "Years"}</h1>
           <p className="period-grid__subtitle">
             {totalCount.toLocaleString("en-US")} {totalCount === 1 ? "Item" : "Items"}
           </p>

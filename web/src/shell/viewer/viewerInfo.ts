@@ -64,8 +64,8 @@ export function formatLocationLine(
   return formatCoordinates(detail.latitude, detail.longitude) ?? "Unknown place";
 }
 
-export function formatFileSize(bytes: number | null): string {
-  if (bytes === null) return "";
+export function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes == null) return "";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let unitIndex = 0;

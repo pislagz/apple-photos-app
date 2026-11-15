@@ -122,6 +122,16 @@ describe("Day cards (#301)", () => {
   });
 });
 
+describe("iPhone Years and Months titles (#446)", () => {
+  it.each([
+    ["years", "Years"],
+    ["months", "Months"],
+  ] as const)("%s carries a large title like Days", (view, title) => {
+    renderGrid(view, [{ key: view === "years" ? "2024" : "2024-03-01", count: 4, key_asset_ids: ["a"] }], { phone: true });
+    expect(screen.getByTestId("period-grid-header")).toHaveTextContent(title);
+  });
+});
+
 describe("iPhone cards (#219)", () => {
   const DAYS: SummaryPeriodBucket[] = [
     { key: "2024-04-30", count: 2, key_asset_ids: ["a", "b"] },
