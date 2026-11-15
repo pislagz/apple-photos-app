@@ -12,8 +12,11 @@ describe("desktop viewer top bar styling (#372)", () => {
     expect(tokens.match(/--color-toolbar-separator:/g)).toHaveLength(2);
   });
 
-  it("hides the sidebar toggle in the viewer unless the window is narrow (#430)", () => {
-    expect(css).toMatch(/\.shell:not\(\.shell--sidebar-narrow\):has\(\.desktop-viewer\) \.sidebar-toggle \{\s*display: none;/);
+  it("never hides the sidebar toggle in the viewer, and lets the wide viewer start after the sidebar (#444)", () => {
+    expect(css).not.toMatch(/has\(\.desktop-viewer\) \.sidebar-toggle \{\s*display: none/);
+    expect(css).toMatch(
+      /\.shell--desktop:not\(\.shell--sidebar-narrow\):not\(\.shell--sidebar-collapsed\) \.desktop-viewer \{\s*left: var\(--sidebar-width/,
+    );
   });
 
   it("uses a bold date over a regular secondary line", () => {

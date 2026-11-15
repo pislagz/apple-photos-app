@@ -31,8 +31,8 @@ for (const c of cases) {
       };
       const check = async () => {
         if (c.width >= 980) {
-          // #430: wide windows have nothing for the toggle to do in the viewer.
-          await expect(page.locator(".sidebar-toggle")).toBeHidden();
+          // #444: wide windows keep the sidebar and its toggle in the viewer.
+          await expect(page.locator(".sidebar-toggle")).toBeVisible();
           return;
         }
         const toggle = page.locator(".sidebar-toggle");
