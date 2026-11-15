@@ -77,4 +77,9 @@ describe("phone Library top inset (#414, #415)", () => {
     expect(rule(".period-grid--phone")).toMatch(/padding:\s*0 var\(--space-16\)/);
     expect(rule(".period-grid--phone .period-grid__header")).toMatch(/padding:\s*0 /);
   });
+
+  it("does not reserve the title block where the view has no top-bar title (#431)", () => {
+    expect(rule('.mobile-library__scroll[data-view="days"]')).toMatch(/padding-top:\s*calc\(var\(--safe-top\) \+ var\(--space-8\)\)/);
+    expect(css).toMatch(/data-view="years"\][^{]*data-view="months"\][^{]*\{[^}]*padding-top:\s*calc\(var\(--safe-top\)/);
+  });
 });
