@@ -4,7 +4,6 @@ import { type Locator, type Page, expect, test } from "@playwright/test";
 // hugs the label's right edge and the control stays on the right. Shots go to
 // $INFO_SHOTS_DIR when set.
 const ADMIN = { username: "demo-admin", password: "demo-admin-pass-1" };
-const USER = { username: "demo-user", password: "demo-user-pass-1" };
 const SHOTS = process.env.INFO_SHOTS_DIR;
 
 async function signIn(page: Page, path: string, who: typeof ADMIN) {
@@ -112,25 +111,5 @@ for (const scheme of ["light", "dark"] as const) {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: `${SHOTS}/${info.project.name}-admin-settings-${scheme}.png`, fullPage: true });
     }
-  });
-
-  // test-all: #292 (Mac account menu) and #303 (More tab) replaced the popover this checked, so
-  // the old "Account menu" popover with label/(i)/control rows no longer exists. The (i) order
-  // is still covered by AccountMenu.info.test.tsx. Re-aim at the More tab's Layout row.
-  test.skip(`account-menu settings: (i) after the label (${scheme})`, async ({ page }, info) => {
-    await page.emulateMedia({ colorScheme: scheme });
-    await signIn(page, "/", USER);
-    await page.getByRole("button", { name: "Account menu" }).click();
-    const menu = page.locator(".account-menu__popover");
-    await expect(menu).toBeVisible();
-    const layout = menu.locator(".layout-override");
-    await checkRows(page, layout, page.viewportSize()!.width, true);
-    for (const name of ["Change password", "Passkeys"]) {
-      const button = menu.getByRole("button", { name, exact: true });
-      const a = (await button.boundingBox())!;
-      const b = (await menu.getByRole("button", { name: `About ${name}` }).boundingBox())!;
-      expect(b.x - (a.x + a.width), name).toBeLessThanOrEqual(16);
-    }
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name}-account-menu-${scheme}.png` });
   });
 }
