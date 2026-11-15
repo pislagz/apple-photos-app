@@ -149,6 +149,19 @@ describe("close", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps data-zoom while a close zoom overlaps the open zoom's end (quick Esc, #286)", async () => {
+    // The open's completion used to delete the marker the close had just set,
+    // so the CSS fade-up replayed and the photo flashed over the grid.
+    addTile("a", rect(20, 40, 100, 100));
+    const { getByTestId } = render(<Harness id="a" />);
+    const root = getByTestId("root");
+    act(() => dismiss());
+    expect(root.dataset.zoom).toBe("1");
+    await act(async () => finish());
+    expect(root.dataset.zoom).toBe("1");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("starts from a swipe-down's last frame", () => {
     addTile("a", rect(20, 40, 100, 100));
     render(<Harness id="a" />);

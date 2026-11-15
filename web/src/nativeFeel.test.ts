@@ -27,6 +27,8 @@ describe("native feel", () => {
     expect(html).toMatch(/viewport-fit=cover/);
     expect(html).toMatch(/rel="apple-touch-icon"/);
     expect(html).toMatch(/apple-mobile-web-app-status-bar-style/);
-    expect(html).toMatch(/background: Canvas/);
+    // The canvas rule is a linked file: the CSP (style-src 'self') blocks inline CSS.
+    expect(html).toMatch(/href="\/early\.css"/);
+    expect(readFileSync(join(__dirname, "../public/early.css"), "utf8")).toMatch(/background: Canvas/);
   });
 });

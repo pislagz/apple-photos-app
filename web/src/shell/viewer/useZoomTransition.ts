@@ -104,7 +104,9 @@ export function useZoomTransition({ rootRef, stageRef, item }: Options) {
       // opacity 0 and flashes the grid over the opened photo. Mark the open as
       // played so the fallback never runs again.
       root.dataset.zoomed = "1";
-      delete root.dataset.zoom;
+      // A quick Esc starts the close zoom while this open still runs; its
+      // data-zoom marker is the close's now, so leave it until the close ends.
+      if (root.dataset.zoomClosing !== "1") delete root.dataset.zoom;
     };
     Promise.all(animations.map((a) => a.finished)).then(done, done);
     return () => {
@@ -128,6 +130,7 @@ export function useZoomTransition({ rootRef, stageRef, item }: Options) {
       const frame = playable(stage, current, tile, from);
       if (!frame) return null;
       root.dataset.zoom = "1";
+      root.dataset.zoomClosing = "1";
       const style = getComputedStyle(root);
       const animations: Animation[] = [
         stage.animate([frameKeyframe(from), frameKeyframe(frame)], { duration: ZOOM_CLOSE_MS, easing: ZOOM_EASE, fill: "forwards" }),
@@ -143,6 +146,7 @@ export function useZoomTransition({ rootRef, stageRef, item }: Options) {
         cancel: () => {
           for (const a of animations) a.cancel();
           show();
+          delete root.dataset.zoomClosing;
           delete root.dataset.zoom;
         },
       };

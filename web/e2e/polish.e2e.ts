@@ -60,7 +60,11 @@ test.describe("desktop keyboard path", () => {
       const style = getComputedStyle(el);
       return {
         label: el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName,
-        ring: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2,
+        // The search input has no outline of its own: its field draws the ring
+        // as a box-shadow while it holds focus (:focus-within, --ring-field).
+        ring:
+          (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) >= 2) ||
+          (!!el.closest(".search-box") && getComputedStyle(el.closest(".search-box")!).boxShadow !== "none"),
       };
     });
 
@@ -196,10 +200,12 @@ test("narrow desktop: expanded search never overlaps the toolbar buttons", async
   await page.setViewportSize({ width: 1000, height: 800 });
   await signIn(page);
   await openAllPhotos(page);
-  const input = page.locator(".search-box--desktop .search-box__input");
-  await input.focus();
-  await expect(input).toHaveCSS("width", "190px");
-  const box = await input.boundingBox();
+  const field = page.locator(".search-box--desktop");
+  await page.locator(".search-box--desktop .search-box__input").focus();
+  // The whole field (icon, input, clear) grows to its focused width (220px,
+  // #369/#370); wait for the transition so the overlap check sees the end state.
+  await expect(field).toHaveCSS("width", "220px");
+  const box = await field.boundingBox();
   const buttons = page.locator(".desktop-library__toolbar button:visible");
   const n = await buttons.count();
   for (let i = 0; i < n; i++) {
@@ -226,7 +232,7 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
   test.skip(info.project.name !== "desktop", "hover cursors are a desktop concern");
   await signIn(page);
   await page.getByRole("button", { name: "Account menu" }).click();
-  const popover = page.locator(".account-menu__popover");
+  const popover = page.locator(".mac-menu--root");
   await expect(popover).toBeVisible();
   // Points inside the control must all be the arrow. A rounded corner's point
   // can land on the bar behind it (`auto`, also drawn as the arrow); those
@@ -248,7 +254,7 @@ test("menu rows and toolbar buttons keep a single cursor", async ({ page }, info
       }
       return [...seen];
     });
-  expect(await cursorsAcross(".account-menu__popover :is(a, button)")).toEqual(["default"]);
+  expect(await cursorsAcross(".mac-menu--root .mac-menu__item")).toEqual(["default"]);
   await page.getByRole("button", { name: "Account menu" }).click();
   await expect(popover).toHaveCount(0);
   expect(await cursorsAcross(".toolbar-button, .sidebar__item")).toEqual(["default"]);
