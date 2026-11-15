@@ -19,8 +19,10 @@ describe("desktop viewer top bar styling (#372)", () => {
     );
   });
 
-  it("uses a bold date over a regular secondary line", () => {
-    expect(css).toMatch(/\.desktop-viewer__title-primary \{[^}]*font-weight: var\(--font-weight-bold/s);
+  it("uses regular-weight toolbar titles in grid and viewer (#445)", () => {
+    expect(css).toMatch(/\.desktop-viewer__title-primary \{[^}]*font-weight: var\(--font-weight-regular\)/s);
+    expect(css).toMatch(/\.desktop-library__title \{[^}]*font-weight: var\(--font-weight-regular\)/s);
+    expect(css).toMatch(/\.shell--desktop \.toolbar h1 \{[^}]*font-weight: var\(--font-weight-regular\)/s);
     expect(css).toMatch(/\.desktop-viewer__title-secondary \{[^}]*font-weight: 400/s);
   });
 
