@@ -2170,7 +2170,7 @@ html.has-app-height .shell--mobile {
   padding: var(--space-14) var(--space-10) 0;
   font-size: var(--font-size-title-2-lg);
   text-shadow: var(--text-shadow-overlay);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-bold);
   color: var(--color-white);
   letter-spacing: var(--tracking-title-3);
   white-space: nowrap;
