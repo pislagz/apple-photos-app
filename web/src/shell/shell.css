@@ -5917,3 +5917,14 @@ textarea,
   user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* #433: sharp overlay on big tiles. Same box as the tile, never takes taps. */
+.mobile-library__sharp,
+.mobile-library__sharp-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
