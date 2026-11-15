@@ -673,13 +673,16 @@ describe("DesktopViewer chrome (#211)", () => {
     vi.useRealTimers();
   });
 
-  it("the top bar is a 52 px blurred material with the title centred in two lines", () => {
+  it("the top bar is the shared 52 px desktop toolbar (grid look) with the title centred in two lines", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     const start = css.indexOf("\n.desktop-viewer__topbar {");
     const rule = css.slice(start, css.indexOf("}", start));
-    expect(rule).toContain("height: 52px");
-    expect(rule).toContain("backdrop-filter: var(--blur-bar)");
-    expect(rule).toContain("var(--material-viewer-bar)");
+    expect(rule).toContain("height: var(--size-toolbar-desktop)");
+    expect(rule).toContain("background: var(--material-toolbar)");
+    expect(rule).toContain("border-bottom: 1px solid var(--color-toolbar-separator)");
+    expect(readFileSync(join(__dirname, "..", "tokens.css"), "utf-8")).toContain("--size-toolbar-desktop: 52px");
+    // #434: the grid toolbar is exactly as tall.
+    expect(css).toMatch(/\.shell__toolbar \{[^}]*height: var\(--size-toolbar-desktop\)/s);
   });
 
   describe("#302 Mac Photos top bar", () => {
@@ -828,6 +831,7 @@ describe("Back clears the sidebar toggle (#403)", () => {
   it("reserves the toggle's slot in the top bar and aligns the toggle with the bar", () => {
     const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
     expect(css).toMatch(/\.desktop-viewer__back \{[^}]*margin-right:\s*calc\(30px \+/);
-    expect(css).toMatch(/\.shell:has\(\.desktop-viewer\) \.sidebar-toggle \{[^}]*top:\s*12px/);
+    // #434: 12px centres the toggle in the 52px toolbar, in the grid and the viewer alike.
+    expect(css).toMatch(/\n\.sidebar-toggle \{[^}]*top:\s*12px/);
   });
 });
