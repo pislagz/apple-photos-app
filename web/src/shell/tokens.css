@@ -231,6 +231,11 @@
   /* Scrims over photos (the text on them is always white). */
   --scrim-clear: rgba(0, 0, 0, 0);
   --scrim-title: rgba(0, 0, 0, 0.5);
+  /* #423 phone grid title at the top of the grid (nothing under it), and how
+     much of the scrim tint stays at rest. */
+  --title-ink-top: var(--color-label);
+  --title-ink-top-secondary: var(--color-label-secondary);
+  --title-scrim-floor: 0;
   --scrim-header: rgba(0, 0, 0, 0.6);
   --scrim-header-mid: rgba(0, 0, 0, 0.28);
   --scrim-soft: rgba(0, 0, 0, 0.45);
@@ -288,6 +293,9 @@
     --color-bg-login: #000;
     --color-card: #1c1c1e;
     --color-card-raised: #2c2c2e;
+    --title-ink-top: var(--color-white);
+    --title-ink-top-secondary: var(--color-white);
+    --title-scrim-floor: 0.45;
     --color-label: #f5f5f7;
     --color-label-secondary: #98989f;
     --color-label-tertiary: #8e8e93;

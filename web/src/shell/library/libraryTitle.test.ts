@@ -22,7 +22,20 @@ describe("title scrim fade (#261)", () => {
     expect(off).not.toContain("backdrop-filter");
     const tint = /\.desktop-library__title-scrim::after \{([^}]*var\(--scrim-header\)[^}]*)\}/.exec(css)?.[1] ?? "";
     expect(tint).toContain("var(--scrim-clear) 100%");
-    expect(tint).toContain("opacity: calc(0.45 + 0.55 * var(--title-scrim, 1))");
+    expect(tint).toContain("opacity: var(--title-scrim-alpha, calc(0.45 + 0.55 * var(--title-scrim, 1)))");
+  });
+
+  it("phone grid title is label-coloured at the top in light mode, white in dark (#423)", () => {
+    const css = readFileSync(join(__dirname, "..", "shell.css"), "utf-8");
+    const tokens = readFileSync(join(__dirname, "..", "tokens.css"), "utf-8");
+    expect(css).toContain(
+      "--title-ink: color-mix(in srgb, var(--color-white) calc(var(--title-scrim, 1) * 100%), var(--title-ink-top));",
+    );
+    expect(css).toContain("color: var(--title-ink, var(--color-white));");
+    const [light, dark] = tokens.split("@media (prefers-color-scheme: dark)");
+    expect(light).toContain("--title-ink-top: var(--color-label);");
+    expect(light).toContain("--title-scrim-floor: 0;");
+    expect(dark).toContain("--title-ink-top: var(--color-white);");
   });
 
   it("uses a solid toolbar colour and a separator token (#370)", () => {
