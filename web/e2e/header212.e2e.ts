@@ -35,11 +35,13 @@ for (const scheme of ["light", "dark"] as const) {
       await signIn(page, tone);
       await expect(page.getByTestId("header-title")).toHaveText("Library");
       await expect(page.getByTestId("header-subtitle")).not.toBeEmpty();
-      for (const control of [page.getByRole("button", { name: "Select" }), page.getByRole("button", { name: "Account menu" })]) {
+      for (const control of [page.getByRole("button", { name: "Select" }), page.getByRole("button", { name: "Filter" })]) {
         const box = await control.boundingBox();
         expect(box!.height).toBeGreaterThanOrEqual(44);
         expect(box!.width).toBeGreaterThanOrEqual(44);
       }
+      // #303: the account menu lives in the More tab, not over the photos.
+      await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
       await page.screenshot({ path: `${SHOTS}/212-header-${name}-${scheme}.png`, clip: { x: 0, y: 0, width: 390, height: 260 } });
     });
   }
