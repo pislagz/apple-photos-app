@@ -23,8 +23,13 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true");
       const scroll = page.getByTestId("library-scroll");
       await expect(scroll.locator("img, [data-testid='period-month-header'], h1").first()).toBeVisible();
-      await scroll.evaluate((el) => (el.scrollTop = 0));
-      await page.waitForTimeout(150);
+      // The tab switch can still be settling its own scroll position (All Photos
+      // jumps to the end on load), so reset until the top sticks.
+      await expect
+        .poll(async () => scroll.evaluate((el) => ((el.scrollTop = 0), el.scrollTop)), { timeout: 5000 })
+        .toBe(0);
+      await page.waitForTimeout(250);
+      await expect.poll(async () => scroll.evaluate((el) => el.scrollTop)).toBe(0);
       const m = await page.evaluate(() => {
         const scroller = document.querySelector<HTMLElement>("[data-testid='library-scroll']")!;
         const first = scroller.querySelector<HTMLElement>(

@@ -28,8 +28,10 @@ test("Select sits at the same spot in the Library and in More grids", async ({ p
     await page.goto("/more");
     await page.getByRole("button", { name, exact: false }).first().click();
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
-    // One header: the back button, Select and the title, no second bar.
-    await expect(page.locator('[data-testid="top-bar"]')).toHaveCount(1);
+    // One visible header: the back button, Select and the title. The Library
+    // tab stays mounted but hidden (display:none) under a pushed grid, so only
+    // visible bars count.
+    await expect(page.locator('[data-testid="top-bar"]:visible')).toHaveCount(1);
     const pushed = await selectBox(page);
     expect(Math.abs(pushed.y - library.y), name).toBeLessThanOrEqual(1);
     expect(Math.abs(pushed.x + pushed.width - (library.x + library.width)), name).toBeLessThanOrEqual(1);
