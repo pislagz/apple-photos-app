@@ -499,6 +499,29 @@ def test_revoke_unknown_session_is_404(tmp_path):
 # --------------------------------------------------------------------------
 
 
+def test_audit_log_before_id_cursor_ignores_new_rows(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        for name in ("carol", "dave", "erin"):
+            client.post(
+                "/api/admin/users", json={"username": name, "password": VALID_PASSWORD}
+            )
+        first = client.get("/api/admin/audit-log?limit=2").json()["entries"]
+        # A row written between the two page loads must not shift page two.
+        client.post(
+            "/api/admin/users", json={"username": "frank", "password": VALID_PASSWORD}
+        )
+        cursor = first[-1]["id"]
+        second = client.get(f"/api/admin/audit-log?limit=50&before_id={cursor}").json()[
+            "entries"
+        ]
+        assert second
+        assert all(e["id"] < cursor for e in second)
+        assert not {e["id"] for e in first} & {e["id"] for e in second}
+    finally:
+        conn.close()
+
+
 def test_audit_log_lists_and_filters_by_user(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:

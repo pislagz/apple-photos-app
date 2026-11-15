@@ -56,17 +56,38 @@ describe("ActivityScreen", () => {
     expect(await screen.findByText("Nothing here yet.")).toBeInTheDocument();
   });
 
-  it("loads more with an offset until a short page comes back", async () => {
+  it("loads more with a before-id cursor until a short page comes back", async () => {
     const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(100 - i));
     const fetchMock = mockFetch((url) => {
       if (url === "/api/admin/access-matrix") return MATRIX;
-      if (url.includes(`offset=${PAGE_SIZE}`)) return { entries: [entry(1, { action: "remove_library" })] };
+      if (url.includes(`before_id=${100 - PAGE_SIZE + 1}`)) return { entries: [entry(1, { action: "remove_library" })] };
       return { entries: first };
     });
     render(<ActivityScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
     expect(await screen.findByText("pp removed the library Family")).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`offset=${PAGE_SIZE}`), expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining(`before_id=${100 - PAGE_SIZE + 1}`), expect.anything());
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("does not repeat rows when the log grew, and clears a failed Load more on success", async () => {
+    const first = Array.from({ length: PAGE_SIZE }, (_, i) => entry(100 - i));
+    let calls = 0;
+    mockFetch((url) => {
+      if (url === "/api/admin/access-matrix") return MATRIX;
+      if (!url.includes("before_id=")) return { entries: first };
+      calls += 1;
+      if (calls === 1) return new Response("boom", { status: 500 });
+      return { entries: [entry(51), entry(50), entry(49, { action: "remove_library" })] };
+    });
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(<ActivityScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    expect(await screen.findByText("pp removed the library Family")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelectorAll("time").length).toBe(PAGE_SIZE + 2);
+    spy.mockRestore();
   });
 });

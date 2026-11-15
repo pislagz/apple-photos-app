@@ -273,6 +273,8 @@ export interface AuditLogFilters {
   dateTo?: string;
   /** How many newest entries to skip, for "Load more". */
   offset?: number;
+  /** Only entries older than this id: the cursor for "Load more". */
+  beforeId?: number;
   limit?: number;
 }
 
@@ -284,6 +286,7 @@ function auditLogQuery(filters: AuditLogFilters): string {
   if (filters.dateTo) params.set("date_to", filters.dateTo);
   if (filters.limit !== undefined) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
+  if (filters.beforeId !== undefined) params.set("before_id", String(filters.beforeId));
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -295,7 +298,7 @@ export async function readAuditLog(filters: AuditLogFilters = {}): Promise<Audit
 
 export function auditLogCsvUrl(filters: AuditLogFilters = {}): string {
   // The export always covers the whole filtered list, not just the pages shown.
-  return `/api/admin/audit-log.csv${auditLogQuery({ ...filters, offset: undefined, limit: undefined })}`;
+  return `/api/admin/audit-log.csv${auditLogQuery({ ...filters, offset: undefined, beforeId: undefined, limit: undefined })}`;
 }
 
 // -- Settings ------------------------------------------------------------------
