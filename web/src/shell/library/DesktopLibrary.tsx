@@ -12,6 +12,7 @@ import { assetAlt } from "../assetAlt";
 import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
+import ZoomSlider from "../ZoomSlider";
 import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -881,36 +882,13 @@ export default function DesktopLibrary({
   const controlsBar = (
     <>
       <div className="desktop-library__bar-left">
-        <div className="desktop-library__zoom-slider">
-          <button
-            type="button"
-            className="toolbar-button toolbar-button--small desktop-library__zoom-end"
-            aria-label="Zoom Out"
-            title="Zoom Out"
-            disabled={zoomIndex === 0}
-            onClick={() => setZoomIndex((previous) => Math.max(0, previous - 1))}
-          >
-            <Icon name="minus" size={14} />
-          </button>
-          <input
-            type="range"
-            aria-label="Zoom"
-            min={0}
-            max={MAX_ZOOM_INDEX}
-            value={zoomIndex}
-            style={{ "--range-fill": `${(zoomIndex / MAX_ZOOM_INDEX) * 100}%` } as CSSProperties}
-            onChange={(event) => changeZoom(Number(event.target.value))}
-          />
-          <button
-            type="button"
-            className="toolbar-button toolbar-button--small desktop-library__zoom-end"
-            aria-label="Zoom In"
-            title="Zoom In"
-            disabled={zoomIndex === MAX_ZOOM_INDEX}
-            onClick={() => setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, previous + 1))}
-          >
-            <Icon name="plus" size={14} />
-          </button>
+        <ZoomSlider
+          min={0}
+          max={MAX_ZOOM_INDEX}
+          value={zoomIndex}
+          onChange={changeZoom}
+          onStep={(direction) => setZoomIndex((previous) => Math.min(MAX_ZOOM_INDEX, Math.max(0, previous + direction)))}
+        >
           {/* #264: belongs with the size slider -- both change how tiles look. */}
           <button
             type="button"
@@ -922,7 +900,7 @@ export default function DesktopLibrary({
           >
             <Icon name="aspect" size={16} filled={!squareMode} />
           </button>
-        </div>
+        </ZoomSlider>
       </div>
         {fixedView === undefined && (
         <div ref={segmentRef} role="tablist" aria-label="Library zoom" className="segmented-control">
