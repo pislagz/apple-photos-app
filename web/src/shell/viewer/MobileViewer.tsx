@@ -62,6 +62,9 @@ interface Gesture {
   dy: number;
   // The press-and-hold fired, so its release is not a tap.
   longPressed: boolean;
+  // A second finger joined this touch, so its release is never a tap.
+  multiTouch: boolean;
+  startT: number;
 }
 
 // P1.16 mobile Viewer (ios17-viewer.png): full-bleed stage, swipe
@@ -130,6 +133,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     dx: 0,
     dy: 0,
     longPressed: false,
+    multiTouch: false,
+    startT: 0,
   });
   // Single tap toggles the chrome, but only once no second tap can follow
   // (#214 double-tap zoom): the toggle waits DOUBLE_TAP_MS and a double tap,
@@ -228,6 +233,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     state.longPressed = false;
     if (event.touches.length === 2) {
       clearTapTimer();
+      state.multiTouch = true;
+      state.lastTapTime = 0;
       state.mode = "pinch";
       state.pinchD0 = distance(event.touches[0], event.touches[1]);
       state.pinchMid0 = midpoint(event.touches[0], event.touches[1], centre);
@@ -239,6 +246,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     state.startY = touch.clientY;
     state.dx = 0;
     state.dy = 0;
+    state.multiTouch = false;
+    state.startT = Date.now();
     state.samples = [{ x: touch.clientX, y: touch.clientY, t: Date.now() }];
     state.view0 = view;
     state.mode = view.scale > g.ZOOM_MIN + 0.01 ? "pan" : "undecided";
@@ -252,9 +261,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       state.mode = "none";
       clearTapTimer();
     } else {
-      state.lastTapTime = now;
-      state.lastTapX = touch.clientX;
-      state.lastTapY = touch.clientY;
+      // The tap is recorded in onTouchEnd, and only if this touch was one (#437).
       // Apple Photos' press-and-hold "Show Original" (P1.17b fix round):
       // only armed for an edited asset, and cleared by any subsequent
       // touchstart/move/end so a swipe or double-tap never triggers it.
@@ -364,6 +371,11 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       !state.longPressed &&
       !onControl
     ) {
+      if (!state.multiTouch && Date.now() - state.startT < g.DOUBLE_TAP_MS) {
+        state.lastTapTime = Date.now();
+        state.lastTapX = state.startX;
+        state.lastTapY = state.startY;
+      }
       clearTapTimer();
       tapTimer.current = window.setTimeout(() => {
         tapTimer.current = null;
