@@ -47,6 +47,14 @@ test("horizontal drag selects a run across rows, then deselects it", async ({ pa
   const centre = (box: typeof a) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
   await drag(page, centre(a), centre(b));
   await expect(page.getByTestId("select-bar")).toContainText(/6 (Photos|Videos|Items) Selected/);
+  // The bar grows (caption, HEIC row) with the first selected tile; the grid
+  // must not slide under the finger, or a long swipe selects the wrong run.
+  await page.waitForTimeout(300);
+  expect((await cells.nth(-1).boundingBox())!.y).toBeCloseTo(b.y, 0);
+  await page.screenshot({ path: `e2e/screenshots/e1115e/swipe-select-${info.project.name}-light.png` });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.screenshot({ path: `e2e/screenshots/e1115e/swipe-select-${info.project.name}-dark.png` });
+  await page.emulateMedia({ colorScheme: "light" });
   // Dragging back over the run (first tile selected) deselects it.
   await drag(page, centre(a), centre(b));
   await expect(page.getByTestId("select-bar")).toContainText("Select Items");

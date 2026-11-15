@@ -55,7 +55,7 @@ for (const scheme of ["light", "dark"] as const) {
       await login(page, USER);
       await page.locator("aside.sidebar").getByRole("button", { name: "Library" }).click();
       await page.getByRole("tab", { name: "All Photos", exact: true }).click();
-      await page.locator(".filter-menu--desktop .toolbar-button").first().click();
+      await page.getByRole("button", { name: "Filter By" }).click();
       const popup = page.locator(".filter-menu__popup");
       await expect(popup).toBeVisible();
       expect(await popup.evaluate((e) => getComputedStyle(e).borderRadius)).toBe("12px");

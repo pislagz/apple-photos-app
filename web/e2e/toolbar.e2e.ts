@@ -34,8 +34,16 @@ for (const width of [1440, 1024]) {
       // The title is below the toolbar row, never inside it.
       await expect(toolbar.getByRole("heading")).toHaveCount(0);
       const tb = (await toolbar.boundingBox())!;
-      const title = (await page.getByRole("heading", { name, exact: true, level: 1 }).boundingBox())!;
-      expect(title.y).toBeGreaterThanOrEqual(tb.y + tb.height - 1);
+      if (name === "Library") {
+        // #370: the Library root draws its title over the photos (below the
+        // toolbar); the h1 stays in the DOM for screen readers only.
+        await expect(page.getByTestId("page-heading")).toHaveAttribute("data-overlay", "true");
+        const overlay = (await page.getByTestId("desktop-library-title").boundingBox())!;
+        expect(overlay.y).toBeGreaterThanOrEqual(tb.y + tb.height - 1);
+      } else {
+        const title = (await page.getByRole("heading", { name, exact: true, level: 1 }).boundingBox())!;
+        expect(title.y).toBeGreaterThanOrEqual(tb.y + tb.height - 1);
+      }
       boxes.push((await page.locator(".shell__search .search-box").boundingBox())!);
     }
     for (const box of boxes) {
@@ -43,8 +51,9 @@ for (const width of [1440, 1024]) {
       expect(box.width).toBeCloseTo(boxes[0].width, 1);
       expect(box.y).toBeCloseTo(boxes[0].y, 1);
     }
-    // Collapsed to the magnifier at <=1100px, the full field above.
-    expect(boxes[0].width).toBeCloseTo(width <= 1100 ? 28 : 140, 0);
+    // #412: the field rests at --size-toolbar-rest-width (160px) at every
+    // desktop width; it no longer collapses to the magnifier at <=1100px.
+    expect(boxes[0].width).toBeCloseTo(160, 0);
   });
 }
 

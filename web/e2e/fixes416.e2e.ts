@@ -120,7 +120,13 @@ for (const scheme of ["light", "dark"] as const) {
           const icon = (await button.locator("svg").count()) > 0 && !((await button.textContent()) ?? "").trim();
           if (!icon) continue;
           await button.hover();
-          await page.waitForTimeout(200);
+          // The hover tint fades in (--dur-tint) and the viewer is still
+          // fading in right after it opens; under a loaded full run a fixed
+          // 200ms was not always enough, so wait for the paint instead.
+          await expect
+            .poll(() => button.evaluate((el) => getComputedStyle(el).backgroundColor), { timeout: 3000 })
+            .not.toBe("rgba(0, 0, 0, 0)")
+            .catch(() => undefined);
           const m = await button.evaluate((el) => {
             const box = el.getBoundingClientRect();
             const style = getComputedStyle(el);

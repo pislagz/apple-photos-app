@@ -47,10 +47,10 @@ test("sidebar: no Days entry, sentence-case titles, resizes within 190-300 and r
 test("toolbar: slim zoom slider, selection subtitle, search grows on focus", async ({ page }) => {
   await signIn(page);
   const slider = page.getByLabel("Zoom", { exact: true });
-  expect(Math.round((await slider.boundingBox())!.width)).toBe(110);
+  expect(Math.round((await slider.boundingBox())!.width)).toBe(100); // --size-zoom-slider-w
   const search = page.locator(".shell__search .search-box");
   const before = (await search.boundingBox())!.width;
-  expect(Math.round(before)).toBe(140);
+  expect(Math.round(before)).toBe(160); // --size-toolbar-rest-width
   await page.getByRole("searchbox").first().focus();
   await expect.poll(async () => Math.round((await search.boundingBox())!.width)).toBe(220);
   await page.getByRole("searchbox").first().blur();

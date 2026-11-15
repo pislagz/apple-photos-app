@@ -29,6 +29,7 @@ import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
 import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
 import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
 import { isTypingTarget, shortcutAction } from "../shortcuts";
+import { shouldKeepEndAboveBar } from "./selectBarShift";
 import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
 import { useSlidingPill } from "./useSlidingPill";
@@ -350,11 +351,13 @@ export default function MobileLibrary({
   // bottom padding), keep the newest row above it instead of underneath.
   const lastBarHeight = useRef(0);
   useLayoutEffect(() => {
-    const delta = selectBarHeight - lastBarHeight.current;
+    const previous = lastBarHeight.current;
     lastBarHeight.current = selectBarHeight;
     const element = scrollRef.current;
-    if (!oldestFirst || delta <= 0 || !element) return;
-    if (element.scrollHeight - element.clientHeight - element.scrollTop <= delta + 2) element.scrollTop = element.scrollHeight;
+    if (!element) return;
+    if (shouldKeepEndAboveBar(previous, selectBarHeight, oldestFirst, element.scrollHeight - element.clientHeight - element.scrollTop)) {
+      element.scrollTop = element.scrollHeight;
+    }
   }, [selectBarHeight, oldestFirst]);
 
   const [containerWidth, setContainerWidth] = useState(0);

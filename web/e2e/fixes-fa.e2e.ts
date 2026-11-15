@@ -50,7 +50,7 @@ test("F6: every desktop zoom step keeps a stable grid width and column count", a
 }, info) => {
   test.skip(info.project.name !== "desktop");
   await openAllPhotos(page);
-  const slider = page.getByLabel("Zoom");
+  const slider = page.getByLabel("Zoom", { exact: true });
   for (let step = 0; step <= 4; step++) {
     await slider.fill(String(step));
     const samples: string[] = [];
@@ -81,8 +81,14 @@ test("F10: the iPhone check badge is static and centred from the first frame", a
   test.skip(info.project.name !== "iphone");
   await openAllPhotos(page);
   await page.getByRole("button", { name: "Select", exact: true }).click();
-  const tile = page.locator(".mobile-library__cell-wrap").first();
-  await tile.locator(".mobile-library__cell").first().click();
+  // The Library opens scrolled to its end (#224) and the list is virtual, so
+  // `.first()` would re-resolve to a different tile once the click scrolls.
+  // Pin the tile by its asset id.
+  const assetId = (await page.locator("img.mobile-library__cell").first().getAttribute("data-asset-id"))!;
+  const tile = page.locator(".mobile-library__cell-wrap", {
+    has: page.locator(`img[data-asset-id="${assetId}"]`),
+  });
+  await tile.locator(".mobile-library__cell").click();
   const badge = tile.locator(".mobile-library__check");
   await expect(badge).toHaveAttribute("data-selected", "true");
   const read = () =>
