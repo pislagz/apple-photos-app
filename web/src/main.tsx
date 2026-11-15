@@ -5,6 +5,7 @@ import ControlsGallery from "./admin/ui/ControlsGallery";
 import AppShell from "./shell/AppShell";
 import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler";
 import { installAppHeight } from "./shell/appHeight";
+import { installThemeColor } from "./shell/themeColor";
 import { installBlockPageZoom } from "./shell/blockPageZoom";
 import { installSelectAllGuard } from "./shell/shortcuts";
 import "./shell/tokens.css";
@@ -31,6 +32,7 @@ createRoot(root).render(
 );
 
 installAppHeight();
+installThemeColor();
 installSelectAllGuard();
 installBlockPageZoom();
 

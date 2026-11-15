@@ -597,6 +597,7 @@ export default function MobileLibrary({
         className="mobile-library__scroll"
         data-testid="library-scroll"
         data-virtual-inset={!isTileView ? "" : undefined}
+        data-view={view}
         style={{
           touchAction: "pan-y",
           ...(selectBarHeight > 0 ? { paddingBottom: selectBarHeight } : {}),

@@ -43,10 +43,13 @@ for (const scheme of ["light", "dark"] as const) {
       });
       tops[name] = m.top;
       expect(m.top, `${name} first content below the inset`).toBeGreaterThanOrEqual(INSET);
-      expect(m.top, `${name} clear of the header`).toBeGreaterThan(m.headerBottom);
+      if (name === "Days") expect(m.top, "Days title shares the Select row").toBeLessThanOrEqual(INSET + 12);
+      else expect(m.top, `${name} clear of the header`).toBeGreaterThan(m.headerBottom);
       await page.screenshot({ path: `e2e/screenshots/414/${name.replace(" ", "-").toLowerCase()}-${scheme}.png` });
     }
-    const values = Object.values(tops);
-    expect(Math.max(...values) - Math.min(...values), JSON.stringify(tops)).toBeLessThanOrEqual(1);
+    // #431: Years and Months share one offset (below the Select button); Days
+    // starts on the Select row because its title is in the grid.
+    expect(Math.abs(tops["Years"] - tops["Months"]), JSON.stringify(tops)).toBeLessThanOrEqual(1);
+    expect(tops["Days"], JSON.stringify(tops)).toBeLessThan(tops["Months"]);
   });
 }
