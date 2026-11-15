@@ -522,6 +522,98 @@ def test_audit_log_before_id_cursor_ignores_new_rows(tmp_path):
         conn.close()
 
 
+def _seed_audit(conn, stamps):
+    for i, ts in enumerate(stamps):
+        conn.execute(
+            "INSERT INTO audit_log (action, actor, detail, occurred_at) VALUES (?, 'test', ?, ?)",
+            (f"seed_{i}", None, ts),
+        )
+    conn.commit()
+
+
+def _page_all(client, limit):
+    """Walk the log the way the web client does; return ids in order seen."""
+    seen = []
+    cursor = None
+    while True:
+        url = f"/api/admin/audit-log?limit={limit}"
+        if cursor is not None:
+            url += f"&before_id={cursor}"
+        page = client.get(url).json()["entries"]
+        seen.extend(e["id"] for e in page)
+        if len(page) < limit:
+            return seen
+        cursor = page[-1]["id"]
+
+
+def _full_order(client):
+    entries = client.get("/api/admin/audit-log?limit=1000").json()["entries"]
+    return [e["id"] for e in entries]
+
+
+def test_audit_log_cursor_non_monotonic_timestamps(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        # Clock jumped back / backfilled rows: occurred_at is not monotonic in id.
+        _seed_audit(
+            conn,
+            [
+                "2030-01-05 00:00:00",
+                "2030-01-01 00:00:00",
+                "2030-01-09 00:00:00",
+                "2030-01-03 00:00:00",
+                "2030-01-07 00:00:00",
+                "2030-01-02 00:00:00",
+                "2030-01-08 00:00:00",
+            ],
+        )
+        expected = _full_order(client)
+        for limit in (1, 2, 3):
+            seen = _page_all(client, limit)
+            assert seen == expected
+            assert len(seen) == len(set(seen))
+    finally:
+        conn.close()
+
+
+def test_audit_log_cursor_equal_timestamps_across_page_boundary(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        _seed_audit(conn, ["2030-02-01 10:00:00"] * 5 + ["2030-01-01 10:00:00"] * 2)
+        expected = _full_order(client)
+        for limit in (1, 2, 3, 4):
+            seen = _page_all(client, limit)
+            assert seen == expected
+            assert len(seen) == len(set(seen))
+    finally:
+        conn.close()
+
+
+def test_audit_log_cursor_rows_inserted_between_pages(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        _seed_audit(conn, ["2030-03-01 00:00:00"] * 3 + ["2030-02-01 00:00:00"] * 3)
+        first = client.get("/api/admin/audit-log?limit=3").json()["entries"]
+        # New rows land (one with an old backfilled timestamp, one equal to the
+        # cursor's) between page loads.
+        _seed_audit(conn, ["2030-03-01 00:00:00", "2030-02-15 00:00:00"])
+        cursor = first[-1]["id"]
+        rest = client.get(f"/api/admin/audit-log?limit=1000&before_id={cursor}").json()[
+            "entries"
+        ]
+        first_ids = {e["id"] for e in first}
+        rest_ids = [e["id"] for e in rest]
+        assert not first_ids & set(rest_ids)
+        assert len(rest_ids) == len(set(rest_ids))
+        # Nothing at or after the cursor in display order sneaks in.
+        assert all(
+            (e["occurred_at"], e["id"]) < (first[-1]["occurred_at"], cursor)
+            for e in rest
+        )
+    finally:
+        conn.close()
+
+
 def test_audit_log_lists_and_filters_by_user(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:

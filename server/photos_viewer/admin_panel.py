@@ -734,11 +734,17 @@ def read_audit_log(
         user_id, library_id, date_from, date_to, username, library_name
     )
     if before_id is not None:
-        # Cursor paging: ids only grow, so rows written after page one was
-        # fetched never shift the next page the way an offset would.
+        # Keyset paging on the display order (occurred_at DESC, id DESC). The
+        # cursor row's own timestamp is looked up here, so the client only
+        # passes the last id it saw, and a clock that jumped back or equal
+        # timestamps cannot skip or repeat rows across pages.
         where += " AND " if where else " WHERE "
-        where += "audit_log.id < ?"
-        params.append(before_id)
+        where += (
+            "(audit_log.occurred_at < (SELECT occurred_at FROM audit_log WHERE id = ?)"
+            " OR (audit_log.occurred_at = (SELECT occurred_at FROM audit_log WHERE id = ?)"
+            " AND audit_log.id < ?))"
+        )
+        params.extend([before_id, before_id, before_id])
     rows = db.execute(
         f"{_AUDIT_LOG_SELECT}{where} ORDER BY audit_log.occurred_at DESC, audit_log.id DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
