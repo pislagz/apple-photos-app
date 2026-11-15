@@ -9,7 +9,7 @@ test.use({ baseURL: demo.replace("127.0.0.1", "localhost") });
 
 async function openPasskeys(page: Page) {
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("button", { name: "Passkeys", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Passkeys…" }).click();
   await expect(page.getByRole("dialog", { name: "Passkeys" })).toBeVisible();
 }
 
@@ -49,8 +49,9 @@ test("register a passkey, sign out, sign in with it, then remove it", async ({ p
   await expect(page.getByText("E2E laptop")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
 
-  // The account menu stays open behind the closed dialog.
-  await page.getByRole("button", { name: "Log out" }).click();
+  // The Mac-style menu closes when an item runs, so open it again to log out.
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Log Out" }).click();
   await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign in with a passkey" }).click();
