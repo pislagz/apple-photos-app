@@ -27,6 +27,18 @@ export function thumbSizeFor(edge: number, devicePixelRatio: number = 1): "grid"
   return edge <= GRID_THUMB_MAX_EDGE && edge * Math.max(1, devicePixelRatio) <= GRID_THUMB_PX ? "grid" : "grid2x";
 }
 
+// #433: the rendition a tile should show once it is on screen. The grid thumb
+// (300 px) is fine up to 1.5x upscaling (450 device px) and grid2x (600 px) up
+// to 900; anything bigger, e.g. one photo per row, takes "preview" (1600 px).
+const SHARP_GRID_MAX_PX = 450;
+const SHARP_GRID2X_MAX_PX = 900;
+
+export function sharpSizeFor(tileWidth: number, devicePixelRatio: number = 1): "grid" | "grid2x" | "preview" {
+  const needed = tileWidth * Math.max(1, devicePixelRatio);
+  if (needed <= SHARP_GRID_MAX_PX) return "grid";
+  return needed <= SHARP_GRID2X_MAX_PX ? "grid2x" : "preview";
+}
+
 // Column widths whose edges sit on whole device pixels and which, with the
 // gaps, add up to exactly `containerWidth`: the right edge is flush, with
 // the leftover pixels spread across columns instead of left as a strip.

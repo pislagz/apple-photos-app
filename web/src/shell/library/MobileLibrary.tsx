@@ -32,6 +32,8 @@ import { isTypingTarget, shortcutAction } from "../shortcuts";
 import { shouldKeepEndAboveBar } from "./selectBarShift";
 import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
+import SharpImage from "./SharpImage";
+import { sharpSizeFor } from "./gridMetrics";
 import { useSlidingPill } from "./useSlidingPill";
 
 const HEADER_ROW_HEIGHT = 32;
@@ -388,6 +390,8 @@ export default function MobileLibrary({
   // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
   const cellSize = containerWidth > 0 ? (containerWidth - (columns - 1) * MOBILE_GRID_GAP) / columns : 0;
 
+  const sharpSize = sharpSizeFor(cellSize, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+
   // One column shows whole photos at their aspect ratio; otherwise squares.
   const cellHeight = (item: AssetListItem) =>
     columns === 1 && item.width && item.height
@@ -693,6 +697,9 @@ export default function MobileLibrary({
                         style={{ width: cellSize, height: cellHeight(item), objectFit: wholePhotos ? "contain" : "cover" }}
                         onClick={() => openItem(item)}
                       />
+                      {sharpSize !== "grid" && (
+                        <SharpImage src={`/api/libraries/${libraryId}/thumb/${item.id}?size=${sharpSize}`} fit={wholePhotos ? "contain" : "cover"} />
+                      )}
                       <TileOverlays item={item} tileWidth={cellSize} prefix="mobile-library" />
                       {selectMode && <CheckBadge prefix="mobile-library" selected={selectedIds.has(item.id)} />}
                     </div>

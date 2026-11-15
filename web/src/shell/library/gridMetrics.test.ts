@@ -6,6 +6,7 @@ import {
   DEFAULT_ZOOM_INDEX,
   gapForEdge,
   squareEdge,
+  sharpSizeFor,
   thumbSizeFor,
   ZOOM_EDGES,
   FEATURE_ASPECT,
@@ -175,5 +176,20 @@ describe("zoom steps are stable against the scrollbar (F6)", () => {
         expect(new Set(settle(w, edge, true).slice(-4)).size).toBe(1);
       }
     }
+  });
+});
+
+describe("sharpSizeFor (#433)", () => {
+  it("keeps the grid thumb for small tiles and steps up for big ones", () => {
+    expect(sharpSizeFor(130, 3)).toBe("grid"); // 3 per row on an iPhone: 390 device px
+    expect(sharpSizeFor(198, 2)).toBe("grid");
+    expect(sharpSizeFor(265, 2)).toBe("grid2x"); // 530 device px
+    expect(sharpSizeFor(300, 3)).toBe("grid2x"); // 900 device px, still enough
+    expect(sharpSizeFor(390, 3)).toBe("preview"); // 1 per row
+    expect(sharpSizeFor(800, 2)).toBe("preview");
+  });
+  it("treats a DPR below 1 as 1", () => {
+    expect(sharpSizeFor(400, 0)).toBe("grid");
+    expect(sharpSizeFor(500, 0.5)).toBe("grid2x");
   });
 });

@@ -32,7 +32,7 @@ async function pinch(page: Page, endGap: number) {
 
 const cellWidth = (page: Page) => page.locator(".mobile-library__cell").first().evaluate((el) => Math.round(el.getBoundingClientRect().width));
 
-test("iPhone pinch walks 1 / 3 / 5 columns, Months and Years (#213)", async ({ page }, info) => {
+test("iPhone pinch walks 1 / 3 / 4 / 5 columns, Months and Years (#213)", async ({ page }, info) => {
   test.skip(info.project.name === "desktop", "iPhone layout only");
   await openLibrary(page);
   const width = await page.locator(".mobile-library__scroll").evaluate((el) => el.clientWidth);
@@ -43,6 +43,8 @@ test("iPhone pinch walks 1 / 3 / 5 columns, Months and Years (#213)", async ({ p
 
   await pinch(page, 70); // pinch together: zoom out to 3 columns, then 5
   await expect.poll(() => cellWidth(page)).toBe(Math.round((width - 4) / 3));
+  await pinch(page, 70);
+  await expect.poll(() => cellWidth(page)).toBe(Math.round((width - 6) / 4)); // #433
   await pinch(page, 70);
   await expect.poll(() => cellWidth(page)).toBe(Math.round((width - 8) / 5));
 
@@ -82,4 +84,25 @@ test("desktop has no pinch layer (#213)", async ({ page }, info) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("library-cell").first()).toBeVisible();
   await expect(page.locator(".mobile-library__zoom-layer")).toHaveCount(0);
+});
+
+test("1 per row loads sharp renditions only near the viewport, without layout shift (#433)", async ({ page }, info) => {
+  test.skip(info.project.name === "desktop", "iPhone layout only");
+  await openLibrary(page);
+  await pinch(page, 300); // 1 per row
+  const tile = page.locator(".mobile-library__cell-wrap").first();
+  await expect(tile).toBeVisible();
+  const before = await tile.boundingBox();
+  const sharp = page.locator("img[data-sharp]");
+  await expect(sharp.first()).toHaveAttribute("src", /size=grid2x|size=preview/);
+  await expect(sharp.first()).toHaveAttribute("data-loaded", "true");
+  const after = await tile.boundingBox();
+  expect(after).toEqual(before);
+  // Only the tiles in view plus a buffer carry one, not every rendered tile.
+  const near = await sharp.count();
+  expect(near).toBeGreaterThan(0);
+  expect(near).toBeLessThan(await page.locator(".mobile-library__cell-wrap").count() + 1);
+  // Scrolled far away: the first tile drops back to its thumbnail.
+  await page.locator(".mobile-library__scroll").evaluate((el) => el.scrollBy(0, 5000));
+  await expect.poll(() => tile.locator("img[data-sharp]").count()).toBe(0);
 });
