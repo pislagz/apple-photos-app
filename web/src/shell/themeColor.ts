@@ -17,7 +17,13 @@ export function syncThemeColor(): void {
   for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
     // Only the meta for the active scheme is read by the browser.
     const media = meta.getAttribute("media");
-    if (!media || media.includes("dark") === dark) meta.content = bg;
+    if (!media || media.includes("dark") === dark) {
+      meta.content = bg;
+      // Safari re-reads the tint only when the element is (re)inserted, not
+      // when `content` mutates. Needs a real-iPhone check (not testable here).
+      const parent = meta.parentNode;
+      if (parent) parent.replaceChild(meta, meta);
+    }
   }
 }
 

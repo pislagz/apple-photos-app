@@ -18,4 +18,14 @@ describe("syncThemeColor (#432)", () => {
     expect(light.content).toBe("#ffffff");
     expect(dark.content).toBe("#222");
   });
+
+  it("re-inserts the active meta so Safari re-reads it", () => {
+    document.head.innerHTML = '<meta name="theme-color" content="#111" media="(prefers-color-scheme: dark)">';
+    const meta = document.querySelector("meta") as HTMLMetaElement;
+    document.documentElement.style.backgroundColor = "rgb(0, 0, 0)";
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {} })) as never;
+    syncThemeColor();
+    expect(meta.content).toBe("#000000");
+    expect(meta.isConnected).toBe(true);
+  });
 });

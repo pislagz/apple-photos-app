@@ -79,7 +79,9 @@ describe("phone Library top inset (#414, #415)", () => {
   });
 
   it("does not reserve the title block where the view has no top-bar title (#431)", () => {
-    expect(rule('.mobile-library__scroll[data-view="days"]')).toMatch(/padding-top:\s*calc\(var\(--safe-top\) \+ var\(--space-8\)\)/);
-    expect(css).toMatch(/data-view="years"\][^{]*data-view="months"\][^{]*\{[^}]*padding-top:\s*calc\(var\(--safe-top\)/);
+    // #446: Years, Months and Days each carry their own title, one shared inset.
+    expect(css).toMatch(
+      /data-view="days"\][^{]*data-view="months"\][^{]*data-view="years"\][^{]*\{[^}]*padding-top:\s*calc\(var\(--safe-top\) \+ var\(--space-8\)\);/,
+    );
   });
 });

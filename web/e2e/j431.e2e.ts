@@ -23,8 +23,8 @@ for (const scheme of ["light", "dark"] as const) {
         .toBe(0);
       await page.waitForTimeout(300);
       const sel = {
-        Years: ".period-card",
-        Months: "[data-testid='period-month-header']",
+        Years: ".period-grid__title",
+        Months: ".period-grid__title",
         Days: ".period-grid__title",
         "All Photos": "[data-testid='header-title']",
       }[name]!;
@@ -36,7 +36,7 @@ for (const scheme of ["light", "dark"] as const) {
       }, sel);
       console.log(scheme, name, JSON.stringify(m));
       expect(m.text, `${name} title below the clock`).toBeGreaterThanOrEqual(INSET);
-      expect(m.text, `${name} title not far below the inset`).toBeLessThanOrEqual(INSET + (name === "Years" || name === "Months" ? 62 : 24));
+      expect(m.text, `${name} title not far below the inset`).toBeLessThanOrEqual(INSET + 24);
       await page.screenshot({ path: `e2e/screenshots/j431/${name.replace(" ", "-").toLowerCase()}-${scheme}.png` });
     }
   });

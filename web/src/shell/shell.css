@@ -527,17 +527,13 @@ html.has-app-height .shell--mobile {
   padding-top: 0;
 }
 
-/* #431: the 78px --library-top-inset reserves the "Library" title block, which
-   only All Photos has. Days carries its own title inside the grid, so it
-   starts right below the safe area on the Select row; Years and Months have no
-   title and start just under the 44px Select button. */
-.mobile-library__scroll[data-view="days"] {
+/* #431/#446: the 78px --library-top-inset reserves the "Library" title block,
+   which only All Photos has. Years, Months and Days each carry their own large
+   title inside the grid, so all three start right below the safe area. */
+.mobile-library__scroll[data-view="days"],
+.mobile-library__scroll[data-view="months"],
+.mobile-library__scroll[data-view="years"] {
   padding-top: calc(var(--safe-top) + var(--space-8));
-}
-
-.mobile-library__scroll[data-view="years"],
-.mobile-library__scroll[data-view="months"] {
-  padding-top: calc(var(--safe-top) + var(--space-8) + 44px + var(--space-8));
 }
 
 /* Measured by MobileLibrary: env() cannot be read from JS, a box can. */
@@ -812,7 +808,7 @@ html.has-app-height .shell--mobile {
   padding: 0 var(--space-4) var(--space-4);
 }
 
-.period-grid--phone .period-grid__month:first-child {
+.period-grid--phone .period-grid__header + .period-grid__month {
   padding-top: 0;
 }
 
