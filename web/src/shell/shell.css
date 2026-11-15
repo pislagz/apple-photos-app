@@ -1843,7 +1843,7 @@ html.has-app-height .shell--mobile {
 
 .shell--desktop .toolbar h1 {
   font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-regular);
   margin: 0;
 }
 
@@ -2170,7 +2170,7 @@ html.has-app-height .shell--mobile {
   padding: var(--space-14) var(--space-10) 0;
   font-size: var(--font-size-title-2-lg);
   text-shadow: var(--text-shadow-overlay);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-regular);
   color: var(--color-white);
   letter-spacing: var(--tracking-title-3);
   white-space: nowrap;
@@ -3307,17 +3307,20 @@ html.has-app-height .shell--mobile {
   margin-right: calc(30px + var(--space-8));
 }
 
-/* #430: on a wide window the viewer covers the sidebar, so the toggle does
-   nothing there; only the narrow overlay sidebar shows above the viewer. */
-.shell:not(.shell--sidebar-narrow):has(.desktop-viewer) .sidebar-toggle {
-  display: none;
+/* #444: on a wide window the sidebar stays where it is while the viewer is
+   open: the fixed viewer layer starts after it, and the toggle keeps its
+   grid position. Collapsed (or narrow, where the sidebar is an overlay) the
+   viewer covers the full width and the toggle sits right after Back. */
+.shell--desktop:not(.shell--sidebar-narrow):not(.shell--sidebar-collapsed) .desktop-viewer {
+  left: var(--sidebar-width, 220px);
 }
 
-.shell:not(.shell--sidebar-narrow):has(.desktop-viewer) .desktop-viewer__back {
+.shell--desktop:not(.shell--sidebar-narrow):not(.shell--sidebar-collapsed) .desktop-viewer__back {
   margin-right: 0;
 }
 
-.shell:has(.desktop-viewer) .sidebar-toggle {
+.shell--sidebar-narrow:has(.desktop-viewer) .sidebar-toggle,
+.shell--sidebar-collapsed:has(.desktop-viewer) .sidebar-toggle {
   left: calc(var(--space-12) + var(--size-toolbar-button-w) + var(--space-2) + var(--space-8) / 2);
 }
 
@@ -3338,7 +3341,7 @@ html.has-app-height .shell--mobile {
 .desktop-viewer__title-primary {
   font-size: var(--font-size-subhead);
   line-height: 16px;
-  font-weight: var(--font-weight-bold, 700);
+  font-weight: var(--font-weight-regular);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
