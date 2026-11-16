@@ -13,6 +13,7 @@ import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumT
 import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
+import { createPinchStepper, listenTrackpadPinch } from "../trackpadPinch";
 import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -328,6 +329,26 @@ export default function DesktopLibrary({
     if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomIndex]);
+
+  // #457: a trackpad pinch over the grid steps the size scale by one stop,
+  // like the slider's +/- buttons; at most one stop per pinch.
+  const pinchZoomRef = useRef({ zoomIndex, changeZoom });
+  pinchZoomRef.current = { zoomIndex, changeZoom };
+  useEffect(() => {
+    const grid = scrollRef.current;
+    if (!grid) return;
+    const stepper = createPinchStepper();
+    return listenTrackpadPinch(
+      grid,
+      ({ factor }) => {
+        const direction = stepper.push(factor, performance.now());
+        if (direction === 0) return;
+        const { zoomIndex: current, changeZoom: change } = pinchZoomRef.current;
+        change(Math.min(MAX_ZOOM_INDEX, Math.max(0, current + direction)));
+      },
+      () => stepper.end(),
+    );
+  }, []);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
 

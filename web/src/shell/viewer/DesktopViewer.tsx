@@ -15,6 +15,7 @@ import { useZoomTransition } from "./useZoomTransition";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
+import { listenTrackpadPinch } from "../trackpadPinch";
 import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { type ViewerTitle, formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
@@ -188,24 +189,20 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     setView((value) => g.toggleZoom(value, { x: event.clientX - centre.x, y: event.clientY - centre.y }, fit, box));
   }
 
-  // Trackpad pinch arrives as ctrl+wheel. Added natively (not onWheel)
-  // because React's wheel listener is passive and cannot stop the browser
-  // zooming the whole page.
+  // #457: trackpad pinch (ctrl+wheel, or Safari gesture events) zooms about
+  // the pointer. Added natively (not onWheel) because React's wheel listener
+  // is passive and cannot stop the browser zooming the whole page.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    function onWheel(event: WheelEvent) {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
+    return listenTrackpadPinch(stage, ({ factor, clientX, clientY }) => {
       const { box, centre, fit } = geometry();
       const current = viewRef.current;
-      const focal = { x: event.clientX - centre.x, y: event.clientY - centre.y };
+      const focal = { x: clientX - centre.x, y: clientY - centre.y };
       setAnimating(false);
-      const next = g.zoomView(current, g.wheelScale(current.scale, event.deltaY), focal, fit, box);
+      const next = g.zoomView(current, g.clampZoom(current.scale * factor), focal, fit, box);
       setView(next.scale <= g.ZOOM_MIN ? g.FIT : next);
-    }
-    stage.addEventListener("wheel", onWheel, { passive: false });
-    return () => stage.removeEventListener("wheel", onWheel);
+    });
   });
 
   // #267: the drag follows the mouse on the window, so leaving the stage
