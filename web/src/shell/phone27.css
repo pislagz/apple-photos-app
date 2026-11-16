@@ -1,0 +1,652 @@
+/* #79 iPhone look, iOS 27 Photos and the iOS Human Interface Guidelines.
+   PHONE ONLY. Every rule is scoped to the phone layout -- .shell--mobile,
+   .login-screen--mobile, or the admin's own (max-width: 700px) phone block --
+   so the desktop (macOS Sequoia) look cannot pick any of it up. Loaded after
+   shell.css; restyles only, no layout or flow changes.
+
+   HIG type scale used here (iOS default Dynamic Type size, token in brackets):
+   Large Title 34 bold (title-large), Title 2 22 bold (title-2), Body 17
+   (headline), Callout 16 (body-lg), Subheadline 15 (body), Footnote 13
+   (subhead), Caption 12 (caption), Caption 2 11 (footnote). */
+
+.shell--mobile {
+  /* Floating tab bar: a 62pt glass capsule 20pt in from the screen edges,
+     sitting just above the home indicator. --tab-bar-h is the room content
+     leaves under it so the last row can scroll clear of the bar. */
+  --tab-capsule-h: 62px;
+  --tab-side: var(--space-20);
+  --tab-bottom: max(var(--space-16), calc(var(--safe-bottom) - var(--space-10)));
+  --tab-bar-h: calc(var(--tab-capsule-h) + var(--tab-bottom) + var(--space-8));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Tab bar: Liquid Glass capsule for Library / Albums / More, and Search  */
+/* in its own glass circle at the trailing end (iOS search tab role).      */
+/* Content scrolls underneath instead of stopping above a full-width bar.  */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .tab-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  min-height: 0;
+  align-items: stretch;
+  padding: 0 var(--tab-side) var(--tab-bottom);
+  border-top: none;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+
+.shell--mobile .tab-bar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: var(--tab-side);
+  right: calc(var(--tab-side) + var(--tab-capsule-h) + var(--space-12));
+  bottom: var(--tab-bottom);
+  height: var(--tab-capsule-h);
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+  pointer-events: none;
+}
+
+.shell--mobile .tab-bar__item {
+  position: relative;
+  isolation: isolate;
+  justify-content: center;
+  height: var(--tab-capsule-h);
+  padding: var(--space-4) 0;
+  gap: var(--space-2);
+  color: var(--color-label);
+  pointer-events: auto;
+}
+
+.shell--mobile .tab-bar__item:first-child {
+  margin-left: var(--space-4);
+}
+
+.shell--mobile .tab-bar__item:nth-last-child(2) {
+  margin-right: var(--space-4);
+}
+
+/* The selected tab sits on a lighter lens inside the capsule and takes the
+   accent tint; the others stay label-coloured (monochrome glass items). */
+.shell--mobile .tab-bar__item[aria-current="page"] {
+  color: var(--accent);
+}
+
+.shell--mobile .tab-bar__item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: var(--space-4) 0;
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome-selected);
+}
+
+.shell--mobile .tab-bar__icon {
+  width: 26px;
+  height: 26px;
+}
+
+/* Caption 2 is the smallest HIG size; tab labels use it at semibold. */
+.shell--mobile .tab-bar__label {
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+}
+
+.shell--mobile .tab-bar__item:last-child {
+  flex: 0 0 var(--tab-capsule-h);
+  width: var(--tab-capsule-h);
+  margin-left: var(--space-12);
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+}
+
+.shell--mobile .tab-bar__item:last-child[aria-current="page"]::before {
+  inset: var(--space-4);
+}
+
+/* The search circle shows the glyph only; the name stays for VoiceOver. */
+.shell--mobile .tab-bar__item:last-child .tab-bar__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Every scroll area runs under the floating bar and ends clear of it. */
+.shell--mobile .more-screen__body,
+.shell--mobile .mobile-screen__body {
+  padding-bottom: calc(var(--tab-bar-h) + var(--space-8));
+}
+
+.shell--mobile .mobile-library__scroll {
+  padding-bottom: calc(var(--tab-bar-h) + 56px);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Library grid: glass controls over the photos                           */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .mobile-library__glass-button,
+.shell--mobile .mobile-library__select-button {
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+}
+
+.shell--mobile .mobile-library__select-button {
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+}
+
+/* Years / Months / Days / All Photos: a glass capsule with capsule
+   segments, floating just above the tab bar. Subheadline (15) labels. */
+.shell--mobile .mobile-library__view-switch {
+  bottom: var(--tab-bar-h);
+  padding: var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+}
+
+.shell--mobile .mobile-library__view-switch-item {
+  min-height: 36px;
+  padding: 0 var(--space-14);
+  border-radius: var(--radius-pill);
+  color: var(--color-label);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+
+.shell--mobile .mobile-library__view-switch[data-pill]::before {
+  border-radius: var(--radius-pill);
+}
+
+.shell--mobile .mobile-library__view-switch-item[aria-selected="true"] {
+  color: var(--color-black); /* on the white selected lens in both appearances */
+  font-weight: var(--font-weight-semibold);
+}
+
+@container mobile-library (max-width: 359px) {
+  .shell--mobile .mobile-library__view-switch-item {
+    min-height: 32px;
+    padding: 0 var(--space-8);
+    font-size: var(--font-size-caption);
+  }
+}
+
+/* Select mode: the toolbar floats as a glass panel instead of a full-width
+   bar. The element still spans to the bottom edge (its height is measured to
+   keep the last row clear); the panel is drawn inset 16pt from the edges. */
+.shell--mobile .mobile-library__select-bar {
+  isolation: isolate;
+  padding: var(--space-8) calc(var(--space-16) + var(--space-8)) calc(var(--tab-bottom) + var(--space-8));
+  border-top: none;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell--mobile .mobile-library__select-bar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 var(--space-16) var(--tab-bottom);
+  border-radius: var(--radius-28);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+  pointer-events: none;
+}
+
+.shell--mobile .mobile-library__select-bar .mobile-library__glass-button {
+  box-shadow: none;
+  background: var(--glass-chrome-selected);
+}
+
+/* The option and progress rows run the full width of the glass panel (16pt
+   from the screen edges, like an inset grouped row) instead of the bar's
+   24pt content inset. */
+.shell--mobile .mobile-library__select-bar .zip-status--row {
+  margin: 0 calc(-1 * var(--space-8));
+  padding: 0;
+}
+
+.shell--mobile .mobile-library__select-caption {
+  font-size: var(--font-size-subhead);
+}
+
+/* Pushed grids (album, person, media type): back is a glass capsule with
+   the label-coloured chevron, like the other glass bar items. */
+.shell--mobile .mobile-library__back,
+.shell--mobile .mobile-screen__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  margin: 0 0 var(--space-4);
+  padding: 0 var(--space-16) 0 var(--space-10);
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+  color: var(--color-label);
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .mobile-library__back {
+  margin: 0 0 var(--space-4) -4px;
+}
+
+/* A pushed grid's header is in the flow, so its photos start right under the
+   title; the 70pt floating-title reserve is only for the Library itself. */
+.shell--mobile .mobile-library:has(.mobile-library__top-bar--nav) {
+  --library-top-inset: var(--library-content-gap);
+}
+
+.shell--mobile .mobile-library__back:active,
+.shell--mobile .mobile-screen__back:active {
+  opacity: 0.6;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Viewer: no solid bars; floating glass buttons around the photo.        */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .mobile-viewer__topbar,
+.shell--mobile .mobile-viewer__bottombar {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell--mobile .mobile-viewer__topbar {
+  padding-left: max(var(--space-16), env(safe-area-inset-left));
+  padding-right: max(var(--space-16), env(safe-area-inset-right));
+}
+
+.shell--mobile .mobile-viewer__topbar .mobile-viewer__icon-button {
+  border-radius: var(--radius-pill);
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+}
+
+.shell--mobile .mobile-viewer__topbar .mobile-viewer__icon-button:active,
+.shell--mobile .mobile-viewer__bar-button:active {
+  opacity: 0.6;
+}
+
+/* Headline (17 semibold) title, Footnote (13) time and place. */
+.shell--mobile .mobile-viewer__title-primary {
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .mobile-viewer__title-secondary {
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+  opacity: 1;
+}
+
+.shell--mobile .mobile-viewer__bar-button {
+  background: var(--glass-chrome);
+  -webkit-backdrop-filter: var(--blur-glass);
+  backdrop-filter: var(--blur-glass);
+}
+
+.shell--mobile .mobile-viewer__icon-row {
+  padding: 0 var(--space-16) var(--space-8);
+}
+
+/* Info sheet: rounder sheet corners, a 44pt round close button, Footnote
+   labels over Body values, rows at least 44pt tall. */
+.shell--mobile .mobile-viewer__info-sheet {
+  border-radius: var(--radius-28) var(--radius-28) 0 0;
+  padding: var(--space-20) var(--space-20) calc(var(--space-20) + var(--safe-bottom));
+}
+
+.shell--mobile .mobile-viewer__info-sheet-close {
+  top: var(--space-12);
+  right: var(--space-12);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--surface-dark-raised);
+}
+
+.shell--mobile .mobile-viewer__info-rows__row {
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--space-10) 0;
+}
+
+.shell--mobile .mobile-viewer__info-rows__row dt {
+  font-size: var(--font-size-subhead);
+}
+
+.shell--mobile .mobile-viewer__info-rows__row dd {
+  font-size: var(--font-size-headline);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Menus: Body (17) rows at least 44pt tall in the glass card.            */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .filter-menu--mobile .filter-menu__popup {
+  box-shadow:
+    inset 0 0.5px 0 var(--glass-chrome-edge),
+    var(--shadow-glass);
+}
+
+.shell--mobile .filter-menu--mobile .filter-menu__popup .filter-menu__row,
+.shell--mobile .filter-menu--mobile .filter-menu__popup button {
+  min-height: 44px;
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .filter-menu--mobile .filter-menu__heading {
+  font-size: var(--font-size-subhead);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Large titles and inset-grouped lists (More, Albums, Search, People).   */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .mobile-screen__header--root .mobile-screen__title {
+  font-size: var(--font-size-title-large);
+  letter-spacing: var(--tracking-title-large);
+}
+
+.shell--mobile .mobile-screen__header {
+  padding-left: var(--space-16);
+  padding-right: var(--space-16);
+}
+
+/* Section headers sit above their card on the grouped background (Footnote,
+   secondary label), and the card holds only the rows. */
+.shell--mobile .more-screen__group {
+  margin-bottom: var(--space-24);
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.shell--mobile .more-screen__group > li:not(.more-screen__group-label) {
+  overflow: hidden;
+  background: var(--color-card);
+}
+
+.shell--mobile .more-screen__group > li:not(.more-screen__group-label):first-child,
+.shell--mobile .more-screen__group-label + li {
+  border-top-left-radius: var(--radius-26);
+  border-top-right-radius: var(--radius-26);
+}
+
+.shell--mobile .more-screen__group > li:last-child {
+  border-bottom-left-radius: var(--radius-26);
+  border-bottom-right-radius: var(--radius-26);
+}
+
+.shell--mobile .more-screen__group-label {
+  min-height: 0;
+  padding: 0 var(--space-16) var(--space-8);
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+}
+
+/* Body (17) rows, 52pt tall; the separator starts at the text, not the edge. */
+.shell--mobile .more-screen__item {
+  position: relative;
+  gap: var(--space-12);
+  min-height: 52px;
+  border-bottom: none;
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .more-screen__item::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-16) + 28px + var(--space-12));
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--color-separator);
+  pointer-events: none;
+}
+
+.shell--mobile .more-screen__group li:last-child .more-screen__item::after {
+  display: none;
+}
+
+.shell--mobile .more-screen__icon {
+  width: 28px;
+  height: 24px;
+}
+
+.shell--mobile .more-screen__item:active:not(.more-screen__item--static) {
+  background: var(--color-pressed);
+}
+
+.shell--mobile .more-screen__library-switcher,
+.shell--mobile .more-screen__library-switcher select {
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+}
+
+/* Search: a capsule field with no web focus ring (the caret and a slightly
+   stronger fill show focus, like iOS); Body (17) suggestion rows. */
+.shell--mobile .search-box--mobile:focus-within {
+  box-shadow: none;
+  background: var(--color-fill-button);
+}
+
+.shell--mobile .suggestions__row {
+  min-height: 44px;
+}
+
+.shell--mobile .suggestions__row[aria-selected="true"],
+.shell--mobile .suggestions__row:active {
+  background: var(--color-pressed);
+}
+
+.shell--mobile .suggestions__title {
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .suggestions__detail {
+  font-size: var(--font-size-body);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Alerts (change password, passkeys, Hidden): rounder card, centred      */
+/* Headline title, capsule buttons; the preferred action is filled.       */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .change-password {
+  background: var(--backdrop-dim);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.shell--mobile .change-password__card,
+.shell--mobile .hidden-unlock--mobile .hidden-unlock__card {
+  border-radius: var(--radius-28);
+  padding: var(--space-24) var(--space-20) var(--space-20);
+}
+
+.shell--mobile .change-password h2 {
+  text-align: center;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+}
+
+.shell--mobile .change-password input {
+  min-height: 44px;
+  border: none;
+  background: var(--color-fill-subtle);
+  font-size: var(--font-size-headline);
+}
+
+.shell--mobile .hidden-unlock--mobile .hidden-unlock__input {
+  min-height: 44px;
+  border: none;
+  border-radius: var(--radius-10);
+  background: var(--color-card);
+  font-size: var(--font-size-headline);
+}
+
+/* Two actions whose titles do not fit side by side stack, the preferred one
+   on top and Cancel last, as iOS alerts do. */
+.shell--mobile .change-password__actions {
+  flex-direction: column-reverse;
+  gap: var(--space-8);
+}
+
+.shell--mobile .change-password__actions button,
+.shell--mobile .hidden-unlock--mobile .hidden-unlock__actions button {
+  min-height: 48px;
+  border-radius: var(--radius-pill);
+  background: var(--color-fill-button);
+  color: var(--color-label);
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-medium);
+}
+
+.shell--mobile .change-password__actions .change-password__submit,
+.shell--mobile .hidden-unlock--mobile .hidden-unlock__actions .hidden-unlock__submit {
+  background: var(--accent);
+  color: var(--color-white);
+  font-weight: var(--font-weight-semibold);
+}
+
+.shell--mobile .change-password__actions button:active:not(:disabled),
+.shell--mobile .hidden-unlock--mobile .hidden-unlock__actions button:active:not(:disabled) {
+  opacity: 0.7;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sign in and first-run setup on the phone.                              */
+/* ---------------------------------------------------------------------- */
+.login-screen--mobile .login-card h1 {
+  font-size: var(--font-size-title-large);
+  letter-spacing: var(--tracking-title-large);
+}
+
+.login-screen--mobile .login-card form > label:first-of-type {
+  border-top-left-radius: var(--radius-26);
+  border-top-right-radius: var(--radius-26);
+}
+
+.login-screen--mobile .login-card form > label:last-of-type {
+  border-bottom-left-radius: var(--radius-26);
+  border-bottom-right-radius: var(--radius-26);
+}
+
+.login-screen--mobile .login-card form > label {
+  padding: var(--space-10) var(--space-20);
+}
+
+/* Prominent capsule button, 50pt tall. */
+.login-screen--mobile .login-card button[type="submit"] {
+  min-height: 50px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Admin on the phone. admin.css switches to its phone layout at 700px and */
+/* loads after this file, so these carry an extra `html` for precedence.   */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 700px) {
+  /* Section switcher: the selected section is a tinted capsule, not a solid
+     blue block; every item keeps the 44pt tap target. */
+  html .admin-nav button {
+    min-height: 44px;
+    border-radius: var(--radius-pill);
+    padding: 0 var(--space-16);
+  }
+
+  html .admin-nav button[aria-current="true"] {
+    background: var(--color-accent-tint);
+    color: var(--accent);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  html .admin-nav {
+    background: var(--material-bar);
+    -webkit-backdrop-filter: var(--blur-bar);
+    backdrop-filter: var(--blur-bar);
+  }
+
+  html .admin-main h1 {
+    font-size: var(--font-size-title-large);
+    letter-spacing: var(--tracking-title-large);
+  }
+
+  html :is(.admin-app, .admin-gallery, .admin-sheet) :is(button, a).admin-btn {
+    border-radius: var(--radius-pill);
+    padding-left: var(--space-20);
+    padding-right: var(--space-20);
+  }
+
+  html .admin-group__rows {
+    border-radius: var(--radius-26);
+  }
+
+  html .admin-sheet {
+    padding-top: var(--space-24);
+    border-radius: var(--radius-28) var(--radius-28) 0 0;
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Reduced transparency: every glass surface above turns solid.           */
+/* ---------------------------------------------------------------------- */
+@media (prefers-reduced-transparency: reduce) {
+  .shell--mobile {
+    --glass-chrome: var(--glass-chrome-solid);
+    --glass-button: var(--glass-chrome-solid);
+    --glass-menu: var(--material-popover);
+  }
+
+  .shell--mobile .tab-bar::before,
+  .shell--mobile .tab-bar__item:last-child,
+  .shell--mobile .mobile-library__view-switch,
+  .shell--mobile .mobile-library__select-bar::before,
+  .shell--mobile .mobile-library__select-button,
+  .shell--mobile .mobile-library__back,
+  .shell--mobile .mobile-screen__back,
+  .shell--mobile .mobile-viewer__topbar .mobile-viewer__icon-button,
+  .shell--mobile .mobile-viewer__bar-button {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
