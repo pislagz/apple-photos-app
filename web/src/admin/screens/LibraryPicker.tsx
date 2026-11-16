@@ -12,6 +12,7 @@ import { describeError } from "../sharing";
 import { Footer, GroupedList, Row } from "../ui/GroupedList";
 import Sheet from "../ui/Sheet";
 import { formatBytes } from "../ui/format";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 export interface PickedFile {
   path: string;
@@ -204,7 +205,7 @@ export default function LibraryPicker({
             }
           />
         ))}
-        <form onSubmit={handleAddFolder} role="listitem" className="admin-row admin-row--form">
+        <form autoComplete="off" onSubmit={handleAddFolder} role="listitem" className="admin-row admin-row--form">
           <span className="admin-row__text">
             <span className="admin-row__label">
               <label htmlFor="library-folder-path">Add a folder</label> <InfoButton helpKey="libFolders" name="folders with libraries" />
@@ -213,6 +214,7 @@ export default function LibraryPicker({
           <span className="admin-row__control">
             <input
               id="library-folder-path"
+              {...NO_AUTOFILL}
               className="admin-input"
               value={folderPath}
               onChange={(event) => setFolderPath(event.target.value)}
