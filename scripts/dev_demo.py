@@ -256,6 +256,15 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             parent_uuid="E0000000-DEAD-4BEE-8000-000000000001",
         ),
         fixtures.FixtureFolder("E0000000-DEAD-4BEE-8000-000000000003", "Family"),
+        # #470: long nested names, to check that sidebar rows truncate.
+        fixtures.FixtureFolder(
+            "E0000000-DEAD-4BEE-8000-000000000004", "wideo-kasety-mp4"
+        ),
+        fixtures.FixtureFolder(
+            "E0000000-DEAD-4BEE-8000-000000000005",
+            "Kasety VHS przegrane w 2004 roku od cioci Basi",
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000004",
+        ),
     ]
     albums = [
         fixtures.FixtureAlbum(
@@ -280,6 +289,18 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "Birthdays",
             list(range(7, count, 23)),
             parent_uuid="E0000000-DEAD-4BEE-8000-000000000003",
+        ),
+        fixtures.FixtureAlbum(
+            "B0000000-DEAD-4BEE-8000-000000000005",
+            "2 - Mała Tusia ok. 3 latka i Docia II kl",
+            list(range(4, count, 31)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000004",
+        ),
+        fixtures.FixtureAlbum(
+            "B0000000-DEAD-4BEE-8000-000000000006",
+            "3 - 06.08.1999r. Mazury, rejs po jeziorach z rodziną",
+            list(range(6, count, 37)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000005",
         ),
     ]
     people = [
