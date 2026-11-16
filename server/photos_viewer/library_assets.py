@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from . import (
     app_db,
     library_albums,
+    library_health,
     library_map,
     library_people,
     library_watch,
@@ -988,7 +989,9 @@ def asset_original(
         and (
             not raw_path
             or _original_not_available(library["path"], raw_path)
-            or not _resolve_within_library(library["path"], raw_path).exists()
+            or not library_health.exists(
+                _resolve_within_library(library["path"], raw_path)
+            )
         )
     ):
         raw_path = asset["path_derivative"]
@@ -1037,7 +1040,7 @@ def asset_original(
             },
         )
 
-    if not file_path.exists():
+    if not library_health.exists(file_path):
         raise HTTPException(status_code=404, detail="not found")
     media_type, _ = mimetypes.guess_type(file_path.name)
     if download:
@@ -1072,7 +1075,7 @@ def asset_live_photo_video(
     if not raw_path:
         raise HTTPException(status_code=404, detail="not found")
     file_path = _resolve_within_library(library["path"], raw_path)
-    if not file_path.exists():
+    if not library_health.exists(file_path):
         raise HTTPException(status_code=404, detail="not found")
     media_type, _ = mimetypes.guess_type(file_path.name)
     return FileResponse(

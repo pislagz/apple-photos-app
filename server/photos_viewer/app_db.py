@@ -539,6 +539,20 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE assets ADD COLUMN is_syndicated INTEGER NOT NULL DEFAULT 0",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 28 (#461): Photos changing a library in place is not a replacement.
+    # `indexed_identity` is the package's and Photos.sqlite's inode at the last
+    # index; a later change with the same identity sets `in_place_since` and
+    # the last good index keeps serving. `problem_*` is the last failure's
+    # code (`library_health`) and `retry_*` its backoff.
+    [
+        "ALTER TABLE libraries ADD COLUMN indexed_identity TEXT",
+        "ALTER TABLE libraries ADD COLUMN in_place_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_code TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_detail TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE libraries ADD COLUMN retry_after TEXT",
+    ],
 ]
 
 

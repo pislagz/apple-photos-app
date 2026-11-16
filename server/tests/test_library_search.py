@@ -320,6 +320,16 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # migration 27
+        for column in (  # migration 28 (#461)
+            "indexed_identity",
+            "in_place_since",
+            "problem_code",
+            "problem_detail",
+            "problem_since",
+            "retry_count",
+            "retry_after",
+        ):
+            db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")  # D36
         db.execute("DROP TABLE assets_fts")
         db.execute(
@@ -506,6 +516,16 @@ def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
     try:
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # 27
+        for column in (  # migration 28 (#461)
+            "indexed_identity",
+            "in_place_since",
+            "problem_code",
+            "problem_detail",
+            "problem_since",
+            "retry_count",
+            "retry_after",
+        ):
+            db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")
         db.execute("DROP TABLE assets_fts")
         db.execute("PRAGMA user_version = 25")
