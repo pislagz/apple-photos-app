@@ -126,15 +126,11 @@ for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
       const download = page.getByRole("button", { name: "Download" });
       await expect(share).toHaveClass(/mobile-library__glass-button/);
       const bg = await share.evaluate((el) => getComputedStyle(el).backgroundColor);
-      const selectBg = await page.evaluate(() => {
-        const probe = document.createElement("button");
-        probe.className = "mobile-library__glass-button";
-        document.body.appendChild(probe);
-        const v = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        return v;
-      });
-      expect(bg).toBe(selectBg);
+      // #79: inside the floating glass panel the buttons sit on the shared
+      // grey lens, both the same, instead of glass on glass.
+      const downloadBg = await download.evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg).toBe(downloadBg);
+      expect(bg).not.toBe("rgba(0, 0, 0, 0)");
       const s = (await share.boundingBox())!;
       const d = (await download.boundingBox())!;
       const c = (await bar.locator(".mobile-library__select-count").boundingBox())!;

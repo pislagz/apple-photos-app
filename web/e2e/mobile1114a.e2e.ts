@@ -59,7 +59,9 @@ test("#389 More scrolls to the very end above the tab bar, rows are iOS-sized", 
       minRow: Math.min(...items.map((i) => i.getBoundingClientRect().height)),
     };
   });
-  expect(Math.abs(m.bodyBottom - m.tabTop)).toBeLessThanOrEqual(1);
+  // #79: the list runs under the floating glass tab bar (iOS 27) and its
+  // bottom padding lets the last rows scroll clear of it.
+  expect(m.bodyBottom).toBeGreaterThan(m.tabTop);
   expect(m.lastBottom).toBeLessThanOrEqual(m.tabTop);
   expect(m.switcherBottom).toBeLessThanOrEqual(m.tabTop);
   expect(m.minRow).toBeGreaterThanOrEqual(44);

@@ -35,6 +35,8 @@ for (const scheme of ["light", "dark"] as const) {
       const r = bar.getBoundingClientRect();
       const labels = [...bar.querySelectorAll("*")]
         .filter((e) => e.children.length === 0 && (e.textContent ?? "").trim() !== "")
+        // #79: the Search circle's label is VoiceOver-only (1px clip).
+        .filter((e) => e.getBoundingClientRect().width > 1)
         .map((e) => e.getBoundingClientRect());
       return {
         bottom: r.bottom,
