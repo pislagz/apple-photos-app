@@ -106,19 +106,17 @@ export default function DevicesScreen() {
                   : `Signed in ${formatWhen(session.created_at)} · ${staysUntil(session)}`
               }
               value={<span title={fullDate(session.last_seen_at)}>{lastSeen(session.last_seen_at)}</span>}
+              info={current ? undefined : <InfoButton helpKey="devicesSignOut" name="signing a device out" />}
               control={
                 current ? undefined : (
-                  <>
-                    <InfoButton helpKey="devicesSignOut" name="signing a device out" />
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      aria-label={`Sign out ${name} for ${session.username}`}
-                      onClick={() => setPending(session)}
-                    >
-                      Sign Out
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--danger"
+                    aria-label={`Sign out ${name} for ${session.username}`}
+                    onClick={() => setPending(session)}
+                  >
+                    Sign Out
+                  </button>
                 )
               }
             />
