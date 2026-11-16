@@ -22,6 +22,13 @@ deploy/
 
 Filenames must not contain `token` or `credential`. The runner cannot read those paths. See `CLAUDE.md`.
 
+## Data directory
+
+`app.db` runs in SQLite WAL mode, which needs shared memory. Keep
+`PHOTOS_VIEWER_DATA_DIR` on a local disk, not a network share (SMB/NFS); on a
+NAS, bind-mount a local volume for it. The libraries themselves can stay on
+the share (they are opened read-only).
+
 ## Read-only open
 
 `libraries.py` is the only module that may receive a `.photoslibrary` path. It copies `database/Photos.sqlite` and any `-wal` and `-shm` to a temp directory, then constructs `PhotosDB(dbfile=copy, library_path=package)`. It does not repair the database. Phase 0's test fails if the package changes.
