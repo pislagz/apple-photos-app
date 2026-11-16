@@ -126,6 +126,53 @@ describe("sidebar label (#470)", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  it("nested folders with same-named albums show exactly one tooltip, for the hovered row (#474)", () => {
+    localStorage.clear();
+    const twin = (id: string) => ({ id, kind: "album" as const, title: LONG, count: 1, cover_id: null, children: [] });
+    const nested: AlbumsResponse = {
+      tree: [
+        {
+          id: "F1",
+          kind: "folder",
+          title: FOLDER,
+          count: null,
+          cover_id: null,
+          children: [
+            twin("A1"),
+            { id: "F2", kind: "folder", title: FOLDER, count: null, cover_id: null, children: [twin("A2")] },
+          ],
+        },
+      ],
+      smart: [],
+    };
+    render(
+      <AlbumsSidebarGroup
+        state={{ albums: nested, error: false, retry: () => {} }}
+        libraryId={1}
+        currentId={null}
+        onOpen={() => {}}
+      />,
+    );
+    const [first, second] = screen.getAllByText(LONG);
+    hoverAndWait(first);
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+
+    // A missed mouseleave: the pointer is on the second twin when its
+    // mouseenter arrives. The first tooltip must not stay behind.
+    hoverAndWait(second);
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+
+    // The pointer moving onto anything but the title closes it.
+    fireEvent.mouseOver(screen.getAllByText(FOLDER)[0]);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // A folder and a same-named folder inside it, hovered in turn.
+    const [outer, inner] = screen.getAllByText(FOLDER);
+    hoverAndWait(outer);
+    hoverAndWait(inner);
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+  });
+
   it("a cover that fails to load falls back to the album icon", () => {
     renderGroup();
     const row = screen.getByRole("button", { name: LONG });

@@ -265,6 +265,12 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "Kasety VHS przegrane w 2004 roku od cioci Basi",
             parent_uuid="E0000000-DEAD-4BEE-8000-000000000004",
         ),
+        # #474: a second folder holding an album with the same long name.
+        fixtures.FixtureFolder(
+            "E0000000-DEAD-4BEE-8000-000000000006",
+            "Kasety VHS przegrane w 2005 roku od cioci Basi",
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000004",
+        ),
     ]
     albums = [
         fixtures.FixtureAlbum(
@@ -301,6 +307,12 @@ def build_demo_library(dest: pathlib.Path) -> pathlib.Path:
             "3 - 06.08.1999r. Mazury, rejs po jeziorach z rodziną",
             list(range(6, count, 37)),
             parent_uuid="E0000000-DEAD-4BEE-8000-000000000005",
+        ),
+        fixtures.FixtureAlbum(
+            "B0000000-DEAD-4BEE-8000-000000000007",
+            "3 - 06.08.1999r. Mazury, rejs po jeziorach z rodziną",
+            list(range(8, count, 41)),
+            parent_uuid="E0000000-DEAD-4BEE-8000-000000000006",
         ),
     ]
     people = [
