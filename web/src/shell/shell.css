@@ -3383,10 +3383,8 @@ html.has-app-height .shell--mobile {
   color: var(--accent);
 }
 
-/* Info sits apart from the other actions, as in Photos. */
-.desktop-viewer__topbar-right .toolbar-button:last-child {
-  margin-left: var(--space-8);
-}
+/* #483: the right-hand actions are one evenly spaced run (the flex gap
+   only), Info included, as in Photos for Mac. */
 
 .desktop-viewer__stage {
   position: relative;
