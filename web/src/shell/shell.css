@@ -5966,3 +5966,19 @@ textarea,
   display: block;
   pointer-events: none;
 }
+
+/* Viewer ••• menu: reuses the iPhone glass menu; the wrapper anchors the card
+   under the button and lifts the button above the closing backdrop. */
+.viewer-more {
+  position: relative;
+}
+
+.viewer-more__button {
+  position: relative;
+  z-index: 1;
+}
+
+.viewer-more .filter-menu__popup {
+  right: 0;
+  z-index: 3;
+}

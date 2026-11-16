@@ -458,6 +458,21 @@ describe("MobileViewer", () => {
     expect(screen.queryByLabelText(/edit/i)).toBeNull();
   });
 
+  it("tapping the top-right More button opens its menu, and Info from it opens the sheet (#485)", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const menu = screen.getByRole("menu", { name: "More" });
+    expect(menu).toHaveTextContent("Share");
+    expect(menu).toHaveTextContent("Download");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Info" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(await screen.findByTestId("viewer-info-sheet")).toBeInTheDocument();
+  });
+
   it("opens the info sheet with date, camera, people, albums, and location from the detail route", async () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
