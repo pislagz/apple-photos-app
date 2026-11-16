@@ -4,6 +4,7 @@ import { describeError } from "../sharing";
 import { GroupedList, Row } from "../ui/GroupedList";
 import Sheet from "../ui/Sheet";
 import LibraryPicker, { type PickedFile } from "./LibraryPicker";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 // Warnings that need an explicit "Replace Anyway". The server does not count
 // originals_missing as a blocker, so neither do we.
@@ -84,6 +85,7 @@ export default function ReplaceDialog({
           onPick={(file) => setPicked(file)}
         >
           <form
+            autoComplete="off"
             className="admin-form"
             onSubmit={(event) => {
               event.preventDefault();
@@ -92,7 +94,7 @@ export default function ReplaceDialog({
           >
             <label className="admin-field">
               New path
-              <input className="admin-input" value={typedPath} onChange={(event) => setTypedPath(event.target.value)} placeholder="/libraries/Alice 2026.photoslibrary" />
+              <input {...NO_AUTOFILL} className="admin-input" value={typedPath} onChange={(event) => setTypedPath(event.target.value)} placeholder="/libraries/Alice 2026.photoslibrary" />
             </label>
             <button type="submit" className="admin-btn" disabled={typedPath.trim() === ""}>
               Preview

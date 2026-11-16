@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError } from "../api";
 import { isCancelled, listPasskeys, type Passkey, passkeysSupported, registerPasskey, removePasskey } from "../passkeys";
+import { NO_AUTOFILL } from "../noAutofill";
 
 function formatDate(value: string | null): string {
   if (!value) return "never";
@@ -94,6 +95,7 @@ export default function PasskeysDialog({ onClose }: { onClose: () => void }) {
         {supported ? (
           <form onSubmit={add} className="passkeys__add">
             <input
+              {...NO_AUTOFILL}
               aria-label="Passkey name"
               placeholder="Name, e.g. My iPhone"
               maxLength={64}
