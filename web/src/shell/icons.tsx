@@ -65,9 +65,10 @@ const INFO_DOT = "M10 7.4a.95.95 0 1 0 0-1.9.95.95 0 0 0 0 1.9Z";
 
 const LIVE_DASHES = ringDashes(10, 10, 8.5, 8, 1);
 // Chain link: two open hooks (r 2.9 caps) on the 45 degree diagonal, tips
-// facing each other across a small gap where the links interlock.
-const LINK_A = "M11.2 12.9L8.59 15.52A2.9 2.9 0 0 1 4.48 11.41L7.1 8.8";
-const LINK_B = "M12.9 11.2L15.52 8.59A2.9 2.9 0 0 0 11.41 4.48L8.8 7.1";
+// facing each other, joined by the short middle bar that makes it read as a chain.
+const LINK_A = "M11.48 12.62L9.72 14.38A2.9 2.9 0 0 1 5.62 10.28L7.38 8.52";
+const LINK_B = "M12.62 11.48L14.38 9.72A2.9 2.9 0 0 0 10.28 5.62L8.52 7.38";
+const LINK_BAR = "M8.3 11.7L11.7 8.3";
 const VIDEO_BODY = rr(2.5, 5.5, 10.5, 9, 2);
 const VIDEO_LENS = "M13 8.7l3.3-1.9a.8.8 0 0 1 1.2.7v5a.8.8 0 0 1-1.2.7L13 11.3";
 const DOC_BODY =
@@ -424,6 +425,7 @@ export const ICONS = {
     parts: [
       [LINK_A, "s"],
       [LINK_B, "s"],
+      [LINK_BAR, "s"],
     ],
   },
   original: {
