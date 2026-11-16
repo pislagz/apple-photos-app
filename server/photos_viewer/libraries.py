@@ -31,13 +31,31 @@ Only `PhotosDB` and `PhotoInfo` are used to read a library.
 from __future__ import annotations
 
 import dataclasses
+import errno
+import logging
+import os
 import pathlib
 import shutil
 import sqlite3
 import tempfile
+import time
 from typing import Literal, Self
 
 from osxphotos import PhotosDB
+
+from . import library_health
+from .library_health import LibraryBusyError
+
+logger = logging.getLogger(__name__)
+
+TEMPDIR_PREFIX = "photos_viewer_"
+# #461: Photos (photolibraryd, photoanalysisd) checkpoints its WAL into
+# Photos.sqlite while the library is open. A copy taken across a checkpoint
+# can be torn, so the main file's stat is compared before and after each copy.
+COPY_ATTEMPTS = 3
+COPY_RETRY_SECONDS = 2.0
+# Free space wanted in the temp dir on top of the files' own size.
+TEMP_SPACE_MARGIN_BYTES = 64 * 1024 * 1024
 
 # Mirrors osxphotos._constants._DB_TABLE_NAMES keys for 0.77.2: the Photos
 # database generations this installed osxphotos release has table mappings
@@ -69,6 +87,102 @@ def check_supported_version(photos_version: float) -> None:
         raise UnsupportedPhotosVersionError(unsupported_version_message(photos_version))
 
 
+class TempSpaceError(OSError):
+    """Not enough free space in the temp dir for a copy of the sqlite files."""
+
+
+def _stat_key(path: pathlib.Path) -> tuple[int, int, int]:
+    st = os.stat(path)
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+def _size_or_zero(path: pathlib.Path) -> int:
+    try:
+        return os.stat(path).st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _copy_size(sqlite_path: pathlib.Path) -> int:
+    names = [sqlite_path.name, sqlite_path.name + "-wal", sqlite_path.name + "-shm"]
+    total = sum(_size_or_zero(sqlite_path.with_name(n)) for n in names)
+    search = sqlite_path.parent / "search"
+    return total + sum(_size_or_zero(search / n) for n in ("psi.sqlite", "leo.sqlite"))
+
+
+def _free_bytes(directory: str) -> int:
+    return shutil.disk_usage(directory).free
+
+
+def _check_temp_space(sqlite_path: pathlib.Path) -> None:
+    temp_root = tempfile.gettempdir()
+    needed = _copy_size(sqlite_path) + TEMP_SPACE_MARGIN_BYTES
+    free = _free_bytes(temp_root)
+    if free < needed:
+        raise TempSpaceError(
+            errno.ENOSPC,
+            f"{temp_root} has {free // 2**20} MB free, the copy needs {needed // 2**20} MB",
+        )
+
+
+def _is_inside(filename: object, root: pathlib.Path) -> bool:
+    if not isinstance(filename, str | os.PathLike):
+        return False
+    try:
+        return pathlib.Path(filename).is_relative_to(root)
+    except (TypeError, ValueError):
+        return False
+
+
+def _copy_once(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> bool:
+    """One copy of the sqlite files; True if Photos.sqlite itself was left
+    untouched while it was copied. WAL appends alone are fine: SQLite ignores
+    a half-written trailing frame."""
+    before = _stat_key(sqlite_path)
+    shutil.copy2(sqlite_path, copy_path)
+    for suffix in ("-wal", "-shm"):
+        side = sqlite_path.with_name(sqlite_path.name + suffix)
+        target = copy_path.with_name(copy_path.name + suffix)
+        try:
+            shutil.copy2(side, target)
+        except FileNotFoundError:
+            target.unlink(missing_ok=True)
+    _copy_search_index(sqlite_path, copy_path)
+    return _stat_key(sqlite_path) == before
+
+
+def _copy_consistent(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> None:
+    for attempt in range(COPY_ATTEMPTS):
+        if _copy_once(sqlite_path, copy_path):
+            return
+        if attempt + 1 < COPY_ATTEMPTS:
+            time.sleep(COPY_RETRY_SECONDS * (attempt + 1))
+    raise LibraryBusyError(
+        f"Photos.sqlite changed while it was being copied ({COPY_ATTEMPTS} tries): "
+        "Photos is writing to this library"
+    )
+
+
+def cleanup_stale_tempdirs(max_age_seconds: float = 24 * 3600) -> int:
+    """Delete temp copies left behind by a process that was killed mid-index.
+    Each one can be gigabytes; enough of them fill the temp disk."""
+    root = pathlib.Path(tempfile.gettempdir())
+    removed = 0
+    cutoff = time.time() - max_age_seconds
+    try:
+        entries = list(root.glob(TEMPDIR_PREFIX + "*"))
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+                removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> None:
     """Copy `search/psi.sqlite` and `search/leo.sqlite`, if present, next to
     the copied database.
@@ -82,7 +196,7 @@ def _copy_search_index(sqlite_path: pathlib.Path, copy_path: pathlib.Path) -> No
     search_dir = sqlite_path.parent / "search"
     for name in ("psi.sqlite", "leo.sqlite"):
         source = search_dir / name
-        if source.exists():
+        if library_health.exists(source):
             copy_search_dir = copy_path.parent / "search"
             copy_search_dir.mkdir(exist_ok=True)
             shutil.copy2(source, copy_search_dir / name)
@@ -129,7 +243,7 @@ def library_is_locked(package_path: str | pathlib.Path) -> bool:
     write.
     """
     sqlite_path = pathlib.Path(package_path) / "database" / "Photos.sqlite"
-    if not sqlite_path.exists():
+    if not library_health.exists(sqlite_path):
         return False
     uri = f"{sqlite_path.resolve().as_uri()}?mode=ro&immutable=1"
     try:
@@ -164,18 +278,33 @@ def open_library_readonly(package_path: str | pathlib.Path) -> OpenLibrary:
 
     tempdir: str | None = None
     try:
-        tempdir = tempfile.mkdtemp(prefix="photos_viewer_")
+        _check_temp_space(sqlite_path)
+        tempdir = tempfile.mkdtemp(prefix=TEMPDIR_PREFIX)
         copy_path = pathlib.Path(tempdir) / "Photos.sqlite"
-        shutil.copy2(sqlite_path, copy_path)
-        for suffix in ("-wal", "-shm"):
-            side = sqlite_path.with_name(sqlite_path.name + suffix)
-            if side.exists():
-                shutil.copy2(side, copy_path.with_name(copy_path.name + suffix))
-        _copy_search_index(sqlite_path, copy_path)
-    except OSError:
+        _copy_consistent(sqlite_path, copy_path)
+    except BaseException as exc:
         if tempdir is not None:
             shutil.rmtree(tempdir, ignore_errors=True)
             tempdir = None
+        if not isinstance(exc, OSError):
+            raise
+        # A failure reading the package itself (no permission, drive gone or
+        # not answering) would fail the in-place open too: report it as is.
+        # Only a temp-side failure (full or unwritable temp dir) falls back.
+        if exc.errno not in (errno.ENOSPC, errno.EDQUOT) and _is_inside(
+            exc.filename, package_path
+        ):
+            raise
+        library_health.log_problem(
+            library_id=None,
+            phase="copy",
+            path=package_path,
+            code=library_health.TEMP_FULL
+            if exc.errno in (errno.ENOSPC, errno.EDQUOT)
+            else "copy_failed",
+            err=exc.errno,
+            detail=f"{exc}; opening Photos.sqlite in place, read-only",
+        )
         db = PhotosDB(dbfile=str(sqlite_path), library_path=str(package_path))
         open_mode = "ro"
         opened_sqlite = sqlite_path

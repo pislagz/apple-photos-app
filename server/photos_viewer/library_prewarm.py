@@ -27,7 +27,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from . import app_db, media, session_auth
+from . import app_db, library_health, media, session_auth
 from .library_assets import _media_settings, _resolve_within_library
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,7 @@ def run_library(
                 _set_state(db, library_id, "done")
                 return "done"
             ok = _warm_asset(db, cache_dir, library, asset)
-            if not ok and not pathlib.Path(library["path"]).exists():
+            if not ok and not library_health.probe_path(library["path"]).ok:
                 # The drive went away mid-job: keep the cursor and the job
                 # running so the worker retries once it is mounted again,
                 # instead of counting every remaining asset as failed.
@@ -269,7 +269,7 @@ class PrewarmWorker(threading.Thread):
         # Lowest id first, but a library whose drive is not mounted is left
         # running (it resumes when mounted) without blocking the others.
         for candidate in candidates:
-            if pathlib.Path(candidate["path"]).exists():
+            if library_health.probe_path(candidate["path"]).ok:
                 run_library(
                     data_dir,
                     candidate["library_id"],
@@ -336,7 +336,7 @@ def start_prewarm(
     """Start, or resume a paused job (the cursor is kept). A finished job
     starts over; everything already cached is skipped, not regenerated."""
     library = _library_or_404(db, library_id)
-    if not pathlib.Path(library["path"]).exists():
+    if not library_health.exists(library["path"]):
         raise HTTPException(
             status_code=400,
             detail=f"{library['path']} is not reachable -- is the drive mounted?",
