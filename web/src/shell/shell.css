@@ -1765,6 +1765,7 @@ html.has-app-height .shell--mobile {
 /* macOS tooltip: small, system font, light or dark with the appearance. */
 .sidebar-tooltip {
   position: fixed;
+  pointer-events: none;
   z-index: 1000;
   max-width: min(420px, calc(100vw - 16px));
   box-sizing: border-box;
