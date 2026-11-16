@@ -228,6 +228,14 @@
   background: var(--glass-chrome-selected);
 }
 
+/* The option and progress rows run the full width of the glass panel (16pt
+   from the screen edges, like an inset grouped row) instead of the bar's
+   24pt content inset. */
+.shell--mobile .mobile-library__select-bar .zip-status--row {
+  margin: 0 calc(-1 * var(--space-8));
+  padding: 0;
+}
+
 .shell--mobile .mobile-library__select-caption {
   font-size: var(--font-size-subhead);
 }
