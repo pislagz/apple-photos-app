@@ -9,7 +9,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
 import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
@@ -621,11 +621,19 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <LibraryEmptyState
-            title={albumMessages(album).empty}
-            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
-            adminLink={isWholeLibraryEmpty(album) && isAdmin}
-          />
+          filterState.active ? (
+            <LibraryEmptyState
+              title={filterEmptyMessages(filterState.filter).title}
+              text={filterEmptyMessages(filterState.filter).text}
+              onClearFilter={filterState.clear}
+            />
+          ) : (
+            <LibraryEmptyState
+              title={albumMessages(album).empty}
+              text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+              adminLink={isWholeLibraryEmpty(album) && isAdmin}
+            />
+          )
         ) : isTileView ? (
           <PeriodCardGrid
             key={view}

@@ -9,7 +9,7 @@ import type { AssetListItem } from "../../api";
 import FilterMenu from "./FilterMenu";
 import { useLibraryFilter } from "./useLibraryFilter";
 import { assetAlt } from "../assetAlt";
-import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
@@ -1065,11 +1065,19 @@ export default function DesktopLibrary({
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <LibraryEmptyState
-            title={albumMessages(album).empty}
-            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
-            adminLink={isWholeLibraryEmpty(album) && isAdmin}
-          />
+          filterState.active ? (
+            <LibraryEmptyState
+              title={filterEmptyMessages(filterState.filter).title}
+              text={filterEmptyMessages(filterState.filter).text}
+              onClearFilter={filterState.clear}
+            />
+          ) : (
+            <LibraryEmptyState
+              title={albumMessages(album).empty}
+              text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+              adminLink={isWholeLibraryEmpty(album) && isAdmin}
+            />
+          )
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
