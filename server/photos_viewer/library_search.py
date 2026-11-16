@@ -52,6 +52,16 @@ def _word_prefix(text: str | None, term: str) -> bool:
     return any(word.startswith(term) for word in _words(text))
 
 
+def _filename_prefix(text: str | None, term: str) -> bool:
+    # D64: a file name also matches on the pieces between `_` (`0012` finds `IMG_0012`).
+    return any(
+        part.startswith(term)
+        for word in _words(text)
+        for part in (word, *word.split("_"))
+        if part
+    )
+
+
 def _date_match(day: str | None, term: str) -> bool:
     if not day or len(day) < 10:
         return False
@@ -67,6 +77,7 @@ def _date_match(day: str | None, term: str) -> bool:
 
 def _register(db: sqlite3.Connection) -> None:
     db.create_function("pv_wp", 2, _word_prefix, deterministic=True)
+    db.create_function("pv_fn", 2, _filename_prefix, deterministic=True)
     db.create_function("pv_date", 2, _date_match, deterministic=True)
 
 
@@ -82,7 +93,7 @@ def scan_clause(terms: list[str]) -> tuple[str, list[object]]:
             "pv_date(COALESCE(date_created_local_day, substr(date_created, 1, 10)), ?)"
             " OR pv_wp(place, ?) OR pv_wp(place_address, ?)"
             " OR pv_wp(camera_make, ?) OR pv_wp(camera_model, ?)"
-            " OR pv_wp(filename, ?) OR pv_wp(original_filename, ?)"
+            " OR pv_fn(filename, ?) OR pv_fn(original_filename, ?)"
             " OR pv_wp(title, ?) OR pv_wp(description, ?)"
             " OR id IN (SELECT ap.asset_id FROM asset_people ap JOIN people p ON p.id = ap.person_id"
             "           WHERE pv_wp(p.name, ?) OR pv_wp(p.display_name, ?))"

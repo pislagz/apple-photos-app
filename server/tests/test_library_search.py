@@ -474,7 +474,7 @@ def test_fts_and_scan_agree_on_a_set_of_queries(tmp_path):
         queries = [
             "dog", "DO", "field", "dog beach", "dog snow", "2023", "2023-03",
             "2023-03-09", "mar", "ma", "marc", "march 2023", "ann", "lee ann",
-            "road", "trip", "img", "IMG_0002", "apple", "iphone", "zzz", "%", "_",
+            "road", "trip", "img", "IMG_0002", "0002", "apple", "iphone", "zzz", "%", "_",
             "'; DROP TABLE assets; --", "é", "d%",
         ]  # fmt: skip
         for q in queries:

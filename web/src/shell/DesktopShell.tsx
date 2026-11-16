@@ -82,7 +82,8 @@ function SidebarSection({ title, children }: { title: string; children: ReactNod
 
 // Only media types that have items are listed. While /albums loads (or when it
 // failed; the Albums group shows the failure with Retry) the group is absent
-// rather than flashing all seven rows.
+// rather than flashing all seven rows. The shell also holds back the groups
+// below it until then, so nothing shifts.
 function MediaTypesGroup({
   state,
   currentId,
@@ -448,7 +449,10 @@ export default function DesktopShell({
         </nav>
         {activeLibraryId !== undefined && !activeLibrary?.updating ? (
           <SidebarAlbumData key={activeLibraryId} libraryId={activeLibraryId}>
-            {(state) => (
+            {(state) =>
+              // Hold the groups back until /albums answers (or fails), so the
+              // Media types group does not push them down on first load.
+              !state.albums && !state.error ? null : (
               <>
                 <MediaTypesGroup state={state} currentId={currentAlbumId} onOpen={openAlbum} />
                 {utilities}
@@ -461,7 +465,8 @@ export default function DesktopShell({
                   />
                 </SidebarSection>
               </>
-            )}
+              )
+            }
           </SidebarAlbumData>
         ) : (
           <>
