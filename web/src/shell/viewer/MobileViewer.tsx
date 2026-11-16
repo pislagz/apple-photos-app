@@ -492,7 +492,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         onTouchEnd={onTouchEnd}
       >
         <div className="mobile-viewer__strip" style={stripStyle}>
-        <div className="mobile-viewer__page mobile-viewer__page--current">
+        {/* #488: keyed per item so each photo gets a fresh <img>. A reused one keeps painting the previous photo until the new file decodes, which flashed it over the swiped-to page. */}
+        <div className="mobile-viewer__page mobile-viewer__page--current" key={item.id}>
         {media.isVideo ? (
           media.videoPlaying ? (
             <video
