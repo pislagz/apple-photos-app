@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
-// #364 no page scroll in select mode, #366 Cmd/Ctrl+A selects tiles and never
-// the browser text, #373 centred "Keep me signed in".
+// #364 no page scroll in select mode, #366 Ctrl+A keeps working in fields,
+// #373 centred "Keep me signed in".
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 const SHOTS = "e2e/screenshots/1114a";
 mkdirSync(SHOTS, { recursive: true });
@@ -34,26 +34,6 @@ test("select mode adds no page scroll", async ({ page }, info) => {
   expect(m.sh).toBe(m.ch);
   expect(m.bh).toBeLessThanOrEqual(m.ch);
   await page.screenshot({ path: `${SHOTS}/${info.project.name}-select-mode.png` });
-});
-
-test("Cmd/Ctrl+A selects every tile and no browser text", async ({ page }, info) => {
-  test.skip(info.project.name !== "desktop", "keyboard shortcut: desktop");
-  await signIn(page);
-  await page.locator("[data-asset-id]").first().waitFor();
-  await page.mouse.click(700, 450);
-  await page.keyboard.press("Control+a");
-  await expect.poll(() => page.locator("[data-asset-id][data-selected='true']").count()).toBeGreaterThan(0);
-  expect(await page.evaluate(() => window.getSelection()!.toString())).toBe("");
-  // Every rendered tile is selected (the grid is virtualised, so compare in-page).
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const tiles = [...document.querySelectorAll("[data-asset-id]")];
-        return tiles.length > 0 && tiles.every((t) => t.getAttribute("data-selected") === "true");
-      }),
-    )
-    .toBe(true);
-  await page.screenshot({ path: `${SHOTS}/desktop-select-all.png` });
 });
 
 test("Ctrl+A in the search field still selects its text", async ({ page }, info) => {

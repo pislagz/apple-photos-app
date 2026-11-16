@@ -11,7 +11,6 @@ export interface UseLibraryAssetsResult {
   error: boolean;
   retry: () => void;
   loadMore: () => void;
-  loadAll: () => Promise<AssetListItem[]>;
 }
 
 // Pages through `/api/libraries/{id}/assets` (never `/hidden`, so a hidden
@@ -98,34 +97,5 @@ export function useLibraryAssets(
     fetchPage(libraryId, cursorRef.current, cursorRef.current === null);
   }, [libraryId, fetchPage]);
 
-  // ⌘A (desktop Library) has to select the whole non-hidden library, not
-  // just the pages scrolled into view so far: page through `/assets`
-  // sequentially -- bypassing the scroll-triggered `loadMore` entirely --
-  // until the server reports no further cursor.
-  const loadAll = useCallback(async (): Promise<AssetListItem[]> => {
-    let all = rawRef.current;
-    let cursor = cursorRef.current;
-    let finished = done;
-    while (!finished) {
-      const response = await fetchPage(libraryId, cursor, false);
-      if (response === SUPERSEDED) {
-        // A scroll-triggered loadMore started after this page and discarded it
-        // (#465). Its page lands in rawRef/cursorRef, so resume from there
-        // instead of mistaking the discard for the end of the library.
-        if (cursorRef.current !== cursor) {
-          all = rawRef.current;
-          cursor = cursorRef.current;
-          finished = !cursor;
-        }
-        continue;
-      }
-      if (!response) break;
-      all = [...all, ...response.items];
-      cursor = response.next_cursor;
-      finished = !cursor;
-    }
-    return oldestFirst ? [...all].reverse() : all;
-  }, [libraryId, oldestFirst, done, fetchPage]);
-
-  return { items, total, loading, done, error, retry, loadMore, loadAll };
+  return { items, total, loading, done, error, retry, loadMore };
 }

@@ -203,7 +203,7 @@ Apple's own iOS 17 tab bar is Library, For You, Albums, Search. This app's bar i
 - **Info panel** (toolbar button): one selected photo shows its details; with 2+ selected (D21) a summary: item count (photos/videos split when both), date range ("3–9 Mar 2024"), total size, and the place if they all share one; with nothing selected, "No Selection".
 - **Keyboard:**
   - Arrow keys to move, Space or Enter to open, Esc to close. Up/Down remember the column they started in, so passing through a full-width row (the Days lead photo) or a short last row returns to the same column on the next normal row. With nothing selected the first Down selects the first photo.
-  - ⌘A to select all, ⌘F to search.
+  - ⌘F to search (no select-all shortcut, #477).
   - Left and right arrows in the viewer.
   - `+` and `-` to zoom.
 - **Viewer:** opens in the main area with a filmstrip at the bottom, zoom and pan, and a right-side Info panel with date, camera and EXIF, file name and size, map, people, and albums, plus the same smaller-copy note when the original is not on disk. Videos and Live Photos play inline.
