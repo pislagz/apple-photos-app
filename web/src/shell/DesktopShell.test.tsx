@@ -142,8 +142,10 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
     );
   }
 
-  it("has no Days item: Library, Recently Added, Favorites lead, under sentence-case titles", () => {
+  it("has no Days item: Library, Recently Added, Favorites lead, under sentence-case titles", async () => {
     setup();
+    // Utilities waits for /albums so the Media types group cannot push it down.
+    await screen.findByText("Utilities");
     expect(screen.queryByRole("button", { name: "Days" })).toBeNull();
     const labels = Array.from(document.querySelectorAll(".sidebar nav .sidebar__item")).map((el) => el.textContent);
     expect(labels).toEqual(["Library", "Recently Added", "Favorites", "People & Pets", "Map", "Albums"]);

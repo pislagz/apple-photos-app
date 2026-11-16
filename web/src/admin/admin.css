@@ -538,8 +538,8 @@ body:has(.admin-app, .admin-auth) {
 /* D41 */
 .admin-hint {
   margin: var(--space-2) 0 var(--space-10);
-  font-size: var(--font-size-caption);
-  opacity: 0.75;
+  font-size: var(--font-size-caption-lg);
+  color: var(--color-label-secondary);
 }
 .admin-privacy-options {
   margin: var(--space-12) 0;

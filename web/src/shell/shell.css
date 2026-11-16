@@ -3205,6 +3205,8 @@ html.has-app-height .shell--mobile {
   /* Opaque (#112): at 95% the icon row and filmstrip thumbs showed through. */
   z-index: 2;
   background: var(--surface-dark);
+  /* The viewer's own text colour is dark in light mode; the sheet is always dark. */
+  color: var(--color-white);
   border-radius: var(--radius-14) var(--radius-14) 0 0;
   padding: var(--space-16);
   animation: sheet-in var(--dur-slide) var(--ease-slide);
