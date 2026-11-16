@@ -56,6 +56,11 @@ class LibraryAddRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+class LibraryFromScanRequest(BaseModel):
+    candidate_path: str
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
 class LibraryRenameRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
 
@@ -741,6 +746,45 @@ def add_library(
     )
     _schedule_index_job(background_tasks, data_dir, library_id, path, force=True)
     return _to_response(_get_library_or_404(db, library_id))
+
+
+@router.post(
+    "/api/admin/libraries/from-scan",
+    response_model=LibraryResponse,
+    status_code=201,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def add_library_from_scan(
+    payload: LibraryFromScanRequest,
+    background_tasks: BackgroundTasks,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
+) -> LibraryResponse:
+    """Register a package the folder scan lists. Unlike `POST /libraries`, a
+    path that is not in the current scan results is refused, so the picker
+    cannot register an arbitrary location."""
+    listed = next(
+        (
+            p
+            for p in library_folders.found_packages(db)
+            if str(p) == payload.candidate_path
+        ),
+        None,
+    )
+    if listed is None:
+        raise HTTPException(
+            status_code=400,
+            detail="That library is not in the folders being scanned. "
+            "Refresh the list and pick it again.",
+        )
+    return add_library(
+        LibraryAddRequest(path=str(listed), display_name=payload.display_name),
+        background_tasks,
+        admin,
+        db,
+        data_dir,
+    )
 
 
 @router.get("/api/admin/libraries", response_model=list[LibraryResponse])

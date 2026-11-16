@@ -82,6 +82,14 @@ Passkeys (P3.1): the WebAuthn relying-party ID defaults to the request's host na
 
 Configuring neither is the documented "it still works, just coarser" case: logins succeed, but the per-client bucket is shared across every device behind the gateway. Configuring `--forwarded-allow-ips` correctly is the complete fix (also corrects the CSRF Origin check's and the audit log's idea of the caller's address) and is the default this doc recommends; `PHOTOS_VIEWER_TRUSTED_PROXIES` is for when that isn't possible.
 
+## Library folders
+
+The admin panel (Add Library) lists every `.photoslibrary` directly inside the configured library folders; it never browses elsewhere. The folder list is stored in `app.db` and edited in the panel. `PHOTOS_VIEWER_LIBRARIES_DIR` (folders separated by `:`) only seeds it the first time the server starts.
+
+- **Mac:** set it in `.env` or the launchd plist `EnvironmentVariables`, e.g. `PHOTOS_VIEWER_LIBRARIES_DIR=/Volumes/Photos:/Volumes/Archive`, or just add the folder in the panel. The server's user needs read access to the drive (System Settings > Privacy > Full Disk Access for external or protected volumes).
+- **Docker:** the compose file mounts `${PHOTOS_LIBRARY_DIR:-./libraries}` at `/libraries:ro` and sets `PHOTOS_VIEWER_LIBRARIES_DIR` to `/libraries`. Mount further folders read-only and add them in the panel.
+- Picking a library sends the scanned path to `POST /api/admin/libraries/from-scan`, which answers 400 for a path that is not in the current scan. `POST /api/admin/libraries` (Add by Path under Advanced) still takes a typed path.
+
 ## Locked-out admin: the `admin` CLI
 
 `python -m photos_viewer.admin unlock <username>` clears that username's login lockout. It opens `app.db` under `PHOTOS_VIEWER_DATA_DIR` directly, with no server running, so it works even when the admin is the one locked out and the web UI's own unlock button (`POST /api/admin/users/{username}/unlock`) is unreachable:

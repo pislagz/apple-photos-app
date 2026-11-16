@@ -48,6 +48,11 @@ services:
     volumes:
       # One line per library, always `:ro`. Register the in-container path
       # (e.g. /libraries/family.photoslibrary) in the admin panel.
+      # /libraries is the library folder the admin panel scans when
+      # PHOTOS_VIEWER_LIBRARIES_DIR is unset; pick libraries from that list.
+      # To scan more folders, mount each one read-only (e.g. /archive) and add
+      # it under Add Library > Folders with libraries, or set
+      # PHOTOS_VIEWER_LIBRARIES_DIR=/libraries:/archive before first start.
       - ${PHOTOS_LIBRARY_DIR:-./libraries}:/libraries:ro
       # Optional PMTiles archive for Map tiles = Local file. Put map.pmtiles
       # in this directory; register /tiles/map.pmtiles in the admin settings.
@@ -56,6 +61,9 @@ services:
       - viewer-data:/data
     environment:
       PHOTOS_VIEWER_DATA_DIR: /data
+      # Library folders to scan (":"-separated, seeds the admin list on first
+      # start only). Defaults to /libraries, the mount above.
+      PHOTOS_VIEWER_LIBRARIES_DIR: ${PHOTOS_VIEWER_LIBRARIES_DIR:-/libraries}
       OSXPHOTOS_NO_VERSION_CHECK: "1"
       # Home network needs nothing here: a same-host Origin is accepted and the
       # session cookie is Secure only when the request arrived over https. Set

@@ -223,3 +223,112 @@ def test_missing_typed_path_with_no_folders_says_none_found(tmp_path, monkeypatc
         assert "No libraries found. Add a folder" in response.json()["detail"]
     finally:
         conn.close()
+
+
+def _scan_client(tmp_path, monkeypatch):
+    monkeypatch.delenv(library_folders.LIBRARIES_DIR_ENV, raising=False)
+    monkeypatch.setattr(library_folders, "DOCKER_MOUNT", tmp_path / "nope")
+    return _admin_client(tmp_path / "data")
+
+
+def test_unreadable_folder_is_reported_unreachable(tmp_path, monkeypatch):
+    folder = tmp_path / "locked"
+    folder.mkdir()
+    _make_package(folder, "Family.photoslibrary")
+    conn, client = _scan_client(tmp_path, monkeypatch)
+    try:
+        client.post("/api/admin/library-folders", json={"path": str(folder)})
+        folder.chmod(0)
+        try:
+            body = client.get("/api/admin/library-candidates").json()
+        finally:
+            folder.chmod(0o755)
+        # root ignores permission bits, so only assert for other users.
+        if os.geteuid() != 0:
+            assert body["candidates"] == []
+            assert body["folders"][0]["reachable"] is False
+    finally:
+        conn.close()
+
+
+def test_regular_file_named_photoslibrary_is_not_listed(tmp_path, monkeypatch):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    (folder / "Fake.photoslibrary").write_text("not a package")
+    _make_package(folder, "Real.photoslibrary")
+    conn, client = _scan_client(tmp_path, monkeypatch)
+    try:
+        client.post("/api/admin/library-folders", json={"path": str(folder)})
+        body = client.get("/api/admin/library-candidates").json()
+        assert [c["name"] for c in body["candidates"]] == ["Real.photoslibrary"]
+    finally:
+        conn.close()
+
+
+def test_missing_folder_is_unreachable_and_lists_nothing(tmp_path, monkeypatch):
+    folder = tmp_path / "drive"
+    folder.mkdir()
+    conn, client = _scan_client(tmp_path, monkeypatch)
+    try:
+        client.post("/api/admin/library-folders", json={"path": str(folder)})
+        folder.rmdir()
+        body = client.get("/api/admin/library-candidates").json()
+        assert body["candidates"] == []
+        assert body["folders"] == [{"path": str(folder.resolve()), "reachable": False}]
+    finally:
+        conn.close()
+
+
+def test_library_endpoints_need_a_session(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        client.post("/api/auth/logout")
+        client.cookies.clear()
+        for method, url in [
+            ("get", "/api/admin/library-folders"),
+            ("get", "/api/admin/library-candidates"),
+            ("get", "/api/admin/library-candidates/size?path=/x"),
+            ("post", "/api/admin/libraries/from-scan"),
+        ]:
+            kwargs = {"json": {"candidate_path": "/x"}} if method == "post" else {}
+            response = getattr(client, method)(url, **kwargs)
+            assert response.status_code == 401, url
+    finally:
+        conn.close()
+
+
+def test_add_from_scan_accepts_listed_and_rejects_other_paths(tmp_path, monkeypatch):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    package = tmp_path / "elsewhere" / "Other.photoslibrary"
+    built = build_fixture_library(tmp_path / "src")
+    shutil.copytree(built, folder / "Fixture.photoslibrary")
+    shutil.copytree(built, package)
+    conn, client = _scan_client(tmp_path, monkeypatch)
+    try:
+        client.post("/api/admin/library-folders", json={"path": str(folder)})
+        outside = client.post(
+            "/api/admin/libraries/from-scan", json={"candidate_path": str(package)}
+        )
+        assert outside.status_code == 400
+        assert conn.execute("SELECT COUNT(*) FROM libraries").fetchone()[0] == 0
+        listed = (folder / "Fixture.photoslibrary").resolve()
+        ok = client.post(
+            "/api/admin/libraries/from-scan",
+            json={"candidate_path": str(listed), "display_name": "Fixture"},
+        )
+        assert ok.status_code == 201
+        assert ok.json()["path"] == str(listed)
+    finally:
+        conn.close()
+
+
+def test_add_from_scan_is_admin_only(tmp_path):
+    conn, client = _non_admin_client(tmp_path)
+    try:
+        response = client.post(
+            "/api/admin/libraries/from-scan", json={"candidate_path": "/x"}
+        )
+        assert response.status_code == 403
+    finally:
+        conn.close()

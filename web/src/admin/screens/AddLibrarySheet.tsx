@@ -1,6 +1,6 @@
 import { useState } from "react";
 import InfoButton from "../../help/InfoButton";
-import { addLibrary, type LibraryResponse } from "../api";
+import { addLibrary, addScannedLibrary, type LibraryResponse } from "../api";
 import { describeError } from "../sharing";
 import { GroupedList, Row } from "../ui/GroupedList";
 import Sheet from "../ui/Sheet";
@@ -27,11 +27,11 @@ export default function AddLibrarySheet({
 
   const defaultName = chosen ? chosen.name.replace(SUFFIX, "") : "";
 
-  async function add(path: string, displayName: string | undefined) {
+  async function add(path: string, displayName: string | undefined, scanned = false) {
     setError(null);
     setBusy(true);
     try {
-      onAdded(await addLibrary(path, displayName));
+      onAdded(await (scanned ? addScannedLibrary(path, displayName) : addLibrary(path, displayName)));
     } catch (err) {
       setError(describeError(err));
       setBusy(false);
@@ -53,7 +53,7 @@ export default function AddLibrarySheet({
           {
             label: "Add Library",
             disabled: busy || name.trim() === "",
-            onClick: () => void add(chosen.path, name.trim() === defaultName ? undefined : name.trim()),
+            onClick: () => void add(chosen.path, name.trim() === defaultName ? undefined : name.trim(), true),
           },
         ]}
       >
