@@ -179,3 +179,59 @@ def test_missing_fts5_fails_startup_with_a_clear_message(tmp_path, monkeypatch, 
         assert conn.execute("PRAGMA user_version").fetchone()[0] == 0
     finally:
         conn.close()
+
+
+def test_connect_uses_wal(tmp_path):
+    conn = app_db.connect(tmp_path)
+    try:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert conn.execute("PRAGMA synchronous").fetchone()[0] == 1  # NORMAL
+    finally:
+        conn.close()
+
+
+def test_reader_connects_and_reads_while_writer_holds_big_transaction(tmp_path):
+    writer = app_db.connect(tmp_path)
+    writer.execute("INSERT INTO libraries (display_name, path) VALUES ('A', '/a')")
+    writer.commit()
+    writer.execute("BEGIN IMMEDIATE")
+    # Large enough to overflow the page cache, which locks out readers in
+    # rollback-journal mode.
+    for i in range(5000):
+        writer.execute(
+            "INSERT INTO assets (library_id, uuid, filename) VALUES (1, ?, ?)",
+            (f"u{i}", "x" * 600),
+        )
+    reader = app_db.connect(tmp_path)
+    try:
+        reader.execute("PRAGMA busy_timeout = 100")
+        assert reader.execute("SELECT count(*) FROM assets").fetchone()[0] == 0
+    finally:
+        reader.close()
+        writer.rollback()
+        writer.close()
+
+
+def test_migration_28_indexes_audit_log_and_upgrades_a_v27_db(tmp_path, monkeypatch):
+    full = app_db._MIGRATIONS
+    monkeypatch.setattr(app_db, "_MIGRATIONS", full[:27])
+    conn = app_db.connect(tmp_path)
+    conn.execute("INSERT INTO libraries (display_name, path) VALUES ('A', '/a')")
+    conn.execute("INSERT INTO audit_log (library_id, action) VALUES (1, 'download')")
+    conn.commit()
+    monkeypatch.setattr(app_db, "_MIGRATIONS", full)
+    app_db.migrate(conn)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == len(full)
+        assert conn.execute("SELECT count(*) FROM audit_log").fetchone()[0] == 1
+        for col in ("asset_id", "library_id"):
+            plan = " ".join(
+                r[3]
+                for r in conn.execute(
+                    f"EXPLAIN QUERY PLAN SELECT 1 FROM audit_log WHERE {col} = ?",
+                    (1,),
+                )
+            )
+            assert f"idx_audit_log_{col}" in plan
+    finally:
+        conn.close()
