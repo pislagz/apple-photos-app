@@ -3,9 +3,23 @@
 import type { LibraryStatusResponse, RunSummary } from "./api";
 import { formatBytes } from "./ui/format";
 
-export type StatusKind = "loading" | "ready" | "indexing" | "updating" | "attention" | "missing" | "cannot_open";
+export type StatusKind =
+  | "loading"
+  | "ready"
+  | "indexing"
+  | "updating"
+  | "busy"
+  | "attention"
+  | "missing"
+  | "no_access"
+  | "cannot_open";
 
-const MISSING_CODES = new Set(["drive_not_mounted", "unreadable", "library_open"]);
+// #461: only these mean the library can't be found. Photos writing to the
+// library, or a failed read, is not a disconnected drive.
+const MISSING_CODES = new Set(["drive_not_mounted", "volume_renamed", "library_missing"]);
+const BUSY_CODES = new Set(["photos_busy", "library_open"]);
+// Failures the server retries on its own; it keeps showing the last good copy.
+const PROBLEM_CODES = new Set(["drive_error", "temp_full", "unreadable", "incomplete"]);
 
 export function isIndexing(status: LibraryStatusResponse | undefined): boolean {
   if (!status) return false;
@@ -14,11 +28,16 @@ export function isIndexing(status: LibraryStatusResponse | undefined): boolean {
 
 export function statusKind(status: LibraryStatusResponse | undefined): StatusKind {
   if (!status) return "loading";
+  const has = (codes: Set<string>) => status.warnings.some((w) => codes.has(w.code));
   if (status.warnings.some((w) => w.code === "unsupported_version")) return "cannot_open";
-  if (status.warnings.some((w) => MISSING_CODES.has(w.code)) || status.suggestion) return "missing";
+  if (has(MISSING_CODES) || status.suggestion) return "missing";
+  if (status.warnings.some((w) => w.code === "no_permission")) return "no_access";
+  if (status.index_state === "indexing") return "indexing";
+  if (has(PROBLEM_CODES)) return "attention";
   if (isIndexing(status)) return "indexing";
   if (status.index_state === "error") return "attention";
   if (status.updating) return "updating";
+  if (has(BUSY_CODES)) return "busy";
   if (status.warnings.length > 0) return "attention";
   return "ready";
 }
@@ -28,8 +47,10 @@ const WORDS: Record<StatusKind, string> = {
   ready: "Ready",
   indexing: "Reading photos…",
   updating: "Updating…",
+  busy: "Waiting for Photos",
   attention: "Needs attention",
   missing: "Not found",
+  no_access: "No permission",
   cannot_open: "Can't open",
 };
 
@@ -57,9 +78,15 @@ export function rowSummary(status: LibraryStatusResponse | undefined): string {
 
 // Server warnings that name paths or use technical words, in plain words.
 const WARNING_TEXT: Record<string, string> = {
-  drive_not_mounted: "The drive with this library isn't connected. Connect it and check again.",
-  library_open: "This library can't be opened right now. Check that its drive is connected.",
-  unreadable: "This library can't be opened right now. Check that its drive is connected.",
+  drive_not_mounted: "The drive with this library isn't connected. Connect it, and the library comes back by itself.",
+  library_missing: "The drive is connected, but the library isn't where it used to be. It may have been moved or renamed.",
+  no_permission:
+    "This app lost permission to read the drive. On the Mac, open System Settings > Privacy & Security > Full Disk Access and allow the app that runs this server. The library comes back by itself afterwards.",
+  drive_error: "The drive is connected but isn't answering. It may be asleep or busy. Everyone keeps seeing the last copy, and the app tries again.",
+  photos_busy: "Photos on the Mac is updating this library. It will refresh when Photos is done. Until then everyone keeps seeing the photos as they were.",
+  library_open: "Photos on the Mac is updating this library. It will refresh when Photos is done. Until then everyone keeps seeing the photos as they were.",
+  temp_full: "The server's disk is too full to read this library. Free up some space, and it tries again by itself.",
+  unreadable: "This library's database can't be read. Open it once in Photos on the Mac, quit Photos, and check again.",
   unsupported_version: "This library was made by a version of Photos this app can't read yet.",
   update_stuck: "An update has been waiting for a long time. Check that nothing is still copying into the library.",
 };
