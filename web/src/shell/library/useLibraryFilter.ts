@@ -43,6 +43,8 @@ export interface LibraryFilterState {
   active: boolean;
   setFilter: (next: AssetFilter) => void;
   setShow: (kind: keyof ShowToggles, value: boolean) => void;
+  // Back to All Items with both Show toggles on.
+  clear: () => void;
 }
 
 export function useLibraryFilter(): LibraryFilterState {
@@ -53,6 +55,10 @@ export function useLibraryFilter(): LibraryFilterState {
     (kind: keyof ShowToggles, value: boolean) => setShowState((previous) => ({ ...previous, [kind]: value })),
     [],
   );
+  const clear = useCallback(() => {
+    setFilter("all");
+    setShowState(DEFAULT_SHOW);
+  }, []);
   return {
     filter,
     show,
@@ -60,5 +66,6 @@ export function useLibraryFilter(): LibraryFilterState {
     active: filter !== "all" || !show.screenshots || !show.shared,
     setFilter,
     setShow,
+    clear,
   };
 }

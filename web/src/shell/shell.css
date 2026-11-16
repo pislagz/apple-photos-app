@@ -5283,6 +5283,9 @@ html.has-app-height .shell--mobile {
 }
 
 .library-empty__link {
+  border: 0;
+  background: none;
+  font-family: inherit;
   margin-top: var(--space-8);
   padding: var(--space-8) var(--space-16);
   font-size: var(--font-size-body);
