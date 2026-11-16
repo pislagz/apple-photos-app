@@ -998,7 +998,7 @@ describe("MobileLibrary person grid text (#193)", () => {
           top: Number(/translateY\(([\d.]+)px\)/.exec(r.style.transform)?.[1]),
           height: parseFloat(r.style.height),
         }));
-      // 800px wide, 3 columns -> square rows (2px gap between cells), back to back.
+      // 800px wide, 3 columns -> square rows; each row slot ends in the 2px gap (#489).
       expect(rowTops()[0].height).toBeCloseTo(265.3333, 3);
 
       const narrow = () =>
@@ -1008,7 +1008,7 @@ describe("MobileLibrary person grid text (#193)", () => {
 
       await waitFor(() => expect(rowTops()[0].height).toBeCloseTo(132, 3));
       const rows = rowTops();
-      rows.slice(1).forEach((row, n) => expect(row.top).toBe(rows[n].top + rows[n].height));
+      rows.slice(1).forEach((row, n) => expect(row.top).toBe(rows[n].top + rows[n].height + 2));
     } finally {
       vi.stubGlobal("ResizeObserver", Original);
     }

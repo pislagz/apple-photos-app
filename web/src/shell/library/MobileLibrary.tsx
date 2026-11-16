@@ -400,7 +400,9 @@ export default function MobileLibrary({
 
   const rowSize = (row: LibraryRow) => {
     if (row.type === "header") return HEADER_ROW_HEIGHT;
-    return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
+    // Each photo row's slot ends in one gap, so the space between rows equals
+    // the space between columns at every zoom level (#489).
+    return (row.type === "feature" ? cellSize * 2 + MOBILE_GRID_GAP : cellHeight(row.items[0])) + MOBILE_GRID_GAP;
   };
   // #415: the All Photos rows start below the floating header; the CSS inset
   // is measured through a probe box because env() is not readable from JS.
@@ -647,7 +649,7 @@ export default function MobileLibrary({
                 top: 0,
                 left: 0,
                 width: "100%",
-                height: virtualRow.size,
+                height: row.type === "header" ? virtualRow.size : virtualRow.size - MOBILE_GRID_GAP,
                 transform: `translateY(${virtualRow.start}px)`,
               };
               if (row.type === "header") {
