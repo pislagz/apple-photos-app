@@ -71,6 +71,7 @@
   --radius-1-5: 1.5px;
   --radius-2: 2px;
   --radius-3: 3px;
+  --radius-tooltip: 5px; /* #470 macOS tooltip */
   --radius-22: 22px;
   --radius-24: 24px;
   --radius-26: 26px;
@@ -223,6 +224,9 @@
   --material-toolbar: #f6f5f5;
   --color-toolbar-separator: rgba(0, 0, 0, 0.16);
   --material-popover: rgba(255, 255, 255, 0.95);
+  /* #470: macOS tooltip, light gray with a hairline edge. */
+  --material-tooltip: rgba(240, 240, 240, 0.98);
+  --shadow-tooltip: 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.16);
   --glass-menu: rgba(250, 250, 252, 0.84); /* iPhone Library menu (#352) */
   --material-pill: rgba(255, 255, 255, 0.75);
   --material-pill-selected: #fff;
@@ -345,6 +349,8 @@
     --material-toolbar: #3e3b3c;
     --color-toolbar-separator: #000;
     --material-popover: rgba(44, 44, 46, 0.95);
+    --material-tooltip: rgba(43, 43, 45, 0.98);
+    --shadow-tooltip: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
     --glass-menu: rgba(44, 44, 46, 0.8);
     --material-pill: rgba(60, 60, 67, 0.72);
     --material-pill-selected: rgba(255, 255, 255, 0.95);
