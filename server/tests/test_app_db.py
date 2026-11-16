@@ -212,9 +212,9 @@ def test_reader_connects_and_reads_while_writer_holds_big_transaction(tmp_path):
         writer.close()
 
 
-def test_migration_28_indexes_audit_log_and_upgrades_a_v27_db(tmp_path, monkeypatch):
+def test_migration_29_indexes_audit_log_and_upgrades_a_v28_db(tmp_path, monkeypatch):
     full = app_db._MIGRATIONS
-    monkeypatch.setattr(app_db, "_MIGRATIONS", full[:27])
+    monkeypatch.setattr(app_db, "_MIGRATIONS", full[:28])
     conn = app_db.connect(tmp_path)
     conn.execute("INSERT INTO libraries (display_name, path) VALUES ('A', '/a')")
     conn.execute("INSERT INTO audit_log (library_id, action) VALUES (1, 'download')")

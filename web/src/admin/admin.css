@@ -158,6 +158,11 @@ body:has(.admin-app, .admin-auth) {
   color: var(--color-danger-text);
 }
 
+/* A warning inside a list row: one box, not a highlight broken across lines. */
+.admin-row [role="alert"] {
+  display: block;
+}
+
 
 .admin-main code {
   overflow-wrap: anywhere;

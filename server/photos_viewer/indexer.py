@@ -119,6 +119,19 @@ def sqlite_signature(package_path: str | pathlib.Path) -> str:
     )
 
 
+def package_identity(package_path: str | pathlib.Path) -> str | None:
+    """Inodes of the package and its Photos.sqlite. Photos writing to a
+    library keeps both; a replacement copy (Finder, rsync, copy-then-rename)
+    makes new ones. `None` when either can't be stat'ed."""
+    package_path = pathlib.Path(package_path)
+    try:
+        package = os.stat(package_path).st_ino
+        sqlite = os.stat(package_path / "database" / "Photos.sqlite").st_ino
+    except OSError:
+        return None
+    return f"{package}:{sqlite}"
+
+
 def read_store_uuid(sqlite_path: pathlib.Path) -> str | None:
     """`Z_METADATA.Z_UUID`, the Core Data store UUID. A plain read on the
     temp copy (never the package); `None` when the column is absent."""
@@ -192,6 +205,7 @@ def index_library(
         "SELECT last_indexed_signature FROM libraries WHERE id = ?", (library_id,)
     ).fetchone()
     signature = sqlite_signature(package_path)
+    identity = package_identity(package_path)
     if not force and row is not None and row["last_indexed_signature"] == signature:
         if opened is not None:
             opened.close()
@@ -202,7 +216,7 @@ def index_library(
         opened = libraries.open_library_readonly(package_path)
     try:
         purge, changed = _write_index_and_update_signature(
-            db, library_id, opened, signature, trigger, started_at
+            db, library_id, opened, signature, trigger, started_at, identity
         )
     finally:
         _clear_progress(library_id)
@@ -259,6 +273,7 @@ def _write_index_and_update_signature(
     signature: str,
     trigger: str,
     started_at: str,
+    identity: str | None = None,
 ) -> tuple[list[str], bool]:
     """Returns the cache files to purge and whether the run changed anything."""
     # `add_library` may already have an implicit transaction open (its own
@@ -285,8 +300,10 @@ def _write_index_and_update_signature(
         db.execute(
             "UPDATE libraries SET last_indexed_signature = ?, last_indexed_at = datetime('now'), "
             "store_uuid = ?, pending_signature = NULL, pending_since = NULL, pending_reason = NULL, "
-            "missing_since = NULL, reindex_needed = 0 WHERE id = ?",
-            (signature, store_uuid, library_id),
+            "missing_since = NULL, reindex_needed = 0, indexed_identity = ?, in_place_since = NULL, "
+            "problem_code = NULL, problem_detail = NULL, problem_since = NULL, retry_count = 0, "
+            "retry_after = NULL WHERE id = ?",
+            (signature, store_uuid, identity, library_id),
         )
         db.execute(
             "INSERT INTO library_index_runs (library_id, trigger, started_at, finished_at, outcome, signature, "
@@ -416,6 +433,13 @@ def _offline_place(gazetteer, place, latitude, longitude) -> str | None:
     return gazetteer.lookup(latitude, longitude)
 
 
+def _delete_vanished(db: sqlite3.Connection, table: str, library_id: int, seen) -> None:
+    db.execute(
+        f"DELETE FROM {table} WHERE library_id = ? AND uuid NOT IN (SELECT value FROM json_each(?))",
+        (library_id, json.dumps(list(seen))),
+    )
+
+
 def _write_index(
     db: sqlite3.Connection, library_id: int, photosdb, *, batch_size: int | None = None
 ) -> tuple[dict[str, int], list[str]]:
@@ -424,19 +448,16 @@ def _write_index(
     vanished assets only happens after the whole walk, in the last batch with
     the signature update, so an interrupted pass never deletes anything and
     simply re-runs (the signature is unchanged until the end)."""
-    # People/albums have no stability requirement of their own (nothing
-    # outside this module keeps a foreign key to them across index runs),
-    # so a clean replace -- cascading to `asset_people`/`asset_albums` via
-    # `ON DELETE CASCADE` -- is simplest; the join rows are rebuilt below
-    # against the (possibly pre-existing) stable asset ids.
-    db.execute("DELETE FROM people WHERE library_id = ?", (library_id,))
-    db.execute("DELETE FROM albums WHERE library_id = ?", (library_id,))
-    db.execute("DELETE FROM folders WHERE library_id = ?", (library_id,))
-
+    # #461: people, albums and folders are upserted by uuid and the vanished
+    # ones deleted only at the end, like assets. Deleting them up front lost
+    # every later asset's people and albums (via `ON DELETE CASCADE`) when a
+    # batched walk failed after its first commit.
     person_ids: dict[str, int] = {}
     for person in photosdb.person_info:
-        cursor = db.execute(
-            "INSERT INTO people (library_id, uuid, name, display_name, face_count) VALUES (?, ?, ?, ?, ?)",
+        db.execute(
+            "INSERT INTO people (library_id, uuid, name, display_name, face_count) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (library_id, uuid) DO UPDATE SET name = excluded.name, "
+            "display_name = excluded.display_name, face_count = excluded.face_count",
             (
                 library_id,
                 person.uuid,
@@ -446,7 +467,10 @@ def _write_index(
                 person.facecount,
             ),
         )
-        person_ids[person.uuid] = cursor.lastrowid
+        person_ids[person.uuid] = db.execute(
+            "SELECT id FROM people WHERE library_id = ? AND uuid = ?",
+            (library_id, person.uuid),
+        ).fetchone()[0]
 
     # Folders nest; walk down from the top-level ones. `seen` guards against
     # a corrupt library whose parent links loop.
@@ -458,7 +482,9 @@ def _write_index(
             continue
         seen_folders.add(folder.uuid)
         db.execute(
-            "INSERT INTO folders (library_id, uuid, title, parent_uuid, list_order) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO folders (library_id, uuid, title, parent_uuid, list_order) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (library_id, uuid) DO UPDATE SET title = excluded.title, "
+            "parent_uuid = excluded.parent_uuid, list_order = excluded.list_order",
             (
                 library_id,
                 folder.uuid,
@@ -471,9 +497,12 @@ def _write_index(
 
     album_ids: dict[str, int] = {}
     for album in photosdb.album_info:
-        cursor = db.execute(
+        db.execute(
             "INSERT INTO albums (library_id, uuid, title, folder_names, parent_uuid, list_order) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (library_id, uuid) DO UPDATE SET title = excluded.title, "
+            "folder_names = excluded.folder_names, parent_uuid = excluded.parent_uuid, "
+            "list_order = excluded.list_order",
             (
                 library_id,
                 album.uuid,
@@ -483,7 +512,10 @@ def _write_index(
                 album.library_list_order[-1],
             ),
         )
-        album_ids[album.uuid] = cursor.lastrowid
+        album_ids[album.uuid] = db.execute(
+            "SELECT id FROM albums WHERE library_id = ? AND uuid = ?",
+            (library_id, album.uuid),
+        ).fetchone()[0]
 
     # Assets keep their `id` across a re-index (upsert by the library's
     # natural key, `(library_id, uuid)`, instead of delete + reinsert) so
@@ -515,6 +547,9 @@ def _write_index(
     }
     purge: list[str] = []
     gazetteer = place_names.indexing_lookup(db)
+    # A walk that failed after a batch commit leaves this behind: its DROP
+    # below is rolled back with the failing batch.
+    db.execute("DROP TABLE IF EXISTS _seen_asset_uuids")
     db.execute("CREATE TEMP TABLE _seen_asset_uuids (uuid TEXT PRIMARY KEY)")
     try:
         photos = list(photosdb.photos())
@@ -621,6 +656,8 @@ def _write_index(
                 photo.title,
                 photo.description,
             ]
+            db.execute("DELETE FROM asset_people WHERE asset_id = ?", (asset_id,))
+            db.execute("DELETE FROM asset_albums WHERE asset_id = ?", (asset_id,))
             for person in photo.person_info:
                 person_id = person_ids.get(person.uuid)
                 if person_id is not None:
@@ -671,6 +708,9 @@ def _write_index(
             (library_id,),
         )
         counts["removed"] = removed.rowcount
+        _delete_vanished(db, "people", library_id, person_ids)
+        _delete_vanished(db, "albums", library_id, album_ids)
+        _delete_vanished(db, "folders", library_id, seen_folders)
     finally:
         db.execute("DROP TABLE _seen_asset_uuids")
     return counts, purge

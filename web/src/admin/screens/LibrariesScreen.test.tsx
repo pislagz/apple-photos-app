@@ -84,6 +84,23 @@ describe("Libraries list", () => {
     expect(await screen.findByText(/^Not found/)).toBeInTheDocument();
   });
 
+  it("#461: says Photos is updating the library, calmly, instead of blaming the drive", async () => {
+    api({ ...BASE, warnings: [{ code: "photos_busy", message: "x" }] });
+    openDetail();
+    const note = await screen.findByText(/Photos on the Mac is updating this library/);
+    expect(note).toHaveAttribute("role", "status");
+    expect(screen.getByText("Waiting for Photos")).toBeInTheDocument();
+    expect(screen.queryByText(/drive/i)).toBeNull();
+  });
+
+  it("#461: a lost permission names Full Disk Access", async () => {
+    api({ ...BASE, warnings: [{ code: "no_permission", message: "x" }] });
+    openDetail();
+    const note = await screen.findByText(/Full Disk Access/);
+    expect(note).toHaveAttribute("role", "alert");
+    expect(screen.getByText("No permission")).toBeInTheDocument();
+  });
+
   it("shows a friendly empty state with help to connect a folder", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/libraries") return [];

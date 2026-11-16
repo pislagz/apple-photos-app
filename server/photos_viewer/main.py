@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 
-from . import app_db, place_names
+from . import app_db, libraries, place_names
 from .admin_panel import router as admin_panel_router
 from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
@@ -201,6 +201,8 @@ def _reset_stale_indexing_on_startup(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     _reset_stale_indexing_on_startup(app)
+    # #461: temp copies of Photos.sqlite left by a killed index can be GBs each.
+    libraries.cleanup_stale_tempdirs()
     place_names.refresh_labels_on_startup(
         app.dependency_overrides.get(get_data_dir, get_data_dir)()
     )
