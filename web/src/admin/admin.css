@@ -20,6 +20,30 @@ body:has(.admin-app, .admin-auth) {
   min-height: 100dvh;
 }
 
+/* #458: on desktop the admin window never scrolls as a whole. Scrolling the
+   document (html/body/#root are 100% tall with overscroll-behavior: none)
+   carried the sidebar off screen, and trackpad scrolling of that root
+   scroller failed on macOS.
+   Like System Settings, the content column and the sidebar each scroll on
+   their own inside a viewport-high grid. The phone strip layout below keeps
+   normal page scrolling. */
+@media (min-width: 701px) {
+  .admin-app {
+    position: fixed;
+    inset: 0;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .admin-nav,
+  .admin-main {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 /* Sidebar */
 .admin-nav {
   padding: var(--space-20) var(--space-10);
@@ -127,6 +151,16 @@ body:has(.admin-app, .admin-auth) {
   padding: 28px 32px 48px;
   max-width: 980px;
   width: 100%;
+}
+
+/* #458: the scroller spans the whole column so the wheel works anywhere right
+   of the sidebar and the scrollbar sits at the window edge; the right padding
+   keeps the content at the same 980px measure as before. */
+@media (min-width: 701px) {
+  .admin-main {
+    max-width: none;
+    padding-right: max(32px, calc(100% - 948px));
+  }
 }
 
 .admin-main h1,
