@@ -5,6 +5,7 @@ import { describeActivity } from "../ui/activity";
 import { formatWhen } from "../ui/format";
 import { Footer, GroupedList, Row } from "../ui/GroupedList";
 import SkeletonRow from "../ui/SkeletonRow";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 export const PAGE_SIZE = 50;
 
@@ -200,14 +201,14 @@ export default function ActivityScreen() {
           size="touch"
           label="From"
           control={
-            <input type="date" className="admin-input" aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+            <input type="date" {...NO_AUTOFILL} className="admin-input" aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
           }
         />
         <Row
           size="touch"
           label="To"
           control={
-            <input type="date" className="admin-input" aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            <input type="date" {...NO_AUTOFILL} className="admin-input" aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
           }
         />
       </GroupedList>

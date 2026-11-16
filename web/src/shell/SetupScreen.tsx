@@ -33,6 +33,9 @@ export default function SetupScreen({
             <input
               value={username}
               autoComplete="username"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               onChange={(event) => setUsername(event.target.value)}
             />
           </label>

@@ -160,6 +160,10 @@ export default function AdminApp() {
           <label>
             Username
             <input
+              autoComplete="username"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
             />
@@ -168,6 +172,7 @@ export default function AdminApp() {
             Password
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />

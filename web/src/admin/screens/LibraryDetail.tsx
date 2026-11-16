@@ -11,6 +11,7 @@ import { formatBytes, formatWhen } from "../ui/format";
 import { IndexBar } from "./IndexBar";
 import PrewarmControls from "./PrewarmControls";
 import ReplaceDialog from "./ReplaceDialog";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 const HISTORY_LIMIT = 10;
 
@@ -150,12 +151,12 @@ export default function LibraryDetail({
             }}
           >
             <span className="admin-row__text">
-              <label className="admin-row__label" htmlFor="library-name">
+              <label className="admin-row__label" htmlFor="library-title">
                 Name
               </label>
             </span>
             <span className="admin-row__control">
-              <input id="library-name" className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />
+              <input id="library-title" {...NO_AUTOFILL} className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />
               <button type="submit" className="admin-btn admin-btn--primary" disabled={name.trim() === ""}>
                 Done
               </button>

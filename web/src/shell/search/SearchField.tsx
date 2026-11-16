@@ -1,6 +1,7 @@
 import { forwardRef, type KeyboardEvent } from "react";
 import { Icon, type IconName } from "../icons";
 import { COLLAPSE_AFTER, type SearchToken } from "./searchModel";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 const TOKEN_ICON: Record<SearchToken["kind"], IconName> = {
   text: "search",
@@ -68,10 +69,7 @@ const SearchField = forwardRef<
         aria-autocomplete="list"
         aria-controls={expanded ? listId : undefined}
         aria-activedescendant={expanded ? activeId : undefined}
-        autoComplete="off"
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
+        {...NO_AUTOFILL}
         enterKeyHint="search"
         autoFocus={autoFocus}
         value={value}

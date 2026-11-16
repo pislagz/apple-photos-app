@@ -33,6 +33,7 @@ import {
   STABLE_WAIT,
   ZIP_LIMIT,
 } from "./settingsChoices";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 function describeError(err: unknown): string {
   return err instanceof ApiError ? err.message : "something went wrong";
@@ -220,6 +221,7 @@ function TextRow({
     <SettingRow label={label} help={help} name={name}>
       {(run) => (
         <input
+          {...NO_AUTOFILL}
           className="admin-input"
           aria-label={label}
           value={draft}
@@ -255,6 +257,7 @@ function AllowlistRow({ identities, onSaved }: { identities: string; onSaved: (t
         <span className="admin-row__detail">One name per line. Leave empty to let everyone on your private network in.</span>
         <textarea
           id="allowlist-text"
+          {...NO_AUTOFILL}
           className="admin-input admin-input--area"
           rows={4}
           value={draft}
