@@ -28,7 +28,6 @@ import { phoneTitle, titleScrimProgress } from "./libraryTitle";
 import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
 import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
 import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
-import { isTypingTarget, shortcutAction } from "../shortcuts";
 import { shouldKeepEndAboveBar } from "./selectBarShift";
 import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
@@ -86,7 +85,7 @@ export default function MobileLibrary({
   const filterState = useLibraryFilter();
   // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
   const [wholePhotos, setWholePhotos] = useState(false);
-  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, loadAll } = useLibraryAssets(
+  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore } = useLibraryAssets(
     libraryId,
     null,
     filterState.filter,
@@ -237,22 +236,6 @@ export default function MobileLibrary({
       return next;
     });
   }, []);
-
-  // #366: Cmd/Ctrl+A on a hardware keyboard selects everything in the view.
-  useEffect(() => {
-    if (isTileView || openIndex !== null) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (shortcutAction(event) !== "selectAll" || isTypingTarget(event.target)) return;
-      event.preventDefault();
-      void loadAll().then((all) => {
-        setReadyFiles(null);
-        setSelectMode(true);
-        setSelectedIds(new Set(all.map((item) => item.id)));
-      });
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isTileView, openIndex, loadAll]);
 
   function exitSelectMode() {
     setSelectMode(false);
