@@ -10,6 +10,7 @@ import { installBlockPageZoom } from "./shell/blockPageZoom";
 import { installSelectAllGuard } from "./shell/shortcuts";
 import "./shell/tokens.css";
 import "./shell/shell.css";
+import "./shell/phone27.css";
 
 const root = document.getElementById("root");
 if (root === null) {
