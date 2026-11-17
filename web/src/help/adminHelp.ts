@@ -77,6 +77,26 @@ export const HELP = {
     "The last few times this library was read again, with what changed.",
   libRemove:
     "Takes this library out of the app. People will no longer see it. The photos and the library file stay exactly where they are. You can add it again later, but sharing choices have to be set again.",
+
+  // Admin Sharing
+  sharingAbout:
+    "Each switch decides whether one person can see one library. Turn it on to share, off to hide it again. Nothing is copied or deleted, and the change applies right away.",
+  sharingAdmin:
+    "Administrators can change everything in this panel, but they only see a library's photos when you switch it on for them too.",
+  sharingNobody:
+    "Nobody can see this library at the moment. That is fine if you want it private; switch it on for someone to share it.",
+  // Admin Devices
+  devicesAbout:
+    "Every phone, tablet or computer that is signed in to this app, grouped by person. Use it to spot a device you do not recognise.",
+  devicesSignOut:
+    "Signs that one device out right away. The person can sign in again with their password. Their photos and libraries are not touched.",
+  // Admin Activity
+  activityAbout:
+    "A record of sign-ins, downloads and changes, newest first. Use it to see who did what, or to check that nothing looks wrong.",
+  activityFilters:
+    "Narrow the list to one person, one library or a range of dates. Clear the filters to see everything again.",
+  activityExport:
+    "Saves the list as a spreadsheet file. If you chose filters, only the matching lines are saved.",
 } as const;
 
 export type HelpKey = keyof typeof HELP;

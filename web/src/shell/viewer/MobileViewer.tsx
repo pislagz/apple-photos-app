@@ -440,14 +440,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }
 
   if (!item) return null;
-  // The ••• menu (iOS 27 Photos): the bottom-bar actions again, in a glass card.
-  const outside = !!detail?.original_outside_library;
-  const moreRows: { label: string; icon: "share" | "download" | "info"; run: () => void }[] = [
-    ...(outside ? [] : [{ label: "Share", icon: "share" as const, run: handleShare }]),
-    ...(outside
-      ? []
-      : [{ label: detail?.has_edited ? "Download Edited" : "Download", icon: "download" as const, run: () => downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original") }]),
-    ...(detail?.has_edited && !outside ? [{ label: "Download Original", icon: "download" as const, run: handleDownloadOriginal }] : []),
+  // The ••• menu (iOS 27 Photos) holds Info only: Share lives in the bottom toolbar (#507).
+  const moreRows: { label: string; icon: "info"; run: () => void }[] = [
     { label: "Info", icon: "info", run: () => setInfoOpen(true) },
   ];
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
@@ -579,7 +573,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
         onTouchEnd={onTouchEnd}
       >
         <div className="mobile-viewer__strip" style={stripStyle}>
-        <div className="mobile-viewer__page mobile-viewer__page--current">
+        {/* #488: keyed per item so each photo gets a fresh <img>. A reused one keeps painting the previous photo until the new file decodes, which flashed it over the swiped-to page. */}
+        <div className="mobile-viewer__page mobile-viewer__page--current" key={item.id}>
         {media.isVideo ? (
           media.videoPlaying ? (
             <video

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 // #485: the phone viewer's top-right ••• button opens its menu.
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
-const SHOTS = "e2e-shots-485";
+const SHOTS = "e2e-shots-g490";
 
 async function signIn(page: Page) {
   await page.goto("/");
@@ -25,6 +25,8 @@ for (const scheme of ["light", "dark"] as const) {
     await more.tap();
     const menu = page.getByRole("menu", { name: "More" });
     await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem")).toHaveCount(1);
+    await expect(menu).not.toContainText(/share|download/i);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/${scheme}-viewer-more-menu.png` });
     await page.getByRole("menuitem", { name: "Info" }).tap();

@@ -619,6 +619,48 @@ def test_list_assets_from_to_filters_by_local_day_not_utc_day(tmp_path):
         conn.close()
 
 
+def test_list_assets_anchored_page_reports_newer_and_pages_toward_them(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        for day in range(1, 8):
+            _insert_asset(
+                conn,
+                library_id,
+                f"d{day}",
+                date_created=f"2024-01-0{day}T12:00:00Z",
+                date_created_local_day=f"2024-01-0{day}",
+            )
+        _login(client, "alice")
+        url = f"/api/libraries/{library_id}/assets"
+
+        first = client.get(url, params={"to": "2024-01-04", "limit": 2}).json()
+        assert [i["id"] for i in first["items"]] == ["d4", "d3"]
+        assert first["newer_total"] == 3
+        assert first["total"] == 4
+        assert first["prev_cursor"]
+
+        newer = client.get(
+            url,
+            params={"cursor": first["prev_cursor"], "direction": "newer", "limit": 2},
+        ).json()
+        assert [i["id"] for i in newer["items"]] == ["d6", "d5"]
+        assert newer["prev_cursor"]
+        last = client.get(
+            url,
+            params={"cursor": newer["prev_cursor"], "direction": "newer", "limit": 2},
+        ).json()
+        assert [i["id"] for i in last["items"]] == ["d7"]
+        assert last["prev_cursor"] is None
+
+        plain = client.get(url, params={"limit": 2}).json()
+        assert plain["prev_cursor"] is None and plain["newer_total"] is None
+    finally:
+        conn.close()
+
+
 def test_asset_detail_includes_people_and_albums(tmp_path):
     conn, client = _client(tmp_path)
     try:

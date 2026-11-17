@@ -290,6 +290,11 @@ class AssetListResponse(BaseModel):
     # cursor). The oldest-first grid (#365) needs it to cut rows from the
     # oldest photo while older pages are still unloaded.
     total: int | None = None
+    # Landing on a date (`to`) loads the page around it, so newer photos can
+    # still be unloaded. `prev_cursor` pages toward them (`direction=newer`);
+    # `newer_total` (first page with `to` only) counts them.
+    prev_cursor: str | None = None
+    newer_total: int | None = None
 
 
 def _encode_cursor(date_created: str, asset_row_id: int) -> str:
@@ -377,6 +382,7 @@ def _list_assets(
     kind: str | None = None,
     hide: frozenset[str] = frozenset(),
     extra: tuple[str, list[object]] | None = None,
+    newer: bool = False,
 ) -> AssetListResponse:
     clauses = ["library_id = ?", "hidden = ?"]
     params: list[object] = [library_id, int(hidden)]
@@ -395,7 +401,14 @@ def _list_assets(
     if from_:
         clauses.append(f"{_LOCAL_DAY_SQL} >= ?")
         params.append(from_)
+    newer_total: int | None = None
     if to:
+        if not cursor:
+            newer_total = db.execute(
+                f"SELECT COUNT(*) FROM assets WHERE {' AND '.join(clauses)}"
+                f" AND {_LOCAL_DAY_SQL} > ?",
+                [*params, to],
+            ).fetchone()[0]
         clauses.append(f"{_LOCAL_DAY_SQL} <= ?")
         params.append(to)
     total: int | None = None
@@ -405,7 +418,8 @@ def _list_assets(
         ).fetchone()[0]
     if cursor:
         cursor_date, cursor_row_id = _decode_cursor(cursor)
-        clauses.append("(date_created < ? OR (date_created = ? AND id < ?))")
+        op = ">" if newer else "<"
+        clauses.append(f"(date_created {op} ? OR (date_created = ? AND id {op} ?))")
         params.extend([cursor_date, cursor_date, cursor_row_id])
 
     where = " AND ".join(clauses)
@@ -413,13 +427,26 @@ def _list_assets(
     # so only then does the response carry a `next_cursor` -- a page that
     # lands exactly on the last asset must not advertise a next page that
     # doesn't exist.
+    order = "ASC" if newer else "DESC"
     rows = db.execute(
-        f"SELECT * FROM assets WHERE {where} ORDER BY date_created DESC, id DESC LIMIT ?",
+        f"SELECT * FROM assets WHERE {where} ORDER BY date_created {order}, id {order} LIMIT ?",
         (*params, limit + 1),
     ).fetchall()
 
     has_more = len(rows) > limit
     page = rows[:limit]
+    if newer:
+        # Newer pages come nearest-first from the cursor; the response is
+        # newest first like every other page.
+        page.reverse()
+        prev_cursor = (
+            _encode_cursor(page[0]["date_created"], page[0]["id"]) if has_more else None
+        )
+        return AssetListResponse(
+            items=[_to_list_item(row) for row in page],
+            next_cursor=None,
+            prev_cursor=prev_cursor,
+        )
     next_cursor = (
         _encode_cursor(page[-1]["date_created"], page[-1]["id"]) if has_more else None
     )
@@ -427,6 +454,12 @@ def _list_assets(
         items=[_to_list_item(row) for row in page],
         next_cursor=next_cursor,
         total=total,
+        prev_cursor=(
+            _encode_cursor(page[0]["date_created"], page[0]["id"])
+            if newer_total and page
+            else None
+        ),
+        newer_total=newer_total,
     )
 
 
@@ -445,6 +478,7 @@ def list_assets(
         None, alias="filter"
     ),
     hide: str | None = None,
+    direction: Literal["older", "newer"] = "older",
     library: sqlite3.Row = Depends(session_auth.require_library_assignment),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> AssetListResponse:
@@ -478,6 +512,7 @@ def list_assets(
         kind=filter_,
         hide=_parse_hide(hide),
         extra=extra,
+        newer=direction == "newer" and cursor is not None,
     )
 
 
