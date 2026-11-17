@@ -228,8 +228,8 @@ export default function DesktopLibrary({
   const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
   const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
   useEffect(() => {
-    if (!loading || items.length > 0) onCount?.(items.length, done);
-  }, [items.length, done, loading, onCount]);
+    if (!loading || items.length > 0) onCount?.(total ?? items.length, done);
+  }, [items.length, total, done, loading, onCount]);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
@@ -336,7 +336,7 @@ export default function DesktopLibrary({
   // and never claims dates from pages that are not on screen.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const viewportHeight = rowVirtualizer.scrollRect?.height ?? 0;
-  const { dateRangeLabel, headerInBand } = useMemo(() => {
+  const { dateRangeLabel: liveDateRange, headerInBand } = useMemo(() => {
     const onScreen = virtualRows.filter(
       (row) => viewportHeight <= 0 || (row.end > scrollOffset && row.start < scrollOffset + viewportHeight),
     );
@@ -352,6 +352,13 @@ export default function DesktopLibrary({
     }
     return { dateRangeLabel: desktopTitle(view, dated), headerInBand };
   }, [virtualRows, rows, scrollOffset, viewportHeight, view]);
+
+  // #480: while rows shift under a scroll (a page prepended, rows between
+  // renders) the on-screen range can be briefly empty; unmounting the title
+  // then makes it blink. Keep the last label until a new one is known.
+  const lastDateRange = useRef("");
+  if (liveDateRange) lastDateRange.current = liveDateRange;
+  const dateRangeLabel = liveDateRange || (items.length > 0 ? lastDateRange.current : "");
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
@@ -992,7 +999,7 @@ export default function DesktopLibrary({
           <h1 className="page-heading__title">{title}</h1>
           <p className="page-heading__subtitle" data-testid="selection-count">
             {selected.size > 0
-              ? `${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`
+              ? `${selected.size.toLocaleString()} of ${(total ?? items.length).toLocaleString()}${total === null && !done ? "+" : ""} selected`
               : (subtitle ?? (view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"))}
           </p>
         </div>
@@ -1023,10 +1030,10 @@ export default function DesktopLibrary({
             style={{ "--title-scrim": titleScrimProgress(scrollOffset) } as CSSProperties}
           >
             <div className="desktop-library__title-scrim" aria-hidden="true" />
-            <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
+            <DateTitle instant text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
             {overlayHeading && selected.size > 0 && (
               <span className="desktop-library__title-sub" data-testid="desktop-library-title-sub">
-                {`${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`}
+                {`${selected.size.toLocaleString()} of ${(total ?? items.length).toLocaleString()}${total === null && !done ? "+" : ""} selected`}
               </span>
             )}
           </div>
@@ -1170,6 +1177,8 @@ export default function DesktopLibrary({
         <DesktopViewer
           libraryId={libraryId}
           items={items}
+          total={total}
+          offset={oldestFirst && total !== null ? Math.max(0, total - items.length) : 0}
           index={viewerIndex}
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
