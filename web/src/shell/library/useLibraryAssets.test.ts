@@ -105,3 +105,28 @@ describe("useLibraryAssets oldest first (#224)", () => {
     await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a4", "a3"]));
   });
 });
+
+describe("useLibraryAssets anchored to a date (#481)", () => {
+  it("loads the page around the date, then newer pages on demand", async () => {
+    const calls: string[] = [];
+    mockFetch((url) => {
+      calls.push(url);
+      if (url.includes("direction=newer") && url.includes("cursor=p2")) return { items: [makeItem("n3")], next_cursor: null, prev_cursor: null };
+      if (url.includes("direction=newer")) return { items: [makeItem("n2"), makeItem("n1")], next_cursor: null, prev_cursor: "p2" };
+      return { items: [makeItem("a2"), makeItem("a1")], next_cursor: null, total: 2, newer_total: 3, prev_cursor: "p1" };
+    });
+    const { result } = renderHook(() => useLibraryAssets(1, "2022-05-31", "all", null, NO_HIDE, true));
+
+    await waitFor(() => expect(result.current.loadedAnchor).toBe("2022-05-31"));
+    // Oldest first, the newer page already below the anchored photos.
+    expect(result.current.items.map((item) => item.id)).toEqual(["a1", "a2", "n1", "n2"]);
+    expect(result.current.total).toBe(5);
+    expect(result.current.newerLeft).toBe(1);
+    expect(result.current.hasNewer).toBe(true);
+
+    act(() => result.current.loadNewer());
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a1", "a2", "n1", "n2", "n3"]));
+    expect(result.current.hasNewer).toBe(false);
+    expect(calls.filter((url) => url.includes("direction=newer"))).toHaveLength(2);
+  });
+});

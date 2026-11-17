@@ -539,6 +539,8 @@ describe("MobileLibrary", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Months" }));
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
     fireEvent.click(await screen.findByText(/Jan 20, 2022/));
+    // All Photos opens once the page around the day is loaded (#481).
+    await waitFor(() => expect(screen.getByRole("tab", { name: "All Photos" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(getThumb("jan22-0")).toBeInTheDocument());
 
     const scrollEl = screen.getByTestId("library-scroll");
