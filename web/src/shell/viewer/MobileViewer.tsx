@@ -36,6 +36,22 @@ const LONG_PRESS_MS = 450;
 // A tap is a touch that never locked an axis and moved less than this.
 const TAP_SLOP_PX = 10;
 
+// The backdrop unmounts on pointerdown, so the click that ends the same press
+// would land on whatever is underneath. Eat it (#503).
+function swallowNextClick() {
+  const eat = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    done();
+  };
+  const done = () => {
+    window.clearTimeout(timer);
+    window.removeEventListener("click", eat, true);
+  };
+  const timer = window.setTimeout(done, 700);
+  window.addEventListener("click", eat, true);
+}
+
 interface TouchPoint {
   clientX: number;
   clientY: number;
@@ -487,7 +503,22 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       ref={rootRef}
       tabIndex={-1}
       style={rootStyle}>
-      <div className="mobile-viewer__topbar">
+      {moreOpen && (
+        // Covers the whole viewer, not just the topbar: the topbar's backdrop-filter
+        // makes it the containing block of any fixed child. Pointer events cover
+        // mouse, touch and pen, and a sibling of the stage keeps the tap off it (#503).
+        <div
+          className="viewer-more__backdrop"
+          data-testid="viewer-more-backdrop"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMoreOpen(false);
+            swallowNextClick();
+          }}
+        />
+      )}
+      <div className={`mobile-viewer__topbar${moreOpen ? " has-more-open" : ""}`}>
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={19} className="mobile-viewer__back-chevron" />
         </button>
@@ -496,16 +527,6 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           {title.secondary && <div className="mobile-viewer__title-secondary">{title.secondary}</div>}
         </div>
         <div className="filter-menu filter-menu--mobile viewer-more">
-          {moreOpen && (
-            <div
-              className="filter-menu__backdrop"
-              data-testid="viewer-more-backdrop"
-              onClick={(event) => {
-                event.stopPropagation();
-                setMoreOpen(false);
-              }}
-            />
-          )}
           <button
             type="button"
             className="mobile-viewer__icon-button viewer-more__button"

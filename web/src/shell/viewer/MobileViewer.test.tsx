@@ -473,6 +473,22 @@ describe("MobileViewer", () => {
     expect(await screen.findByTestId("viewer-info-sheet")).toBeInTheDocument();
   });
 
+  it.each(["mouse", "touch", "pen"])("a %s press outside the open More menu closes it and nothing else (#503)", (pointerType) => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByRole("menu", { name: "More" })).toBeInTheDocument();
+    const stageClick = vi.fn();
+    screen.getByTestId("mobile-viewer").addEventListener("click", stageClick);
+    fireEvent.pointerDown(screen.getByTestId("viewer-more-backdrop"), { pointerType });
+    expect(screen.queryByRole("menu")).toBeNull();
+    // The click that ends the same press is eaten, not delivered underneath.
+    fireEvent.click(screen.getByTestId("mobile-viewer"));
+    expect(stageClick).not.toHaveBeenCalled();
+  });
+
   it("opens the info sheet with date, camera, people, albums, and location from the detail route", async () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });

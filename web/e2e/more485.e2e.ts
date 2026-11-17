@@ -32,3 +32,29 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByTestId("viewer-info-sheet")).toBeVisible();
   });
 }
+
+// #503: clicking or tapping outside closes the menu and does nothing else.
+for (const how of ["mouse", "touch"] as const) {
+  test(`viewer ••• menu closes on an outside ${how} press (#503)`, async ({ page }, info) => {
+    test.skip(info.project.name === "desktop", "phone breakpoint only");
+    await signIn(page);
+    await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+    await page.locator("img.mobile-library__cell").nth(0).click();
+    const viewer = page.getByTestId("mobile-viewer");
+    await page.waitForTimeout(600);
+    const more = viewer.getByRole("button", { name: "More" });
+    const menu = page.getByRole("menu", { name: "More" });
+    const chromeBefore = await viewer.getAttribute("class");
+    const spots = how === "mouse" ? ([["stage", 195, 450], ["topbar", 100, 30]] as const) : ([["stage", 195, 450]] as const);
+    for (const [name, x, y] of spots) {
+      await more.tap();
+      await expect(menu).toBeVisible();
+      if (how === "mouse") await page.mouse.click(x, y);
+      else await page.touchscreen.tap(x, y);
+      await expect(menu).toHaveCount(0);
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: `e2e-shots-503/${how}-${name}-closed.png` });
+      expect(await viewer.getAttribute("class")).toBe(chromeBefore);
+    }
+  });
+}

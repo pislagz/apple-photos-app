@@ -5945,3 +5945,29 @@ textarea,
   right: 0;
   z-index: 3;
 }
+
+/* #503: full-viewer catcher under the open ••• menu; the topbar sits above it. */
+.viewer-more__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  touch-action: none;
+}
+
+.mobile-viewer__topbar {
+  position: relative;
+  z-index: 2;
+}
+
+/* While the menu is open the bare topbar (title, gaps) counts as outside. */
+.mobile-viewer__topbar.has-more-open {
+  pointer-events: none;
+}
+
+.mobile-viewer__topbar.has-more-open > * {
+  pointer-events: auto;
+}
+
+.mobile-viewer__topbar.has-more-open .mobile-viewer__title {
+  pointer-events: none;
+}
