@@ -380,20 +380,17 @@ export default function DesktopLibrary({
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
-    (globalThis as any).__dbg = { n: virtualRows.length, first: virtualRows[0]?.index, off: rowVirtualizer.scrollOffset, top: scrollRef.current?.scrollTop, loading, done, pendingMonthKey, rows: rows.length, ch: scrollRef.current?.clientHeight, cw: containerWidth, t: Date.now() };
     if (!last || loading || done) return;
     // Landing on a period: the grid is not scrolled there yet, and the landing
     // loads the older pages it needs itself.
     if (oldestFirst && pendingMonthKey !== null) return;
     // A scroll that has not reached the virtualizer yet (the landing scroll)
-    // would read the old top rows as "near the top". `scrollOffset` is a dep so
-    // the check runs again once the virtualizer catches up, even when the
-    // visible rows (and so `virtualRows`) are the same as before.
+    // would read the old top rows as "near the top".
     const top = scrollRef.current?.scrollTop;
     if (oldestFirst && top !== undefined && Math.abs((rowVirtualizer.scrollOffset ?? 0) - top) > 1) return;
     // Oldest first: the unloaded pages are above the first row.
     if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingMonthKey, rowVirtualizer, scrollOffset]);
+  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingMonthKey, rowVirtualizer]);
 
   // An anchored window ends before the newest photos: load them on the way down.
   useEffect(() => {

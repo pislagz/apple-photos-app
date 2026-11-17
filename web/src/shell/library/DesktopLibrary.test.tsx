@@ -345,21 +345,19 @@ describe("DesktopLibrary", () => {
     // The key presses below run synchronously, so the older page (200 + 100
     // items) must already be in state: otherwise focus clamps at the oldest
     // loaded photo and the test races the page fetch.
-    // Load the older page the way a user does: scroll up to the oldest loaded
-    // rows. The open-at-the-end scrollTop fires no scroll event in jsdom, and
-    // whether the load-older effect saw the grid "near the top" on its own
-    // depended on render timing, so a starved CI CPU never loaded the page.
-    // With the fake 1_000_000 px layout the first (oldest) row is mounted at
-    // scrollTop 0 and nothing else moves the grid before the page arrives.
+    // Load the older page the way a user does. The grid opens at the end by
+    // setting scrollTop, which a browser follows with a scroll event but jsdom
+    // does not, so the virtualizer can keep offset 0 while scrollTop is at the
+    // end, and the load-older effect (which refuses to run while the two
+    // disagree) then never runs: stuck on a CI box where that timing differs.
+    // Send the event the browser would, then scroll up to the oldest loaded
+    // rows. Each step changes the offset, so each one re-renders.
+    fireEvent.scroll(grid);
     grid.scrollTop = 0;
     fireEvent.scroll(grid);
-    try {
-      await waitFor(() => {
-        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
-      }, SLOW_WAIT);
-    } catch (e) {
-      throw new Error("DBG " + JSON.stringify({ dbg: (globalThis as any).__dbg, now: Date.now(), calls: fetchMock.mock.calls.map((c) => String(c[0])), scrollTop: grid.scrollTop, cells: cells(container).length }));
-    }
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
+    }, SLOW_WAIT);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
