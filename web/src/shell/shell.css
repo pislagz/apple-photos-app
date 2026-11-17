@@ -2632,8 +2632,10 @@ html.has-app-height .shell--mobile {
   display: block;
 }
 
-/* Points right on a row that opens a card, down on the open card's header. */
-.filter-menu__chevron[data-open="true"] {
+/* Points right on a row that opens a card, down on the open card's header.
+   Rotate the glyph itself: rotating the span would pivot on its padded box
+   and push the glyph about 5px down and left of the label (#479). */
+.filter-menu__chevron[data-open="true"] > svg {
   transform: rotate(90deg);
 }
 
