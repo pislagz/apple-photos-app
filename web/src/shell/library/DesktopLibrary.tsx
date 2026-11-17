@@ -380,6 +380,7 @@ export default function DesktopLibrary({
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
+    (globalThis as any).__dbg = { n: virtualRows.length, first: virtualRows[0]?.index, off: rowVirtualizer.scrollOffset, top: scrollRef.current?.scrollTop, loading, done, pendingMonthKey, rows: rows.length, ch: scrollRef.current?.clientHeight, cw: containerWidth, t: Date.now() };
     if (!last || loading || done) return;
     // Landing on a period: the grid is not scrolled there yet, and the landing
     // loads the older pages it needs itself.

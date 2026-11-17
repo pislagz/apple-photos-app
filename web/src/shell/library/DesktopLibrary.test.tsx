@@ -353,9 +353,13 @@ describe("DesktopLibrary", () => {
     // scrollTop 0 and nothing else moves the grid before the page arrives.
     grid.scrollTop = 0;
     fireEvent.scroll(grid);
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
-    }, SLOW_WAIT);
+    try {
+      await waitFor(() => {
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
+      }, SLOW_WAIT);
+    } catch (e) {
+      throw new Error("DBG " + JSON.stringify({ dbg: (globalThis as any).__dbg, now: Date.now(), calls: fetchMock.mock.calls.map((c) => String(c[0])), scrollTop: grid.scrollTop, cells: cells(container).length }));
+    }
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
