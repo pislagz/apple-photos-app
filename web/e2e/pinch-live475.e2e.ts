@@ -51,18 +51,26 @@ test("ctrl+wheel pinch scales the grid live, then settles on the next size (#475
   await signIn(page);
   const before = await cellWidth(page);
   await page.screenshot({ path: `${SHOTS}/1-before.png` });
-  const seen: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    await ctrlWheel(page, -12);
-    await page.waitForTimeout(30);
-    const t = await bodyTransform(page);
-    seen.push(Number(/scale\(([\d.]+)\)/.exec(t)?.[1] ?? 1));
-    if (i === 1) {
-      await holdPinch(page, true);
-      await page.screenshot({ path: `${SHOTS}/2-mid-pinch-early.png` });
-      await holdPinch(page, false);
+  // One in-page burst (16 ms apart, well inside the 140 ms settle window):
+  // Playwright round-trips between events can outlast it on a loaded box and
+  // end the pinch early.
+  const seen = await page.evaluate(async () => {
+    const grid = document.querySelector('[data-testid="desktop-library-grid"]')!;
+    const body = document.querySelector('[data-testid="desktop-library-body"]') as HTMLElement;
+    const r = grid.getBoundingClientRect();
+    const out: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      grid.dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -12, ctrlKey: true, bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }),
+      );
+      out.push(Number(/scale\(([\d.]+)\)/.exec(body.style.transform)?.[1] ?? 1));
+      await new Promise((resolve) => setTimeout(resolve, 16));
     }
-  }
+    return out;
+  });
+  await holdPinch(page, true);
+  await page.screenshot({ path: `${SHOTS}/2-mid-pinch-early.png` });
+  await holdPinch(page, false);
   await holdPinch(page, true);
   await page.screenshot({ path: `${SHOTS}/3-mid-pinch-late.png` });
   await holdPinch(page, false);
