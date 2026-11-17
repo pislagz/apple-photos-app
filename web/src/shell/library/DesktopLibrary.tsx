@@ -359,6 +359,30 @@ export default function DesktopLibrary({
     },
     [zoomIndex, rowVirtualizer, rows],
   );
+  // #475: a size change settles in like Photos for Mac: the new layout
+  // starts a little off-scale and faded, then eases to rest. The scale grows
+  // from smaller when tiles grow, and from larger when they shrink.
+  const gridBodyRef = useRef<HTMLDivElement | null>(null);
+  const prevZoomRef = useRef(zoomIndex);
+  useLayoutEffect(() => {
+    const previous = prevZoomRef.current;
+    prevZoomRef.current = zoomIndex;
+    const body = gridBodyRef.current;
+    const scroller = scrollRef.current;
+    if (previous === zoomIndex || !body || !scroller || typeof body.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const style = getComputedStyle(body);
+    const ms = parseFloat(style.getPropertyValue("--motion-duration")) || 150;
+    // The scroller's centre in the body's own coordinates.
+    const originY = scroller.scrollTop + scroller.clientHeight / 2;
+    body.animate(
+      [
+        { opacity: 0.35, transform: `scale(${zoomIndex > previous ? 0.94 : 1.06})`, transformOrigin: `50% ${originY}px` },
+        { opacity: 1, transform: "scale(1)", transformOrigin: `50% ${originY}px` },
+      ],
+      { duration: ms, easing: "ease-out" },
+    );
+  }, [zoomIndex]);
   useLayoutEffect(() => {
     const id = zoomAnchorRef.current;
     if (!id) return;
@@ -1179,7 +1203,7 @@ export default function DesktopLibrary({
             />
           )
         ) : (
-          <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
+          <div ref={gridBodyRef} style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
               const row = rows[virtualRow.index];
               const style: CSSProperties = {

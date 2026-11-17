@@ -144,3 +144,61 @@ test("a ctrl+wheel pinch zooms the photo in the viewer", async ({ page }, info) 
   await page.waitForTimeout(600); // the original replaces the preview
   await page.screenshot({ path: `${SHOTS}/viewer-zoomed-1440-light.png` });
 });
+
+// #475: the viewer follows the pinch over several frames, in proportion.
+test("viewer pinch eases in proportionally instead of jumping", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop only");
+  await signIn(page);
+  await page.locator('[data-testid="library-cell"]').nth(3).dblclick();
+  await expect(page.getByTestId("viewer-title")).toContainText(/ of /);
+  const stage = (await page.locator(".desktop-viewer__stage").boundingBox())!;
+  const scaleNow = () =>
+    page.locator(".desktop-viewer__stage img").first().evaluate((img) => {
+      let el: HTMLElement | null = img as HTMLElement;
+      while (el && !el.style.transform.includes("scale(")) el = el.parentElement;
+      return Number(/scale\(([\d.]+)\)/.exec(el?.style.transform ?? "")?.[1] ?? 1);
+    });
+  const samples = await page.evaluate(
+    async ({ x, y }) => {
+      const stageEl = document.querySelector(".desktop-viewer__stage")!;
+      const out: number[] = [];
+      const read = () => {
+        let el: HTMLElement | null = stageEl.querySelector("img");
+        while (el && !el.style.transform.includes("scale(")) el = el.parentElement;
+        return Number(/scale\(([\d.]+)\)/.exec(el?.style.transform ?? "")?.[1] ?? 1);
+      };
+      // One burst of events in a single task: the picture must not have
+      // jumped to the end value by the next frame.
+      for (let i = 0; i < 10; i++) {
+        stageEl.dispatchEvent(new WheelEvent("wheel", { ctrlKey: true, deltaY: -20, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+      }
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => requestAnimationFrame(r));
+        out.push(read());
+      }
+      return out;
+    },
+    { x: stage.x + stage.width / 2, y: stage.y + stage.height / 2 },
+  );
+  expect(samples[0]).toBeLessThan(samples[samples.length - 1] * 0.9);
+  for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeGreaterThanOrEqual(samples[i - 1] - 1e-6);
+  expect(await scaleNow()).toBeGreaterThan(1.5);
+  await page.screenshot({ path: `${SHOTS}/viewer-pinch-smooth-1440-light.png` });
+});
+
+test("grid size change animates", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "desktop only");
+  await signIn(page);
+  await thumbsLoaded(page);
+  await page.evaluate(() => {
+    (window as unknown as { __anims: number }).__anims = 0;
+    const orig = Element.prototype.animate;
+    Element.prototype.animate = function (...args: Parameters<Element["animate"]>) {
+      (window as unknown as { __anims: number }).__anims++;
+      return orig.apply(this, args);
+    };
+  });
+  await ctrlWheel(page, 700, 450, -100);
+  await page.screenshot({ path: `${SHOTS}/grid-transition-mid-1440-light.png` });
+  expect(await page.evaluate(() => (window as unknown as { __anims: number }).__anims)).toBeGreaterThan(0);
+});

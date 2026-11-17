@@ -463,7 +463,7 @@ describe("DesktopViewer", () => {
     expect(media().src).toContain("version=edited");
   });
 
-  it("zooms with ctrl+wheel (clamped to 6x), double-click goes to 2.5x, and drag pans within bounds", () => {
+  it("zooms with ctrl+wheel (clamped to 6x), double-click goes to 2.5x, and drag pans within bounds", async () => {
     mockDetail({ a1: makeDetail("a1") });
     const { container } = render(
       <DesktopViewer libraryId={1} items={[makeItem("a1", { width: 1000, height: 1000 })]} index={0} onIndexChange={() => {}} onClose={() => {}} />,
@@ -475,9 +475,10 @@ describe("DesktopViewer", () => {
     fireEvent.wheel(stage, { deltaY: -50 });
     expect(still.style.transform).toContain("scale(1)");
     fireEvent.wheel(stage, { deltaY: -10_000, ctrlKey: true });
-    expect(still.style.transform).toContain("scale(6)");
+    // #475: the picture eases toward the pinch target over a few frames.
+    await waitFor(() => expect(still.style.transform).toContain("scale(6)"));
     fireEvent.wheel(stage, { deltaY: 10_000, ctrlKey: true });
-    expect(still.style.transform).toContain("scale(1)");
+    await waitFor(() => expect(still.style.transform).toContain("scale(1)"));
 
     fireEvent.doubleClick(still);
     expect(still.style.transform).toContain("scale(2.5)");

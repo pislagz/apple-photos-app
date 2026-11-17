@@ -15,7 +15,7 @@ import { useZoomTransition } from "./useZoomTransition";
 import { gridThumbUrl, previewThumbUrl } from "./mediaUrls";
 import { ViewerStill } from "./ViewerStill";
 import * as g from "./gestures";
-import { listenTrackpadPinch } from "../trackpadPinch";
+import { listenTrackpadPinch, PINCH_SMOOTH_MS } from "../trackpadPinch";
 import { buildInfoRows, formatShortPlaceName } from "./viewerInfo";
 import { type ViewerTitle, formatDesktopTitle } from "./viewerTitle";
 import { useChromeVisibility } from "./useChromeVisibility";
@@ -193,19 +193,47 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     setView((value) => g.toggleZoom(value, { x: event.clientX - centre.x, y: event.clientY - centre.y }, fit, box));
   }
 
-  // #457: trackpad pinch (ctrl+wheel, or Safari gesture events) zooms about
-  // the pointer. Added natively (not onWheel) because React's wheel listener
-  // is passive and cannot stop the browser zooming the whole page.
+  // #457/#475: trackpad pinch (ctrl+wheel, or Safari gesture events) zooms
+  // about the pointer. Each event moves a target scale in proportion to the
+  // fingers; the picture eases toward it every frame (time constant
+  // PINCH_SMOOTH_MS), so it tracks the pinch instead of jumping per event.
+  // Added natively (not onWheel) because React's wheel listener is passive and
+  // cannot stop the browser zooming the whole page.
+  const pinchRef = useRef<{ target: number; focal: g.Point; raf: number | null; last: number }>({
+    target: 1,
+    focal: { x: 0, y: 0 },
+    raf: null,
+    last: 0,
+  });
+  useEffect(() => () => {
+    if (pinchRef.current.raf !== null) cancelAnimationFrame(pinchRef.current.raf);
+  }, []);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    return listenTrackpadPinch(stage, ({ factor, clientX, clientY }) => {
-      const { box, centre, fit } = geometry();
+    const pinch = pinchRef.current;
+    const frame = (now: number) => {
+      const { box, fit } = geometry();
       const current = viewRef.current;
-      const focal = { x: clientX - centre.x, y: clientY - centre.y };
-      setAnimating(false);
-      const next = g.zoomView(current, g.clampZoom(current.scale * factor), focal, fit, box);
+      const dt = Math.min(64, now - pinch.last);
+      pinch.last = now;
+      const gap = Math.log(pinch.target / current.scale);
+      const done = Math.abs(gap) < 0.002;
+      const scale = done ? pinch.target : current.scale * Math.exp(gap * (1 - Math.exp(-dt / PINCH_SMOOTH_MS)));
+      const next = g.zoomView(current, scale, pinch.focal, fit, box);
       setView(next.scale <= g.ZOOM_MIN ? g.FIT : next);
+      pinch.raf = done ? null : requestAnimationFrame(frame);
+    };
+    return listenTrackpadPinch(stage, ({ factor, clientX, clientY }) => {
+      const { centre } = geometry();
+      pinch.focal = { x: clientX - centre.x, y: clientY - centre.y };
+      setAnimating(false);
+      if (pinch.raf === null) {
+        pinch.target = viewRef.current.scale;
+        pinch.last = performance.now();
+        pinch.raf = requestAnimationFrame(frame);
+      }
+      pinch.target = g.clampZoom(pinch.target * factor);
     });
   });
 
