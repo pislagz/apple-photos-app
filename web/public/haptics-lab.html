@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haptics lab">
+<title>Haptics lab (#305)</title>
+<!--
+  Research page for issue #305: how far can web haptics go on iPhone?
+  Not linked from the app. Self-contained: no network, no app code.
+  Each test asks "Did you feel a tick?" and the summary at the bottom
+  can be screenshotted and sent back.
+-->
+<style>
+  :root { color-scheme: light dark; --accent: #0a84ff; --bg: #f2f2f7; --card: #fff; --fg: #000; --muted: #6e6e73; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --card: #1c1c1e; --fg: #fff; --muted: #98989d; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.4 -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--fg);
+         padding: max(12px, env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom)); -webkit-user-select: none; user-select: none; }
+  h1 { font-size: 28px; margin: 8px 4px; }
+  .env { font-size: 13px; color: var(--muted); margin: 0 4px 12px; word-break: break-word; }
+  section { background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  p.how { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button.fake, .fake { appearance: none; border: 0; border-radius: 999px; background: var(--accent); color: #fff;
+         font: 600 16px -apple-system, system-ui; padding: 10px 18px; position: relative; display: inline-block; }
+  /* Invisible native switch laid over an element: the finger toggles it directly. */
+  .hs { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; clip-path: inset(0 round 8px); }
+  .pill .hs { clip-path: inset(0 round 999px); }
+  .hidden-switch { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+  .label-overlay { position: absolute; inset: 0; }
+  .strip { display: flex; gap: 2px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 0; -webkit-overflow-scrolling: touch; }
+  .thumb { flex: 0 0 56px; height: 72px; border-radius: 6px; position: relative; scroll-snap-align: center; }
+  .verdict { display: flex; gap: 8px; margin-top: 10px; align-items: center; font-size: 14px; }
+  .verdict button { border: 1px solid var(--muted); background: transparent; color: var(--fg); border-radius: 8px; padding: 6px 12px; font: inherit; }
+  .verdict button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .count { font-size: 13px; color: var(--muted); margin-left: auto; }
+  pre#summary { white-space: pre-wrap; font: 13px ui-monospace, Menlo, monospace; margin: 0; -webkit-user-select: text; user-select: text; }
+</style>
+</head>
+<body>
+<h1>Haptics lab</h1>
+<div class="env" id="env"></div>
+
+<section data-test="T1">
+  <h2>T1 · Visible native switch (baseline)</h2>
+  <p class="how">Tap the switch a few times. If this gives no tick, haptics are off on this phone (Settings → Sounds &amp; Haptics → System Haptics) and nothing below can work.</p>
+  <div class="row"><input type="checkbox" switch id="t1"></div>
+</section>
+
+<section data-test="T2">
+  <h2>T2 · Button with an invisible switch on top</h2>
+  <p class="how">Looks like a normal button; your finger actually toggles a transparent switch. This is the method that still works on iOS 26.5+ (direct tap).</p>
+  <div class="row"><span class="fake pill">Tap me<input type="checkbox" switch class="hs"></span></div>
+</section>
+
+<section data-test="T3">
+  <h2>T3 · Filmstrip: tap a thumbnail (invisible switch on each)</h2>
+  <p class="how">Tap single thumbnails: tick? Then swipe the strip starting on a thumbnail: does it still scroll smoothly, and does a swipe wrongly tick?</p>
+  <div class="strip" id="strip3"></div>
+</section>
+
+<section data-test="T4">
+  <h2>T4 · Filmstrip: tap a thumbnail (label forwards tap to hidden switch)</h2>
+  <p class="how">Same strip, but each thumbnail is a &lt;label&gt; for a hidden switch (the ios-haptics library method). Tap: tick? Swipe: scrolls fine?</p>
+  <div class="strip" id="strip4"></div>
+  <input type="checkbox" switch id="t4sw" class="hidden-switch">
+</section>
+
+<section data-test="T5">
+  <h2>T5 · Code-triggered tick on tap (expected dead on iOS 26.5+)</h2>
+  <p class="how">A normal button whose click handler calls label.click() on a hidden switch. Worked before iOS 26.5; Apple reportedly patched it.</p>
+  <div class="row"><button class="fake" id="t5btn">Tap me</button></div>
+  <input type="checkbox" switch id="t5sw" class="hidden-switch"><label for="t5sw" id="t5lbl"></label>
+</section>
+
+<section data-test="T6">
+  <h2>T6 · Tick while scrolling (like iOS Photos filmstrip)</h2>
+  <p class="how">Swipe the strip. Code tries to tick each time a new thumbnail snaps to the centre. Expected: no tick on iOS 26.5+. This is the one pp asked about.</p>
+  <div class="strip" id="strip6"></div>
+  <input type="checkbox" switch id="t6sw" class="hidden-switch"><label for="t6sw" id="t6lbl"></label>
+</section>
+
+<section data-test="T7">
+  <h2>T7 · Long-press (like entering Select)</h2>
+  <p class="how">Press and hold the button ~0.5 s. Code tries to tick when the hold is recognised. Also note if a tick comes only when you lift the finger.</p>
+  <div class="row"><span class="fake pill" id="t7">Hold me<input type="checkbox" switch class="hs" id="t7sw"></span></div>
+</section>
+
+<section data-test="T8">
+  <h2>T8 · Vibration API (Android only)</h2>
+  <p class="how">Calls navigator.vibrate(10). iPhone has no Vibration API; this is here so the same page reports what Android does.</p>
+  <div class="row"><button class="fake" id="t8btn">Tap me</button><span id="t8info" class="count"></span></div>
+</section>
+
+<section>
+  <h2>Summary (screenshot this)</h2>
+  <pre id="summary"></pre>
+</section>
+
+<script>
+(() => {
+  const ua = navigator.userAgent;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const ios = (ua.match(/OS (\d+)[._](\d+)(?:[._](\d+))? like Mac OS X/) || []).slice(1).filter(Boolean).join('.') || 'not iOS';
+  const env = `iOS ${ios} · ${standalone ? 'Home-screen app' : 'Browser tab'} · switch supported: ${'switch' in HTMLInputElement.prototype ? 'yes' : 'no'} · vibrate: ${'vibrate' in navigator ? 'yes' : 'no'}`;
+  document.getElementById('env').textContent = env;
+
+  const results = {}; const counts = {};
+  const bump = (t) => { counts[t] = (counts[t] || 0) + 1; const c = document.querySelector(`[data-test="${t}"] .count`); if (c) c.textContent = `${counts[t]} events`; render(); };
+
+  // Verdict buttons on every test section.
+  document.querySelectorAll('section[data-test]').forEach((s) => {
+    const t = s.dataset.test;
+    const v = document.createElement('div'); v.className = 'verdict';
+    v.innerHTML = '<span>Felt a tick?</span><button data-v="yes">Yes</button><button data-v="no">No</button><button data-v="partly">Partly</button><span class="count"></span>';
+    v.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      results[t] = b.dataset.v; v.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); render();
+    });
+    s.appendChild(v);
+  });
+
+  const hues = [8, 30, 48, 140, 190, 215, 260, 300, 335];
+  const fillStrip = (el, make) => { for (let i = 0; i < 40; i++) { const d = make(i); d.style.background = `hsl(${hues[i % hues.length]} 55% 55%)`; el.appendChild(d); } };
+
+  document.getElementById('t1').addEventListener('change', () => bump('T1'));
+  document.querySelector('[data-test="T2"] .hs').addEventListener('change', () => bump('T2'));
+
+  fillStrip(document.getElementById('strip3'), () => {
+    const d = document.createElement('div'); d.className = 'thumb';
+    const sw = document.createElement('input'); sw.type = 'checkbox'; sw.setAttribute('switch', ''); sw.className = 'hs';
+    sw.addEventListener('change', () => bump('T3')); d.appendChild(sw); return d;
+  });
+
+  const t4sw = document.getElementById('t4sw'); t4sw.addEventListener('change', () => bump('T4'));
+  fillStrip(document.getElementById('strip4'), () => { const l = document.createElement('label'); l.className = 'thumb'; l.htmlFor = 't4sw'; return l; });
+
+  document.getElementById('t5sw').addEventListener('change', () => bump('T5'));
+  document.getElementById('t5btn').addEventListener('click', () => document.getElementById('t5lbl').click());
+
+  const strip6 = document.getElementById('strip6');
+  fillStrip(strip6, () => { const d = document.createElement('div'); d.className = 'thumb'; return d; });
+  let lastIdx = -1;
+  document.getElementById('t6sw').addEventListener('change', () => bump('T6'));
+  strip6.addEventListener('scroll', () => {
+    const idx = Math.round(strip6.scrollLeft / 58);
+    if (idx !== lastIdx) { lastIdx = idx; document.getElementById('t6lbl').click(); }
+  }, { passive: true });
+
+  const t7 = document.getElementById('t7'); const t7sw = document.getElementById('t7sw'); let timer = 0; let fired = false;
+  t7sw.addEventListener('change', () => bump('T7'));
+  t7.addEventListener('touchstart', () => { fired = false; timer = setTimeout(() => { fired = true; t7sw.click(); }, 500); }, { passive: true });
+  ['touchend', 'touchcancel', 'touchmove'].forEach((ev) => t7.addEventListener(ev, () => clearTimeout(timer), { passive: true }));
+
+  document.getElementById('t8btn').addEventListener('click', () => {
+    const ok = 'vibrate' in navigator ? navigator.vibrate(10) : false;
+    document.getElementById('t8info').textContent = 'vibrate() returned ' + ok; bump('T8');
+  });
+
+  function render() {
+    const lines = [env, new Date().toISOString(), ''];
+    document.querySelectorAll('section[data-test]').forEach((s) => {
+      const t = s.dataset.test; const name = s.querySelector('h2').textContent.replace(/^T\d+ · /, '');
+      lines.push(`${t} ${(results[t] || '–').padEnd(6)} events:${counts[t] || 0}  ${name}`);
+    });
+    document.getElementById('summary').textContent = lines.join('\n');
+  }
+  render();
+})();
+</script>
+</body>
+</html>
