@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type AccessMatrixResponse, readAccessMatrix } from "../api";
+import InfoButton from "../../help/InfoButton";
 import { describeError, switchLabel, useAccessToggle, useIsPhone } from "../sharing";
 import { Footer, GroupedList, Row } from "../ui/GroupedList";
 import SavedStatus from "../ui/SavedStatus";
@@ -52,7 +53,7 @@ export default function SharingScreen() {
         )}
         {unshared.map((l) => (
           <p key={l.id} className="admin-hint admin-hint--warn" role="note">
-            No one can see {l.display_name} now.
+            No one can see {l.display_name} now. <InfoButton helpKey="sharingNobody" name="a library nobody can see" />
           </p>
         ))}
       </>
@@ -61,7 +62,9 @@ export default function SharingScreen() {
 
   return (
     <section className="admin-sharing">
-      <h1>Sharing</h1>
+      <h1>
+        Sharing <InfoButton helpKey="sharingAbout" name="sharing" />
+      </h1>
       {shownError && <p role="alert">{shownError}</p>}
       {body}
       <Footer>{FOOTER}</Footer>
@@ -79,7 +82,7 @@ function Matrix({ matrix, access }: { matrix: AccessMatrixResponse; access: Acce
         <thead>
           <tr>
             <th scope="col" className="admin-sticky-col">
-              Person
+              Person <InfoButton helpKey="sharingAdmin" name="administrators" />
             </th>
             {matrix.libraries.map((library) => (
               <th scope="col" key={library.id}>
