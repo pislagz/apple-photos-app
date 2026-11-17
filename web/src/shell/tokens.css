@@ -230,6 +230,16 @@
   --material-banner: rgba(255, 255, 255, 0.94);
   --color-on-overlay: #000;
 
+  /* #79 iPhone (iOS 27) glass chrome, used by phone27.css only: the floating
+     tab bar, segmented control, select toolbar, viewer and nav buttons. The
+     edge is the specular top highlight; -solid is the reduced-transparency
+     stand-in. Desktop (Sequoia) never reads these. */
+  --glass-chrome: rgba(255, 255, 255, 0.72);
+  --glass-chrome-edge: rgba(255, 255, 255, 0.85);
+  --glass-chrome-selected: rgba(118, 118, 128, 0.16);
+  --glass-chrome-solid: #f9f9f9;
+  --shadow-glass: 0 6px 24px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.07);
+
   /* Scrims over photos (the text on them is always white). */
   --scrim-clear: rgba(0, 0, 0, 0);
   --scrim-title: rgba(0, 0, 0, 0.5);
@@ -351,6 +361,11 @@
     --material-overlay: rgba(28, 28, 30, 0.92);
     --material-banner: rgba(44, 44, 46, 0.94);
     --color-on-overlay: #f5f5f7;
+    --glass-chrome: rgba(37, 37, 40, 0.74);
+    --glass-chrome-edge: rgba(255, 255, 255, 0.16);
+    --glass-chrome-selected: rgba(255, 255, 255, 0.16);
+    --glass-chrome-solid: #1c1c1e;
+    --shadow-glass: 0 6px 24px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
 
     --backdrop-material: rgba(10, 10, 10, 0.8);
     --backdrop-dim: rgba(10, 10, 20, 0.6);

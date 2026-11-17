@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AccessMatrixResponse, type AuditLogEntry, auditLogCsvUrl, readAccessMatrix, readAuditLog } from "../api";
+import InfoButton from "../../help/InfoButton";
 import { describeError } from "../sharing";
 import { describeActivity } from "../ui/activity";
 import { formatWhen } from "../ui/format";
 import { Footer, GroupedList, Row } from "../ui/GroupedList";
 import SkeletonRow from "../ui/SkeletonRow";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 export const PAGE_SIZE = 50;
 
@@ -159,13 +161,16 @@ export default function ActivityScreen() {
 
   return (
     <section className="admin-activity">
-      <h1>Activity</h1>
+      <h1>
+        Activity <InfoButton helpKey="activityAbout" name="activity" />
+      </h1>
       {error && <p role="alert">{error}</p>}
 
       <GroupedList heading="Show">
         <Row
           size="touch"
           label="Person"
+          info={<InfoButton helpKey="activityFilters" name="filters" />}
           control={
             <select className="admin-input" aria-label="Person" value={userId} onChange={(e) => setUserId(e.target.value)}>
               <option value="">Everyone</option>
@@ -200,14 +205,14 @@ export default function ActivityScreen() {
           size="touch"
           label="From"
           control={
-            <input type="date" className="admin-input" aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
+            <input type="date" {...NO_AUTOFILL} className="admin-input" aria-label="From date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} />
           }
         />
         <Row
           size="touch"
           label="To"
           control={
-            <input type="date" className="admin-input" aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+            <input type="date" {...NO_AUTOFILL} className="admin-input" aria-label="To date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
           }
         />
       </GroupedList>
@@ -226,6 +231,7 @@ export default function ActivityScreen() {
         <Row
           size="touch"
           label="Export as CSV…"
+          info={<InfoButton helpKey="activityExport" name="export" />}
           control={
             <a className="admin-btn" href={auditLogCsvUrl(filters)} download aria-label="Export as CSV">
               Export

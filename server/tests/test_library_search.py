@@ -169,7 +169,13 @@ def test_empty_query_is_an_empty_page_and_paging_works(tmp_path):
     try:
         for q in ("", "   "):
             body = client.get(f"/api/libraries/{lib}/search", params={"q": q}).json()
-            assert body == {"items": [], "next_cursor": None, "total": None}
+            assert body == {
+                "items": [],
+                "next_cursor": None,
+                "total": None,
+                "prev_cursor": None,
+                "newer_total": None,
+            }
         assert client.get(f"/api/libraries/{lib}/search").json()["items"] == []
         first = client.get(
             f"/api/libraries/{lib}/search", params={"q": "2023", "limit": 3}
@@ -320,6 +326,16 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # migration 27
+        for column in (  # migration 28 (#461)
+            "indexed_identity",
+            "in_place_since",
+            "problem_code",
+            "problem_detail",
+            "problem_since",
+            "retry_count",
+            "retry_after",
+        ):
+            db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")  # D36
         db.execute("DROP TABLE assets_fts")
         db.execute(
@@ -474,7 +490,7 @@ def test_fts_and_scan_agree_on_a_set_of_queries(tmp_path):
         queries = [
             "dog", "DO", "field", "dog beach", "dog snow", "2023", "2023-03",
             "2023-03-09", "mar", "ma", "marc", "march 2023", "ann", "lee ann",
-            "road", "trip", "img", "IMG_0002", "apple", "iphone", "zzz", "%", "_",
+            "road", "trip", "img", "IMG_0002", "0002", "apple", "iphone", "zzz", "%", "_",
             "'; DROP TABLE assets; --", "é", "d%",
         ]  # fmt: skip
         for q in queries:
@@ -506,6 +522,16 @@ def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
     try:
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # 27
+        for column in (  # migration 28 (#461)
+            "indexed_identity",
+            "in_place_since",
+            "problem_code",
+            "problem_detail",
+            "problem_since",
+            "retry_count",
+            "retry_after",
+        ):
+            db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")
         db.execute("DROP TABLE assets_fts")
         db.execute("PRAGMA user_version = 25")

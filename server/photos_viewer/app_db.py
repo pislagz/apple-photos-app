@@ -539,6 +539,27 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE assets ADD COLUMN is_syndicated INTEGER NOT NULL DEFAULT 0",
         "UPDATE libraries SET reindex_needed = 1 WHERE last_indexed_signature IS NOT NULL",
     ],
+    # 28 (#461): Photos changing a library in place is not a replacement.
+    # `indexed_identity` is the package's and Photos.sqlite's inode at the last
+    # index; a later change with the same identity sets `in_place_since` and
+    # the last good index keeps serving. `problem_*` is the last failure's
+    # code (`library_health`) and `retry_*` its backoff.
+    [
+        "ALTER TABLE libraries ADD COLUMN indexed_identity TEXT",
+        "ALTER TABLE libraries ADD COLUMN in_place_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_code TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_detail TEXT",
+        "ALTER TABLE libraries ADD COLUMN problem_since TEXT",
+        "ALTER TABLE libraries ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE libraries ADD COLUMN retry_after TEXT",
+    ],
+    # 29 (#467): deleting an asset (re-index, or removing a library) runs the
+    # `ON DELETE SET NULL` on audit_log.asset_id / library_id once per row;
+    # without these indexes each one scanned the whole log.
+    [
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_asset_id ON audit_log(asset_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_library_id ON audit_log(library_id)",
+    ],
 ]
 
 
@@ -577,6 +598,12 @@ def connect(data_dir: str | pathlib.Path) -> sqlite3.Connection:
     # block for a bit instead of failing immediately with "database is
     # locked" while this connection (or migrate(), below) holds the write lock.
     conn.execute("PRAGMA busy_timeout = 5000")
+    # #466: WAL so readers never block on the indexer's large write
+    # transactions. The mode persists in the file, so this is a no-op after
+    # the first call. NORMAL is safe in WAL (no corruption; at worst the last
+    # commit is lost on power failure) and avoids an fsync per commit.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     migrate(conn)
     return conn
 

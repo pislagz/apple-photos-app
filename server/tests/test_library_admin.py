@@ -594,11 +594,12 @@ def test_library_status_does_not_write_into_a_closed_librarys_package(tmp_path):
 def test_library_status_warns_when_the_drive_is_unmounted(tmp_path):
     conn, client = _admin_client(tmp_path)
     try:
-        package_path = build_fixture_library(tmp_path)
+        volume = tmp_path / "Volumes" / "Photos"
+        package_path = build_fixture_library(volume)
         added = client.post(
             "/api/admin/libraries", json={"path": str(package_path)}
         ).json()
-        shutil.rmtree(package_path)
+        shutil.rmtree(volume)
 
         response = client.get(f"/api/admin/libraries/{added['id']}/status")
 
@@ -606,6 +607,24 @@ def test_library_status_warns_when_the_drive_is_unmounted(tmp_path):
         body = response.json()
         assert body["total_size_bytes"] is None
         assert [w["code"] for w in body["warnings"]] == ["drive_not_mounted"]
+    finally:
+        conn.close()
+
+
+def test_library_status_tells_a_moved_library_from_an_unmounted_drive(tmp_path):
+    # #461: the drive (the package's folder) is still there.
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        shutil.rmtree(package_path)
+
+        body = client.get(f"/api/admin/libraries/{added['id']}/status").json()
+
+        assert body["total_size_bytes"] is None
+        assert [w["code"] for w in body["warnings"]] == ["library_missing"]
     finally:
         conn.close()
 
@@ -783,9 +802,12 @@ def test_library_status_triggers_a_background_reindex_when_the_wal_file_changed(
             wal_conn.close()
 
         # P1.22: the status poll only notices the change (pending); the
-        # checker applies it after the fingerprint holds still.
+        # checker applies it after the fingerprint holds still. #461: a WAL
+        # write to the same files is Photos at work, not a new copy, so users
+        # keep the last index meanwhile.
         assert response.status_code == 200
-        assert response.json()["updating"] is True
+        assert response.json()["updating"] is False
+        assert [w["code"] for w in response.json()["warnings"]] == ["photos_busy"]
         # The new row's file has to exist or the readiness sample rejects it.
         originals = next(package_path.joinpath("originals").rglob("*.HEIC"))
         (package_path / "originals" / "0").mkdir(exist_ok=True)
@@ -903,6 +925,24 @@ def test_reindex_an_unmounted_library_is_400(tmp_path):
             "/api/admin/libraries", json={"path": str(package_path)}
         ).json()
         shutil.rmtree(package_path)
+
+        response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
+
+        assert response.status_code == 400
+        assert "isn't where it used to be" in response.json()["detail"]
+    finally:
+        conn.close()
+
+
+def test_reindex_on_an_unmounted_drive_says_mounted(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        volume = tmp_path / "Volumes" / "Photos"
+        package_path = build_fixture_library(volume)
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        shutil.rmtree(volume)
 
         response = client.post(f"/api/admin/libraries/{added['id']}/reindex", json={})
 

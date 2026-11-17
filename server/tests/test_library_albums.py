@@ -282,6 +282,16 @@ def test_migration_flags_indexed_libraries_for_reindex(tmp_path):
         conn.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         conn.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
         conn.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # migration 27
+        for column in (  # migration 28 (#461)
+            "indexed_identity",
+            "in_place_since",
+            "problem_code",
+            "problem_detail",
+            "problem_since",
+            "retry_count",
+            "retry_after",
+        ):
+            conn.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         conn.execute("DROP TRIGGER assets_fts_delete")  # D36
         conn.execute("DROP TABLE assets_fts")
         conn.execute("DROP TABLE folders")

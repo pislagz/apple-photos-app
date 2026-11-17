@@ -3205,6 +3205,8 @@ html.has-app-height .shell--mobile {
   /* Opaque (#112): at 95% the icon row and filmstrip thumbs showed through. */
   z-index: 2;
   background: var(--surface-dark);
+  /* The viewer's own text colour is dark in light mode; the sheet is always dark. */
+  color: var(--color-white);
   border-radius: var(--radius-14) var(--radius-14) 0 0;
   padding: var(--space-16);
   animation: sheet-in var(--dur-slide) var(--ease-slide);
@@ -3381,10 +3383,8 @@ html.has-app-height .shell--mobile {
   color: var(--accent);
 }
 
-/* Info sits apart from the other actions, as in Photos. */
-.desktop-viewer__topbar-right .toolbar-button:last-child {
-  margin-left: var(--space-8);
-}
+/* #483: the right-hand actions are one evenly spaced run (the flex gap
+   only), Info included, as in Photos for Mac. */
 
 .desktop-viewer__stage {
   position: relative;
@@ -5233,6 +5233,9 @@ html.has-app-height .shell--mobile {
 }
 
 .library-empty__link {
+  border: 0;
+  background: none;
+  font-family: inherit;
   margin-top: var(--space-8);
   padding: var(--space-8) var(--space-16);
   font-size: var(--font-size-body);
@@ -5926,4 +5929,32 @@ textarea,
   height: 100%;
   display: block;
   pointer-events: none;
+}
+
+/* #482: desktop download progress is a ring in the Download button, and the toolbar
+   status holds only the HEIC option, so nothing is clipped or reflows the bar. */
+.zip-status--toolbar {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+}
+.zip-status--toolbar .zip-status__error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zip-ring {
+  width: 20px;
+  height: 20px;
+}
+.zip-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+.zip-ring__track {
+  stroke: var(--color-separator);
+}
+.zip-ring__value {
+  stroke: var(--accent);
+  stroke-linecap: round;
 }

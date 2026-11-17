@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./admin.css";
 import {
   answerPlaceNamesNotice,
@@ -12,6 +12,7 @@ import {
 } from "./api";
 import { Icon, type IconName } from "../shell/icons";
 import { type Section, useAdminRoute } from "./route";
+import { routeScrollKey } from "./scrollKeys";
 import { GroupedList, Row } from "./ui/GroupedList";
 import ActivityScreen from "./screens/ActivityScreen";
 import LibrariesScreen from "./screens/LibrariesScreen";
@@ -69,6 +70,7 @@ export default function AdminApp() {
     text: string;
   } | null>(null);
   const [answering, setAnswering] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     getMe()
@@ -82,6 +84,7 @@ export default function AdminApp() {
   useEffect(() => {
     if (!checkedSession || me === null) return;
     function onKeyDown(event: KeyboardEvent) {
+      if (routeScrollKey(event, mainRef.current)) return;
       if (!shouldLeaveOnEscape(event)) return;
       event.preventDefault();
       window.location.assign(PHOTOS_HREF);
@@ -160,6 +163,10 @@ export default function AdminApp() {
           <label>
             Username
             <input
+              autoComplete="username"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
             />
@@ -168,6 +175,7 @@ export default function AdminApp() {
             Password
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
@@ -213,6 +221,7 @@ export default function AdminApp() {
         </ul>
       </nav>
       <main
+        ref={mainRef}
         className="admin-main"
         data-nav={direction ?? undefined}
         key={`${route.section}/${route.id ?? ""}`}

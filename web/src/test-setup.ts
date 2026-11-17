@@ -1,10 +1,15 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
 
-// findBy*/waitFor keep their 1 s default. Every fetch in these tests is a mock
-// that resolves in microtasks, so a wait only runs long when the CPU is
-// starved; the cases that do (found by running the suite under CPU load) pass
-// an explicit `{ timeout }` themselves. Assertions that mean "this did NOT
-// happen" must not rely on the timeout; they await the promise they guard.
+// Async waits. A wait only runs long when the CPU is starved (every fetch here
+// is a mock resolving in microtasks), and a passing wait returns as soon as its
+// condition holds, so a larger limit costs nothing on the green path; it only
+// delays a real failure. The 1 s RTL / 5 s vitest defaults were measured to
+// fail under load (#465: People, Search, AppShell, DesktopLibrary run 4-6x
+// oversubscribed), so they are raised here as a last resort rather than
+// per-test. Assertions that mean "this did NOT happen" must not rely on the
+// timeout; they await the promise they guard.
+configure({ asyncUtilTimeout: 6000 });
 
 // jsdom has no `ResizeObserver`. TanStack
 // Virtual (the mobile Library grid) reads the container's size from that

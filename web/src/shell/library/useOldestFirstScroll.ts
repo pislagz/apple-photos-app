@@ -57,11 +57,15 @@ export function useOldestFirstScroll({
   rows,
   rowSize,
   ready,
+  holdEnd = false,
 }: {
   scrollRef: RefObject<HTMLElement | null>;
   rows: LibraryRow[];
   rowSize: (row: LibraryRow) => number;
   ready: boolean;
+  // Landing on a period: skip the first jump to the end; the landing scroll
+  // places the grid, and two jumps would flash the wrong date in the title.
+  holdEnd?: boolean;
 }): OldestFirstScroll {
   const previousRows = useRef<LibraryRow[]>([]);
   const needsEnd = useRef(true);
@@ -78,7 +82,7 @@ export function useOldestFirstScroll({
     }
     if (needsEnd.current) {
       needsEnd.current = false;
-      element.scrollTop = element.scrollHeight;
+      if (!holdEnd) element.scrollTop = element.scrollHeight;
       return;
     }
     if (previous.length === 0) return;
@@ -86,7 +90,7 @@ export function useOldestFirstScroll({
     if (lastItemId(previous[previous.length - 1]) !== lastItemId(rows[rows.length - 1]) || firstItemId(previous[0]) === firstItemId(rows[0])) return;
     const next = compensatedScrollTop(element.scrollTop, previous, rows, rowSizeRef.current);
     if (next !== element.scrollTop) element.scrollTop = next;
-  }, [scrollRef, rows, ready]);
+  }, [scrollRef, rows, ready, holdEnd]);
 
   const scrollToEnd = useCallback(
     (smooth = false) => {

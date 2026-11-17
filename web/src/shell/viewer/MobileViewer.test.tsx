@@ -288,6 +288,19 @@ describe("MobileViewer", () => {
     }
   });
 
+  it("gives each photo a fresh <img>, so the previous photo cannot flash after a swipe (#488)", () => {
+    mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2") });
+    const items = [makeItem("a1"), makeItem("a2")];
+    const { container, rerender } = render(
+      <MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
+    );
+    const before = container.querySelector(".mobile-viewer__page--current img") as HTMLImageElement;
+    rerender(<MobileViewer libraryId={1} items={items} index={1} onIndexChange={() => {}} onClose={() => {}} />);
+    const after = container.querySelector(".mobile-viewer__page--current img") as HTMLImageElement;
+    expect(after).not.toBe(before);
+    expect(after.getAttribute("src")).toContain("a2");
+  });
+
   it("preloads the neighbours' previews, nothing larger", () => {
     mockDetail({ a1: makeDetail("a1"), a2: makeDetail("a2"), a3: makeDetail("a3") });
     const { container } = render(

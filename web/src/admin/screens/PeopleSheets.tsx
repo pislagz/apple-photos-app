@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createInvite, createUser, deleteUser, type Role, updateUser, type UserResponse } from "../api";
 import { describeError } from "../sharing";
 import Sheet from "../ui/Sheet";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 export const MIN_PASSWORD = 12;
 
@@ -213,7 +214,7 @@ export function AddPersonSheet({ onClose, onDone }: { onClose: () => void; onDon
           Name
           <input
             data-autofocus
-            autoComplete="off"
+            {...NO_AUTOFILL}
             className="admin-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -311,7 +312,7 @@ export function InviteSheet({ onClose, onChanged }: { onClose: () => void; onCha
         <div className="admin-form">
           <label className="admin-field">
             Invitation link
-            <input readOnly className="admin-input admin-invite-link" value={link} onFocus={(e) => e.target.select()} />
+            <input readOnly {...NO_AUTOFILL} className="admin-input admin-invite-link" value={link} onFocus={(e) => e.target.select()} />
           </label>
           <button type="button" className="admin-btn admin-btn--primary" onClick={copy}>
             {copied ? "Copied" : "Copy"}

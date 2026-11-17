@@ -33,6 +33,7 @@ import {
   STABLE_WAIT,
   ZIP_LIMIT,
 } from "./settingsChoices";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 function describeError(err: unknown): string {
   return err instanceof ApiError ? err.message : "something went wrong";
@@ -220,6 +221,7 @@ function TextRow({
     <SettingRow label={label} help={help} name={name}>
       {(run) => (
         <input
+          {...NO_AUTOFILL}
           className="admin-input"
           aria-label={label}
           value={draft}
@@ -255,6 +257,7 @@ function AllowlistRow({ identities, onSaved }: { identities: string; onSaved: (t
         <span className="admin-row__detail">One name per line. Leave empty to let everyone on your private network in.</span>
         <textarea
           id="allowlist-text"
+          {...NO_AUTOFILL}
           className="admin-input admin-input--area"
           rows={4}
           value={draft}
@@ -387,13 +390,11 @@ export default function SettingsScreen() {
         />
         <Row
           label="Check all libraries now"
+          info={<InfoButton helpKey="checkNow" name="Check now" />}
           control={
-            <>
-              <button type="button" className="admin-btn" onClick={handleCheckNow} disabled={checking}>
-                Check Now
-              </button>
-              <InfoButton helpKey="checkNow" name="Check now" />
-            </>
+            <button type="button" className="admin-btn" onClick={handleCheckNow} disabled={checking}>
+              Check Now
+            </button>
           }
         />
       </GroupedList>
@@ -416,7 +417,9 @@ export default function SettingsScreen() {
           />
           <div role="listitem" data-testid="place-names-status" className="admin-row">
             <span className="admin-row__text">
-              <span className="admin-row__label">Place-name data</span>
+              <span className="admin-row__label">
+                Place-name data <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
+              </span>
               <span className="admin-row__detail">
                 {placeNames === null
                   ? "Checking…"
@@ -430,7 +433,6 @@ export default function SettingsScreen() {
               <button type="button" className="admin-btn" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
                 {placeNames?.downloaded ? "Download Again" : "Download"}
               </button>
-              <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
             </span>
           </div>
         </GroupedList>

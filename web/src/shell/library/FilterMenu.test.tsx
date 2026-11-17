@@ -10,6 +10,7 @@ function makeState(over: Partial<LibraryFilterState> = {}): LibraryFilterState {
     hide: [],
     active: false,
     setFilter: vi.fn(),
+    clear: vi.fn(),
     setShow: vi.fn(),
     ...over,
   };

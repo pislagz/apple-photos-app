@@ -1,10 +1,11 @@
 import { useState } from "react";
 import InfoButton from "../../help/InfoButton";
-import { addLibrary, type LibraryResponse } from "../api";
+import { addLibrary, addScannedLibrary, type LibraryResponse } from "../api";
 import { describeError } from "../sharing";
 import { GroupedList, Row } from "../ui/GroupedList";
 import Sheet from "../ui/Sheet";
 import LibraryPicker, { type PickedFile } from "./LibraryPicker";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 const SUFFIX = /\.photoslibrary$/i;
 
@@ -26,11 +27,11 @@ export default function AddLibrarySheet({
 
   const defaultName = chosen ? chosen.name.replace(SUFFIX, "") : "";
 
-  async function add(path: string, displayName: string | undefined) {
+  async function add(path: string, displayName: string | undefined, scanned = false) {
     setError(null);
     setBusy(true);
     try {
-      onAdded(await addLibrary(path, displayName));
+      onAdded(await (scanned ? addScannedLibrary(path, displayName) : addLibrary(path, displayName)));
     } catch (err) {
       setError(describeError(err));
       setBusy(false);
@@ -52,7 +53,7 @@ export default function AddLibrarySheet({
           {
             label: "Add Library",
             disabled: busy || name.trim() === "",
-            onClick: () => void add(chosen.path, name.trim() === defaultName ? undefined : name.trim()),
+            onClick: () => void add(chosen.path, name.trim() === defaultName ? undefined : name.trim(), true),
           },
         ]}
       >
@@ -60,9 +61,9 @@ export default function AddLibrarySheet({
         <GroupedList footer="This is the name people see in the app. You can change it later.">
           <Row
             label={
-              <label htmlFor="new-library-name">Name</label>
+              <label htmlFor="new-library-title">Name</label>
             }
-            control={<input id="new-library-name" className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />}
+            control={<input id="new-library-title" {...NO_AUTOFILL} className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />}
           />
         </GroupedList>
         <button type="button" className="admin-btn" onClick={() => (setChosen(null), setError(null))}>
@@ -89,6 +90,7 @@ export default function AddLibrarySheet({
         }}
       >
         <form
+          autoComplete="off"
           className="admin-form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -97,11 +99,11 @@ export default function AddLibrarySheet({
         >
           <label className="admin-field">
             Path
-            <input className="admin-input" value={typedPath} onChange={(event) => setTypedPath(event.target.value)} placeholder="/libraries/Family.photoslibrary" />
+            <input {...NO_AUTOFILL} className="admin-input" value={typedPath} onChange={(event) => setTypedPath(event.target.value)} placeholder="/libraries/Family.photoslibrary" />
           </label>
           <label className="admin-field">
             Name (optional)
-            <input className="admin-input" value={typedName} onChange={(event) => setTypedName(event.target.value)} />
+            <input {...NO_AUTOFILL} className="admin-input" value={typedName} onChange={(event) => setTypedName(event.target.value)} />
           </label>
           <button type="submit" className="admin-btn admin-btn--primary" disabled={busy || typedPath.trim() === ""}>
             Add by Path

@@ -7,9 +7,9 @@ import { thumbScheduler, watchScrollSpeed } from "./shell/library/thumbScheduler
 import { installAppHeight } from "./shell/appHeight";
 import { installThemeColor } from "./shell/themeColor";
 import { installBlockPageZoom } from "./shell/blockPageZoom";
-import { installSelectAllGuard } from "./shell/shortcuts";
 import "./shell/tokens.css";
 import "./shell/shell.css";
+import "./shell/phone27.css";
 
 const root = document.getElementById("root");
 if (root === null) {
@@ -33,7 +33,6 @@ createRoot(root).render(
 
 installAppHeight();
 installThemeColor();
-installSelectAllGuard();
 installBlockPageZoom();
 
 // #215: no new thumbnail loads while the grid is flying past.

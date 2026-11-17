@@ -31,7 +31,7 @@ describe("library picker (Add Library)", () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/library-candidates") return { folders: [FOLDER], candidates: [FAMILY, READY] };
       if (url.startsWith("/api/admin/library-candidates/size")) return { path: "x", size_bytes: 412_000_000_000 };
-      if (url === "/api/admin/libraries" && init?.method === "POST") return { id: 1 };
+      if (url === "/api/admin/libraries/from-scan" && init?.method === "POST") return { id: 1 };
       throw new Error(`unexpected request: ${url}`);
     });
     const onAdded = renderSheet();
@@ -46,8 +46,8 @@ describe("library picker (Add Library)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Library" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/admin/libraries",
-        expect.objectContaining({ method: "POST", body: JSON.stringify({ path: FAMILY.path, display_name: null }) }),
+        "/api/admin/libraries/from-scan",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ candidate_path: FAMILY.path, display_name: null }) }),
       ),
     );
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith({ id: 1 }));
@@ -57,7 +57,7 @@ describe("library picker (Add Library)", () => {
     const fetchMock = mockFetch((url, init) => {
       if (url === "/api/admin/library-candidates") return { folders: [FOLDER], candidates: [FAMILY] };
       if (url.startsWith("/api/admin/library-candidates/size")) return { path: "x", size_bytes: 1 };
-      if (url === "/api/admin/libraries" && init?.method === "POST") return { id: 1 };
+      if (url === "/api/admin/libraries/from-scan" && init?.method === "POST") return { id: 1 };
       throw new Error(`unexpected request: ${url}`);
     });
     renderSheet();
@@ -66,8 +66,8 @@ describe("library picker (Add Library)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Library" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/admin/libraries",
-        expect.objectContaining({ body: JSON.stringify({ path: FAMILY.path, display_name: "Our family" }) }),
+        "/api/admin/libraries/from-scan",
+        expect.objectContaining({ body: JSON.stringify({ candidate_path: FAMILY.path, display_name: "Our family" }) }),
       ),
     );
   });

@@ -1,5 +1,6 @@
 import type { AlbumNode, AlbumsResponse } from "../../api";
 import { Icon } from "../icons";
+import LargeTitleScreen from "../LargeTitleScreen";
 import MobileLibrary from "../library/MobileLibrary";
 import { MEDIA_TYPES } from "../more/mediaTypes";
 import { PersonButton } from "../people/PeopleGrid";
@@ -27,29 +28,21 @@ export default function AlbumsTab({
 
   if (error) {
     return (
-      <div className="mobile-screen">
-        <header className="mobile-screen__header mobile-screen__header--root">
-          <h1 className="mobile-screen__title">Albums</h1>
-        </header>
-        <div className="mobile-screen__body" role="alert">
+      <LargeTitleScreen title="Albums">
+        <div role="alert">
           <p>Couldn't load albums.</p>
           <button type="button" className="mobile-library__retry" onClick={retry}>
             Retry
           </button>
         </div>
-      </div>
+      </LargeTitleScreen>
     );
   }
   if (!albums) {
     return (
-      <div className="mobile-screen">
-        <header className="mobile-screen__header mobile-screen__header--root">
-          <h1 className="mobile-screen__title">Albums</h1>
-        </header>
-        <div className="mobile-screen__body">
-          <p>Loading…</p>
-        </div>
-      </div>
+      <LargeTitleScreen title="Albums">
+        <p>Loading…</p>
+      </LargeTitleScreen>
     );
   }
 
@@ -148,11 +141,7 @@ function AlbumsHome({
   const { people } = usePeople(libraryId);
   const types = MEDIA_TYPES.filter((type) => albums.smart.some((album) => album.id === `smart:${type.slug}`));
   return (
-    <div className="mobile-screen">
-      <header className="mobile-screen__header mobile-screen__header--root">
-        <h1 className="mobile-screen__title">Albums</h1>
-      </header>
-      <div className="mobile-screen__body albums-home">
+    <LargeTitleScreen title="Albums" bodyClassName="mobile-screen__body albums-home">
         <section aria-label="My Albums">
           <SectionHeading title="My Albums" />
           {albums.tree.length === 0 ? (
@@ -202,21 +191,23 @@ function AlbumsHome({
         {types.length > 0 && (
           <section aria-label="Media Types">
             <SectionHeading title="Media Types" />
-            <ul className="albums-list">
+            <ul className="more-screen__group albums-home__types">
               {types.map((type) => (
                 <li key={type.slug}>
-                  <button type="button" className="albums-list__item" onClick={() => onNavigate(`/media/${type.slug}`)}>
-                    <Icon name={type.icon} className="albums-list__type-icon" size={22} />
-                    <span className="albums-list__title">{type.label}</span>
-                    <Icon name="chevron" className="albums-list__chevron" />
+                  <button
+                    type="button"
+                    className="more-screen__item"
+                    onClick={() => onNavigate(`/media/${type.slug}`)}
+                  >
+                    <Icon name={type.icon} className="more-screen__icon" />
+                    {type.label}
                   </button>
                 </li>
               ))}
             </ul>
           </section>
         )}
-      </div>
-    </div>
+    </LargeTitleScreen>
   );
 }
 

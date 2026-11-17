@@ -37,6 +37,7 @@ from . import (
     indexer,
     libraries,
     library_folders,
+    library_health,
     library_prewarm,
     library_watch,
     session_auth,
@@ -52,6 +53,11 @@ _lock_for = library_watch._lock_for
 
 class LibraryAddRequest(BaseModel):
     path: str
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class LibraryFromScanRequest(BaseModel):
+    candidate_path: str
     display_name: str | None = Field(default=None, min_length=1, max_length=255)
 
 
@@ -206,9 +212,20 @@ def _suggest_replacements(
     db: sqlite3.Connection, path: pathlib.Path, last_signature: str | None = None
 ) -> list[ReplaceSuggestion]:
     """Unregistered packages next to a missing one, best match first. Only
-    stats at the top level: the package and its `Photos.sqlite`, no walk."""
-    if path.exists():
+    stats at the top level: the package and its `Photos.sqlite`, no walk.
+    A drive macOS remounted as `Name 1` comes first: the same package there."""
+    if library_health.exists(path):
         return []
+    probe = library_health.probe_path(path)
+    if probe.renamed_to is not None:
+        return [
+            ReplaceSuggestion(
+                path=str(probe.renamed_to),
+                name=probe.renamed_to.name,
+                message=f"The drive now shows up as {probe.renamed_to.parent}. "
+                f"Use the library there?",
+            )
+        ]
     try:
         entries = [
             p
@@ -290,8 +307,21 @@ def _validate_library_path(
     """Raise a 400 with an admin-facing message for a bad path, a missing
     mount, an unsupported Photos version, or an unreadable library. Returns
     normally only when `path` is a readable, supported `.photoslibrary`."""
-    if not path.exists():
-        if not path.parent.exists():
+    probe = library_health.probe_path(path)
+    if probe.code == library_health.VOLUME_RENAMED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{path} does not exist, but the same library is at {probe.renamed_to}. "
+            + library_health.message(probe.code, renamed=str(probe.renamed_to)),
+        )
+    if probe.code in (library_health.NO_PERMISSION, library_health.DRIVE_ERROR):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{path} can't be read ({probe.detail}). "
+            + library_health.message(probe.code),
+        )
+    if not library_health.exists(path):
+        if not library_health.exists(path.parent):
             raise HTTPException(
                 status_code=400,
                 detail=f"{path.parent} does not exist -- is the drive mounted?",
@@ -320,8 +350,15 @@ def _validate_library_path(
     except UnsupportedPhotosVersionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        code = library_health.classify(exc)
+        hint = (
+            " " + library_health.message(code)
+            if code in library_health.TRANSIENT
+            else ""
+        )
         raise HTTPException(
-            status_code=400, detail=f"could not open {path} as a Photos library: {exc}"
+            status_code=400,
+            detail=f"could not open {path} as a Photos library: {exc}.{hint}",
         ) from exc
     else:
         opened.close()
@@ -355,7 +392,7 @@ def _total_size_bytes(
     filesystem walk of a package that can be terabytes. Still `None` when
     the drive is unmounted -- a SQL sum alone would silently keep returning
     the last-good total for a library whose directory just vanished."""
-    if not path.exists():
+    if not library_health.exists(path):
         return None
     total = db.execute(
         "SELECT SUM(original_filesize) FROM assets WHERE library_id = ? AND hidden = 0",
@@ -411,35 +448,63 @@ def _tree_size(root: pathlib.Path, ttl: float) -> tuple[int, bool]:
     return total, estimated
 
 
-def _warnings_for(path: pathlib.Path) -> list[LibraryWarning]:
-    if not path.exists():
+def _warnings_for(row: sqlite3.Row) -> list[LibraryWarning]:
+    """Cheap by design (#461): a status poll used to copy and fully open the
+    library, which for a big one meant gigabytes of temp copies per poll, and
+    reported any failure, even Photos writing to it, as "is the drive
+    mounted?". Now it is a stat/permission probe plus the last recorded
+    failure from the checker or indexer."""
+    path = pathlib.Path(row["path"])
+    probe = library_health.probe_path(path)
+    if not probe.ok:
         return [
             LibraryWarning(
-                code="drive_not_mounted",
-                message=f"{path} is not reachable -- is the drive mounted?",
+                code=probe.code,
+                message=library_health.message(
+                    probe.code, renamed=str(probe.renamed_to)
+                ),
             )
         ]
     warnings: list[LibraryWarning] = []
-    if libraries.library_is_locked(path):
+    busy = row["in_place_since"] is not None or (
+        row["problem_code"] == library_health.PHOTOS_BUSY
+    )
+    if not busy and libraries.library_is_locked(path):
+        busy = True
+    if busy:
         warnings.append(
             LibraryWarning(
-                code="library_open",
-                message="Photos.app (or another process) currently has this library open",
+                code=library_health.PHOTOS_BUSY,
+                message=library_health.message(library_health.PHOTOS_BUSY),
             )
         )
-    try:
-        opened = open_library_readonly(path)
-    except UnsupportedPhotosVersionError as exc:
-        warnings.append(LibraryWarning(code="unsupported_version", message=str(exc)))
-    except Exception as exc:  # noqa: BLE001 -- any open failure becomes a status warning, not a 500
-        warnings.append(
-            LibraryWarning(
-                code="unreadable", message=f"{path} could not be opened: {exc}"
-            )
-        )
-    else:
-        opened.close()
+    code = row["problem_code"]
+    if (
+        code in (library_health.UNREADABLE, library_health.INCOMPLETE)
+        and row["pending_signature"] is not None
+        and row["in_place_since"] is None
+    ):
+        # A new copy still arriving: "Being updated" and its reason say it.
+        code = None
+    if code and code != library_health.PHOTOS_BUSY and code not in _PROBE_CODES:
+        text = library_health.message(code)
+        if code in (library_health.UNSUPPORTED_VERSION, library_health.UNREADABLE):
+            text = row["problem_detail"] or text
+        if row["retry_after"]:
+            text += f" Next try: {row['retry_after']}."
+        warnings.append(LibraryWarning(code=code, message=text))
     return warnings
+
+
+_PROBE_CODES = frozenset(
+    {
+        library_health.NOT_MOUNTED,
+        library_health.VOLUME_RENAMED,
+        library_health.LIBRARY_MISSING,
+        library_health.NO_PERMISSION,
+        library_health.DRIVE_ERROR,
+    }
+)
 
 
 _mark_indexing = library_watch.mark_indexing
@@ -470,13 +535,21 @@ def _run_index_job(
         indexer.index_library(conn, library_id, path, force=force)
         _mark_indexed(conn, library_id)
     except Exception as exc:
-        _mark_index_error(conn, library_id, str(exc))
-        logger.warning(
-            "background index of library %s (%s) failed",
+        code = library_health.classify(exc)
+        if code in library_health.TRANSIENT:
+            # The checker retries it with backoff; not an error to show.
+            _mark_indexed(conn, library_id)
+        else:
+            _mark_index_error(conn, library_id, str(exc))
+        library_watch.record_problem(
+            conn,
             library_id,
-            path,
-            exc_info=True,
+            code,
+            str(exc),
+            phase="index",
+            err=library_health.error_errno(exc),
         )
+        logger.debug("background index of library %s failed", library_id, exc_info=True)
     finally:
         conn.close()
         lock.release()
@@ -570,7 +643,7 @@ def _build_status(
     row = _get_library_or_404(db, row["id"])
     updating, updating_reason = library_watch.availability(row)
     runs = _recent_runs(db, row["id"])
-    warnings = _warnings_for(path)
+    warnings = _warnings_for(row)
     if library_watch.pending_too_long(row):
         warnings.append(
             LibraryWarning(
@@ -592,7 +665,7 @@ def _build_status(
     suggestions = _suggest_replacements(db, path, row["last_indexed_signature"])
     disk_size: int | None = None
     disk_estimated = False
-    if path.exists():
+    if library_health.exists(path):
         disk_size, disk_estimated = _tree_size(path, _DISK_SIZE_TTL_SECONDS)
     thumb_cache: int | None = None
     if cache_dir is not None:
@@ -673,6 +746,45 @@ def add_library(
     )
     _schedule_index_job(background_tasks, data_dir, library_id, path, force=True)
     return _to_response(_get_library_or_404(db, library_id))
+
+
+@router.post(
+    "/api/admin/libraries/from-scan",
+    response_model=LibraryResponse,
+    status_code=201,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def add_library_from_scan(
+    payload: LibraryFromScanRequest,
+    background_tasks: BackgroundTasks,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+    data_dir: pathlib.Path = Depends(session_auth.get_data_dir),
+) -> LibraryResponse:
+    """Register a package the folder scan lists. Unlike `POST /libraries`, a
+    path that is not in the current scan results is refused, so the picker
+    cannot register an arbitrary location."""
+    listed = next(
+        (
+            p
+            for p in library_folders.found_packages(db)
+            if str(p) == payload.candidate_path
+        ),
+        None,
+    )
+    if listed is None:
+        raise HTTPException(
+            status_code=400,
+            detail="That library is not in the folders being scanned. "
+            "Refresh the list and pick it again.",
+        )
+    return add_library(
+        LibraryAddRequest(path=str(listed), display_name=payload.display_name),
+        background_tasks,
+        admin,
+        db,
+        data_dir,
+    )
 
 
 @router.get("/api/admin/libraries", response_model=list[LibraryResponse])
@@ -798,17 +910,27 @@ def reindex_library(
     response body reports the fresh counts."""
     row = _get_library_or_404(db, library_id)
     path = pathlib.Path(row["path"])
-    if not path.exists():
-        raise HTTPException(
-            status_code=400, detail=f"{path} is not reachable -- is the drive mounted?"
-        )
+    probe = library_health.probe_path(path)
+    if not probe.ok:
+        detail = library_health.message(probe.code, renamed=str(probe.renamed_to))
+        if probe.code == library_health.NOT_MOUNTED:
+            detail = f"{path} is not reachable -- is the drive mounted? {detail}"
+        raise HTTPException(status_code=400, detail=detail)
     lock = _lock_for(library_id)
     lock.acquire()
     try:
         _mark_indexing(db, library_id)
-        opened, reason = library_watch.check_ready(path)
+        opened, reason, code = library_watch.check_ready_detailed(path)
         if opened is None:
             _mark_indexed(db, library_id)
+            library_watch.record_problem(
+                db,
+                library_id,
+                code or library_health.UNREADABLE,
+                reason,
+                phase="admin",
+                backoff=False,
+            )
             raise HTTPException(
                 status_code=400, detail=f"could not re-index {path}: {reason}"
             )
@@ -820,10 +942,24 @@ def reindex_library(
             _mark_index_error(db, library_id, str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
-            _mark_index_error(db, library_id, str(exc))
-            raise HTTPException(
-                status_code=400, detail=f"could not re-index {path}: {exc}"
-            ) from exc
+            code = library_health.classify(exc)
+            library_watch.record_problem(
+                db,
+                library_id,
+                code,
+                str(exc),
+                phase="admin",
+                err=library_health.error_errno(exc),
+                backoff=False,
+            )
+            if code in library_health.TRANSIENT:
+                # The last good index stays in place; nothing is broken.
+                _mark_indexed(db, library_id)
+                detail = f"could not re-index {path}: {library_health.message(code)}"
+            else:
+                _mark_index_error(db, library_id, str(exc))
+                detail = f"could not re-index {path}: {exc}"
+            raise HTTPException(status_code=400, detail=detail) from exc
         else:
             _mark_indexed(db, library_id)
     finally:

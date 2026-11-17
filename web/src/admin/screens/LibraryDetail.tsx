@@ -11,8 +11,10 @@ import { formatBytes, formatWhen } from "../ui/format";
 import { IndexBar } from "./IndexBar";
 import PrewarmControls from "./PrewarmControls";
 import ReplaceDialog from "./ReplaceDialog";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 const HISTORY_LIMIT = 10;
+const INFO_CODES = new Set(["photos_busy", "library_open"]);
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
@@ -101,7 +103,9 @@ export default function LibraryDetail({
     );
   }
   for (const warning of status.warnings) {
-    notes.push(<Row key={warning.code} label={<span role="alert">{warningText(warning)}</span>} />);
+    // #461: Photos writing to its own library is news, not an error.
+    const role = INFO_CODES.has(warning.code) ? "status" : "alert";
+    notes.push(<Row key={warning.code} label={<span role={role}>{warningText(warning)}</span>} />);
   }
   if (status.updating) {
     notes.push(<Row key="updating" label="Being updated" detail={status.updating_reason ?? undefined} />);
@@ -150,12 +154,12 @@ export default function LibraryDetail({
             }}
           >
             <span className="admin-row__text">
-              <label className="admin-row__label" htmlFor="library-name">
+              <label className="admin-row__label" htmlFor="library-title">
                 Name
               </label>
             </span>
             <span className="admin-row__control">
-              <input id="library-name" className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />
+              <input id="library-title" {...NO_AUTOFILL} className="admin-input" value={name} onChange={(event) => setName(event.target.value)} data-autofocus />
               <button type="submit" className="admin-btn admin-btn--primary" disabled={name.trim() === ""}>
                 Done
               </button>

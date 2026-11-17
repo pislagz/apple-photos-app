@@ -6,6 +6,7 @@ import Sheet from "./Sheet";
 import SkeletonRow from "./SkeletonRow";
 import Switch from "./Switch";
 import { formatBytes, formatDuration, formatWhen } from "./format";
+import { NO_AUTOFILL } from "../../noAutofill";
 
 // Dev-only page (`/admin/controls`, see main.tsx) that shows every shared admin
 // control at both row heights, for the screenshot spec and design review.
@@ -22,7 +23,7 @@ function Section({ size }: { size: RowSize }) {
         <Row size={size} label="Disabled switch" control={<Switch checked disabled label="Disabled switch" onChange={() => {}} />} />
         <Row size={size} label="Last backup" detail="Checked every 15 minutes" value={`${formatWhen(new Date(Date.now() - 5 * 60_000))} · ${formatBytes(1_500_000_000)}`} />
         <Row size={size} label="Scan time" value={formatDuration(125)} />
-        <Row size={size} label="Name" control={<input className="admin-input" aria-label="Name" defaultValue="Family" />} />
+        <Row size={size} label="Name" control={<input {...NO_AUTOFILL} className="admin-input" aria-label="Name" defaultValue="Family" />} />
         <Row size={size} label="Open library" onClick={() => {}} />
         <Row size={size} label="Remove library" destructive onClick={() => setSheet(true)} />
         <SkeletonRow size={size} />

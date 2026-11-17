@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, mockFetch, noContentResponse } from "../testHelpers";
+import { HELP, type HelpKey } from "../../help/adminHelp";
 import SharingScreen from "./SharingScreen";
 
 const USER_A = { id: 1, username: "alice", role: "admin", disabled: false, created_at: "2026-01-01" };
@@ -118,5 +119,27 @@ describe("SharingScreen", () => {
     expect(await screen.findByRole("switch", { name: "bob can see Family" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "alice · Administrator" })).toBeInTheDocument();
+  });
+});
+
+function tipFor(name: string) {
+  const button = screen.getByRole("button", { name: `About ${name}` });
+  return document.getElementById(button.getAttribute("aria-describedby")!)!;
+}
+
+describe("SharingScreen (i) buttons", () => {
+  it("every (i) shows its registered help text", async () => {
+    mockFetch((url) => {
+      if (url === "/api/admin/access-matrix") return { ...MATRIX, assignments: { "1": [], "2": [] } };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    render(<SharingScreen />);
+    await screen.findByText("Person", { exact: false });
+    const rows: [string, HelpKey][] = [
+      ["sharing", "sharingAbout"],
+      ["administrators", "sharingAdmin"],
+      ["a library nobody can see", "sharingNobody"],
+    ];
+    for (const [name, key] of rows) expect(tipFor(name).textContent, name).toBe(HELP[key]);
   });
 });

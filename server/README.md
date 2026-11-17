@@ -22,6 +22,13 @@ deploy/
 
 Filenames must not contain `token` or `credential`. The runner cannot read those paths. See `CLAUDE.md`.
 
+## Data directory
+
+`app.db` runs in SQLite WAL mode, which needs shared memory. Keep
+`PHOTOS_VIEWER_DATA_DIR` on a local disk, not a network share (SMB/NFS); on a
+NAS, bind-mount a local volume for it. The libraries themselves can stay on
+the share (they are opened read-only).
+
 ## Read-only open
 
 `libraries.py` is the only module that may receive a `.photoslibrary` path. It copies `database/Photos.sqlite` and any `-wal` and `-shm` to a temp directory, then constructs `PhotosDB(dbfile=copy, library_path=package)`. It does not repair the database. Phase 0's test fails if the package changes.
@@ -81,6 +88,14 @@ Passkeys (P3.1): the WebAuthn relying-party ID defaults to the request's host na
 **The per-peer ceiling applies to loopback too, not only `PHOTOS_VIEWER_TRUSTED_PROXIES`.** Failed logins are also capped in total per direct peer address (default 300, ten times the per-client limit), so rotating `Tailscale-User-Login` cannot buy unlimited tries. The trade-off is a shared lockout for everyone behind that peer. Raise the ceiling with `PHOTOS_VIEWER_MAX_FAILED_LOGINS_PER_PEER` if many users share one proxy, and recover with `--clear-ip-limits` or the admin panel's `clear_ip_limits`, below. Reasoning and edge cases: [docs/SPEC.md](../docs/SPEC.md), login rate limiting and "A trusted peer is a trust boundary".
 
 Configuring neither is the documented "it still works, just coarser" case: logins succeed, but the per-client bucket is shared across every device behind the gateway. Configuring `--forwarded-allow-ips` correctly is the complete fix (also corrects the CSRF Origin check's and the audit log's idea of the caller's address) and is the default this doc recommends; `PHOTOS_VIEWER_TRUSTED_PROXIES` is for when that isn't possible.
+
+## Library folders
+
+The admin panel (Add Library) lists every `.photoslibrary` directly inside the configured library folders; it never browses elsewhere. The folder list is stored in `app.db` and edited in the panel. `PHOTOS_VIEWER_LIBRARIES_DIR` (folders separated by `:`) only seeds it the first time the server starts.
+
+- **Mac:** set it in `.env` or the launchd plist `EnvironmentVariables`, e.g. `PHOTOS_VIEWER_LIBRARIES_DIR=/Volumes/Photos:/Volumes/Archive`, or just add the folder in the panel. The server's user needs read access to the drive (System Settings > Privacy > Full Disk Access for external or protected volumes).
+- **Docker:** the compose file mounts `${PHOTOS_LIBRARY_DIR:-./libraries}` at `/libraries:ro` and sets `PHOTOS_VIEWER_LIBRARIES_DIR` to `/libraries`. Mount further folders read-only and add them in the panel.
+- Picking a library sends the scanned path to `POST /api/admin/libraries/from-scan`, which answers 400 for a path that is not in the current scan. `POST /api/admin/libraries` (Add by Path under Advanced) still takes a typed path.
 
 ## Locked-out admin: the `admin` CLI
 

@@ -33,14 +33,17 @@ for (const scheme of ["light", "dark"] as const) {
         bottom: r.bottom,
         vh: window.innerHeight,
         padBottom: parseFloat(cs.paddingBottom),
-        bg: cs.backgroundColor,
+        // #79: the bar is a floating glass capsule drawn on ::before.
+        bg: getComputedStyle(bar, "::before").backgroundColor,
         html: getComputedStyle(document.documentElement).backgroundColor,
         body: getComputedStyle(document.body).backgroundColor,
         docH: document.documentElement.scrollHeight,
       };
     });
     expect(Math.abs(m.bottom - m.vh)).toBeLessThanOrEqual(1);
-    expect(m.padBottom).toBeGreaterThanOrEqual(34);
+    // #79: the floating capsule sits 10px into the 34px home-indicator inset,
+    // like the iOS 27 tab bar; the indicator itself stays clear of it.
+    expect(m.padBottom).toBeGreaterThanOrEqual(24);
     expect(m.bg).not.toBe("rgba(0, 0, 0, 0)");
     expect(m.docH).toBeLessThanOrEqual(m.vh);
     const expected = scheme === "dark" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
