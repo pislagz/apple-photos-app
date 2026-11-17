@@ -345,12 +345,15 @@ describe("DesktopLibrary", () => {
     // The key presses below run synchronously, so the older page (200 + 100
     // items) must already be in state: otherwise focus clamps at the oldest
     // loaded photo and the test races the page fetch.
-    // jsdom fires no scroll event for the open-at-the-end scrollTop, so the
-    // virtualizer can keep a stale offset and the load-older effect (which
-    // refuses to run while offset and scrollTop disagree) never fires on a
-    // starved CPU. A real browser always emits that event; do it per poll.
+    // Load the older page the way a user does: scroll up to the oldest loaded
+    // rows. The open-at-the-end scrollTop fires no scroll event in jsdom, and
+    // whether the load-older effect saw the grid "near the top" on its own
+    // depended on render timing, so a starved CI CPU never loaded the page.
+    // With the fake 1_000_000 px layout the first (oldest) row is mounted at
+    // scrollTop 0 and nothing else moves the grid before the page arrives.
+    grid.scrollTop = 0;
+    fireEvent.scroll(grid);
     await waitFor(() => {
-      fireEvent.scroll(grid);
       expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
     }, SLOW_WAIT);
     await act(async () => {

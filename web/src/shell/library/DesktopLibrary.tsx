@@ -385,12 +385,14 @@ export default function DesktopLibrary({
     // loads the older pages it needs itself.
     if (oldestFirst && pendingMonthKey !== null) return;
     // A scroll that has not reached the virtualizer yet (the landing scroll)
-    // would read the old top rows as "near the top".
+    // would read the old top rows as "near the top". `scrollOffset` is a dep so
+    // the check runs again once the virtualizer catches up, even when the
+    // visible rows (and so `virtualRows`) are the same as before.
     const top = scrollRef.current?.scrollTop;
     if (oldestFirst && top !== undefined && Math.abs((rowVirtualizer.scrollOffset ?? 0) - top) > 1) return;
     // Oldest first: the unloaded pages are above the first row.
     if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingMonthKey, rowVirtualizer]);
+  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingMonthKey, rowVirtualizer, scrollOffset]);
 
   // An anchored window ends before the newest photos: load them on the way down.
   useEffect(() => {
