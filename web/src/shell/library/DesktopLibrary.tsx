@@ -13,6 +13,7 @@ import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_
 import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
+import { createPinchSession, listenTrackpadPinch, pinchDirection } from "../trackpadPinch";
 import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -354,6 +355,46 @@ export default function DesktopLibrary({
     },
     [zoomIndex, rowVirtualizer, rows],
   );
+  // #475: a size change settles in like Photos for Mac: the new layout
+  // starts a little off-scale and faded, then eases to rest. The scale grows
+  // from smaller when tiles grow, and from larger when they shrink.
+  const gridBodyRef = useRef<HTMLDivElement | null>(null);
+  const prevZoomRef = useRef(zoomIndex);
+  const pinchSettleRef = useRef<{ from: number; origin: string } | null>(null);
+  useLayoutEffect(() => {
+    const previous = prevZoomRef.current;
+    prevZoomRef.current = zoomIndex;
+    const body = gridBodyRef.current;
+    const scroller = scrollRef.current;
+    if (previous === zoomIndex || !body || !scroller || typeof body.animate !== "function") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const style = getComputedStyle(body);
+    const ms = parseFloat(style.getPropertyValue("--motion-duration")) || 150;
+    // A pinch settle continues from the live scale at the pinch point; a
+    // button or key change fades in from slightly off-scale instead.
+    const settle = pinchSettleRef.current;
+    pinchSettleRef.current = null;
+    if (settle) {
+      body.animate(
+        [
+          { transform: `scale(${settle.from})`, transformOrigin: settle.origin },
+          { transform: "scale(1)", transformOrigin: settle.origin },
+        ],
+        { duration: ms, easing: "ease-out" },
+      );
+      body.style.transform = "";
+      return;
+    }
+    // The scroller's centre in the body's own coordinates.
+    const originY = scroller.scrollTop + scroller.clientHeight / 2;
+    body.animate(
+      [
+        { opacity: 0.35, transform: `scale(${zoomIndex > previous ? 0.94 : 1.06})`, transformOrigin: `50% ${originY}px` },
+        { opacity: 1, transform: "scale(1)", transformOrigin: `50% ${originY}px` },
+      ],
+      { duration: ms, easing: "ease-out" },
+    );
+  }, [zoomIndex]);
   useLayoutEffect(() => {
     const id = zoomAnchorRef.current;
     if (!id) return;
@@ -362,6 +403,63 @@ export default function DesktopLibrary({
     if (rowIndex !== -1) rowVirtualizer.scrollToIndex(rowIndex, { align: "center" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoomIndex]);
+
+  // #475: a trackpad pinch over the grid scales it live under the fingers
+  // (Safari gesture events and ctrl+wheel alike), then settles onto the
+  // nearest size stop: at most one stop per pinch, like the slider's +/-.
+  const pinchZoomRef = useRef({ zoomIndex, changeZoom });
+  pinchZoomRef.current = { zoomIndex, changeZoom };
+  useEffect(() => {
+    const grid = scrollRef.current;
+    if (!grid) return;
+    const reduced = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const originOf = (origin: { clientX: number; clientY: number }) => {
+      const rect = grid.getBoundingClientRect();
+      return `${origin.clientX - rect.left}px ${origin.clientY - rect.top + grid.scrollTop}px`;
+    };
+    const session = createPinchSession({
+      onScale(scale, origin) {
+        const body = gridBodyRef.current;
+        if (!body || reduced()) return;
+        body.style.transformOrigin = originOf(origin);
+        body.style.transform = `scale(${scale})`;
+        body.style.willChange = "transform";
+      },
+      onSettle(scale, origin) {
+        const body = gridBodyRef.current;
+        const { zoomIndex: current, changeZoom: change } = pinchZoomRef.current;
+        const next = Math.min(MAX_ZOOM_INDEX, Math.max(0, current + pinchDirection(scale)));
+        const live = !!body && !reduced();
+        const originCss = originOf(origin);
+        if (body) body.style.willChange = "";
+        if (next !== current) {
+          // The new tiles are ZOOM_EDGES[next] / ZOOM_EDGES[current] times the
+          // old size, so continue from what is still left of the pinch.
+          pinchSettleRef.current = live ? { from: scale / (ZOOM_EDGES[next] / ZOOM_EDGES[current]), origin: originCss } : null;
+          change(next);
+          if (!live && body) body.style.transform = "";
+          return;
+        }
+        if (!body) return;
+        const ms = parseFloat(getComputedStyle(body).getPropertyValue("--motion-duration")) || 150;
+        if (live && typeof body.animate === "function") {
+          body.animate(
+            [
+              { transform: `scale(${scale})`, transformOrigin: originCss },
+              { transform: "scale(1)", transformOrigin: originCss },
+            ],
+            { duration: ms, easing: "ease-out" },
+          );
+        }
+        body.style.transform = "";
+      },
+    });
+    const stop = listenTrackpadPinch(grid, (pinch) => session.push(pinch), () => session.end());
+    return () => {
+      stop();
+      session.cancel();
+    };
+  }, []);
 
   const virtualRows = rowVirtualizer.getVirtualItems();
 
@@ -1157,7 +1255,7 @@ export default function DesktopLibrary({
             />
           )
         ) : (
-          <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
+          <div ref={gridBodyRef} data-testid="desktop-library-body" style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
               const row = rows[virtualRow.index];
               const style: CSSProperties = {

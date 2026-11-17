@@ -1,8 +1,9 @@
 // #409: a trackpad pinch (ctrl+wheel in Chrome/Firefox, gesture events in
-// Safari) must not zoom the whole page. Only a photo or video in the viewer
-// zooms, and it does so itself from its own wheel listener, which still runs:
-// preventDefault here stops the browser default, not propagation. The iPhone
-// grid pinch (#213) is touch-event based and is not touched by this.
+// Safari) must not zoom the whole page. The desktop grid (one size stop) and
+// the viewer (the photo) handle the pinch themselves from their own element
+// listeners (#457, trackpadPinch.ts), which still run: preventDefault here
+// stops the browser default, not propagation. The iPhone grid pinch (#213) is
+// touch-event based and is not touched by this.
 export function installBlockPageZoom(target: Window = window): () => void {
   const onWheel = (event: WheelEvent) => {
     if (event.ctrlKey) event.preventDefault();
