@@ -345,10 +345,14 @@ describe("DesktopLibrary", () => {
     // The key presses below run synchronously, so the older page (200 + 100
     // items) must already be in state: otherwise focus clamps at the oldest
     // loaded photo and the test races the page fetch.
-    await waitFor(
-      () => expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true),
-      SLOW_WAIT,
-    );
+    // jsdom fires no scroll event for the open-at-the-end scrollTop, so the
+    // virtualizer can keep a stale offset and the load-older effect (which
+    // refuses to run while offset and scrollTop disagree) never fires on a
+    // starved CPU. A real browser always emits that event; do it per poll.
+    await waitFor(() => {
+      fireEvent.scroll(grid);
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
+    }, SLOW_WAIT);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
