@@ -182,4 +182,13 @@ describe("sidebar label (#470)", () => {
     expect(row.querySelector("img")).toBeNull();
     expect(row.querySelector(".sidebar__icon")).not.toBeNull();
   });
+
+  it("no sidebar row carries a native title or SVG <title>, and hovering leaves one tooltip (#474)", () => {
+    renderGroup();
+    expect(document.querySelectorAll("[title], svg title")).toHaveLength(0);
+    hoverAndWait(screen.getByText(LONG));
+    hoverAndWait(screen.getByText(FOLDER));
+    expect(document.querySelectorAll(".sidebar-tooltip")).toHaveLength(1);
+    expect(document.querySelectorAll("[title], svg title")).toHaveLength(0);
+  });
 });

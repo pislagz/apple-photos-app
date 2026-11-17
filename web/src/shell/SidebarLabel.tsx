@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 
 // #470: a sidebar row's title. One line, cut off with an ellipsis. Like the
 // Photos for Mac sidebar, resting the pointer on a title that is cut off shows
@@ -9,13 +8,38 @@ import { createPortal } from "react-dom";
 export const SIDEBAR_TOOLTIP_DELAY_MS = 600;
 const EDGE = 8;
 
-// #474: only one sidebar tooltip may exist at a time, whatever the number of
-// rows (folders hold albums with the same name, so two rows can read alike).
-// Showing one closes the one before it; each tooltip also closes as soon as
-// the pointer is no longer over its own title, so a missed mouseleave (touch
-// compatibility events, a row re-rendered under the pointer) cannot leave one
-// behind.
+// #474: one tooltip element for the whole sidebar, created on demand and
+// reused, so two can never be on screen at once (rows, folders and nested
+// albums share it). Each label closes it when the pointer is no longer over
+// that label, so a missed mouseleave cannot leave it behind. The rows carry no
+// title attribute and no SVG <title>, so the browser adds no native tooltip.
 let closeActive: (() => void) | null = null;
+let tipEl: HTMLDivElement | null = null;
+
+function tooltipEl(): HTMLDivElement {
+  if (!tipEl || !tipEl.isConnected) {
+    document.querySelectorAll(".sidebar-tooltip").forEach((el) => el.remove());
+    tipEl = document.createElement("div");
+    tipEl.setAttribute("role", "tooltip");
+    tipEl.className = "sidebar-tooltip";
+    document.body.appendChild(tipEl);
+  }
+  return tipEl;
+}
+
+function showTip(text: string, x: number, y: number) {
+  const el = tooltipEl();
+  el.textContent = text;
+  el.style.top = `${y}px`;
+  el.style.left = "0px";
+  const max = window.innerWidth - el.offsetWidth - EDGE;
+  el.style.left = `${Math.max(EDGE, Math.min(x, max))}px`;
+}
+
+function hideTip() {
+  document.querySelectorAll(".sidebar-tooltip").forEach((el) => el.remove());
+  tipEl = null;
+}
 
 export function isTruncated(el: HTMLElement): boolean {
   return el.scrollWidth > el.clientWidth;
@@ -23,30 +47,39 @@ export function isTruncated(el: HTMLElement): boolean {
 
 export default function SidebarLabel({ text }: { text: string }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const pointerX = useRef(0);
-  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  const [open, setOpen] = useState(false);
 
   const hide = () => {
     window.clearTimeout(timer.current);
     timer.current = undefined;
-    setTip(null);
+    setOpen(false);
+    if (closeActive === stable) {
+      closeActive = null;
+      hideTip();
+    }
   };
+  const hideRef = useRef(hide);
+  hideRef.current = hide;
 
   useEffect(
     () => () => {
       window.clearTimeout(timer.current);
-      if (closeActive === hide) closeActive = null;
+      if (closeActive === stable) {
+        closeActive = null;
+        hideTip();
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+  const stable = useRef(() => hideRef.current()).current;
 
   // Scrolling, a key press or leaving the window moves on from the row.
   useEffect(() => {
-    if (!tip) return;
-    const off = () => setTip(null);
+    if (!open) return;
+    const off = () => hideRef.current();
     const away = (event: MouseEvent) => {
       if (!(event.target instanceof Node) || !ref.current?.contains(event.target)) off();
     };
@@ -60,50 +93,34 @@ export default function SidebarLabel({ text }: { text: string }) {
       window.removeEventListener("keydown", off, true);
       window.removeEventListener("blur", off);
     };
-  }, [tip]);
-
-  // Keep the tooltip inside the window.
-  useLayoutEffect(() => {
-    const el = tipRef.current;
-    if (!tip || !el) return;
-    const max = window.innerWidth - el.offsetWidth - EDGE;
-    el.style.left = `${Math.max(EDGE, Math.min(tip.x, max))}px`;
-  }, [tip]);
+  }, [open]);
 
   return (
-    <>
-      <span
-        ref={ref}
-        className="sidebar__label"
-        onMouseEnter={(event) => {
-          // Touch taps fire compatibility mouse events with no mouseleave.
-          if ((event.nativeEvent as PointerEvent).pointerType === "touch") return;
-          pointerX.current = event.clientX;
-          window.clearTimeout(timer.current);
-          timer.current = window.setTimeout(() => {
-            timer.current = undefined;
-            const el = ref.current;
-            if (!el || !isTruncated(el)) return;
-            closeActive?.();
-            closeActive = hide;
-            setTip({ x: pointerX.current, y: el.getBoundingClientRect().bottom + 6 });
-          }, SIDEBAR_TOOLTIP_DELAY_MS);
-        }}
-        onMouseMove={(event) => {
-          pointerX.current = event.clientX;
-        }}
-        onMouseLeave={hide}
-        onMouseDown={hide}
-      >
-        {text}
-      </span>
-      {tip &&
-        createPortal(
-          <div ref={tipRef} role="tooltip" className="sidebar-tooltip" style={{ left: tip.x, top: tip.y }}>
-            {text}
-          </div>,
-          document.body,
-        )}
-    </>
+    <span
+      ref={ref}
+      className="sidebar__label"
+      onMouseEnter={(event) => {
+        // Touch taps fire compatibility mouse events with no mouseleave.
+        if ((event.nativeEvent as PointerEvent).pointerType === "touch") return;
+        pointerX.current = event.clientX;
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => {
+          timer.current = undefined;
+          const el = ref.current;
+          if (!el || !isTruncated(el)) return;
+          closeActive?.();
+          closeActive = stable;
+          showTip(text, pointerX.current, el.getBoundingClientRect().bottom + 6);
+          setOpen(true);
+        }, SIDEBAR_TOOLTIP_DELAY_MS);
+      }}
+      onMouseMove={(event) => {
+        pointerX.current = event.clientX;
+      }}
+      onMouseLeave={() => hideRef.current()}
+      onMouseDown={() => hideRef.current()}
+    >
+      {text}
+    </span>
   );
 }
