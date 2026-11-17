@@ -5930,3 +5930,31 @@ textarea,
   display: block;
   pointer-events: none;
 }
+
+/* #482: desktop download progress is a ring in the Download button, and the toolbar
+   status holds only the HEIC option, so nothing is clipped or reflows the bar. */
+.zip-status--toolbar {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+}
+.zip-status--toolbar .zip-status__error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zip-ring {
+  width: 20px;
+  height: 20px;
+}
+.zip-ring circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+.zip-ring__track {
+  stroke: var(--color-separator);
+}
+.zip-ring__value {
+  stroke: var(--accent);
+  stroke-linecap: round;
+}

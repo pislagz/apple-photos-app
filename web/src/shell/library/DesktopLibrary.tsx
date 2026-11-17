@@ -1,6 +1,6 @@
 import { TileOverlays } from "./TileOverlays";
 import HeicFallbackModal from "./HeicFallbackModal";
-import ZipStatus from "./ZipStatus";
+import ZipStatus, { ZipRing } from "./ZipStatus";
 import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPortal } from "react-dom";
@@ -1019,7 +1019,7 @@ export default function DesktopLibrary({
           disabled={selected.size === 0 || zip.busy}
           title="Download"
         >
-          <Icon name="download" size={16} />
+          {zip.state.phase === "downloading" ? <ZipRing state={zip.state} /> : <Icon name="download" size={16} />}
           <span className="sr-only">Download</span>
         </button>
         <button
@@ -1034,6 +1034,7 @@ export default function DesktopLibrary({
         </button>
         {(selected.size > 1 || zip.state.phase !== "idle") && (
           <ZipStatus
+            variant="toolbar"
             state={zip.state}
             jpeg={zip.jpeg}
             onJpegChange={zip.setJpeg}
