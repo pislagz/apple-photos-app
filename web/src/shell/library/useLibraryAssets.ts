@@ -11,6 +11,14 @@ export interface UseLibraryAssetsResult {
   error: boolean;
   retry: () => void;
   loadMore: () => void;
+  // After an anchored first page (`anchorTo`): photos newer than the loaded
+  // window are still on the server. `newerLeft` counts them.
+  hasNewer: boolean;
+  newerLeft: number;
+  loadNewer: () => void;
+  // The `anchorTo` the loaded items were fetched with (undefined until the
+  // first page of the current request arrives).
+  loadedAnchor: string | null | undefined;
   loadAll: () => Promise<AssetListItem[]>;
 }
 
@@ -43,16 +51,44 @@ export function useLibraryAssets(
   const [error, setError] = useState(false);
   const cursorRef = useRef<string | null>(null);
   const requestIdRef = useRef(0);
+  const newerCursorRef = useRef<string | null>(null);
+  const newerBusyRef = useRef(false);
+  const epochRef = useRef(0);
+  const [newerLeft, setNewerLeft] = useState(0);
+  const [hasNewer, setHasNewer] = useState(false);
+  const [loadedAnchor, setLoadedAnchor] = useState<string | null | undefined>(undefined);
 
   const fetchPage = useCallback((libId: number, cursor: string | null, replace: boolean) => {
     const requestId = ++requestIdRef.current;
+    if (replace) epochRef.current++;
     setLoading(true);
     setError(false);
     return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album, hide)
-      .then((response) => {
+      .then(async (response) => {
         if (requestIdRef.current !== requestId) return null;
-        if (replace) setTotal(response.total ?? null);
-        setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
+        let items = response.items;
+        let prevCursor = response.prev_cursor ?? null;
+        let newer = response.newer_total ?? 0;
+        if (replace && anchorTo && prevCursor) {
+          // Around the date: a page of newer photos too, so the date is not
+          // at the very end of the list when the grid scrolls to it.
+          const above = await getAssets(libId, prevCursor, 200, null, filter, album, hide, "newer").catch(() => null);
+          if (requestIdRef.current !== requestId) return null;
+          if (above) {
+            items = [...above.items, ...items];
+            prevCursor = above.prev_cursor ?? null;
+            newer = Math.max(0, newer - above.items.length);
+          }
+        }
+        if (replace) {
+          const total = response.total == null ? null : response.total + (response.newer_total ?? 0);
+          setTotal(total);
+          newerCursorRef.current = prevCursor;
+          setNewerLeft(newer);
+          setHasNewer(newer > 0 && !!prevCursor);
+          setLoadedAnchor(anchorTo);
+        }
+        setItems((previous) => (replace ? items : [...previous, ...items]));
         cursorRef.current = response.next_cursor;
         setDone(!response.next_cursor);
         return response;
@@ -77,6 +113,11 @@ export function useLibraryAssets(
     setError(false);
     setItems([]);
     setTotal(null);
+    setHasNewer(false);
+    setNewerLeft(0);
+    newerCursorRef.current = null;
+    newerBusyRef.current = false;
+    setLoadedAnchor(undefined);
     fetchPage(libraryId, null, true);
   }, [libraryId, fetchPage]);
 
@@ -84,6 +125,29 @@ export function useLibraryAssets(
     if (loading || done) return;
     fetchPage(libraryId, cursorRef.current, false);
   }, [libraryId, loading, done, fetchPage]);
+
+  // Newer photos arrive at the front of `raw` (newest first); in the
+  // oldest-first grid that is the bottom, so nothing already on screen moves.
+  const loadNewer = useCallback(() => {
+    const cursor = newerCursorRef.current;
+    if (!cursor || newerBusyRef.current) return;
+    newerBusyRef.current = true;
+    const epoch = epochRef.current;
+    getAssets(libraryId, cursor, 200, null, filter, album, hide, "newer")
+      .then((response) => {
+        if (epochRef.current !== epoch) return;
+        setItems((previous) => [...response.items, ...previous]);
+        newerCursorRef.current = response.prev_cursor ?? null;
+        setHasNewer(!!response.prev_cursor);
+        setNewerLeft((left) => Math.max(0, left - response.items.length));
+      })
+      .catch(() => {
+        if (epochRef.current === epoch) setHasNewer(false);
+      })
+      .finally(() => {
+        if (epochRef.current === epoch) newerBusyRef.current = false;
+      });
+  }, [libraryId, filter, album, hide]);
 
   const retry = useCallback(() => {
     setDone(false);
@@ -105,8 +169,23 @@ export function useLibraryAssets(
       cursor = response.next_cursor;
       finished = !cursor;
     }
+    // An anchored window: the newer photos count too.
+    let newerCursor = newerCursorRef.current;
+    while (newerCursor) {
+      try {
+        const response = await getAssets(libraryId, newerCursor, 200, null, filter, album, hide, "newer");
+        all = [...response.items, ...all];
+        setItems((previous) => [...response.items, ...previous]);
+        newerCursor = response.prev_cursor ?? null;
+      } catch {
+        break;
+      }
+    }
+    newerCursorRef.current = newerCursor;
+    setHasNewer(!!newerCursor);
+    if (!newerCursor) setNewerLeft(0);
     return oldestFirst ? [...all].reverse() : all;
-  }, [libraryId, raw, oldestFirst, done, fetchPage]);
+  }, [libraryId, raw, oldestFirst, done, fetchPage, filter, album, hide]);
 
-  return { items, total, loading, done, error, retry, loadMore, loadAll };
+  return { items, total, loading, done, error, retry, loadMore, hasNewer, newerLeft, loadNewer, loadedAnchor, loadAll };
 }

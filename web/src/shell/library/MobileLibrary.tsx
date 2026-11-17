@@ -80,15 +80,20 @@ export default function MobileLibrary({
   // Set when a Day card is tapped: All Photos scrolls to that day once the
   // pages back to it are loaded.
   const [pendingDayKey, setPendingDayKey] = useState<string | null>(null);
+  // The first page loads around the tapped day, so All Photos opens there at
+  // once; `pendingOpen` keeps the Days view up until that page is in.
+  const [anchorDay, setAnchorDay] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState(false);
   // #224: the Library (no album) lists oldest first and opens at the newest
   // photos; albums, search, people and places keep newest first.
   const oldestFirst = !album;
   const filterState = useLibraryFilter();
   // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
   const [wholePhotos, setWholePhotos] = useState(false);
-  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, loadAll } = useLibraryAssets(
+  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, loadAll, hasNewer, newerLeft, loadNewer, loadedAnchor } =
+    useLibraryAssets(
     libraryId,
-    null,
+    anchorDay,
     filterState.filter,
     album ?? null,
     filterState.hide,
@@ -179,6 +184,7 @@ export default function MobileLibrary({
     (target: ViewKey) => {
       setPendingDayKey(null);
       setPendingScrollKey(null);
+      setAnchorDay(null);
       const element = scrollRef.current;
       if (element) element.scrollTop = target !== "all" || oldestFirst ? element.scrollHeight : 0;
     },
@@ -294,9 +300,14 @@ export default function MobileLibrary({
       }
       // Day -> All Photos at that day (#224: loads back to it, then scrolls there).
       setPendingDayKey(bucketKey);
-      setView("all");
+      if (oldestFirst) {
+        setAnchorDay(bucketKey);
+        setPendingOpen(true);
+      } else {
+        setView("all");
+      }
     },
-    [view],
+    [view, oldestFirst],
   );
 
   async function handleShareSelection() {
@@ -384,7 +395,7 @@ export default function MobileLibrary({
     if (!isTileView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : summary.days, view === "months" ? "days" : view) : [];
   }, [view, summary]);
-  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst, total)), [isTileView, view, items, columns, oldestFirst, total]);
+  const rows = useMemo<LibraryRow[]>(() => (isTileView ? [] : buildRows(items, view, columns, oldestFirst, total === null ? null : total - newerLeft)), [isTileView, view, items, columns, oldestFirst, total, newerLeft]);
   // The row's flex gap (--grid-gap-dense) sits between cells, so cells share
   // what is left of the width; dividing the full width overflowed the
   // scroller by (columns - 1)px and let the grid pan sideways (#281 F16).
@@ -420,12 +431,49 @@ export default function MobileLibrary({
     estimateSize: (index) => rowSize(rows[index]),
     overscan: 6,
   });
-  const { scrollToEnd } = useOldestFirstScroll({ scrollRef, rows, rowSize, ready: oldestFirst && !isTileView && containerWidth > 0 });
+  const { scrollToEnd: scrollToLoadedEnd } = useOldestFirstScroll({
+    scrollRef,
+    rows,
+    rowSize,
+    ready: oldestFirst && !isTileView && containerWidth > 0,
+    holdEnd: pendingDayKey !== null,
+  });
+  // The newest photos are past an anchored window: reload from the newest.
+  const scrollToEnd = useCallback(
+    (smooth?: boolean) => {
+      if (hasNewer) setAnchorDay(null);
+      else scrollToLoadedEnd(smooth);
+    },
+    [hasNewer, scrollToLoadedEnd],
+  );
+  useEffect(() => {
+    if (isTileView && !pendingOpen) setAnchorDay(null);
+  }, [isTileView, pendingOpen]);
+  useEffect(() => {
+    if (!pendingOpen || loadedAnchor !== anchorDay) return;
+    setPendingOpen(false);
+    setView("all");
+  }, [pendingOpen, loadedAnchor, anchorDay]);
   const clearPendingDay = useCallback(() => setPendingDayKey(null), []);
-  const scrollToRowStart = useCallback((rowIndex: number) => rowVirtualizer.scrollToIndex(rowIndex, { align: "start" }), [rowVirtualizer]);
+  const scrollToRowStart = useCallback(
+    (rowIndex: number) => {
+      const element = scrollRef.current;
+      if (!element) return;
+      // Row sizes are known, so set the offset directly rather than letting the
+      // virtualizer converge on it over several frames; its offset follows from
+      // the scroll event, sent now because it would come after the next paint
+      // and the title would show the old position for a frame.
+      let top = topInset;
+      for (let i = 0; i < rowIndex; i++) top += rowSize(rows[i]);
+      element.scrollTop = top;
+      element.dispatchEvent(new Event("scroll"));
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, topInset, cellSize],
+  );
   useLandOnPeriod({
     key: pendingDayKey,
-    active: oldestFirst && view === "all",
+    active: oldestFirst && view === "all" && containerWidth > 0,
     items,
     rows,
     loading,
@@ -479,9 +527,22 @@ export default function MobileLibrary({
     if (isTileView) return;
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
+    // Landing on a day: the landing loads the older pages it needs itself.
+    if (oldestFirst && pendingDayKey !== null) return;
+    // A scroll that has not reached the virtualizer yet (the landing scroll)
+    // would read the old top rows as "near the top".
+    const top = scrollRef.current?.scrollTop;
+    if (oldestFirst && top !== undefined && Math.abs((rowVirtualizer.scrollOffset ?? 0) - top) > 1) return;
     // Oldest first: the unloaded pages are above the first row.
     if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [isTileView, virtualRows, rows.length, loading, done, loadMore, oldestFirst]);
+  }, [isTileView, virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingDayKey, rowVirtualizer]);
+
+  // An anchored window ends before the newest photos: load them on the way down.
+  useEffect(() => {
+    const last = virtualRows[virtualRows.length - 1];
+    if (isTileView || !hasNewer || !last || pendingDayKey !== null) return;
+    if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadNewer();
+  }, [isTileView, virtualRows, rows.length, hasNewer, loadNewer, pendingDayKey]);
 
   useLayoutEffect(() => {
     const anchor = pinchAnchor.current;
