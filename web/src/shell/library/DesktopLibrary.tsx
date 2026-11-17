@@ -83,7 +83,7 @@ function downloadSelection(libraryId: number, ids: Iterable<string>) {
 // grid with inline date headers, hover heart/duration, and
 // click/modifier/shift/drag selection. Like the mobile Library (P1.14),
 // this only ever pages `/assets` -- never `/hidden` -- so a hidden asset
-// (P1.13) can't reach any view or ⌘A. Cells request thumbnails only; a
+// (P1.13) can't reach any view. Cells request thumbnails only; a
 // download is the only thing that may hit `/original`.
 // One grid tile. Memoised so a selection change re-renders only the tiles
 // whose `selected` flips: the rest keep their element and decoded image (#265).
@@ -222,7 +222,7 @@ export default function DesktopLibrary({
   // #224: the Library (no album) lists oldest first and opens at the newest
   // photos; albums, search, people and places keep newest first.
   const oldestFirst = !album;
-  const { items, total, loading, done, error, retry, loadMore, loadAll } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
+  const { items, total, loading, done, error, retry, loadMore } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
   // Index counted from the newest end: stable when older pages are added on
   // top. Its own inverse, so it also maps back to a list position.
   const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
@@ -606,7 +606,7 @@ export default function DesktopLibrary({
     (event: React.KeyboardEvent) => {
       // Period cards are buttons that handle their own Enter/Space.
       if (isPeriodView) return;
-      // Cmd/Ctrl combos (select all, zoom) live in the window handler below.
+      // Cmd/Ctrl combos (zoom) live in the window handler below.
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
@@ -844,8 +844,7 @@ export default function DesktopLibrary({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const action = shortcutAction(event);
-      // The app-wide guard (#366) already cancelled the browser's Select All.
-      if ((event.defaultPrevented && action !== "selectAll") || viewerIndex !== null || contextMenu !== null) return;
+      if (event.defaultPrevented || viewerIndex !== null || contextMenu !== null) return;
       if (isTypingTarget(event.target)) return;
       const toNewest =
         (event.key === "End" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) ||
@@ -853,9 +852,6 @@ export default function DesktopLibrary({
       if (toNewest && (oldestFirst || isPeriodView)) {
         event.preventDefault();
         scrollToEnd(true);
-      } else if (action === "selectAll" && !isPeriodView) {
-        event.preventDefault();
-        void loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
       } else if (action === "zoomIn" || action === "zoomOut") {
         event.preventDefault();
         changeZoom(action === "zoomIn" ? Math.min(MAX_ZOOM_INDEX, zoomIndex + 1) : Math.max(0, zoomIndex - 1));
@@ -866,7 +862,7 @@ export default function DesktopLibrary({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewerIndex, contextMenu, isPeriodView, loadAll, changeZoom, zoomIndex, oldestFirst, scrollToEnd]);
+  }, [viewerIndex, contextMenu, isPeriodView, changeZoom, zoomIndex, oldestFirst, scrollToEnd]);
 
   const handleGridClick = useCallback((event: React.MouseEvent) => {
     if (suppressClickRef.current || event.shiftKey || event.metaKey || event.ctrlKey) return;

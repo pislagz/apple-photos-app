@@ -11,7 +11,6 @@ export interface UseLibraryAssetsResult {
   error: boolean;
   retry: () => void;
   loadMore: () => void;
-  loadAll: () => Promise<AssetListItem[]>;
 }
 
 // Pages through `/api/libraries/{id}/assets` (never `/hidden`, so a hidden
@@ -21,6 +20,8 @@ export interface UseLibraryAssetsResult {
 // Days drill-down) starts the first page at that local day instead of the
 // top of the library, so landing on a month deep in the library's history
 // doesn't page through everything newer first.
+// Result of a page fetch that a newer request invalidated; not a failure.
+const SUPERSEDED = Symbol("superseded");
 const NO_HIDE: readonly AssetHide[] = [];
 
 // #224: the server pages newest first and so does this hook (`raw`, index 0 =
@@ -42,6 +43,10 @@ export function useLibraryAssets(
   const [done, setDone] = useState(false);
   const [error, setError] = useState(false);
   const cursorRef = useRef<string | null>(null);
+  // Mirrors `raw` in step with `cursorRef`. `loadAll` closes over the `raw`
+  // state, which lags a render behind a page that just landed; pairing that
+  // stale list with the advanced cursor silently dropped a page (#465).
+  const rawRef = useRef<AssetListItem[]>([]);
   const requestIdRef = useRef(0);
 
   const fetchPage = useCallback((libId: number, cursor: string | null, replace: boolean) => {
@@ -50,9 +55,10 @@ export function useLibraryAssets(
     setError(false);
     return getAssets(libId, cursor, 200, replace ? anchorTo : null, filter, album, hide)
       .then((response) => {
-        if (requestIdRef.current !== requestId) return null;
+        if (requestIdRef.current !== requestId) return SUPERSEDED;
         if (replace) setTotal(response.total ?? null);
-        setItems((previous) => (replace ? response.items : [...previous, ...response.items]));
+        rawRef.current = replace ? response.items : [...rawRef.current, ...response.items];
+        setItems(rawRef.current);
         cursorRef.current = response.next_cursor;
         setDone(!response.next_cursor);
         return response;
@@ -73,6 +79,7 @@ export function useLibraryAssets(
 
   useEffect(() => {
     cursorRef.current = null;
+    rawRef.current = [];
     setDone(false);
     setError(false);
     setItems([]);
@@ -90,23 +97,5 @@ export function useLibraryAssets(
     fetchPage(libraryId, cursorRef.current, cursorRef.current === null);
   }, [libraryId, fetchPage]);
 
-  // ⌘A (desktop Library) has to select the whole non-hidden library, not
-  // just the pages scrolled into view so far: page through `/assets`
-  // sequentially -- bypassing the scroll-triggered `loadMore` entirely --
-  // until the server reports no further cursor.
-  const loadAll = useCallback(async (): Promise<AssetListItem[]> => {
-    let all = raw;
-    let cursor = cursorRef.current;
-    let finished = done;
-    while (!finished) {
-      const response = await fetchPage(libraryId, cursor, false);
-      if (!response) break;
-      all = [...all, ...response.items];
-      cursor = response.next_cursor;
-      finished = !cursor;
-    }
-    return oldestFirst ? [...all].reverse() : all;
-  }, [libraryId, raw, oldestFirst, done, fetchPage]);
-
-  return { items, total, loading, done, error, retry, loadMore, loadAll };
+  return { items, total, loading, done, error, retry, loadMore };
 }
