@@ -1002,7 +1002,7 @@ describe("DesktopLibrary", () => {
       expect(screen.queryByRole("menu")).toBeNull();
 
       fireEvent.click(screen.getByRole("button", { name: "Filter By" }));
-      fireEvent.mouseDown(document.body);
+      fireEvent.pointerDown(document.body);
       expect(screen.queryByRole("menu")).toBeNull();
     });
 

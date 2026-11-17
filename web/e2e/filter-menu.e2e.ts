@@ -98,3 +98,63 @@ test.describe("iPhone Filter menu", () => {
     await expect(button).toBeFocused();
   });
 });
+
+// #503: the same close-on-outside-press with a mouse at the phone breakpoint.
+test.describe("Filter menu with a mouse at the mobile breakpoint", () => {
+  test("an outside click closes it and opens no photo", async ({ browser }, info) => {
+    test.skip(info.project.name !== "desktop", "one mouse run is enough");
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await signIn(page);
+    await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+    await expect(page.locator(".mobile-library__cell").first()).toBeVisible();
+    const button = page.getByRole("button", { name: "Filter", exact: true });
+    const menu = page.getByRole("menu", { name: "Filter" });
+    for (const [x, y] of [[60, 500], [60, 800], [200, 300]]) {
+      await button.click();
+      await expect(menu).toBeVisible();
+      await page.mouse.click(x, y);
+      await expect(menu).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
+    await button.click();
+    await page.screenshot({ path: "e2e-shots-503/mouse-filter-open.png" });
+    await page.mouse.click(60, 500);
+    await page.screenshot({ path: "e2e-shots-503/mouse-filter-closed.png" });
+    await context.close();
+  });
+
+  test("an outside click closes the viewer Info sheet and does nothing else", async ({ browser }, info) => {
+    test.skip(info.project.name !== "desktop", "one mouse run is enough");
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await signIn(page);
+    await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+    await page.locator(".mobile-library__cell").first().click();
+    const sheet = page.getByTestId("viewer-info-sheet");
+    await page.getByRole("button", { name: "Info", exact: true }).click();
+    await expect(sheet).toBeVisible();
+    await page.screenshot({ path: "e2e-shots-503/mouse-info-open.png" });
+    await page.mouse.click(195, 120);
+    await expect(sheet).toHaveCount(0);
+    // Still in the viewer: the click did not dismiss it or toggle chrome into a close.
+    await expect(page.getByRole("button", { name: "Info", exact: true })).toBeVisible();
+    await page.screenshot({ path: "e2e-shots-503/mouse-info-closed.png" });
+    await context.close();
+  });
+});
+
+test.describe("iPhone viewer Info sheet", () => {
+  test("an outside tap closes it", async ({ page }, info) => {
+    test.skip(info.project.name === "desktop", "phone layout only");
+    await signIn(page);
+    await page.getByRole("tab", { name: "All Photos", exact: true }).click();
+    await page.locator(".mobile-library__cell").first().tap();
+    const sheet = page.getByTestId("viewer-info-sheet");
+    await page.getByRole("button", { name: "Info", exact: true }).tap();
+    await expect(sheet).toBeVisible();
+    await page.touchscreen.tap(60, 100);
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Info", exact: true })).toBeVisible();
+  });
+});
