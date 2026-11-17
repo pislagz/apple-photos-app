@@ -650,3 +650,73 @@
     backdrop-filter: none;
   }
 }
+
+/* ---------------------------------------------------------------------- */
+/* iOS 27 Settings-style large title (More, Albums): the title scrolls with */
+/* the content; a small centred title fades in over a soft blur when gone. */
+/* ---------------------------------------------------------------------- */
+.shell--mobile .large-title-screen {
+  position: relative;
+}
+
+.shell--mobile .large-title-screen__title {
+  margin: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-10)) var(--space-16) var(--space-12);
+  font-size: var(--font-size-title-large);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-title-large);
+}
+
+.shell--mobile .large-title-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: calc(env(safe-area-inset-top, 0px) + 44px + var(--space-16));
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: env(safe-area-inset-top, 0px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-chrome) var(--ease-chrome);
+}
+
+/* Soft edge: grouped-background gradient plus a blur that fades out downward. */
+.shell--mobile .large-title-bar::before {
+  content: "";
+  position: absolute;
+  inset: -24px -32px 0;
+  z-index: -1;
+  background: linear-gradient(to bottom, var(--color-bg-grouped) 45%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to bottom, var(--color-black) 55%, transparent);
+  mask-image: linear-gradient(to bottom, var(--color-black) 55%, transparent);
+}
+
+.shell--mobile .large-title-bar[data-collapsed="true"] {
+  opacity: 1;
+}
+
+.shell--mobile .large-title-bar__title {
+  line-height: 44px;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-label);
+}
+
+.shell--mobile .albums-home__types {
+  margin: 0 var(--space-16) var(--space-20);
+}
+
+.shell--mobile .albums-home .albums-home__types {
+  margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell--mobile .large-title-bar {
+    transition: none;
+  }
+}
