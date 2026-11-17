@@ -1,41 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mockFetch } from "../../testHelpers";
-import { downloadAsset, downloadVersion, filenameFromDisposition, pickMime, shareFileName } from "./download";
+import { filenameFromDisposition, pickMime, shareFileName, triggerDownload } from "./download";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-// P1.17 fix round: the server only writes an audit row when `/original`
-// carries `?download=1`. These downloads are the explicit actions that must
-// send it -- a plain viewer zoom never calls any of these functions.
-describe("downloadVersion", () => {
-  it("requests the original with the download marker", () => {
+describe("triggerDownload", () => {
+  it("clicks one download link", () => {
     let href = "";
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       href = this.href;
     });
-
-    downloadVersion(1, "a1", "original");
-
-    expect(href).toContain("/api/libraries/1/original/a1");
-    expect(href).toContain("download=1");
-  });
-});
-
-describe("downloadAsset", () => {
-  it("looks up the edited flag, then downloads with the marker", async () => {
-    mockFetch(() => ({ has_edited: true }));
-    let href = "";
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      href = this.href;
-    });
-
-    await downloadAsset(1, "a1");
-
-    expect(href).toContain("version=edited");
-    expect(href).toContain("download=1");
+    triggerDownload("/api/libraries/1/original/a1?download=1");
+    expect(href).toContain("/api/libraries/1/original/a1?download=1");
   });
 });
 

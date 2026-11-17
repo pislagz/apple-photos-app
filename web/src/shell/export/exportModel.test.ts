@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  describeSelection,
+  countLabel,
   exportReducer,
+  formatFor,
   IDLE,
   SHARE_MAX_BYTES,
   SHARE_MAX_FILES,
@@ -18,48 +19,36 @@ function run(...actions: Parameters<typeof exportReducer>[1][]): ExportState {
 }
 
 describe("exportReducer", () => {
-  it("opens on the Originals choice with no size yet", () => {
-    expect(run({ type: "open", items })).toEqual({ phase: "choosing", items, format: "original", bytes: null });
-  });
-
-  it("keeps format and size on the choice only", () => {
-    const state = run({ type: "open", items }, { type: "size", bytes: 42 }, { type: "format", format: "jpeg" });
-    expect(state).toMatchObject({ phase: "choosing", format: "jpeg", bytes: 42 });
-    expect(exportReducer(IDLE, { type: "size", bytes: 1 })).toBe(IDLE);
-  });
-
-  it("walks choosing -> working -> ready, then close", () => {
+  it("walks start -> progress -> ready, then close", () => {
     const file = new File(["x"], "a.heic");
-    const working = run({ type: "open", items }, { type: "start", method: "share", fileCount: 2 }, { type: "progress", fileIndex: 1, received: 9 });
+    const working = run({ type: "start", method: "share", items, fileCount: 2 }, { type: "progress", fileIndex: 1, received: 9 });
     expect(working).toMatchObject({ phase: "working", method: "share", fileIndex: 1, received: 9, fileCount: 2 });
-    const ready = exportReducer(working, { type: "ready", files: [file] });
+    const ready = exportReducer(working, { type: "ready", items, files: [file] });
     expect(ready).toMatchObject({ phase: "ready", files: [file] });
+    expect(exportReducer(ready, { type: "hint", hint: "Tap again" })).toMatchObject({ hint: "Tap again" });
     expect(exportReducer(ready, { type: "close" })).toBe(IDLE);
   });
 
-  it("a stray start or progress outside its phase changes nothing", () => {
-    expect(exportReducer(IDLE, { type: "start", method: "share", fileCount: 1 })).toBe(IDLE);
-    const choosing = run({ type: "open", items });
-    expect(exportReducer(choosing, { type: "progress", fileIndex: 1, received: 1 })).toBe(choosing);
+  it("progress and hint outside their phase change nothing", () => {
+    expect(exportReducer(IDLE, { type: "progress", fileIndex: 1, received: 1 })).toBe(IDLE);
+    expect(exportReducer(IDLE, { type: "hint", hint: "x" })).toBe(IDLE);
   });
 
-  it("an error or a block can go back to the choice with the same selection and format", () => {
-    const working = run({ type: "open", items }, { type: "format", format: "jpeg" }, { type: "start", method: "folder", fileCount: 2 });
-    const failed = exportReducer(working, { type: "error", message: "boom" });
-    expect(failed).toMatchObject({ phase: "error", message: "boom", format: "jpeg" });
-    expect(exportReducer(failed, { type: "back" })).toMatchObject({ phase: "choosing", items, format: "jpeg" });
-    const blocked = exportReducer(run({ type: "open", items }), { type: "blocked", message: "big" });
-    expect(blocked.phase).toBe("blocked");
+  it("keeps the items on blocked and error so Try Again and Save as ZIP have them", () => {
+    expect(run({ type: "blocked", items, message: "Too many" })).toEqual({ phase: "blocked", items, message: "Too many" });
+    expect(run({ type: "error", method: "folder", items, message: "Disk full" })).toEqual({ phase: "error", method: "folder", items, message: "Disk full" });
   });
 
-  it("done is terminal until closed", () => {
-    const done = run({ type: "open", items }, { type: "start", method: "individual", fileCount: 2 }, { type: "done", method: "individual", saved: 2 });
-    expect(done).toEqual({ phase: "done", method: "individual", saved: 2, folder: undefined });
-    expect(exportReducer(done, { type: "back" })).toBe(IDLE);
+  it("done keeps the folder name", () => {
+    expect(run({ type: "done", method: "folder", saved: 2, folder: "Trip" })).toEqual({ phase: "done", method: "folder", saved: 2, folder: "Trip" });
   });
 });
 
-describe("limits", () => {
+describe("format and limits", () => {
+  it("Automatic is JPEG, Keep Originals is as stored", () => {
+    expect(formatFor("automatic")).toBe("jpeg");
+    expect(formatFor("original")).toBe("original");
+  });
   it("blocks the share sheet for too many files or too many originals bytes", () => {
     expect(shareBlockReason(3, 1000, "original")).toBeNull();
     expect(shareBlockReason(SHARE_MAX_FILES + 1, null, "original")).toMatch(/too many/);
@@ -71,9 +60,9 @@ describe("limits", () => {
 });
 
 describe("text and names", () => {
-  it("describes count and approximate size", () => {
-    expect(describeSelection(1, null)).toBe("1 item");
-    expect(describeSelection(12, 5 * 1024 * 1024)).toBe("12 items · about 5.0 MB");
+  it("counts items", () => {
+    expect(countLabel(1)).toBe("1 Item");
+    expect(countLabel(3)).toBe("3 Items");
   });
   it("de-duplicates names case-insensitively and keeps the extension", () => {
     const taken = new Set<string>();

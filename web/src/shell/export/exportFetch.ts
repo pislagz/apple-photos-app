@@ -37,16 +37,17 @@ export interface OpenedFile {
 // Opens the response (headers only). The body is read by `readToFile` or
 // streamed to disk by the caller. A JPEG already stored as JPEG (is_heic is
 // false) is sent untouched rather than re-encoded.
+export async function plannedUrl(libraryId: number, planned: PlannedFile, format: ExportFormat, version?: "original" | "edited"): Promise<string> {
+  const { item } = planned;
+  if (planned.kind === "live") return livePhotoVideoUrl(libraryId, item.id);
+  const resolved = version ?? (await resolveVersion(libraryId, item.id));
+  const convert = format === "jpeg" && !item.is_video && item.is_heic !== false;
+  return convert ? originalJpegFallbackUrl(libraryId, item.id, resolved, true) : originalUrl(libraryId, item.id, resolved, true);
+}
+
 export async function openPlanned(libraryId: number, planned: PlannedFile, format: ExportFormat, signal: AbortSignal): Promise<OpenedFile> {
   const { item } = planned;
-  let url: string;
-  if (planned.kind === "live") {
-    url = livePhotoVideoUrl(libraryId, item.id);
-  } else {
-    const version = await resolveVersion(libraryId, item.id);
-    const convert = format === "jpeg" && !item.is_video && item.is_heic !== false;
-    url = convert ? originalJpegFallbackUrl(libraryId, item.id, version, true) : originalUrl(libraryId, item.id, version, true);
-  }
+  const url = await plannedUrl(libraryId, planned, format);
   let response: Response;
   try {
     response = await fetch(url, { credentials: "same-origin", signal });

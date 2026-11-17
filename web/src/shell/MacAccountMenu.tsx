@@ -5,10 +5,10 @@ import { type LibrarySummary, type MeResponse, removeAvatar } from "../api";
 import Avatar from "./Avatar";
 import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
-import { useDownloadAsZip } from "./export/exportPrefs";
+import { TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "./export/transferFormat";
 import PasskeysDialog from "./PasskeysDialog";
 
-type SubmenuKey = "library";
+type SubmenuKey = "library" | "format";
 
 // Items that belong to this menu element itself, not to a nested submenu.
 function ownItems(menu: HTMLElement): HTMLElement[] {
@@ -67,7 +67,7 @@ export default function MacAccountMenu({
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
-  const [downloadAsZip, setDownloadAsZip] = useDownloadAsZip();
+  const [transferFormat, setTransferFormat] = useTransferFormat();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const focusFirstOf = useRef<HTMLElement | null>(null);
@@ -334,7 +334,15 @@ export default function MacAccountMenu({
                 )),
               )}
             <div role="separator" className="mac-menu__separator" />
-            {item("Download as ZIP", act(() => setDownloadAsZip(!downloadAsZip)), { role: "menuitemcheckbox", checked: downloadAsZip })}
+            {submenuParent(
+              "format",
+              "Transfer Format",
+              TRANSFER_FORMAT_OPTIONS.map((option) => (
+                <div key={option.value} role="none" className="mac-menu__row">
+                  {item(option.label, act(() => setTransferFormat(option.value)), { role: "menuitemradio", checked: option.value === transferFormat })}
+                </div>
+              )),
+            )}
             <div role="separator" className="mac-menu__separator" />
             {me.libraries.length > 0 && item("Choose Avatar…", act(() => setChoosingAvatar(true)))}
             {me.avatar_version != null &&

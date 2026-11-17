@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AssetListItem } from "../../api";
+import { getTransferFormat } from "../export/transferFormat";
 
 export interface ZipProgress {
   received: number;
@@ -30,27 +30,6 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
-}
-
-// #254: "HEIC as JPEG" only means something when the selection has a HEIC.
-// A selected id that isn't in `items` (not loaded here) or an item from a
-// server that doesn't send `is_heic` counts as "might be": showing the option
-// once too often is harmless, hiding it when it matters is not.
-export function selectionHasHeic(
-  items: readonly Pick<AssetListItem, "id" | "filename" | "is_heic">[],
-  selectedIds: Iterable<string>,
-): boolean {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  for (const id of selectedIds) {
-    const item = byId.get(id);
-    if (!item) return true;
-    if (item.is_heic === undefined) {
-      if (/\.hei[cf]$/i.test(item.filename ?? "")) return true;
-    } else if (item.is_heic) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // D47: at or above this estimated size the browser itself streams the zip to
@@ -207,14 +186,17 @@ export type ZipState =
   | { phase: "downloading"; progress: ZipProgress }
   // D47: handed to the browser's own download manager.
   | { phase: "started" }
-  | { phase: "error"; message: string };
+  // `retryLabel`: what the toolbar's retry button says (default "Try Again").
+  | { phase: "error"; message: string; retryLabel?: string };
 
+// The zip follows the one Transfer Format setting (#507): Automatic converts
+// HEIC photos to JPEG, Keep Originals ships them as stored. `forceNative`
+// overrides it ("Download Unmodified Original", and the retry after files
+// that could not be converted).
 export function useZipDownload(libraryId: number) {
   const [state, setState] = useState<ZipState>({ phase: "idle" });
-  const [jpeg, setJpeg] = useState(false);
-  // D50: HEIC files the last JPEG zip could not convert.
-  const [heicFallback, setHeicFallback] = useState<UnconvertedFile[] | null>(null);
   const unmounted = useRef(false);
+  const lastRun = useRef<(() => void) | null>(null);
   useEffect(() => {
     unmounted.current = false;
     return () => {
@@ -222,25 +204,30 @@ export function useZipDownload(libraryId: number) {
     };
   }, []);
 
-  const watchReport = useCallback(
-    (job: string) => {
-      void waitForUnconverted(libraryId, job, { cancelled: () => unmounted.current }).then((files) => {
-        if (files.length > 0 && !unmounted.current) setHeicFallback(files);
-      });
-    },
-    [libraryId],
-  );
-
-  // `forceNative`: the "Download originals of these" follow-up, no conversion.
   const start = useCallback(
     async (ids: string[], options: { forceNative?: boolean } = {}) => {
       if (ids.length === 0) return;
-      const format = jpeg && !options.forceNative ? "jpeg" : "native";
-      setHeicFallback(null);
+      lastRun.current = () => void start(ids, options);
+      const format = !options.forceNative && getTransferFormat() === "automatic" ? "jpeg" : "native";
       setState({ phase: "downloading", progress: { received: 0, total: null } });
+      // D50: HEIC files a JPEG zip had to ship as originals become an error
+      // line with a retry that downloads those as originals.
+      const watchReport = (job: string) => {
+        void waitForUnconverted(libraryId, job, { cancelled: () => unmounted.current }).then((files) => {
+          if (files.length === 0 || unmounted.current) return;
+          const names = files.slice(0, 3).map((file) => file.name).join(", ");
+          const more = files.length > 3 ? ` and ${files.length - 3} more` : "";
+          lastRun.current = () => void start(files.map((file) => file.id), { forceNative: true });
+          setState({
+            phase: "error",
+            message: `${files.length} ${files.length === 1 ? "file" : "files"} could not be converted and stayed HEIC: ${names}${more}.`,
+            retryLabel: "Download Originals",
+          });
+        });
+      };
       try {
         // The ticket call validates the selection and reports its size, which
-        // decides between the in-page progress bar and a browser download.
+        // decides between the in-page progress and a browser download.
         const ticket = await requestZipTicket(libraryId, ids, format);
         if (isIosDevice() || ticket.total_bytes > STREAM_TO_DISK_BYTES) {
           navigateToZip(libraryId, ticket.ticket);
@@ -248,15 +235,9 @@ export function useZipDownload(libraryId: number) {
           if (ticket.job) watchReport(ticket.job);
           return;
         }
-        const blob = await fetchZip(
-          libraryId,
-          ids,
-          format,
-          (progress) => setState({ phase: "downloading", progress }),
-          watchReport,
-        );
+        const blob = await fetchZip(libraryId, ids, format, (progress) => setState({ phase: "downloading", progress }), watchReport);
         saveBlob(blob, "photos.zip");
-        setState({ phase: "idle" });
+        setState((current) => (current.phase === "error" ? current : { phase: "idle" }));
       } catch (error) {
         setState({
           phase: "error",
@@ -264,23 +245,11 @@ export function useZipDownload(libraryId: number) {
         });
       }
     },
-    [libraryId, jpeg, watchReport],
+    [libraryId],
   );
 
-  const downloadOriginals = useCallback(() => {
-    const ids = heicFallback?.map((file) => file.id) ?? [];
-    setHeicFallback(null);
-    void start(ids, { forceNative: true });
-  }, [heicFallback, start]);
+  const retry = useCallback(() => lastRun.current?.(), []);
+  const dismiss = useCallback(() => setState({ phase: "idle" }), []);
 
-  return {
-    state,
-    start,
-    jpeg,
-    setJpeg,
-    busy: state.phase === "downloading",
-    heicFallback,
-    downloadOriginals,
-    dismissHeicFallback: () => setHeicFallback(null),
-  };
+  return { state, start, retry, dismiss, busy: state.phase === "downloading" };
 }

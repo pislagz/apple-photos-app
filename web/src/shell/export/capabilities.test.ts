@@ -55,12 +55,10 @@ describe("capability detection", () => {
     expect(isStandaloneApp()).toBe(false);
   });
 
-  it("hides Download Individually in an installed app that can share", () => {
+  it("reports share, folder and standalone separately", () => {
     vi.stubGlobal("navigator", { share: vi.fn(), canShare: () => true });
     vi.stubGlobal("matchMedia", () => ({ matches: true }));
-    expect(detectExportCapabilities()).toMatchObject({ share: true, standalone: true, individual: false });
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
-    expect(detectExportCapabilities()).toMatchObject({ share: true, individual: true });
+    expect(detectExportCapabilities()).toEqual({ share: true, folder: false, standalone: true });
   });
 
   it("never reads the user agent", () => {

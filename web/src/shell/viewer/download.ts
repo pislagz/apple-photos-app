@@ -1,11 +1,9 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl, originalJpegFallbackUrl, originalUrl } from "./mediaUrls";
+import { assetPageUrl } from "./mediaUrls";
 
-// Phase 1 download is one file at a time (CLAUDE.md), original or edited
-// (P1.17) -- whichever is "the" photo as the library shows it. A single
-// `<a download>` click, not a dropdown, so the server's audit row always
+// A single `<a download>` click per file, so the server's audit row always
 // lines up with one explicit user action.
-function triggerDownload(href: string) {
+export function triggerDownload(href: string) {
   const link = document.createElement("a");
   link.href = href;
   link.download = "";
@@ -14,12 +12,8 @@ function triggerDownload(href: string) {
   link.remove();
 }
 
-export function downloadVersion(libraryId: number, assetId: string, version: "original" | "edited") {
-  triggerDownload(originalUrl(libraryId, assetId, version, true));
-}
-
 // Used where the caller doesn't already have the asset's `has_edited` flag
-// (the grid context menu, the share batches below) -- looks it up first so
+// (the grid context menu, the export batches) -- looks it up first so
 // a right-click download or share picks the same version the viewer would.
 export async function resolveVersion(libraryId: number, assetId: string): Promise<"original" | "edited"> {
   try {
@@ -30,26 +24,6 @@ export async function resolveVersion(libraryId: number, assetId: string): Promis
     // own 404 on the download request be the source of truth.
     return "original";
   }
-}
-
-export async function downloadAsset(libraryId: number, assetId: string): Promise<void> {
-  const version = await resolveVersion(libraryId, assetId);
-  downloadVersion(libraryId, assetId, version);
-}
-
-// Select-bar Download with exactly one item: the plain file under its own
-// name, or its JPEG rendition when "HEIC as JPEG" is on.
-export async function downloadSingleAsset(
-  libraryId: number,
-  assetId: string,
-  options: { asJpeg?: boolean } = {},
-): Promise<void> {
-  const version = await resolveVersion(libraryId, assetId);
-  triggerDownload(
-    options.asJpeg
-      ? originalJpegFallbackUrl(libraryId, assetId, version, true)
-      : originalUrl(libraryId, assetId, version, true),
-  );
 }
 
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {

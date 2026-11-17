@@ -1,19 +1,14 @@
-import HeicFallbackModal from "./HeicFallbackModal";
 import { CheckBadge, TileOverlays } from "./TileOverlays";
 import MobileGridHeader, { type MobileGridNav } from "./MobileGridHeader";
-import ZipStatus from "./ZipStatus";
 import { Icon } from "../icons";
 import { selectionCountLabel } from "./selectionText";
-import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
-import { downloadSingleAsset } from "../viewer/download";
-import ExportModal from "../export/ExportModal";
-import { useDownloadAsZip } from "../export/exportPrefs";
+import TransferHud from "../export/TransferHud";
 import { useExport } from "../export/useExport";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
@@ -291,30 +286,11 @@ export default function MobileLibrary({
   );
 
   const exportFlow = useExport(libraryId);
-  const [downloadAsZip] = useDownloadAsZip();
-  // Share and Download both open the export dialog (#487): it asks what to
-  // export, then shares once. Only one export runs at a time.
+  // iPhone is Share only (#507): the system share sheet saves to Photos or
+  // Files, AirDrops, messages. The HUD covers the wait; one item that is
+  // ready fast goes straight to the sheet.
   function handleShareSelection() {
-    exportFlow.open(items.filter((item) => selectedIds.has(item.id)));
-  }
-
-  const zip = useZipDownload(libraryId);
-  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
-
-  // "Download as ZIP" on: 2+ items become one archive and one item stays the
-  // plain file (the previous behaviour). Off: the export dialog.
-  async function handleDownloadSelection() {
-    const ids = [...selectedIds];
-    if (!downloadAsZip) {
-      handleShareSelection();
-      return;
-    }
-    if (ids.length !== 1) {
-      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
-      return;
-    }
-    const item = items.find((candidate) => candidate.id === ids[0]);
-    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+    void exportFlow.share(items.filter((item) => selectedIds.has(item.id)));
   }
 
   // The bar's height changes with its caption, progress line and HEIC row, so
@@ -780,40 +756,10 @@ export default function MobileLibrary({
             <span className="mobile-library__select-count" aria-live="polite">
               {selectionCountLabel(items, selectedIds)}
             </span>
-            <button
-              type="button"
-              className="mobile-library__glass-button mobile-library__bar-button mobile-library__bar-button--end"
-              aria-label="Download"
-              onClick={() => void handleDownloadSelection()}
-              disabled={selectedIds.size === 0 || zip.busy}
-            >
-              <Icon name="download" />
-            </button>
           </div>
-          {selectedIds.size > 0 && zip.state.phase === "idle" && (
-            <p className="mobile-library__select-caption">
-              {!downloadAsZip
-                ? "Download asks what to export first."
-                : selectedIds.size === 1
-                  ? "Downloads the original file."
-                  : "Downloads all selected items in a ZIP file."}
-            </p>
-          )}
-          {downloadAsZip && (selectedIds.size > 0 || zip.state.phase !== "idle") && (
-            <ZipStatus
-              state={zip.state}
-              jpeg={zip.jpeg}
-              onJpegChange={zip.setJpeg}
-              showHeicOption={selectionHasHeicPhoto}
-              variant="row"
-            />
-          )}
         </div>
       )}
-      <ExportModal flow={exportFlow} />
-      {zip.heicFallback && (
-        <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
-      )}
+      <TransferHud flow={exportFlow} layout="phone" />
       {openIndex !== null && (
         <MobileViewer
           libraryId={libraryId}

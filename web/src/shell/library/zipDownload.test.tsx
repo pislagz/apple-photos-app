@@ -1,18 +1,18 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import HeicFallbackModal from "./HeicFallbackModal";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTransferFormat } from "../export/transferFormat";
 import ZipStatus from "./ZipStatus";
 import {
   fetchZip,
   formatBytes,
   isIosDevice,
-  selectionHasHeic,
   STREAM_TO_DISK_BYTES,
   useZipDownload,
   waitForUnconverted,
   ZipError,
 } from "./zipDownload";
 
+beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
 function streamOf(chunks: Uint8Array[]) {
@@ -175,10 +175,31 @@ describe("useZipDownload", () => {
   });
 });
 
-describe("HEIC fallback report (D50)", () => {
+describe("Transfer Format and the HEIC fallback report (D50)", () => {
   afterEach(() => setUserAgent(DESKTOP_UA));
 
-  it("in-page zip: reads the job id, waits for the report, offers the files that stayed HEIC", async () => {
+  function bodies(fetchMock: ReturnType<typeof zipFetch>) {
+    return fetchMock.mock.calls
+      .filter((c) => String(c[0]).endsWith("/zip/ticket"))
+      .map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+  }
+
+  it("Automatic converts HEIC to JPEG; Keep Originals and forceNative do not", async () => {
+    setUserAgent(IPHONE_UA);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const fetchMock = zipFetch({ total: 1024 });
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useZipDownload(1));
+    await act(async () => result.current.start(["a"]));
+    setTransferFormat("original");
+    await act(async () => result.current.start(["a"]));
+    setTransferFormat("automatic");
+    await act(async () => result.current.start(["a"], { forceNative: true }));
+    expect(bodies(fetchMock).map((body) => body.format)).toEqual(["jpeg", "native", "native"]);
+    click.mockRestore();
+  });
+
+  it("in-page zip: waits for the report; files that stayed HEIC become one error line whose retry downloads those as originals", async () => {
     setUserAgent(DESKTOP_UA);
     URL.createObjectURL = vi.fn(() => "blob:x");
     URL.revokeObjectURL = vi.fn();
@@ -190,23 +211,31 @@ describe("HEIC fallback report (D50)", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useZipDownload(1));
-    act(() => result.current.setJpeg(true));
     await act(async () => {
       await result.current.start(["a", "b", "c"]);
     });
-    await waitFor(() => expect(result.current.heicFallback).toHaveLength(2));
-    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toBe("/api/libraries/1/zip/report?job=j1");
-
-    // "Download originals of these": a native zip of just those two ids.
+    await waitFor(() => expect(result.current.state.phase).toBe("error"));
+    expect(result.current.state).toMatchObject({
+      message: "2 files could not be converted and stayed HEIC: IMG_1.HEIC, IMG_3.HEIC.",
+      retryLabel: "Download Originals",
+    });
     fetchMock.mockClear();
     await act(async () => {
-      result.current.downloadOriginals();
+      result.current.retry();
     });
-    const bodies = fetchMock.mock.calls
-      .filter((c) => String(c[0]).endsWith("/zip/ticket") || String(c[0]).endsWith("/zip"))
-      .map((c) => JSON.parse(String((c[1] as RequestInit).body)));
-    expect(bodies[0]).toEqual({ asset_ids: ["a", "c"], format: "native" });
-    expect(result.current.heicFallback).toBeNull();
+    expect(bodies(fetchMock)[0]).toEqual({ asset_ids: ["a", "c"], format: "native" });
+    click.mockRestore();
+  });
+
+  it("retry after a failure runs the same zip again", async () => {
+    setUserAgent(IPHONE_UA);
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response("{}", { status: 500 })).mockResolvedValue(new Response(JSON.stringify({ ticket: "tk9", total_bytes: 1, expires_in: 60, job: null }))));
+    const { result } = renderHook(() => useZipDownload(1));
+    await act(async () => result.current.start(["a", "b"]));
+    expect(result.current.state.phase).toBe("error");
+    await act(async () => result.current.retry());
+    expect(result.current.state.phase).toBe("started");
     click.mockRestore();
   });
 
@@ -219,11 +248,10 @@ describe("HEIC fallback report (D50)", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useZipDownload(1));
-    act(() => result.current.setJpeg(true));
     await act(async () => {
       await result.current.start(["a"]);
     });
-    await waitFor(() => expect(result.current.heicFallback).toEqual([{ id: "a", name: "IMG_1.HEIC" }]), { timeout: 6000 });
+    await waitFor(() => expect(result.current.state).toMatchObject({ phase: "error", message: expect.stringContaining("IMG_1.HEIC") }), { timeout: 6000 });
     click.mockRestore();
   }, 10000);
 
@@ -233,28 +261,8 @@ describe("HEIC fallback report (D50)", () => {
     await expect(waitForUnconverted(1, "j", { intervalMs: 1 })).resolves.toEqual([]);
   });
 
-  it("modal text, buttons and Escape", () => {
-    const onDownload = vi.fn();
-    const onClose = vi.fn();
-    render(
-      <HeicFallbackModal
-        files={[{ id: "a", name: "a.HEIC" }, { id: "b", name: "b.HEIC" }, { id: "c", name: "c.HEIC" }]}
-        onDownloadOriginals={onDownload}
-        onClose={onClose}
-      />,
-    );
-    expect(screen.getByRole("dialog")).toHaveTextContent("These 3 files stayed HEIC: a.HEIC, b.HEIC, c.HEIC");
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "OK" }));
-    fireEvent.click(screen.getByRole("button", { name: "Download originals of these" }));
-    expect(onDownload).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    expect(onClose).toHaveBeenCalledTimes(2);
-  });
-
   it("ZipStatus says a browser download started", () => {
-    render(<ZipStatus state={{ phase: "started" }} jpeg={false} onJpegChange={() => {}} />);
+    render(<ZipStatus state={{ phase: "started" }} onRetry={() => {}} onDismiss={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent("Download started");
   });
 });
@@ -272,62 +280,37 @@ describe("zip honesty and limits (#198)", () => {
     });
   });
 
-  it("marks JPEG progress total unknown and shows an indeterminate bar", () => {
-    const { container } = render(
+  it("hides the total when JPEG conversion makes it a guess", () => {
+    render(
       <ZipStatus
         state={{ phase: "downloading", progress: { received: 512, total: 2048, totalUnknown: true } }}
-        jpeg
-        onJpegChange={() => {}}
+        onRetry={() => {}}
+        onDismiss={() => {}}
       />,
     );
     expect(screen.getByRole("status").textContent).toBe("512 B");
-    expect(container.querySelector("progress")?.hasAttribute("value")).toBe(false);
   });
 
   it("says the total is about the size for native zips", () => {
-    render(
-      <ZipStatus state={{ phase: "downloading", progress: { received: 512, total: 2048 } }} jpeg={false} onJpegChange={() => {}} />,
-    );
+    render(<ZipStatus state={{ phase: "downloading", progress: { received: 512, total: 2048 } }} onRetry={() => {}} onDismiss={() => {}} />);
     expect(screen.getByRole("status").textContent).toBe("512 B of about 2.0 KB");
   });
 });
 
 describe("ZipStatus", () => {
-  it("shows progress, and an alert for errors", () => {
-    const { rerender } = render(
-      <ZipStatus state={{ phase: "downloading", progress: { received: 512, total: 2048 } }} jpeg={false} onJpegChange={() => {}} />,
-    );
-    expect(screen.getByRole("status").textContent).toBe("512 B of about 2.0 KB");
-    rerender(<ZipStatus state={{ phase: "error", message: "Too large" }} jpeg onJpegChange={() => {}} />);
+  it("shows an alert with Try Again and Dismiss for errors", () => {
+    const retry = vi.fn();
+    const dismiss = vi.fn();
+    render(<ZipStatus state={{ phase: "error", message: "Too large" }} onRetry={retry} onDismiss={dismiss} />);
     expect(screen.getByRole("alert").textContent).toBe("Too large");
-    expect((screen.getByLabelText("HEIC as JPEG") as HTMLInputElement).checked).toBe(true);
-  });
-});
-
-describe("HEIC as JPEG only for a selection with a HEIC (#254)", () => {
-  const items = [
-    { id: "heic", filename: "IMG_1.JPG", is_heic: true },
-    { id: "jpeg", filename: "IMG_2.HEIC", is_heic: false },
-    { id: "png", filename: "IMG_3.png", is_heic: false },
-    { id: "old-server", filename: "IMG_4.heif" },
-  ];
-
-  it("follows is_heic, not the filename", () => {
-    expect(selectionHasHeic(items, ["jpeg", "png"])).toBe(false);
-    expect(selectionHasHeic(items, ["png", "heic"])).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(dismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the extension when the server sends no is_heic", () => {
-    expect(selectionHasHeic(items, ["old-server"])).toBe(true);
-    expect(selectionHasHeic([{ id: "x", filename: "a.jpg" }], ["x"])).toBe(false);
-  });
-
-  it("assumes a selected item it hasn't loaded might be HEIC", () => {
-    expect(selectionHasHeic(items, ["png", "not-loaded"])).toBe(true);
-  });
-
-  it("ZipStatus hides the checkbox when told the selection has no HEIC", () => {
-    render(<ZipStatus state={{ phase: "idle" }} jpeg={false} onJpegChange={() => {}} showHeicOption={false} />);
-    expect(screen.queryByLabelText("HEIC as JPEG")).toBeNull();
+  it("renders nothing when idle", () => {
+    const { container } = render(<ZipStatus state={{ phase: "idle" }} onRetry={() => {}} onDismiss={() => {}} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

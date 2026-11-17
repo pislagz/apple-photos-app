@@ -2,8 +2,7 @@ import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, us
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
-import { downloadVersion } from "./download";
-import ExportModal from "../export/ExportModal";
+import TransferHud from "../export/TransferHud";
 import { useExport } from "../export/useExport";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
@@ -411,12 +410,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
 
   function handleShare() {
     if (detail?.original_outside_library) return;
-    exportFlow.open([item]);
-  }
-
-  function handleDownloadOriginal() {
-    if (detail?.original_outside_library) return;
-    downloadVersion(libraryId, item.id, "original");
+    void exportFlow.share([item]);
   }
 
   if (!item) return null;
@@ -604,18 +598,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           ) : (
             <span className="mobile-viewer__slot" aria-hidden />
           )}
-          {detail?.has_edited ? (
-            <button
-              type="button"
-              className="mobile-library__glass-button mobile-viewer__bar-button"
-              onClick={handleDownloadOriginal}
-              aria-label="Download Original"
-            >
-              <Icon name="download" size={20} />
-            </button>
-          ) : (
-            <span className="mobile-viewer__slot" aria-hidden />
-          )}
+          <span className="mobile-viewer__slot" aria-hidden />
           <button
             type="button"
             className="mobile-library__glass-button mobile-viewer__bar-button"
@@ -644,7 +627,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           )}
         </div>
       )}
-      <ExportModal flow={exportFlow} />
+      <TransferHud flow={exportFlow} layout="phone" />
     </div>
   );
 }

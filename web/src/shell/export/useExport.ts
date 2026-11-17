@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { getSelectionSummary } from "../../api";
-import { detectExportCapabilities, pickDirectory, type DirectoryHandle } from "./capabilities";
+import { canPickDirectory, canShareFiles, pickDirectory, type DirectoryHandle } from "./capabilities";
+import { navigateToZip, requestZipTicket } from "../library/zipDownload";
 import {
   describeExportError,
   ExportAbort,
@@ -14,6 +15,7 @@ import {
 } from "./exportFetch";
 import {
   exportReducer,
+  formatFor,
   IDLE,
   SHARE_MAX_BYTES,
   shareBlockReason,
@@ -22,6 +24,7 @@ import {
   type ExportItem,
   type ExportMethod,
 } from "./exportModel";
+import { getTransferFormat } from "./transferFormat";
 
 // Only one export runs at a time, across every screen that can start one: a
 // second tap (or the phone layout in a desktop browser, which mounts two
@@ -29,18 +32,13 @@ import {
 let activeOwner: symbol | null = null;
 
 const FETCH_CONCURRENCY = 3;
-const DOWNLOAD_GAP_MS = 300;
-const URL_LIFETIME_MS = 30_000;
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function useExport(libraryId: number) {
   const [state, dispatch] = useReducer(exportReducer, IDLE);
   const owner = useRef(Symbol("export"));
   const abort = useRef<AbortController | null>(null);
-  const urls = useRef(new Set<string>());
   const sharing = useRef(false);
-  const caps = useMemo(() => (state.phase === "idle" ? null : detectExportCapabilities()), [state.phase === "idle"]);
+  const last = useRef<{ method: ExportMethod; items: ExportItem[] } | null>(null);
 
   const release = useCallback(() => {
     abort.current?.abort();
@@ -48,72 +46,36 @@ export function useExport(libraryId: number) {
     if (activeOwner === owner.current) activeOwner = null;
   }, []);
 
-  const revokeUrls = useCallback(() => {
-    urls.current.forEach((url) => URL.revokeObjectURL(url));
-    urls.current.clear();
-  }, []);
-
-  useEffect(
-    () => () => {
-      release();
-      revokeUrls();
-    },
-    [release, revokeUrls],
-  );
-
-  const open = useCallback(
-    (items: ExportItem[]) => {
-      if (items.length === 0 || activeOwner) return;
-      activeOwner = owner.current;
-      sharing.current = false;
-      dispatch({ type: "open", items });
-      const controller = new AbortController();
-      abort.current = controller;
-      getSelectionSummary(libraryId, items.map((item) => item.id)).then(
-        (summary) => {
-          if (!controller.signal.aborted) dispatch({ type: "size", bytes: summary.total_bytes });
-        },
-        () => {},
-      );
-    },
-    [libraryId],
-  );
+  useEffect(() => release, [release]);
 
   const close = useCallback(() => {
     release();
-    revokeUrls();
     dispatch({ type: "close" });
-  }, [release, revokeUrls]);
+  }, [release]);
 
-  // Stops a running fetch and returns to the choice.
-  const back = useCallback(() => {
-    abort.current?.abort();
-    abort.current = new AbortController();
-    revokeUrls();
-    dispatch({ type: "back" });
-  }, [revokeUrls]);
+  const finish = useCallback(() => {
+    if (activeOwner === owner.current) activeOwner = null;
+  }, []);
 
-  const setFormat = useCallback((format: ExportFormat) => dispatch({ type: "format", format }), []);
-
-  const start = useCallback(
-    async (method: ExportMethod) => {
-      if (state.phase !== "choosing") return;
-      const { items, format, bytes } = state;
+  // Runs one export end to end. `share` hands the files to the system share
+  // sheet at the end, with no extra tap while the click's user activation is
+  // still valid; otherwise it parks in "ready" and asks for one tap.
+  const run = useCallback(
+    async (method: ExportMethod, items: ExportItem[]) => {
+      if (items.length === 0 || activeOwner) return;
+      activeOwner = owner.current;
+      sharing.current = false;
+      last.current = { method, items };
+      const format: ExportFormat = formatFor(getTransferFormat());
       // Folder picker first, with no await before it: it needs the click's user activation.
       let folder: DirectoryHandle | null = null;
       if (method === "folder") {
         try {
           folder = await pickDirectory();
         } catch (error) {
+          finish();
           if (error instanceof DOMException && error.name === "AbortError") return;
-          dispatch({ type: "error", message: describeExportError(error) });
-          return;
-        }
-      }
-      if (method === "share") {
-        const reason = shareBlockReason(items.length, bytes, format);
-        if (reason) {
-          dispatch({ type: "blocked", message: reason });
+          dispatch({ type: "error", method, items, message: describeExportError(error) });
           return;
         }
       }
@@ -121,7 +83,7 @@ export function useExport(libraryId: number) {
       abort.current = controller;
       const { signal } = controller;
       const plan = planFiles(items, format);
-      dispatch({ type: "start", method, fileCount: plan.length });
+      dispatch({ type: "start", method, items, fileCount: plan.length });
       let received = 0;
       let finished = 0;
       const progress = () => dispatch({ type: "progress", fileIndex: finished, received });
@@ -131,18 +93,43 @@ export function useExport(libraryId: number) {
         progress();
       };
       try {
-        if (method === "share") {
+        if (method === "zip") {
+          const ticket = await requestZipTicket(libraryId, items.map((item) => item.id), format === "jpeg" ? "jpeg" : "native");
+          if (signal.aborted) return;
+          navigateToZip(libraryId, ticket.ticket);
+          close();
+        } else if (method === "share") {
+          const sizeKnown = format === "original" && items.length > 1;
+          const bytes = sizeKnown
+            ? await getSelectionSummary(libraryId, items.map((item) => item.id)).then(
+                (summary) => summary.total_bytes,
+                () => null,
+              )
+            : null;
+          if (signal.aborted) return;
+          const reason = shareBlockReason(items.length, bytes, format);
+          if (reason) {
+            finish();
+            dispatch({ type: "blocked", items, message: reason });
+            return;
+          }
           const files = await fetchAll(libraryId, plan, format, signal, onBytes, () => {
             finished += 1;
             progress();
           });
           if (signal.aborted) return;
           if (!navigator.canShare({ files })) {
-            dispatch({ type: "error", message: "This browser cannot share these files. Use another method." });
+            finish();
+            dispatch({ type: "error", method, items, message: "This browser cannot share these files." });
             return;
           }
-          dispatch({ type: "ready", files });
-        } else if (method === "folder" && folder) {
+          const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+          if (activation && !activation.isActive) {
+            dispatch({ type: "ready", items, files });
+            return;
+          }
+          await openSheet(files, items);
+        } else if (folder) {
           const names = new Set<string>();
           for (const planned of plan) {
             const opened = await openPlanned(libraryId, planned, format, signal);
@@ -163,67 +150,88 @@ export function useExport(libraryId: number) {
             finished += 1;
             progress();
           }
+          finish();
           dispatch({ type: "done", method, saved: plan.length, folder: folder.name });
-        } else {
-          const names = new Set<string>();
-          for (const planned of plan) {
-            const opened = await openPlanned(libraryId, planned, format, signal);
-            const file = await readToFile(opened, uniqueName(opened.name, names), signal, onBytes);
-            saveFile(file, urls.current);
-            finished += 1;
-            progress();
-            await wait(DOWNLOAD_GAP_MS);
-          }
-          dispatch({ type: "done", method, saved: plan.length });
         }
       } catch (error) {
         if (error instanceof ExportAbort || signal.aborted) return;
         controller.abort(); // stop sibling fetches of a failed batch
+        finish();
         if (error instanceof ExportTooLarge) {
-          dispatch({
-            type: "blocked",
-            message: "These files are too large for one share sheet. Use another method.",
-          });
+          dispatch({ type: "blocked", items, message: "These files are too large for one share sheet." });
           return;
         }
-        dispatch({ type: "error", message: describeExportError(error) });
+        dispatch({ type: "error", method, items, message: describeExportError(error) });
+      }
+      // The share sheet itself: resolves when the user picks or dismisses.
+      async function openSheet(files: File[], shared: ExportItem[]) {
+        sharing.current = true;
+        try {
+          await navigator.share({ files });
+          sharing.current = false;
+          close();
+        } catch (error) {
+          sharing.current = false;
+          if (error instanceof DOMException && error.name === "AbortError") {
+            close();
+          } else if (error instanceof DOMException && error.name === "NotAllowedError") {
+            dispatch({ type: "ready", items: shared, files });
+          } else {
+            finish();
+            dispatch({ type: "error", method: "share", items: shared, message: describeExportError(error) });
+          }
+        }
       }
     },
-    [state, libraryId],
+    [libraryId, close, finish],
   );
 
-  // The user's tap on "Share N items". Nothing awaited before `share()`.
+  // The tap on "Share N Items". Nothing awaited before `share()`.
   const confirmShare = useCallback(() => {
     if (state.phase !== "ready" || sharing.current) return;
+    const { files, items } = state;
     sharing.current = true;
     let pending: Promise<void>;
     try {
-      pending = navigator.share({ files: state.files });
+      pending = navigator.share({ files });
     } catch (error) {
       sharing.current = false;
-      dispatch({ type: "error", message: describeExportError(error) });
+      dispatch({ type: "error", method: "share", items, message: describeExportError(error) });
       return;
     }
     pending.then(
       () => {
         sharing.current = false;
-        release();
-        dispatch({ type: "close" });
+        close();
       },
       (error: unknown) => {
         sharing.current = false;
-        // Dismissing the sheet is silent: stay on the confirm screen.
-        if (error instanceof DOMException && error.name === "AbortError") return;
+        // Dismissing the sheet ends the flow, like on the phone's own share sheet.
+        if (error instanceof DOMException && error.name === "AbortError") {
+          close();
+          return;
+        }
         if (error instanceof DOMException && error.name === "NotAllowedError") {
           dispatch({ type: "hint", hint: "The browser asked for another tap. Tap Share again." });
           return;
         }
-        dispatch({ type: "error", message: describeExportError(error) });
+        dispatch({ type: "error", method: "share", items, message: describeExportError(error) });
       },
     );
-  }, [state, release]);
+  }, [state, close]);
 
-  return { state, caps, open, close, back, setFormat, start, confirmShare };
+  const retry = useCallback(() => {
+    const again = last.current;
+    release();
+    dispatch({ type: "close" });
+    if (again) void run(again.method, again.items);
+  }, [release, run]);
+
+  const share = useCallback((items: ExportItem[]) => run("share", items), [run]);
+  const exportToFolder = useCallback((items: ExportItem[]) => run("folder", items), [run]);
+  const saveZip = useCallback((items: ExportItem[]) => run("zip", items), [run]);
+
+  return { state, share, exportToFolder, saveZip, retry, close, confirmShare, canShare: canShareFiles, canFolder: canPickDirectory };
 }
 
 async function freeName(folder: DirectoryHandle, wanted: string, taken: Set<string>): Promise<string> {
@@ -236,23 +244,6 @@ async function freeName(folder: DirectoryHandle, wanted: string, taken: Set<stri
       return name;
     }
   }
-}
-
-// Plain download of one file through a short-lived object URL. The page is
-// never navigated: the link carries `download`, and the URL is revoked.
-function saveFile(file: File, urls: Set<string>): void {
-  const url = URL.createObjectURL(file);
-  urls.add(url);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = file.name;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    urls.delete(url);
-  }, URL_LIFETIME_MS);
 }
 
 async function fetchAll(

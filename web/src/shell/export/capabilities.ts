@@ -16,9 +16,6 @@ export interface ExportCapabilities {
   share: boolean;
   // `showDirectoryPicker` (Chrome/Edge desktop). Needs a secure context.
   folder: boolean;
-  // Offered as a method. Hidden in an installed iOS-style app window that can
-  // share, where a download link is the "black screen with no way back" trap.
-  individual: boolean;
   standalone: boolean;
 }
 
@@ -50,7 +47,7 @@ export function isStandaloneApp(): boolean {
 export function detectExportCapabilities(): ExportCapabilities {
   const share = canShareFiles();
   const standalone = isStandaloneApp();
-  return { share, folder: canPickDirectory(), standalone, individual: !(standalone && share) };
+  return { share, folder: canPickDirectory(), standalone };
 }
 
 export function pickDirectory(): Promise<DirectoryHandle> {

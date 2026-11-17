@@ -804,7 +804,7 @@ describe("DesktopLibrary", () => {
     clickSpy.mockRestore();
   });
 
-  it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
+  it("right-click's Download Unmodified Original always requests version=original, no JPEG and not the edited default", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
       // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
@@ -823,30 +823,53 @@ describe("DesktopLibrary", () => {
     fireEvent.contextMenu(cells(container)[0]);
     const menu = await screen.findByTestId("context-menu");
 
-    fireEvent.click(await within(menu).findByText("Download Original"));
+    fireEvent.click(await within(menu).findByText("Download Unmodified Original"));
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     expect(href).toContain("/original/a1");
     expect(href).not.toContain("version=edited");
+    expect(href).not.toContain("format=jpeg");
     clickSpy.mockRestore();
   });
 
-  it("right-click's menu has no Download Original for a photo that was never edited", async () => {
+  it("right-click's menu offers the same set as the viewer: Share…, Download, Download Unmodified Original, Copy Link (#507)", async () => {
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
       if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
-      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
-      if (match) return mockDetail(match[1], { has_edited: false });
       throw new Error(`unexpected request: ${url}`);
     });
-
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.contextMenu(cells(container)[0]);
     const menu = await screen.findByTestId("context-menu");
+    expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual([
+      "Share…",
+      "Download",
+      "Download Unmodified Original",
+      "Copy Link",
+    ]);
+    vi.unstubAllGlobals();
+  });
 
-    await within(menu).findByText("Download");
-    expect(within(menu).queryByText("Download Original")).toBeNull();
+  it("right-click adds Export to Folder… only where showDirectoryPicker exists, and hides Share… without file sharing", async () => {
+    vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
+    vi.stubGlobal("showDirectoryPicker", vi.fn());
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+    expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual([
+      "Download",
+      "Download Unmodified Original",
+      "Export to Folder…",
+      "Copy Link",
+    ]);
+    vi.unstubAllGlobals();
   });
 
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
@@ -942,23 +965,86 @@ describe("DesktopLibrary", () => {
         return fetchMock;
       }
 
-      it("opens the export dialog for 2+ items when Download as ZIP is off", async () => {
-        const fetchMock = await selectTwo();
-        fireEvent.click(screen.getByTitle("Download"));
-        expect(await screen.findByRole("dialog", { name: "Export" })).toBeInTheDocument();
-        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/zip"))).toBe(false);
-      });
+      const ticket = (url: string) => (url.endsWith("/zip/ticket") ? { ticket: "t", total_bytes: 10, expires_in: 60, job: null } : undefined);
 
-      it("makes one ZIP for 2+ items when Download as ZIP is on", async () => {
-        localStorage.setItem("photos-viewer:download-as-zip", "1");
-        const fetchMock = await selectTwo((url) =>
-          url.endsWith("/zip/ticket") ? { ticket: "t", total_bytes: 10, expires_in: 60, job: null } : undefined,
-        );
+      it("Download is one click and 2+ items are always one ZIP, with no dialog and no setting (#507)", async () => {
+        const fetchMock = await selectTwo(ticket);
         vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
         fireEvent.click(screen.getByTitle("Download"));
         await waitFor(() => expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/zip/ticket"))).toBe(true));
         expect(screen.queryByRole("dialog")).toBeNull();
-        localStorage.clear();
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+      });
+
+      it("the ZIP follows Transfer Format: Automatic is JPEG, Keep Originals is native, Unmodified Original is native", async () => {
+        const fetchMock = await selectTwo(ticket);
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        const formats = () =>
+          fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/zip/ticket")).map((call) => JSON.parse(String((call[1] as RequestInit).body)).format);
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(formats()).toEqual(["jpeg"]));
+        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "Download Unmodified Original" }));
+        await waitFor(() => expect(formats()).toEqual(["jpeg", "native"]));
+      });
+
+      it("the ▾ menu holds Download Unmodified Original, and Export to Folder… only with showDirectoryPicker", async () => {
+        await selectTwo();
+        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original"]);
+        fireEvent.keyDown(window, { key: "Escape" });
+        expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
+      });
+
+      it("shows Export to Folder… in the ▾ menu where the browser can write to a folder", async () => {
+        vi.stubGlobal("showDirectoryPicker", vi.fn(async () => Promise.reject(new DOMException("x", "AbortError"))));
+        await selectTwo();
+        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original", "Export to Folder…"]);
+        fireEvent.click(within(menu).getByRole("menuitem", { name: "Export to Folder…" }));
+        expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
+        vi.unstubAllGlobals();
+      });
+
+      it("a failed ZIP shows one line in the toolbar with Try Again that runs it again", async () => {
+        let fail = true;
+        const fetchMock = await selectTwo((url) => {
+          if (url.endsWith("/zip")) return new Response("zip");
+          if (!url.endsWith("/zip/ticket")) return undefined;
+          return fail ? new Response(JSON.stringify({ detail: "Disk full" }), { status: 500 }) : { ticket: "t", total_bytes: 10, expires_in: 60, job: null };
+        });
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        URL.createObjectURL = vi.fn(() => "blob:x");
+        URL.revokeObjectURL = vi.fn();
+        fireEvent.click(screen.getByTitle("Download"));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Disk full");
+        fail = false;
+        fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+        await waitFor(() => expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/zip/ticket"))).toHaveLength(2));
+        await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      });
+
+      it("one selected item downloads as a plain file (JPEG under Automatic), not a ZIP", async () => {
+        const items = [makeItem("a1", "2024-05-10T10:00:00")];
+        const fetchMock = mockFetch((url) => {
+          if (url === "/api/libraries/1/summary") return computeSummary(items);
+          if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+          if (/\/assets\/[^/?]+$/.test(url)) return mockDetail("a1", { has_edited: false });
+          throw new Error(`unexpected request: ${url}`);
+        });
+        const hrefs: string[] = [];
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+          hrefs.push(this.getAttribute("href") ?? "");
+        });
+        const { container } = render(<DesktopLibrary libraryId={1} />);
+        await screen.findAllByRole("img");
+        fireEvent.click(cells(container)[0]);
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(hrefs).toHaveLength(1));
+        expect(hrefs[0]).toContain("/original/a1");
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/zip"))).toBe(false);
       });
     });
 
