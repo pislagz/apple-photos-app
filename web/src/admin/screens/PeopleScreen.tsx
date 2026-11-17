@@ -240,6 +240,7 @@ function SignInRow({ user, isSelf, onChanged }: { user: UserResponse; isSelf: bo
   return (
     <Row
       label="Allowed to sign in"
+      info={<InfoButton helpKey="personSignIn" name="allowed to sign in" />}
       detail={isSelf ? "You can't turn off your own account. Ask another administrator." : undefined}
       control={
         <>
@@ -252,7 +253,6 @@ function SignInRow({ user, isSelf, onChanged }: { user: UserResponse; isSelf: bo
             }}
           />
           <SavedStatus state={state} message={error} />
-          <InfoButton helpKey="personSignIn" name="allowed to sign in" />
         </>
       }
     />

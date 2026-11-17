@@ -9,6 +9,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     globals: true,
+    // Must exceed asyncUtilTimeout (src/test-setup.ts) so a slow wait fails with
+    // its own message instead of a bare test timeout (#465).
+    testTimeout: 30000,
     // Playwright smoke tests (`npm run e2e:shots`) need a running demo server.
     exclude: ["e2e/**", "node_modules/**", "dist/**"],
   },

@@ -4,10 +4,12 @@ export default function LibraryEmptyState({
   title,
   text,
   adminLink,
+  onClearFilter,
 }: {
   title: string;
   text?: string;
   adminLink?: boolean;
+  onClearFilter?: () => void;
 }) {
   return (
     <div className="library-empty" data-testid="library-empty">
@@ -28,6 +30,11 @@ export default function LibraryEmptyState({
       </svg>
       <h2 className="library-empty__title">{title}</h2>
       {text && <p className="library-empty__text">{text}</p>}
+      {onClearFilter && (
+        <button type="button" className="library-empty__link" onClick={onClearFilter}>
+          Clear Filter
+        </button>
+      )}
       {adminLink && (
         <a className="library-empty__link" href="/admin">
           Go to Admin → Libraries

@@ -33,3 +33,19 @@ export const LIBRARY_EMPTY_TEXT = "Photos added to this library will appear here
 export function isWholeLibraryEmpty(album: string | undefined | null): boolean {
   return albumMessages(album).empty === "No Photos or Videos";
 }
+
+// #484: a filter that matches nothing is not an empty library. Photos names
+// the filter ("No Favorites"); a hidden kind or an unnamed filter falls back
+// to a generic line. Either way the grid offers a way to clear the filter.
+const FILTER_EMPTY: Record<string, string> = {
+  favorites: "No Favorites",
+  edited: "No Edited Items",
+  photos: "No Photos",
+  videos: "No Videos",
+  screenshots: "No Screenshots",
+  shared: "No Shared Items",
+  "not-in-album": "No Items Outside Albums",
+};
+export function filterEmptyMessages(filter: string): { title: string; text: string } {
+  return { title: FILTER_EMPTY[filter] ?? "No Items Match", text: "No items match this filter." };
+}

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../testHelpers";
+import { HELP, type HelpKey } from "../../help/adminHelp";
 import ActivityScreen, { PAGE_SIZE } from "./ActivityScreen";
 
 const entry = (id: number, over = {}) => ({
@@ -89,5 +90,24 @@ describe("ActivityScreen", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(document.querySelectorAll("time").length).toBe(PAGE_SIZE + 2);
     spy.mockRestore();
+  });
+});
+
+function tipFor(name: string) {
+  const button = screen.getByRole("button", { name: `About ${name}` });
+  return document.getElementById(button.getAttribute("aria-describedby")!)!;
+}
+
+describe("ActivityScreen (i) buttons", () => {
+  it("every (i) shows its registered help text", async () => {
+    mockFetch((url) => (url === "/api/admin/access-matrix" ? MATRIX : { entries: [entry(1)] }));
+    render(<ActivityScreen />);
+    await screen.findByText("pp added the library Family");
+    const rows: [string, HelpKey][] = [
+      ["activity", "activityAbout"],
+      ["filters", "activityFilters"],
+      ["export", "activityExport"],
+    ];
+    for (const [name, key] of rows) expect(tipFor(name).textContent, name).toBe(HELP[key]);
   });
 });
