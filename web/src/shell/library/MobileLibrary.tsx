@@ -11,7 +11,10 @@ import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
-import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
+import { downloadSingleAsset } from "../viewer/download";
+import ExportModal from "../export/ExportModal";
+import { useDownloadAsZip } from "../export/exportPrefs";
+import { useExport } from "../export/useExport";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import PeriodCardGrid from "./PeriodCards";
@@ -218,10 +221,6 @@ export default function MobileLibrary({
   const [selectMode, setSelectMode] = useState(false);
   const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sharing, setSharing] = useState(false);
-  // Files already fetched for a share the browser blocked (expired tap); the
-  // next Share tap hands them to the share sheet with no await in between.
-  const [readyFiles, setReadyFiles] = useState<File[] | null>(null);
   const selectBarRef = useRef<HTMLDivElement | null>(null);
   const [selectBarHeight, setSelectBarHeight] = useState(0);
 
@@ -229,7 +228,6 @@ export default function MobileLibrary({
   useSwipeSelect(selectMode && !isTileView, scrollRef, itemOrder, selectedIds, setSelectedIds);
 
   const toggleSelected = useCallback((id: string) => {
-    setReadyFiles(null);
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -245,7 +243,6 @@ export default function MobileLibrary({
       if (shortcutAction(event) !== "selectAll" || isTypingTarget(event.target)) return;
       event.preventDefault();
       void loadAll().then((all) => {
-        setReadyFiles(null);
         setSelectMode(true);
         setSelectedIds(new Set(all.map((item) => item.id)));
       });
@@ -257,7 +254,6 @@ export default function MobileLibrary({
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
-    setReadyFiles(null);
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
@@ -299,32 +295,25 @@ export default function MobileLibrary({
     [view],
   );
 
-  async function handleShareSelection() {
-    if (readyFiles) {
-      const outcome = await shareReadyFiles(readyFiles).catch(() => null);
-      setReadyFiles(outcome?.status === "ready" ? outcome.files : null);
-      return;
-    }
-    const toShare = items.filter((item) => selectedIds.has(item.id));
-    if (toShare.length === 0) return;
-    setSharing(true);
-    try {
-      const outcome = await shareOrDownloadAssets(
-        libraryId,
-        toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })),
-      );
-      setReadyFiles(outcome.status === "ready" ? outcome.files : null);
-    } finally {
-      setSharing(false);
-    }
+  const exportFlow = useExport(libraryId);
+  const [downloadAsZip] = useDownloadAsZip();
+  // Share and Download both open the export dialog (#487): it asks what to
+  // export, then shares once. Only one export runs at a time.
+  function handleShareSelection() {
+    exportFlow.open(items.filter((item) => selectedIds.has(item.id)));
   }
 
   const zip = useZipDownload(libraryId);
   const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
 
-  // One selected item downloads as the plain file; 2+ keep the archive flow.
+  // "Download as ZIP" on: 2+ items become one archive and one item stays the
+  // plain file (the previous behaviour). Off: the export dialog.
   async function handleDownloadSelection() {
     const ids = [...selectedIds];
+    if (!downloadAsZip) {
+      handleShareSelection();
+      return;
+    }
     if (ids.length !== 1) {
       void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
       return;
@@ -729,7 +718,7 @@ export default function MobileLibrary({
               className="mobile-library__glass-button mobile-library__bar-button"
               aria-label="Share"
               onClick={handleShareSelection}
-              disabled={selectedIds.size === 0 || sharing}
+              disabled={selectedIds.size === 0 || exportFlow.state.phase !== "idle"}
             >
               <Icon name="share" />
             </button>
@@ -748,15 +737,14 @@ export default function MobileLibrary({
           </div>
           {selectedIds.size > 0 && zip.state.phase === "idle" && (
             <p className="mobile-library__select-caption">
-              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
+              {!downloadAsZip
+                ? "Download asks what to export first."
+                : selectedIds.size === 1
+                  ? "Downloads the original file."
+                  : "Downloads all selected items in a ZIP file."}
             </p>
           )}
-          {readyFiles && (
-            <p className="mobile-library__select-caption" role="status">
-              Ready to share. Tap Share again.
-            </p>
-          )}
-          {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
+          {downloadAsZip && (selectedIds.size > 0 || zip.state.phase !== "idle") && (
             <ZipStatus
               state={zip.state}
               jpeg={zip.jpeg}
@@ -767,6 +755,7 @@ export default function MobileLibrary({
           )}
         </div>
       )}
+      <ExportModal flow={exportFlow} />
       {zip.heicFallback && (
         <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
       )}

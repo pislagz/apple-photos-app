@@ -25,6 +25,7 @@ function makeItem(id: string, date: string): AssetListItem {
 }
 
 afterEach(() => {
+  localStorage.clear();
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
@@ -646,9 +647,15 @@ describe("MobileLibrary", () => {
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     expect(screen.getByText("2 Photos Selected")).toBeInTheDocument();
 
+    // The dialog asks first; the share sheet opens from its own confirm tap, once.
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByRole("dialog");
+    await new Promise((resolve) => setTimeout(resolve, 520));
+    expect(share).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Share…/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Share 2 items" }));
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-    expect(canShare).toHaveBeenCalledTimes(1);
+    expect(canShare).toHaveBeenCalled();
     expect(share.mock.calls[0][0].files).toHaveLength(2);
   });
 
@@ -689,6 +696,7 @@ describe("MobileLibrary", () => {
   });
 
   it("offers HEIC as JPEG only once a HEIC photo is selected (#254)", async () => {
+    localStorage.setItem("photos-viewer:download-as-zip", "1");
     const items = [
       { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: false },
       { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: true },
@@ -711,6 +719,7 @@ describe("MobileLibrary", () => {
   });
 
   it("lays the select bar out like Photos: Share left, count centred, Download right (#259)", async () => {
+    localStorage.setItem("photos-viewer:download-as-zip", "1");
     const items = [
       { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
       { ...makeItem("v1", "2024-05-09T10:00:00"), is_video: true },
@@ -748,6 +757,7 @@ describe("MobileLibrary", () => {
   });
 
   it("downloads a single selected item as the plain file, not an archive (#259)", async () => {
+    localStorage.setItem("photos-viewer:download-as-zip", "1");
     const items = [
       { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
       { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: false },
@@ -843,9 +853,16 @@ describe("MobileLibrary", () => {
     expect(screen.getByTestId("header-subtitle")).toHaveTextContent("9 May 2024");
   });
 
-  it("falls back to download links per item when the Web Share API is unavailable", async () => {
+  it("offers Download Individually (one link per file) when the Web Share API is unavailable", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
-    mockAssets(items);
+    mockLibraryFetch(items, (url) => {
+      if (url.startsWith("/api/libraries/1/original/")) return new Response("x", { headers: { "content-type": "image/jpeg" } });
+      if (url.endsWith("/selection-summary")) return { total_bytes: 10 };
+      if (/\/assets\/[^/?]+$/.test(url)) return { has_edited: false };
+      return undefined;
+    });
+    vi.stubGlobal("navigator", { ...navigator, share: undefined, canShare: undefined });
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => {} }));
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
     render(<MobileLibrary libraryId={1} />);
@@ -860,7 +877,11 @@ describe("MobileLibrary", () => {
     fireEvent.click(a2Image);
 
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
+    await screen.findByRole("dialog");
+    await new Promise((resolve) => setTimeout(resolve, 520));
+    expect(screen.queryByRole("button", { name: /Share…/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Download Individually/ }));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2), { timeout: 3000 });
     clickSpy.mockRestore();
   });
 });

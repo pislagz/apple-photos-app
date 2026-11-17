@@ -2,7 +2,9 @@ import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, us
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
-import { downloadVersion, shareOrDownloadAssets } from "./download";
+import { downloadVersion } from "./download";
+import ExportModal from "../export/ExportModal";
+import { useExport } from "../export/useExport";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
@@ -92,6 +94,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
   }, []);
 
+  const exportFlow = useExport(libraryId);
   const [infoOpen, setInfoOpen] = useState(false);
   // Playing video hides the chrome after 2.5 s; pause (or a tap) brings it back.
   const [videoRunning, setVideoRunning] = useState(false);
@@ -408,7 +411,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
 
   function handleShare() {
     if (detail?.original_outside_library) return;
-    void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename, original_filename: item.original_filename }]);
+    exportFlow.open([item]);
   }
 
   function handleDownloadOriginal() {
@@ -640,6 +643,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           )}
         </div>
       )}
+      <ExportModal flow={exportFlow} />
     </div>
   );
 }

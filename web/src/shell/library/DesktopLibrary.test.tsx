@@ -923,6 +923,44 @@ describe("DesktopLibrary", () => {
       vi.unstubAllGlobals();
     });
 
+    describe("multi-download (#487)", () => {
+      async function selectTwo(extra?: (url: string) => unknown) {
+        const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+        const fetchMock = mockFetch((url) => {
+          if (url === "/api/libraries/1/summary") return computeSummary(items);
+          if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+          if (url.endsWith("/selection-summary")) return { total_bytes: 2048 };
+          const result = extra?.(url);
+          if (result !== undefined) return result;
+          throw new Error(`unexpected request: ${url}`);
+        });
+        const { container } = render(<DesktopLibrary libraryId={1} />);
+        await screen.findAllByRole("img");
+        fireEvent.click(cells(container)[0]);
+        fireEvent.click(cells(container)[1], { metaKey: true });
+        return fetchMock;
+      }
+
+      it("opens the export dialog for 2+ items when Download as ZIP is off", async () => {
+        const fetchMock = await selectTwo();
+        fireEvent.click(screen.getByTitle("Download"));
+        expect(await screen.findByRole("dialog", { name: "Export" })).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/zip"))).toBe(false);
+      });
+
+      it("makes one ZIP for 2+ items when Download as ZIP is on", async () => {
+        localStorage.setItem("photos-viewer:download-as-zip", "1");
+        const fetchMock = await selectTwo((url) =>
+          url.endsWith("/zip/ticket") ? { ticket: "t", total_bytes: 10, expires_in: 60, job: null } : undefined,
+        );
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/zip/ticket"))).toBe(true));
+        expect(screen.queryByRole("dialog")).toBeNull();
+        localStorage.clear();
+      });
+    });
+
     it("labels the Filter By button and gives it a tooltip", async () => {
       mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
       render(<DesktopLibrary libraryId={1} />);

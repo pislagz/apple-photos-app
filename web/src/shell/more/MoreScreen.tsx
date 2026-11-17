@@ -5,6 +5,7 @@ import ChangePasswordDialog from "../ChangePasswordDialog";
 import PasskeysDialog from "../PasskeysDialog";
 import { Icon } from "../icons";
 import LibrarySwitcher from "../LibrarySwitcher";
+import { useDownloadAsZip } from "../export/exportPrefs";
 import { MEDIA_TYPES } from "./mediaTypes";
 
 // #125, tracker R1: the phone "More" tab -- People & Pets, Places, Media
@@ -32,6 +33,7 @@ export default function MoreScreen({
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
+  const [downloadAsZip, setDownloadAsZip] = useDownloadAsZip();
   return (
     <div className="more-screen">
       <header className="mobile-screen__header mobile-screen__header--root">
@@ -74,6 +76,24 @@ export default function MoreScreen({
               <Icon name="hidden" className="more-screen__icon" />
               Hidden
             </button>
+          </li>
+        </ul>
+        {/* #487: off by default; off means Download opens the export dialog. */}
+        <ul className="more-screen__group">
+          <li className="more-screen__group-label">Downloads</li>
+          <li>
+            <label className="more-screen__item more-screen__item--switch">
+              <span>Download as ZIP</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={downloadAsZip}
+                onChange={(event) => setDownloadAsZip(event.target.checked)}
+              />
+            </label>
+            <p className="more-screen__switch-note">
+              Several photos download as one ZIP file. Off: you choose what to export, then share or save the files.
+            </p>
           </li>
         </ul>
         {/* #303: everything the old top-right "..." menu offered. */}
