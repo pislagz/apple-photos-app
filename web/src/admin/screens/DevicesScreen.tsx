@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listSessions, revokeSession, type SessionResponse } from "../api";
+import InfoButton from "../../help/InfoButton";
 import { describeError } from "../sharing";
 import { deviceName } from "../ui/deviceName";
 import { formatWhen } from "../ui/format";
@@ -105,6 +106,7 @@ export default function DevicesScreen() {
                   : `Signed in ${formatWhen(session.created_at)} · ${staysUntil(session)}`
               }
               value={<span title={fullDate(session.last_seen_at)}>{lastSeen(session.last_seen_at)}</span>}
+              info={current ? undefined : <InfoButton helpKey="devicesSignOut" name="signing a device out" />}
               control={
                 current ? undefined : (
                   <button
@@ -126,7 +128,9 @@ export default function DevicesScreen() {
 
   return (
     <section className="admin-devices">
-      <h1>Devices</h1>
+      <h1>
+        Devices <InfoButton helpKey="devicesAbout" name="devices" />
+      </h1>
       {error && <p role="alert">{error}</p>}
       {body}
       <Footer>{FOOTER}</Footer>

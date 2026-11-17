@@ -30,6 +30,10 @@ export interface ViewerProps {
   // #220: scroll the grid behind so this item's tile is on screen; called as
   // paging moves on, so the close zoom has a tile to land on.
   revealItem?: (id: string) => void;
+  // #480: size of the whole current view (server count), and how many items
+  // of it lie before items[0] (an oldest-first list loads from the newest end).
+  total?: number | null;
+  offset?: number;
 }
 
 // P1.16 desktop Viewer (no filmstrip, as in macOS Photos): double-click/wheel zoom with drag-to-pan,
@@ -39,7 +43,7 @@ export interface ViewerProps {
 // stays unreachable here exactly like it is from the grid.
 const ZOOM_STEP = 0.5;
 
-export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+export default function DesktopViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem, total, offset = 0 }: ViewerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
@@ -309,8 +313,8 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
   const fresh = formatDesktopTitle({
     place: detail ? formatShortPlaceName(detail) : "",
     dateCreated: detail?.date_created ?? item.date ?? null,
-    index,
-    total: items.length,
+    index: index + offset,
+    total: Math.max(total ?? 0, items.length + offset),
   });
   // #408: a title is never empty. Until this asset's detail lands, and when
   // the computed one has no line 1 (no place and no usable date), keep the

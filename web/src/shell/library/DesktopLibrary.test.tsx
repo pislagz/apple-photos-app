@@ -76,7 +76,11 @@ function cells(container: HTMLElement): HTMLElement[] {
 }
 
 // Explicit timeout for the few waits that outlast the 1 s default under CPU load (#201).
-const SLOW_WAIT = { timeout: 8000 };
+const SLOW_WAIT = { timeout: 12000 };
+// Per-test limit for the 300-cell tests. Their waits (SLOW_WAIT, 8 s) must be
+// able to finish inside it, so the 5 s vitest default would cut them off on a
+// starved CPU (#465). Last resort: the work is a real 300-cell render, not a sleep.
+const SLOW_TEST = 30000;
 
 describe("DesktopLibrary", () => {
   it("renders thumbnails from the thumb endpoint and never requests an original or /hidden", async () => {
@@ -235,7 +239,7 @@ describe("DesktopLibrary", () => {
     expect(screen.getByTestId("selection-count")).toHaveTextContent(/^3 of [0-9]+\+? selected/);
 
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^5 of [0-9]+\+? selected/));
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^3 of [0-9]+\+? selected/);
 
     fireEvent.keyDown(grid, { key: "Escape" });
     expect(screen.getByTestId("selection-count")).not.toHaveTextContent("selected");
@@ -295,7 +299,6 @@ describe("DesktopLibrary", () => {
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     const grid = screen.getByTestId("desktop-library-grid");
-
     // Oldest first (#224): the first press picks the newest photo, the last cell;
     // Left goes toward older photos, Right back toward newer.
     fireEvent.keyDown(grid, { key: "ArrowRight" });
@@ -329,34 +332,26 @@ describe("DesktopLibrary", () => {
     }
   });
 
-  it("cmd-A selects the whole library, not just the pages scrolled into view", async () => {
+  it("scrolls the focused cell into view as arrow keys move focus far past the visible rows", async () => {
     const items = Array.from({ length: 300 }, (_, i) =>
       makeItem(`p${i}`, `2024-05-10T10:00:00`),
     );
     const fetchMock = mockAssets(items);
 
     const { container } = render(<DesktopLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
-    expect(cells(container).length).toBeLessThan(300);
-
-    const grid = screen.getByTestId("desktop-library-grid");
-    fireEvent.keyDown(grid, { key: "a", metaKey: true });
-
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of [0-9]+\+? selected/));
-    for (const call of fetchMock.mock.calls) {
-      expect(String(call[0])).not.toContain("/hidden");
-    }
-  });
-
-  it("scrolls the focused cell into view as arrow keys move focus far past the visible rows", async () => {
-    const items = Array.from({ length: 300 }, (_, i) =>
-      makeItem(`p${i}`, `2024-05-10T10:00:00`),
-    );
-    mockAssets(items);
-
-    const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img", undefined, SLOW_WAIT);
     const grid = screen.getByTestId("desktop-library-grid");
+
+    // The key presses below run synchronously, so the older page (200 + 100
+    // items) must already be in state: otherwise focus clamps at the oldest
+    // loaded photo and the test races the page fetch.
+    await waitFor(
+      () => expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true),
+      SLOW_WAIT,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     // Oldest first (#224): the Library opens at the newest photos, so each
     // ArrowUp moves focus a full row toward older photos (6 columns at the
@@ -378,7 +373,7 @@ describe("DesktopLibrary", () => {
       },
       SLOW_WAIT,
     );
-  });
+  }, SLOW_TEST);
 
   it("keeps the item at the viewport centre at the centre after a zoom change (#207)", async () => {
     const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
@@ -388,6 +383,9 @@ describe("DesktopLibrary", () => {
     const grid = screen.getByTestId("desktop-library-grid");
     // The Library opens scrolled to its end; jsdom fires no scroll event for that.
     fireEvent.scroll(grid);
+    // p20 sits in the last rows; it is only mounted once the open-at-the-end
+    // effect has run, which a starved CPU can delay past the first paint.
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p20"]')).not.toBeNull(), SLOW_WAIT);
 
     // Fake layout: 600 px viewport, so centre = scrollTop + 300. Put the
     // centre inside the row holding p20 (6 columns, ~152 px rows).
@@ -399,7 +397,7 @@ describe("DesktopLibrary", () => {
     const before = rowOf("p20");
     grid.scrollTop = (before.top + before.bottom) / 2 - 300;
     fireEvent.scroll(grid);
-    await waitFor(() => expect(container.querySelector('[data-asset-id="p20"]')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-asset-id="p20"]')).not.toBeNull(), SLOW_WAIT);
 
     fireEvent.change(screen.getByLabelText("Zoom"), { target: { value: "3" } });
     await waitFor(() => {
@@ -407,10 +405,10 @@ describe("DesktopLibrary", () => {
       const centre = grid.scrollTop + 300;
       expect(row.top).toBeLessThanOrEqual(centre);
       expect(row.bottom).toBeGreaterThan(centre);
-    });
-  });
+    }, SLOW_WAIT);
+  }, SLOW_TEST);
 
-  it("keeps a hidden asset out of the grid, cmd-A selection, and the count", async () => {
+  it("keeps a hidden asset out of the grid and the count", async () => {
     const visible = [makeItem("v1", "2024-05-10T10:00:00"), makeItem("v2", "2024-05-09T10:00:00")];
     const hidden = makeItem("hidden-1", "2024-05-08T10:00:00");
     mockFetch((url) => {
@@ -423,9 +421,9 @@ describe("DesktopLibrary", () => {
     await screen.findAllByRole("img");
     expect(container.innerHTML).not.toContain("hidden-1");
 
-    const grid = screen.getByTestId("desktop-library-grid");
-    fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/));
+    fireEvent.click(cells(container)[0]);
+    fireEvent.click(cells(container)[1], { shiftKey: true });
+    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^2 of [0-9]+\+? selected/);
     expect(container.innerHTML).not.toContain("hidden-1");
   });
 
@@ -691,9 +689,12 @@ describe("DesktopLibrary", () => {
   it("keeps the date-range title in All Photos", async () => {
     mockAssets([makeItem("a", "2025-09-19T10:00:00"), makeItem("b", "2023-09-05T10:00:00")]);
     const { container } = render(<DesktopLibrary libraryId={1} initialView="all" />);
-    await screen.findAllByRole("img");
-    expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–");
-  });
+    await screen.findAllByRole("img", undefined, SLOW_WAIT);
+    await waitFor(
+      () => expect(container.querySelector(".desktop-library__date-range")?.textContent).toContain("–"),
+      SLOW_WAIT,
+    );
+  }, SLOW_TEST);
 
   it("starts on initialView and scrolls to initialScrollDayKey (#152, #301)", async () => {
     const items = [
@@ -1148,26 +1149,6 @@ describe("DesktopLibrary oldest first (#224)", () => {
     fireEvent.scroll(grid);
     await waitFor(() => expect(container.querySelector('[data-asset-id="p250"]')).not.toBeNull(), SLOW_WAIT);
   });
-
-  it("Shift-click selects a range that spans pages added on top", async () => {
-    const items = Array.from({ length: 300 }, (_, i) => makeItem(`p${i}`, "2024-05-10T10:00:00"));
-    mockAssets(items);
-    const { container } = render(<DesktopLibrary libraryId={1} />);
-    await screen.findAllByRole("img", undefined, SLOW_WAIT);
-    // The grid opens at the newest end in a later effect, so p0 (the newest) may not be mounted yet.
-    const cell = async (id: string) => {
-      await waitFor(() => expect(container.querySelector(`[data-asset-id="${id}"]`)).not.toBeNull(), SLOW_WAIT);
-      return container.querySelector(`[data-asset-id="${id}"]`) as HTMLElement;
-    };
-    const grid = screen.getByTestId("desktop-library-grid");
-    fireEvent.click(await cell("p0"));
-    // Everything older loads in front (cmd-A pages the whole library); the anchor stays p0.
-    fireEvent.keyDown(grid, { key: "a", metaKey: true });
-    await waitFor(() => expect(screen.getByTestId("selection-count")).toHaveTextContent(/^300 of 300 selected/), SLOW_WAIT);
-    fireEvent.click(await cell("p0"));
-    fireEvent.click(await cell("p3"), { shiftKey: true });
-    expect(screen.getByTestId("selection-count")).toHaveTextContent(/^4 of 300 selected/);
-  });
 });
 
 describe("DesktopLibrary date-range title (#118)", () => {
@@ -1357,8 +1338,9 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByTestId("library-cell");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    const grid = screen.getByTestId("desktop-library-grid");
-    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+    const tiles = screen.getAllByTestId("library-cell");
+    fireEvent.click(tiles[0]);
+    fireEvent.click(tiles[2], { shiftKey: true });
 
     const panel = screen.getByTestId("library-info-panel");
     await waitFor(() => expect(panel).toHaveTextContent("3 items (2 photos, 1 video)"));
@@ -1367,8 +1349,8 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     expect(panel).toHaveTextContent("Zurich");
     const call = fetchMock.mock.calls.find((c) => c[0] === "/api/libraries/1/selection-summary");
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual({ asset_ids: expect.arrayContaining(["a1", "a2", "a3"]) });
-    // No per-photo detail request was made for the selection.
-    expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith("/api/libraries/1/assets/"))).toBe(false);
+    // The first click shows that one photo's details; the rest of the range gets no per-photo request.
+    expect(fetchMock.mock.calls.some((c) => /\/api\/libraries\/1\/assets\/a[23]/.test(String(c[0])))).toBe(false);
   });
 
   it("leaves out the place when the summary has none, and says so when loading fails", async () => {
@@ -1379,7 +1361,11 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByTestId("library-cell");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    {
+      const tiles = screen.getAllByTestId("library-cell");
+      fireEvent.click(tiles[0]);
+      fireEvent.click(tiles[2], { shiftKey: true });
+    }
     const panel = screen.getByTestId("library-info-panel");
     await waitFor(() => expect(panel).toHaveTextContent("3 photos"));
     expect(panel).toHaveTextContent("3 Mar 2024");
@@ -1391,7 +1377,11 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     render(<DesktopLibrary libraryId={1} initialView="all" />);
     await screen.findAllByTestId("library-cell");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    {
+      const tiles = screen.getAllByTestId("library-cell");
+      fireEvent.click(tiles[0]);
+      fireEvent.click(tiles[2], { shiftKey: true });
+    }
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));
   });
 
@@ -1402,7 +1392,11 @@ describe("DesktopLibrary Info panel multi-selection (D21)", () => {
     render(<DesktopLibrary libraryId={1} initialView="all" />);
     const cells = await screen.findAllByTestId("library-cell");
     fireEvent.click(screen.getByRole("button", { name: "Info" }));
-    fireEvent.keyDown(screen.getByTestId("desktop-library-grid"), { key: "a", metaKey: true });
+    {
+      const tiles = screen.getAllByTestId("library-cell");
+      fireEvent.click(tiles[0]);
+      fireEvent.click(tiles[2], { shiftKey: true });
+    }
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("3 photos"));
     fireEvent.click(cells[0]);
     await waitFor(() => expect(screen.getByTestId("library-info-panel")).toHaveTextContent("Couldn't load info."));

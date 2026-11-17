@@ -9,6 +9,7 @@ import contextlib
 import logging
 import threading
 import time
+import types
 
 import pytest
 from fastapi import HTTPException
@@ -772,7 +773,16 @@ def test_prune_expired_sessions_is_throttled_to_about_once_a_minute(
         # A fake clock: real time.monotonic() can be under 60 s on a freshly
         # booted host, which made the "window elapsed" half flaky.
         clock = {"now": 1000.0}
-        monkeypatch.setattr(session_auth.time, "monotonic", lambda: clock["now"])
+        # Replace the module's `time` reference, not `time.monotonic` itself:
+        # `session_auth.time` IS the global time module, so patching its
+        # attribute fakes the clock for every thread (leftover TestClient /
+        # anyio workers), whose prune call could then consume the throttle
+        # window and make the second assertion flaky.
+        monkeypatch.setattr(
+            session_auth,
+            "time",
+            types.SimpleNamespace(monotonic=lambda: clock["now"]),
+        )
         monkeypatch.setattr(session_auth, "_last_session_prune_at", clock["now"])
         session_auth._prune_expired_sessions(conn)
         (still_there,) = conn.execute(

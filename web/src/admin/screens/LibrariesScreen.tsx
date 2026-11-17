@@ -125,10 +125,10 @@ export default function LibrariesScreen({
           <h2>No libraries yet</h2>
           <p>Add a Photos library to start. The folder with your libraries has to be connected to the server first.</p>
           <div className="admin-actions-bar">
+            <InfoButton helpKey="libAdd" name="adding a library" />
             <button type="button" className="admin-btn admin-btn--primary" onClick={() => setAdding(true)}>
               Add Library…
             </button>
-            <InfoButton helpKey="libAdd" name="adding a library" />
           </div>
           <ConnectHelp />
         </div>
@@ -154,10 +154,10 @@ export default function LibrariesScreen({
             })}
           </GroupedList>
           <div className="admin-actions-bar">
+            <InfoButton helpKey="libAdd" name="adding a library" />
             <button type="button" className="admin-btn admin-btn--primary" onClick={() => setAdding(true)}>
               Add Library…
             </button>
-            <InfoButton helpKey="libAdd" name="adding a library" />
           </div>
           <Footer>Libraries are read-only. This app never changes, moves or deletes the files in a library.</Footer>
         </>

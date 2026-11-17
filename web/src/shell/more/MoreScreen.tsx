@@ -4,6 +4,7 @@ import AvatarPicker from "../AvatarPicker";
 import ChangePasswordDialog from "../ChangePasswordDialog";
 import PasskeysDialog from "../PasskeysDialog";
 import { Icon } from "../icons";
+import LargeTitleScreen from "../LargeTitleScreen";
 import LibrarySwitcher from "../LibrarySwitcher";
 import { MEDIA_TYPES } from "./mediaTypes";
 
@@ -33,11 +34,24 @@ export default function MoreScreen({
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
   return (
-    <div className="more-screen">
-      <header className="mobile-screen__header mobile-screen__header--root">
-        <h1 className="mobile-screen__title">More</h1>
-      </header>
-      <div className="more-screen__body">
+    <LargeTitleScreen
+      title="More"
+      className="more-screen"
+      bodyClassName="more-screen__body"
+      outside={
+        <>
+          {choosingAvatar && (
+            <AvatarPicker
+              libraries={me.libraries}
+              onClose={() => setChoosingAvatar(false)}
+              onSaved={() => onAvatarChanged?.()}
+            />
+          )}
+          {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
+          {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
+        </>
+      }
+    >
         <ul className="more-screen__group">
           <li>
             <button type="button" className="more-screen__item" onClick={() => onNavigate("/people")}>
@@ -132,16 +146,6 @@ export default function MoreScreen({
           onChange={onActiveLibraryChange}
           className="more-screen__library-switcher"
         />
-      </div>
-      {choosingAvatar && (
-        <AvatarPicker
-          libraries={me.libraries}
-          onClose={() => setChoosingAvatar(false)}
-          onSaved={() => onAvatarChanged?.()}
-        />
-      )}
-      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
-      {managingPasskeys && <PasskeysDialog onClose={() => setManagingPasskeys(false)} />}
-    </div>
+    </LargeTitleScreen>
   );
 }
