@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type AccessMatrixResponse, type AuditLogEntry, auditLogCsvUrl, readAccessMatrix, readAuditLog } from "../api";
+import InfoButton from "../../help/InfoButton";
 import { describeError } from "../sharing";
 import { describeActivity } from "../ui/activity";
 import { formatWhen } from "../ui/format";
@@ -160,13 +161,16 @@ export default function ActivityScreen() {
 
   return (
     <section className="admin-activity">
-      <h1>Activity</h1>
+      <h1>
+        Activity <InfoButton helpKey="activityAbout" name="activity" />
+      </h1>
       {error && <p role="alert">{error}</p>}
 
       <GroupedList heading="Show">
         <Row
           size="touch"
           label="Person"
+          info={<InfoButton helpKey="activityFilters" name="filters" />}
           control={
             <select className="admin-input" aria-label="Person" value={userId} onChange={(e) => setUserId(e.target.value)}>
               <option value="">Everyone</option>
@@ -227,6 +231,7 @@ export default function ActivityScreen() {
         <Row
           size="touch"
           label="Export as CSV…"
+          info={<InfoButton helpKey="activityExport" name="export" />}
           control={
             <a className="admin-btn" href={auditLogCsvUrl(filters)} download aria-label="Export as CSV">
               Export

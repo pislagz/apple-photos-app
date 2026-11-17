@@ -9,7 +9,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
 import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
 import MobileViewer from "../viewer/MobileViewer";
@@ -28,7 +28,6 @@ import { phoneTitle, titleScrimProgress } from "./libraryTitle";
 import { type PinchPoint, usePinchZoom } from "./usePinchZoom";
 import { fadeGhost, reducedMotion, resetLayer, scaleLayer, snapBack, tokenMs } from "./pinchLayer";
 import { DEFAULT_COLUMNS, type GridColumns, levelAfter, levelIndex, ZOOM_LEVELS, stepsForScale } from "./zoomLevels";
-import { isTypingTarget, shortcutAction } from "../shortcuts";
 import { shouldKeepEndAboveBar } from "./selectBarShift";
 import { useSwipeSelect } from "./useSwipeSelect";
 import FadeImage from "./FadeImage";
@@ -90,7 +89,7 @@ export default function MobileLibrary({
   const filterState = useLibraryFilter();
   // View Options > Aspect Ratio Grid: whole photos instead of cropped squares.
   const [wholePhotos, setWholePhotos] = useState(false);
-  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, loadAll, hasNewer, newerLeft, loadNewer, loadedAnchor } =
+  const { items, total, loading, done, error: assetsError, retry: retryAssets, loadMore, hasNewer, newerLeft, loadNewer, loadedAnchor } =
     useLibraryAssets(
     libraryId,
     anchorDay,
@@ -244,22 +243,6 @@ export default function MobileLibrary({
     });
   }, []);
 
-  // #366: Cmd/Ctrl+A on a hardware keyboard selects everything in the view.
-  useEffect(() => {
-    if (isTileView || openIndex !== null) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (shortcutAction(event) !== "selectAll" || isTypingTarget(event.target)) return;
-      event.preventDefault();
-      void loadAll().then((all) => {
-        setReadyFiles(null);
-        setSelectMode(true);
-        setSelectedIds(new Set(all.map((item) => item.id)));
-      });
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isTileView, openIndex, loadAll]);
-
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -411,7 +394,9 @@ export default function MobileLibrary({
 
   const rowSize = (row: LibraryRow) => {
     if (row.type === "header") return HEADER_ROW_HEIGHT;
-    return row.type === "feature" ? cellSize * 2 : cellHeight(row.items[0]);
+    // Each photo row's slot ends in one gap, so the space between rows equals
+    // the space between columns at every zoom level (#489).
+    return (row.type === "feature" ? cellSize * 2 + MOBILE_GRID_GAP : cellHeight(row.items[0])) + MOBILE_GRID_GAP;
   };
   // #415: the All Photos rows start below the floating header; the CSS inset
   // is measured through a probe box because env() is not readable from JS.
@@ -682,11 +667,19 @@ export default function MobileLibrary({
             </button>
           </div>
         ) : isEmpty ? (
-          <LibraryEmptyState
-            title={albumMessages(album).empty}
-            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
-            adminLink={isWholeLibraryEmpty(album) && isAdmin}
-          />
+          filterState.active ? (
+            <LibraryEmptyState
+              title={filterEmptyMessages(filterState.filter).title}
+              text={filterEmptyMessages(filterState.filter).text}
+              onClearFilter={filterState.clear}
+            />
+          ) : (
+            <LibraryEmptyState
+              title={albumMessages(album).empty}
+              text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+              adminLink={isWholeLibraryEmpty(album) && isAdmin}
+            />
+          )
         ) : isTileView ? (
           <PeriodCardGrid
             key={view}
@@ -708,7 +701,7 @@ export default function MobileLibrary({
                 top: 0,
                 left: 0,
                 width: "100%",
-                height: virtualRow.size,
+                height: row.type === "header" ? virtualRow.size : virtualRow.size - MOBILE_GRID_GAP,
                 transform: `translateY(${virtualRow.start}px)`,
               };
               if (row.type === "header") {

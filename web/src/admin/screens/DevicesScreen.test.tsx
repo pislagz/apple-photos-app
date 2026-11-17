@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, noContentResponse } from "../testHelpers";
+import { HELP, type HelpKey } from "../../help/adminHelp";
 import DevicesScreen from "./DevicesScreen";
 
 const UA_IPHONE =
@@ -70,5 +71,23 @@ describe("DevicesScreen", () => {
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("sess-1"), expect.objectContaining({ method: "DELETE" }));
+  });
+});
+
+function tipFor(name: string) {
+  const button = screen.getByRole("button", { name: `About ${name}` });
+  return document.getElementById(button.getAttribute("aria-describedby")!)!;
+}
+
+describe("DevicesScreen (i) buttons", () => {
+  it("every (i) shows its registered help text", async () => {
+    mockFetch(() => [SESSION, MINE]);
+    render(<DevicesScreen />);
+    await screen.findByText("Safari on iPhone");
+    const rows: [string, HelpKey][] = [
+      ["devices", "devicesAbout"],
+      ["signing a device out", "devicesSignOut"],
+    ];
+    for (const [name, key] of rows) expect(tipFor(name).textContent, name).toBe(HELP[key]);
   });
 });

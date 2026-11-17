@@ -104,17 +104,6 @@ describe("useLibraryAssets oldest first (#224)", () => {
     const { result } = renderHook(() => useLibraryAssets(1));
     await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(["a4", "a3"]));
   });
-
-  it("loadAll returns the whole library oldest first", async () => {
-    pagedServer();
-    const { result } = renderHook(() => useLibraryAssets(1, null, "all", null, NO_HIDE, true));
-    await waitFor(() => expect(result.current.items).toHaveLength(2));
-    let all: AssetListItem[] = [];
-    await act(async () => {
-      all = await result.current.loadAll();
-    });
-    expect(all.map((item) => item.id)).toEqual(["a1", "a2", "a3", "a4"]);
-  });
 });
 
 describe("useLibraryAssets anchored to a date (#481)", () => {

@@ -390,13 +390,11 @@ export default function SettingsScreen() {
         />
         <Row
           label="Check all libraries now"
+          info={<InfoButton helpKey="checkNow" name="Check now" />}
           control={
-            <>
-              <button type="button" className="admin-btn" onClick={handleCheckNow} disabled={checking}>
-                Check Now
-              </button>
-              <InfoButton helpKey="checkNow" name="Check now" />
-            </>
+            <button type="button" className="admin-btn" onClick={handleCheckNow} disabled={checking}>
+              Check Now
+            </button>
           }
         />
       </GroupedList>
@@ -419,7 +417,9 @@ export default function SettingsScreen() {
           />
           <div role="listitem" data-testid="place-names-status" className="admin-row">
             <span className="admin-row__text">
-              <span className="admin-row__label">Place-name data</span>
+              <span className="admin-row__label">
+                Place-name data <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
+              </span>
               <span className="admin-row__detail">
                 {placeNames === null
                   ? "Checking…"
@@ -433,7 +433,6 @@ export default function SettingsScreen() {
               <button type="button" className="admin-btn" onClick={handleDownloadPlaceNames} disabled={downloadingPlaces || !settings.osm_consent}>
                 {placeNames?.downloaded ? "Download Again" : "Download"}
               </button>
-              <InfoButton helpKey="placeNamesDownload" name="place-name data download" />
             </span>
           </div>
         </GroupedList>

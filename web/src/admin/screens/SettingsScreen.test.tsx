@@ -106,7 +106,7 @@ describe("SettingsScreen words and (i) buttons", () => {
     }
   });
 
-  it("puts the (i) right after the label text, before the control, in every setting row", async () => {
+  it("puts the (i) right after the label text, left of the control, in every setting row", async () => {
     mockFetch((url) => {
       if (url === "/api/admin/settings") return SETTINGS;
       if (url === "/api/admin/place-names") return PLACE_NAMES;
@@ -126,7 +126,10 @@ describe("SettingsScreen words and (i) buttons", () => {
     }
     for (const name of ["Check Now", "Download"]) {
       const button = screen.getByRole("button", { name });
-      expect(button.nextElementSibling).toHaveClass("info-button");
+      // The action button stays the rightmost thing in its row; the (i) sits by the label.
+      expect(button.nextElementSibling).toBeNull();
+      expect(button.closest(".admin-row")!.querySelector(".admin-row__control .info-button")).toBeNull();
+      expect(button.closest(".admin-row")!.querySelector(".info-button")).not.toBeNull();
     }
   });
 });

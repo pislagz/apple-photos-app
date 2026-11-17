@@ -9,7 +9,7 @@ import type { AssetListItem } from "../../api";
 import FilterMenu from "./FilterMenu";
 import { useLibraryFilter } from "./useLibraryFilter";
 import { assetAlt } from "../assetAlt";
-import { albumMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
+import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
@@ -89,7 +89,7 @@ function downloadSelection(libraryId: number, ids: Iterable<string>) {
 // grid with inline date headers, hover heart/duration, and
 // click/modifier/shift/drag selection. Like the mobile Library (P1.14),
 // this only ever pages `/assets` -- never `/hidden` -- so a hidden asset
-// (P1.13) can't reach any view or ⌘A. Cells request thumbnails only; a
+// (P1.13) can't reach any view. Cells request thumbnails only; a
 // download is the only thing that may hit `/original`.
 // One grid tile. Memoised so a selection change re-renders only the tiles
 // whose `selected` flips: the rest keep their element and decoded image (#265).
@@ -235,7 +235,7 @@ export default function DesktopLibrary({
   const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(initialScrollDayKey ?? null);
   const [anchorKey, setAnchorKey] = useState<string | null>(initialScrollDayKey && oldestFirst ? initialScrollDayKey : null);
   const [pendingOpen, setPendingOpen] = useState(false);
-  const { items, total, loading, done, error, retry, loadMore, loadAll, hasNewer, newerLeft, loadNewer, loadedAnchor } = useLibraryAssets(
+  const { items, total, loading, done, error, retry, loadMore, hasNewer, newerLeft, loadNewer, loadedAnchor } = useLibraryAssets(
     libraryId,
     anchorKey ? anchorToDay(anchorKey) : null,
     filter,
@@ -248,8 +248,8 @@ export default function DesktopLibrary({
   const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
   const libraryEmpty = !album && filter === "all" && done && !error && items.length === 0;
   useEffect(() => {
-    if (!loading || items.length > 0) onCount?.(items.length, done);
-  }, [items.length, done, loading, onCount]);
+    if (!loading || items.length > 0) onCount?.(total ?? items.length, done);
+  }, [items.length, total, done, loading, onCount]);
   // #98: the Info toggle opens an inspector for the focused cell. It only
   // fetches the JSON detail route while open, never `/original`.
   const multiSelected = selected.size >= 2;
@@ -370,7 +370,7 @@ export default function DesktopLibrary({
   // and never claims dates from pages that are not on screen.
   const scrollOffset = rowVirtualizer.scrollOffset ?? 0;
   const viewportHeight = rowVirtualizer.scrollRect?.height ?? 0;
-  const { dateRangeLabel, headerInBand } = useMemo(() => {
+  const { dateRangeLabel: liveDateRange, headerInBand } = useMemo(() => {
     const onScreen = virtualRows.filter(
       (row) => viewportHeight <= 0 || (row.end > scrollOffset && row.start < scrollOffset + viewportHeight),
     );
@@ -386,6 +386,13 @@ export default function DesktopLibrary({
     }
     return { dateRangeLabel: desktopTitle(view, dated), headerInBand };
   }, [virtualRows, rows, scrollOffset, viewportHeight, view]);
+
+  // #480: while rows shift under a scroll (a page prepended, rows between
+  // renders) the on-screen range can be briefly empty; unmounting the title
+  // then makes it blink. Keep the last label until a new one is known.
+  const lastDateRange = useRef("");
+  if (liveDateRange) lastDateRange.current = liveDateRange;
+  const dateRangeLabel = liveDateRange || (items.length > 0 ? lastDateRange.current : "");
 
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
@@ -680,7 +687,7 @@ export default function DesktopLibrary({
     (event: React.KeyboardEvent) => {
       // Period cards are buttons that handle their own Enter/Space.
       if (isPeriodView) return;
-      // Cmd/Ctrl combos (select all, zoom) live in the window handler below.
+      // Cmd/Ctrl combos (zoom) live in the window handler below.
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
@@ -918,8 +925,7 @@ export default function DesktopLibrary({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const action = shortcutAction(event);
-      // The app-wide guard (#366) already cancelled the browser's Select All.
-      if ((event.defaultPrevented && action !== "selectAll") || viewerIndex !== null || contextMenu !== null) return;
+      if (event.defaultPrevented || viewerIndex !== null || contextMenu !== null) return;
       if (isTypingTarget(event.target)) return;
       const toNewest =
         (event.key === "End" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) ||
@@ -927,9 +933,6 @@ export default function DesktopLibrary({
       if (toNewest && (oldestFirst || isPeriodView)) {
         event.preventDefault();
         scrollToEnd(true);
-      } else if (action === "selectAll" && !isPeriodView) {
-        event.preventDefault();
-        void loadAll().then((all) => setSelected(new Set(all.map((item) => item.id))));
       } else if (action === "zoomIn" || action === "zoomOut") {
         event.preventDefault();
         changeZoom(action === "zoomIn" ? Math.min(MAX_ZOOM_INDEX, zoomIndex + 1) : Math.max(0, zoomIndex - 1));
@@ -940,7 +943,7 @@ export default function DesktopLibrary({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [viewerIndex, contextMenu, isPeriodView, loadAll, changeZoom, zoomIndex, oldestFirst, scrollToEnd]);
+  }, [viewerIndex, contextMenu, isPeriodView, changeZoom, zoomIndex, oldestFirst, scrollToEnd]);
 
   const handleGridClick = useCallback((event: React.MouseEvent) => {
     if (suppressClickRef.current || event.shiftKey || event.metaKey || event.ctrlKey) return;
@@ -1070,7 +1073,7 @@ export default function DesktopLibrary({
           <h1 className="page-heading__title">{title}</h1>
           <p className="page-heading__subtitle" data-testid="selection-count">
             {selected.size > 0
-              ? `${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`
+              ? `${selected.size.toLocaleString()} of ${(total ?? items.length).toLocaleString()}${total === null && !done ? "+" : ""} selected`
               : (subtitle ?? (view !== "days" && dateRangeLabel ? dateRangeLabel : "\u00a0"))}
           </p>
         </div>
@@ -1101,10 +1104,10 @@ export default function DesktopLibrary({
             style={{ "--title-scrim": titleScrimProgress(scrollOffset) } as CSSProperties}
           >
             <div className="desktop-library__title-scrim" aria-hidden="true" />
-            <DateTitle text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
+            <DateTitle instant text={dateRangeLabel} className="desktop-library__title" testId="desktop-library-title" />
             {overlayHeading && selected.size > 0 && (
               <span className="desktop-library__title-sub" data-testid="desktop-library-title-sub">
-                {`${selected.size.toLocaleString()} of ${items.length.toLocaleString()}${done ? "" : "+"} selected`}
+                {`${selected.size.toLocaleString()} of ${(total ?? items.length).toLocaleString()}${total === null && !done ? "+" : ""} selected`}
               </span>
             )}
           </div>
@@ -1139,11 +1142,19 @@ export default function DesktopLibrary({
             </button>
           </div>
         ) : items.length === 0 && done ? (
-          <LibraryEmptyState
-            title={albumMessages(album).empty}
-            text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
-            adminLink={isWholeLibraryEmpty(album) && isAdmin}
-          />
+          filterState.active ? (
+            <LibraryEmptyState
+              title={filterEmptyMessages(filterState.filter).title}
+              text={filterEmptyMessages(filterState.filter).text}
+              onClearFilter={filterState.clear}
+            />
+          ) : (
+            <LibraryEmptyState
+              title={albumMessages(album).empty}
+              text={isWholeLibraryEmpty(album) ? LIBRARY_EMPTY_TEXT : undefined}
+              adminLink={isWholeLibraryEmpty(album) && isAdmin}
+            />
+          )
         ) : (
           <div style={{ position: "relative", height: rowVirtualizer.getTotalSize(), width: "100%" }}>
             {virtualRows.map((virtualRow) => {
@@ -1240,6 +1251,8 @@ export default function DesktopLibrary({
         <DesktopViewer
           libraryId={libraryId}
           items={items}
+          total={total}
+          offset={oldestFirst && total !== null ? Math.max(0, total - items.length) : 0}
           index={viewerIndex}
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}
