@@ -133,7 +133,7 @@ describe("FilterMenu mobile", () => {
     expect(state.setShow).toHaveBeenCalledWith("shared", true);
   });
 
-  it("opens on one tap and closes on the button, the backdrop or Escape, without double toggles", () => {
+  it("opens on one tap and closes on the button, an outside press or Escape, without double toggles", () => {
     render(<FilterMenu state={makeState()} variant="mobile" viewOptions={viewOptions()} />);
     const button = screen.getByRole("button", { name: "Filter" });
     fireEvent.pointerDown(button);
@@ -143,13 +143,13 @@ describe("FilterMenu mobile", () => {
     fireEvent.click(button);
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.click(button);
-    const backdrop = screen.getByTestId("filter-menu-backdrop");
     const outside = vi.fn();
     document.addEventListener("click", outside);
-    fireEvent.click(backdrop);
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
     document.removeEventListener("click", outside);
     expect(screen.queryByRole("menu")).toBeNull();
-    // The closing tap stopped at the backdrop: nothing behind it got the click.
+    // The closing press stopped at the document: nothing behind it got the click.
     expect(outside).not.toHaveBeenCalled();
     fireEvent.click(button);
     fireEvent.keyDown(screen.getAllByRole("menuitem")[0], { key: "Escape" });
