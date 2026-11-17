@@ -75,50 +75,70 @@ export function listenTrackpadPinch(
   };
 }
 
-// The desktop grid moves one stop of its size scale per pinch, never more.
-// A pinch must travel PINCH_STEP_THRESHOLD (log scale, about 25 %) before it
-// steps; then it is spent until the fingers stop (a gestureend, or no event
-// for PINCH_IDLE_MS), and the next pinch is ignored for PINCH_COOLDOWN_MS
-// after a step so a trailing burst cannot step again.
+// #475: the desktop grid scales live with the fingers, then settles. A session
+// accumulates the pinch into one scale (clamped), reports it on every event,
+// and settles once the pinch ends: a gestureend (Safari) or PINCH_SETTLE_MS of
+// silence (ctrl+wheel, which has no end event and trails off with inertia).
+export const PINCH_SETTLE_MS = 140;
+export const PINCH_MIN_SCALE = 0.5;
+export const PINCH_MAX_SCALE = 2;
+// A pinch must travel about 25 % (log scale) to move the grid one size stop.
 export const PINCH_STEP_THRESHOLD = Math.log(1.25);
-export const PINCH_IDLE_MS = 250;
-export const PINCH_COOLDOWN_MS = 400;
 
-export interface PinchStepper {
-  // Returns +1 (bigger tiles), -1 (smaller) or 0.
-  push(factor: number, now: number): -1 | 0 | 1;
-  end(): void;
+export function pinchDirection(scale: number, threshold = PINCH_STEP_THRESHOLD): -1 | 0 | 1 {
+  const travel = Math.log(scale);
+  return Math.abs(travel) < threshold ? 0 : travel > 0 ? 1 : -1;
 }
 
-export function createPinchStepper({
-  threshold = PINCH_STEP_THRESHOLD,
-  idleMs = PINCH_IDLE_MS,
-  cooldownMs = PINCH_COOLDOWN_MS,
-} = {}): PinchStepper {
-  let sum = 0;
-  let spent = false;
-  let lastAt = -Infinity;
-  let steppedAt = -Infinity;
+export interface PinchSession {
+  push(pinch: TrackpadPinch): void;
+  end(): void;
+  cancel(): void;
+}
+
+export function createPinchSession({
+  onScale,
+  onSettle,
+  settleMs = PINCH_SETTLE_MS,
+}: {
+  onScale: (scale: number, origin: { clientX: number; clientY: number }) => void;
+  onSettle: (scale: number, origin: { clientX: number; clientY: number }) => void;
+  settleMs?: number;
+}): PinchSession {
+  let scale = 1;
+  let active = false;
+  let origin = { clientX: 0, clientY: 0 };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clear = () => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+  const finish = () => {
+    clear();
+    if (!active) return;
+    const settled = scale;
+    active = false;
+    scale = 1;
+    onSettle(settled, origin);
+  };
   return {
-    push(factor, now) {
-      if (now - lastAt > idleMs) {
-        sum = 0;
-        spent = false;
+    push(pinch) {
+      if (!(pinch.factor > 0)) return;
+      if (!active) {
+        active = true;
+        scale = 1;
+        origin = { clientX: pinch.clientX, clientY: pinch.clientY };
       }
-      lastAt = now;
-      if (spent || now - steppedAt < cooldownMs || !(factor > 0)) return 0;
-      sum += Math.log(factor);
-      if (Math.abs(sum) < threshold) return 0;
-      const direction = sum > 0 ? 1 : -1;
-      sum = 0;
-      spent = true;
-      steppedAt = now;
-      return direction;
+      scale = Math.min(PINCH_MAX_SCALE, Math.max(PINCH_MIN_SCALE, scale * pinch.factor));
+      onScale(scale, origin);
+      clear();
+      timer = setTimeout(finish, settleMs);
     },
-    end() {
-      sum = 0;
-      spent = false;
-      lastAt = -Infinity;
+    end: finish,
+    cancel() {
+      clear();
+      active = false;
+      scale = 1;
     },
   };
 }

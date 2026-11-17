@@ -1,57 +1,82 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installBlockPageZoom } from "./blockPageZoom";
 import {
-  PINCH_COOLDOWN_MS,
-  PINCH_IDLE_MS,
-  createPinchStepper,
+  PINCH_MAX_SCALE,
+  PINCH_SETTLE_MS,
+  createPinchSession,
+  pinchDirection,
   listenTrackpadPinch,
   wheelFactor,
 } from "./trackpadPinch";
 
-describe("pinch stepper (#457)", () => {
-  it("steps once the pinch passes the threshold, in the pinch direction", () => {
-    const zoomIn = createPinchStepper();
-    expect(zoomIn.push(1.1, 0)).toBe(0); // under the threshold
-    expect(zoomIn.push(1.2, 16)).toBe(1);
-    const zoomOut = createPinchStepper();
-    expect(zoomOut.push(0.9, 0)).toBe(0);
-    expect(zoomOut.push(0.85, 16)).toBe(-1);
+describe("pinch session (#475)", () => {
+  const at = { clientX: 5, clientY: 6 };
+  function setup() {
+    vi.useFakeTimers();
+    const scales: number[] = [];
+    const settled: number[] = [];
+    const session = createPinchSession({ onScale: (s) => scales.push(s), onSettle: (s) => settled.push(s) });
+    return { scales, settled, session };
+  }
+  afterEach(() => vi.useRealTimers());
+
+  it("reports a live cumulative scale on every event, then settles once at the end", () => {
+    const { scales, settled, session } = setup();
+    session.push({ factor: 1.1, ...at });
+    session.push({ factor: 1.1, ...at });
+    expect(scales[1]).toBeCloseTo(1.21);
+    expect(settled).toEqual([]);
+    session.end();
+    expect(settled[0]).toBeCloseTo(1.21);
+    session.end();
+    expect(settled).toHaveLength(1);
   });
 
-  it("small back-and-forth jitter never steps", () => {
-    const stepper = createPinchStepper();
-    for (let t = 0; t < 2000; t += 16) expect(stepper.push(t % 32 ? 1.05 : 1 / 1.05, t)).toBe(0);
+  it("settles after silence when there is no end event (ctrl+wheel)", () => {
+    const { settled, session } = setup();
+    session.push({ factor: 0.8, ...at });
+    vi.advanceTimersByTime(PINCH_SETTLE_MS - 1);
+    expect(settled).toEqual([]);
+    vi.advanceTimersByTime(2);
+    expect(settled).toEqual([0.8]);
   });
 
-  it("one continuous pinch steps at most once, however far it goes", () => {
-    const stepper = createPinchStepper();
-    const steps: number[] = [];
-    for (let t = 0; t < 3000; t += 16) steps.push(stepper.push(1.1, t));
-    expect(steps.filter((s) => s !== 0)).toEqual([1]);
+  it("clamps the live scale and starts the next pinch from 1", () => {
+    const { scales, settled, session } = setup();
+    session.push({ factor: 100, ...at });
+    expect(scales[0]).toBe(PINCH_MAX_SCALE);
+    session.end();
+    session.push({ factor: 1.2, ...at });
+    expect(scales[1]).toBeCloseTo(1.2);
+    session.cancel();
+    vi.advanceTimersByTime(1000);
+    expect(settled).toEqual([PINCH_MAX_SCALE]);
   });
 
-  it("a new pinch after the fingers stop steps again", () => {
-    const stepper = createPinchStepper();
-    expect(stepper.push(2, 0)).toBe(1);
-    expect(stepper.push(2, 100)).toBe(0); // same pinch
-    const later = 100 + PINCH_IDLE_MS + PINCH_COOLDOWN_MS;
-    expect(stepper.push(2, later)).toBe(1);
+  it("steps one stop only past the threshold", () => {
+    expect(pinchDirection(1.1)).toBe(0);
+    expect(pinchDirection(0.9)).toBe(0);
+    expect(pinchDirection(1.3)).toBe(1);
+    expect(pinchDirection(0.7)).toBe(-1);
   });
 
-  it("ignores a new pinch inside the cooldown", () => {
-    const stepper = createPinchStepper();
-    expect(stepper.push(2, 0)).toBe(1);
-    stepper.end(); // gestureend
-    expect(stepper.push(2, PINCH_COOLDOWN_MS - 1)).toBe(0);
-    stepper.end();
-    expect(stepper.push(2, PINCH_COOLDOWN_MS + 1)).toBe(1);
-  });
-
-  it("gestureend lets the next pinch start from zero", () => {
-    const stepper = createPinchStepper();
-    expect(stepper.push(1.2, 0)).toBe(0);
-    stepper.end();
-    expect(stepper.push(1.2, 10)).toBe(0); // the earlier 1.2 was dropped
+  it("drives a session from synthetic Safari gesture events", () => {
+    const { scales, settled, session } = setup();
+    const el = document.createElement("div");
+    const stop = listenTrackpadPinch(el, (p) => session.push(p), () => session.end());
+    const gesture = (type: string, scale = 1) => {
+      const e = new Event(type, { cancelable: true }) as Event & { scale: number };
+      e.scale = scale;
+      el.dispatchEvent(e);
+      return e;
+    };
+    gesture("gesturestart");
+    expect(gesture("gesturechange", 1.1).defaultPrevented).toBe(true);
+    gesture("gesturechange", 1.4);
+    expect(scales.at(-1)).toBeCloseTo(1.4);
+    gesture("gestureend", 1.4);
+    expect(settled[0]).toBeCloseTo(1.4);
+    stop();
   });
 });
 
