@@ -12,8 +12,11 @@ export interface TrackpadPinch {
   clientY: number;
 }
 
-// Same curve the viewer has always used for ctrl+wheel (gestures.wheelScale).
-export const WHEEL_ZOOM_RATE = 0.01;
+// #475: half the old 0.01, so a Mac pinch follows the fingers instead of
+// racing ahead of them.
+export const WHEEL_ZOOM_RATE = 0.005;
+// #475: the viewer eases toward the pinch target with this time constant.
+export const PINCH_SMOOTH_MS = 70;
 const LINE_PX = 16;
 
 export function wheelFactor(deltaY: number, deltaMode = 0): number {
