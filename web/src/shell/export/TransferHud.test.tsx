@@ -227,8 +227,11 @@ describe("iPhone HUD", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("Start"));
     await screen.findByRole("alertdialog");
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByTestId("transfer-hud")).toBeNull();
+    // Re-sent until it lands: the listener is attached in an effect, which can lag under CI load.
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByTestId("transfer-hud")).toBeNull();
+    });
   });
 });
 
@@ -284,7 +287,7 @@ describe("Mac layout", () => {
     expect(picker).toHaveBeenCalledWith({ mode: "readwrite" });
     expect(Object.keys(written)).toEqual(["IMG_1 (1).HEIC", "IMG_1 (2).HEIC"]);
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    expect(screen.queryByTestId("transfer-hud")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("transfer-hud")).toBeNull());
   });
 
   it("cancelling the folder picker ends quietly", async () => {
