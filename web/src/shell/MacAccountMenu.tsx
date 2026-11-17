@@ -5,6 +5,7 @@ import { type LibrarySummary, type MeResponse, removeAvatar } from "../api";
 import Avatar from "./Avatar";
 import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
+import { useDownloadAsZip } from "./export/exportPrefs";
 import PasskeysDialog from "./PasskeysDialog";
 
 type SubmenuKey = "library";
@@ -66,6 +67,7 @@ export default function MacAccountMenu({
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
+  const [downloadAsZip, setDownloadAsZip] = useDownloadAsZip();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const focusFirstOf = useRef<HTMLElement | null>(null);
@@ -331,6 +333,8 @@ export default function MacAccountMenu({
                   </div>
                 )),
               )}
+            <div role="separator" className="mac-menu__separator" />
+            {item("Download as ZIP", act(() => setDownloadAsZip(!downloadAsZip)), { role: "menuitemcheckbox", checked: downloadAsZip })}
             <div role="separator" className="mac-menu__separator" />
             {me.libraries.length > 0 && item("Choose Avatar…", act(() => setChoosingAvatar(true)))}
             {me.avatar_version != null &&

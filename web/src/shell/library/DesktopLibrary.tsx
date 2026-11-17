@@ -14,7 +14,11 @@ import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
 import { createPinchStepper, listenTrackpadPinch } from "../trackpadPinch";
-import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
+import { copyAssetLink, downloadAsset, downloadVersion, resolveVersion } from "../viewer/download";
+import { canShareFiles } from "../export/capabilities";
+import ExportModal from "../export/ExportModal";
+import { useDownloadAsZip } from "../export/exportPrefs";
+import { useExport } from "../export/useExport";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import {
@@ -864,23 +868,20 @@ export default function DesktopLibrary({
 
   const zip = useZipDownload(libraryId);
   const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selected), [items, selected]);
+  const exportFlow = useExport(libraryId);
+  const [downloadAsZip] = useDownloadAsZip();
+  const selectedItems = useCallback(() => items.filter((item) => selected.has(item.id)), [items, selected]);
   const handleDownload = useCallback(() => {
     if (selected.size === 0) return;
-    // One file stays a plain download; several become one streamed zip (P3.2).
+    // One file stays a plain download. Several: one ZIP when "Download as ZIP"
+    // is on (P3.2), otherwise the export dialog (#487).
     if (selected.size === 1) downloadSelection(libraryId, selected);
-    else void zip.start([...selected], { forceNative: !selectionHasHeicPhoto });
-  }, [libraryId, selected, zip.start, selectionHasHeicPhoto]);
+    else if (downloadAsZip) void zip.start([...selected], { forceNative: !selectionHasHeicPhoto });
+    else exportFlow.open(selectedItems());
+  }, [libraryId, selected, zip.start, selectionHasHeicPhoto, downloadAsZip, exportFlow.open, selectedItems]);
 
   const shareSupported = canShareFiles();
-  const handleShare = useCallback(async () => {
-    const toShare = items.filter((item) => selected.has(item.id));
-    if (toShare.length === 0) return;
-    try {
-      await shareAssets(libraryId, toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })));
-    } catch {
-      // Nothing useful to show; the user can still use Download.
-    }
-  }, [items, selected, libraryId]);
+  const handleShare = useCallback(() => exportFlow.open(selectedItems()), [exportFlow.open, selectedItems]);
 
   // Right-click on a single cell (ios17-viewer.png's Download/Copy Link
   // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
@@ -1026,7 +1027,7 @@ export default function DesktopLibrary({
             type="button"
             className="toolbar-button"
             aria-label="Share"
-            onClick={() => void handleShare()}
+            onClick={handleShare}
             disabled={selected.size === 0}
             title="Share"
           >
@@ -1053,7 +1054,7 @@ export default function DesktopLibrary({
           <Icon name="info" size={16} filled={infoOpen} />
           <span className="sr-only">Info</span>
         </button>
-        {(selected.size > 1 || zip.state.phase !== "idle") && (
+        {((downloadAsZip && selected.size > 1) || zip.state.phase !== "idle") && (
           <ZipStatus
             state={zip.state}
             jpeg={zip.jpeg}
@@ -1265,6 +1266,7 @@ export default function DesktopLibrary({
           style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
         />
       )}
+      <ExportModal flow={exportFlow} />
       {zip.heicFallback && (
         <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
       )}

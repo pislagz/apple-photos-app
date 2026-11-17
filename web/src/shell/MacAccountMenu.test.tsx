@@ -38,7 +38,8 @@ describe("MacAccountMenu (#292)", () => {
     for (const name of ["Library", "Change Password…", "Passkeys…", "Log Out"]) {
       expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole("separator")).toHaveLength(2);
+    expect(screen.getAllByRole("separator")).toHaveLength(3);
+    expect(screen.getByRole("menuitemcheckbox", { name: "Download as ZIP" })).toHaveAttribute("aria-checked", "false");
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Library" }));
   });
 
@@ -172,5 +173,19 @@ describe("MacAccountMenu (#292)", () => {
     fireEvent.error(document.querySelector("img")!);
     expect(document.querySelector("img")).toBeNull();
     expect(trigger()).toHaveTextContent("A");
+  });
+});
+
+describe("MacAccountMenu Download as ZIP (#487)", () => {
+  it("toggles the saved preference and closes the menu", () => {
+    localStorage.clear();
+    setup();
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Download as ZIP" }));
+    expect(localStorage.getItem("photos-viewer:download-as-zip")).toBe("1");
+    expect(screen.queryByRole("menu", { name: "Account" })).toBeNull();
+    fireEvent.click(trigger());
+    expect(screen.getByRole("menuitemcheckbox", { name: "Download as ZIP" })).toHaveAttribute("aria-checked", "true");
+    localStorage.clear();
   });
 });
