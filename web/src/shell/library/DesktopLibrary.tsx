@@ -56,6 +56,12 @@ const MAX_ZOOM_INDEX = ZOOM_EDGES.length - 1;
 // own sidebar item on Sequoia (#127), reached via `fixedView="days"`.
 const DESKTOP_VIEWS = VIEWS.filter((item) => item.key !== "days");
 const LOAD_MORE_ROW_MARGIN = 3;
+
+// The `to` day for a Month ("2022-05") or Day key: the page then starts at
+// the last photo of that period.
+function anchorToDay(key: string): string {
+  return key.length === 7 ? `${key}-31` : key;
+}
 // Pointer travel before a press on the grid turns into a rubber-band drag, so
 // a plain click on a cell still just selects it (#97).
 const DRAG_THRESHOLD_PX = 4;
@@ -223,7 +229,21 @@ export default function DesktopLibrary({
   // #224: the Library (no album) lists oldest first and opens at the newest
   // photos; albums, search, people and places keep newest first.
   const oldestFirst = !album;
-  const { items, total, loading, done, error, retry, loadMore } = useLibraryAssets(libraryId, null, filter, album ?? null, hide, oldestFirst);
+  // Months/Days -> All Photos: the month ("2022-01") or day whose first photo
+  // goes to the top. `anchorKey` makes the first page load around that date
+  // (so the grid opens there at once); `pendingOpen` holds the Months/Days
+  // view until that page is in.
+  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(initialScrollDayKey ?? null);
+  const [anchorKey, setAnchorKey] = useState<string | null>(initialScrollDayKey && oldestFirst ? initialScrollDayKey : null);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const { items, total, loading, done, error, retry, loadMore, hasNewer, newerLeft, loadNewer, loadedAnchor } = useLibraryAssets(
+    libraryId,
+    anchorKey ? anchorToDay(anchorKey) : null,
+    filter,
+    album ?? null,
+    hide,
+    oldestFirst,
+  );
   // Index counted from the newest end: stable when older pages are added on
   // top. Its own inverse, so it also maps back to a list position.
   const fromNewest = useCallback((index: number) => (oldestFirst ? items.length - 1 - index : index), [oldestFirst, items.length]);
@@ -276,7 +296,7 @@ export default function DesktopLibrary({
     if (!isPeriodView) return [];
     return summary ? buildPeriodCards(view === "years" ? summary.years : view === "months" ? summary.months : summary.days, view as "years" | "months" | "days") : [];
   }, [view, summary, isPeriodView]);
-  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns, oldestFirst, total)), [isPeriodView, items, view, columns, oldestFirst, total]);
+  const rows = useMemo(() => (isPeriodView ? [] : buildRows(items, view, columns, oldestFirst, total === null ? null : total - newerLeft)), [isPeriodView, items, view, columns, oldestFirst, total, newerLeft]);
   const widths = useMemo(() => columnWidths(containerWidth, columns, gap, dpr), [containerWidth, columns, gap, dpr]);
   const cellSize = squareEdge(containerWidth, columns, gap, dpr);
   const tileWidth = widths.length ? Math.min(...widths) : cellSize;
@@ -292,7 +312,21 @@ export default function DesktopLibrary({
     estimateSize: (index) => rowSize(rows[index]),
     overscan: 6,
   });
-  const { scrollToEnd } = useOldestFirstScroll({ scrollRef, rows, rowSize, ready: oldestFirst && !isPeriodView && containerWidth > 0 });
+  const { scrollToEnd: scrollToLoadedEnd } = useOldestFirstScroll({
+    scrollRef,
+    rows,
+    rowSize,
+    ready: oldestFirst && !isPeriodView && containerWidth > 0,
+    holdEnd: pendingMonthKey !== null,
+  });
+  // The newest photos are past an anchored window: reload from the newest.
+  const scrollToEnd = useCallback(
+    (smooth?: boolean) => {
+      if (hasNewer) setAnchorKey(null);
+      else scrollToLoadedEnd(smooth);
+    },
+    [hasNewer, scrollToLoadedEnd],
+  );
 
   // Row heights depend on the container width and column count, but the
   // virtualizer caches sizes per index; drop the cache when they change so a
@@ -384,9 +418,35 @@ export default function DesktopLibrary({
   useEffect(() => {
     const last = virtualRows[virtualRows.length - 1];
     if (!last || loading || done) return;
+    // Landing on a period: the grid is not scrolled there yet, and the landing
+    // loads the older pages it needs itself.
+    if (oldestFirst && pendingMonthKey !== null) return;
+    // A scroll that has not reached the virtualizer yet (the landing scroll)
+    // would read the old top rows as "near the top".
+    const top = scrollRef.current?.scrollTop;
+    if (oldestFirst && top !== undefined && Math.abs((rowVirtualizer.scrollOffset ?? 0) - top) > 1) return;
     // Oldest first: the unloaded pages are above the first row.
     if (oldestFirst ? virtualRows[0].index <= LOAD_MORE_ROW_MARGIN : last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadMore();
-  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst]);
+  }, [virtualRows, rows.length, loading, done, loadMore, oldestFirst, pendingMonthKey, rowVirtualizer]);
+
+  // An anchored window ends before the newest photos: load them on the way down.
+  useEffect(() => {
+    const last = virtualRows[virtualRows.length - 1];
+    if (!hasNewer || !last || pendingMonthKey !== null) return;
+    if (last.index >= rows.length - 1 - LOAD_MORE_ROW_MARGIN) loadNewer();
+  }, [virtualRows, rows.length, hasNewer, loadNewer, pendingMonthKey]);
+
+  // Tile views read the summary, not the photos: drop the anchor there so the
+  // next visit to All Photos opens at the newest photos again.
+  useEffect(() => {
+    if (isPeriodView && !pendingOpen) setAnchorKey(null);
+  }, [isPeriodView, pendingOpen]);
+  const anchoredTo = anchorKey ? anchorToDay(anchorKey) : null;
+  useEffect(() => {
+    if (!pendingOpen || loadedAnchor !== anchoredTo) return;
+    setPendingOpen(false);
+    setView("all");
+  }, [pendingOpen, loadedAnchor, anchoredTo, setView]);
 
   // Keyboard/click focus has to stay on-screen: the virtualizer only mounts
   // rows near the viewport, so moving focus by state alone (as selection
@@ -475,8 +535,6 @@ export default function DesktopLibrary({
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   // Years -> Months: the year whose first month card to land on.
   const [pendingYearKey, setPendingYearKey] = useState<string | null>(null);
-  // Months -> All Photos: the month ("2022-01") whose newest photo goes to the top.
-  const [pendingMonthKey, setPendingMonthKey] = useState<string | null>(initialScrollDayKey ?? null);
 
   // Opens the Viewer and also scrolls the grid behind it to the photo.
   const openFromLink = useCallback(
@@ -511,10 +569,18 @@ export default function DesktopLibrary({
   // From a Month or Day card: load older pages until the period is in the
   // list, then scroll its first photo to the top.
   const clearPendingMonth = useCallback(() => setPendingMonthKey(null), []);
-  const scrollToRowStart = useCallback((rowIndex: number) => rowVirtualizer.scrollToIndex(rowIndex, { align: "start" }), [rowVirtualizer]);
+  const scrollToRowStart = useCallback(
+    (rowIndex: number) => {
+      rowVirtualizer.scrollToIndex(rowIndex, { align: "start" });
+      // The virtualizer learns the offset from a scroll event, which comes after
+      // the next paint: the title would show the old position for a frame.
+      scrollRef.current?.dispatchEvent(new Event("scroll"));
+    },
+    [rowVirtualizer],
+  );
   useLandOnPeriod({
     key: pendingMonthKey,
-    active: oldestFirst && view === "all",
+    active: oldestFirst && view === "all" && containerWidth > 0,
     items,
     rows,
     loading,
@@ -541,24 +607,32 @@ export default function DesktopLibrary({
 
   // Years and Months cards drill one level down (#307); Years -> Months
   // lands on that year's first month, Months -> All Photos on that month.
+  const openAt = useCallback(
+    (key: string) => {
+      setPendingMonthKey(key);
+      if (oldestFirst) {
+        setAnchorKey(key);
+        setPendingOpen(true);
+      } else {
+        setView("all");
+      }
+    },
+    [oldestFirst, setView],
+  );
   const handleOpenPeriod = useCallback(
     (key: string) => {
       if (view === "days") {
         // #301: Day card -> the shell opens All Photos at that day.
         if (onOpenDay) onOpenDay(key);
-        else {
-          setPendingMonthKey(key);
-          setView("all");
-        }
+        else openAt(key);
       } else if (view === "years") {
         setPendingYearKey(key);
         setView("months");
       } else {
-        setPendingMonthKey(key);
-        setView("all");
+        openAt(key);
       }
     },
-    [view, onOpenDay],
+    [view, onOpenDay, openAt],
   );
 
   // A double-click (or Enter/Space on the focused cell) opens the Viewer at
@@ -1199,7 +1273,7 @@ export default function DesktopLibrary({
           libraryId={libraryId}
           items={items}
           total={total}
-          offset={oldestFirst && total !== null ? Math.max(0, total - items.length) : 0}
+          offset={oldestFirst && total !== null ? Math.max(0, total - newerLeft - items.length) : 0}
           index={viewerIndex}
           onIndexChange={setViewerIndex}
           onClose={() => setViewerIndex(null)}

@@ -199,6 +199,10 @@ export interface AssetListResponse {
   next_cursor: string | null;
   // First page only: the number of photos matching the request (#365).
   total?: number | null;
+  // Anchored first page (`to`): the cursor toward newer photos, and how many
+  // there are. Absent when nothing newer is left.
+  prev_cursor?: string | null;
+  newer_total?: number | null;
 }
 
 // Apple Photos' Hidden album (P1.13): the only list a hidden asset appears
@@ -245,8 +249,10 @@ export function getAssets(
   filter: AssetFilter = "all",
   album: string | null = null,
   hide: readonly AssetHide[] = [],
+  direction: "older" | "newer" = "older",
 ): Promise<AssetListResponse> {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (direction === "newer") params.set("direction", "newer");
   if (album?.startsWith(SEARCH_PREFIX)) {
     params.set("q", album.slice(SEARCH_PREFIX.length));
     if (cursor) params.set("cursor", cursor);
