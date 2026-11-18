@@ -262,6 +262,82 @@ describe("AppShell", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/"));
   });
 
+  // #522: Safari offers "Save password?" only once the page's history changes.
+  describe("history change after sign-in (#522)", () => {
+    function signInFlow(loginStatus: number) {
+      let signedIn = false;
+      mockFetch((url, init) => {
+        if (url === "/api/setup/status") return { needs_setup: false };
+        if (url === "/api/me") return signedIn ? ME_RESPONSE : jsonResponse({ detail: "not authenticated" }, 401);
+        if (url === "/api/auth/login" && init?.method === "POST") {
+          if (loginStatus !== 200) return jsonResponse({ detail: "invalid username or password" }, loginStatus);
+          signedIn = true;
+          return { username: "alice", role: "user" };
+        }
+        if (url === "/api/libraries/1/albums") return { tree: [], smart: [] };
+        if (url.startsWith("/api/libraries/1/")) return { items: [], next_cursor: null, years: [], months: [], days: [] };
+        throw new Error(`unexpected request: ${url}`);
+      });
+    }
+
+    async function submit() {
+      await screen.findByRole("heading", { name: "Sign in" });
+      fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
+      fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2hunter2" } });
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    }
+
+    it("pushes one history entry right after a successful sign-in, keeping the URL", async () => {
+      setViewport(1400, true);
+      signInFlow(200);
+      const push = vi.spyOn(window.history, "pushState");
+      render(<AppShell />);
+      await submit();
+      await screen.findByRole("navigation", { name: "Sections" });
+      expect(push).toHaveBeenCalledTimes(1);
+      expect(push).toHaveBeenCalledWith({ signedIn: true }, "", "/");
+      expect(window.location.pathname).toBe("/");
+    });
+
+    it("does not touch history after a failed sign-in", async () => {
+      setViewport(1400, true);
+      signInFlow(401);
+      const push = vi.spyOn(window.history, "pushState");
+      const replace = vi.spyOn(window.history, "replaceState");
+      render(<AppShell />);
+      await submit();
+      await screen.findByRole("alert");
+      expect(push).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+    });
+
+    it("pushes a history entry after first-run account creation too", async () => {
+      setViewport(1400, true);
+      let adminCreated = false;
+      mockFetch((url, init) => {
+        if (url === "/api/setup/status") return { needs_setup: !adminCreated };
+        if (url === "/api/setup/admin" && init?.method === "POST") {
+          adminCreated = true;
+          return jsonResponse({ username: "alice", role: "admin" }, 201);
+        }
+        if (url === "/api/auth/login" && init?.method === "POST") return { username: "alice", role: "admin" };
+        if (url === "/api/me") {
+          return adminCreated ? { ...ME_RESPONSE, role: "admin" } : jsonResponse({ detail: "not authenticated" }, 401);
+        }
+        if (url === "/api/libraries/1/albums") return { tree: [], smart: [] };
+        return { items: [], next_cursor: null, years: [], months: [], days: [] };
+      });
+      const push = vi.spyOn(window.history, "pushState");
+      render(<AppShell />);
+      await screen.findByRole("heading", { name: "Create admin account" });
+      fireEvent.change(screen.getByLabelText("Username"), { target: { value: "alice" } });
+      fireEvent.change(screen.getByLabelText("Password"), { target: { value: "hunter2hunter2" } });
+      fireEvent.click(screen.getByRole("button", { name: "Create admin account" }));
+      await screen.findByRole("navigation", { name: "Sections" });
+      expect(push).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("logs out back to the login screen", async () => {
     setViewport(1400, true);
     let signedIn = true;
