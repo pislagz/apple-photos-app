@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readCredentials } from "./readCredentials";
 import type { SetupChoices } from "../api";
 import { MAP_PLACE_NAMES_TEXT } from "./PlaceInfoContext";
 import type { Layout } from "./useLayout";
@@ -12,12 +13,12 @@ export default function SetupScreen({
   error: string | null;
   onSubmit: (username: string, password: string, choices: SetupChoices) => void;
 }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [allowOsm, setAllowOsm] = useState(false);
 
-  function handleSubmit(event: React.FormEvent) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // AutoFill sets values without key events, so read the live fields, not React state.
+    const { username, password } = readCredentials(event.currentTarget);
     onSubmit(username, password, { osm_consent: allowOsm });
   }
 
@@ -27,25 +28,26 @@ export default function SetupScreen({
         <h1>Create admin account</h1>
         <p>No account exists yet. The first account created here becomes the admin.</p>
         {error && <p role="alert">{error}</p>}
-        <form onSubmit={handleSubmit}>
+        <form method="post" action="" onSubmit={handleSubmit}>
           <label>
             Username
             <input
-              value={username}
+              id="setup-username"
+              name="username"
+              type="text"
               autoComplete="username"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              onChange={(event) => setUsername(event.target.value)}
             />
           </label>
           <label>
             Password
             <input
+              id="setup-password"
+              name="password"
               type="password"
-              value={password}
               autoComplete="new-password"
-              onChange={(event) => setPassword(event.target.value)}
             />
           </label>
           <fieldset className="login-options" data-testid="setup-map-place-names">

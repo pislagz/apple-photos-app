@@ -49,3 +49,27 @@ test("Add Library fields have AutoFill off", async ({ page }) => {
     await page.screenshot({ path: `${SHOTS}/admin-add-library-name-1440.png` });
   }
 });
+
+// #511: AutoFill-friendly sign-in form.
+test("sign-in form is a real post form and submits values set without typing (#511)", async ({ page }) => {
+  await page.goto("/");
+  const user = page.getByLabel("Username");
+  const pass = page.getByLabel("Password");
+  await expect(user.locator("xpath=ancestor::form")).toHaveAttribute("method", "post");
+  await expect(user).toHaveAttribute("name", "username");
+  await expect(pass).toHaveAttribute("name", "password");
+  await expect(user).not.toHaveAttribute("autocomplete", "off");
+  const handle = await user.elementHandle();
+  // Set values the way AutoFill does: no key events.
+  await page.evaluate(
+    ([u, p]) => {
+      (document.querySelector("input[name=username]") as HTMLInputElement).value = u;
+      (document.querySelector("input[name=password]") as HTMLInputElement).value = p;
+    },
+    [ADMIN.username, ADMIN.password],
+  );
+  expect(await handle!.evaluate((n) => n.isConnected)).toBe(true);
+  await page.screenshot({ path: `${SHOTS}/login-autofilled-1440.png` });
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeHidden();
+});
