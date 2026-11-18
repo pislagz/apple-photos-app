@@ -839,6 +839,13 @@ describe("MobileLibrary", () => {
     expect(screen.queryByRole("button", { name: "Select" })).toBeNull();
     fireEvent.click(images[0]);
     expect(screen.getByTestId("header-subtitle")).toHaveTextContent("1 Selected");
+    // #510: the count updates in place -- same node, no fade animation class.
+    const countNode = screen.getByTestId("selected-count");
+    expect(countNode).not.toHaveClass("date-title__text");
+    fireEvent.click(images[1]);
+    expect(screen.getByTestId("selected-count")).toBe(countNode);
+    expect(countNode).toHaveTextContent("2 Selected");
+    fireEvent.click(images[1]);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByTestId("header-title")).toHaveTextContent("Library");
     // The title names the top row, the oldest photo (#224).
