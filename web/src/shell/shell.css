@@ -2496,16 +2496,6 @@ html.has-app-height .shell--mobile {
   z-index: 1;
 }
 
-/* Transparent layer under the popup and button. It takes the closing tap so
-   the photo underneath never gets it, and stops the grid scrolling behind. */
-.filter-menu__backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  touch-action: none;
-  pointer-events: auto;
-}
-
 /* Glass card, like the iOS Photos menu. */
 .filter-menu--mobile .filter-menu__popup {
   z-index: 2;

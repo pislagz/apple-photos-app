@@ -5,6 +5,7 @@ import { Icon } from "../icons";
 import { downloadVersion, shareOrDownloadAssets } from "./download";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
+import { useOutsidePress } from "../useOutsidePress";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetailState } from "./useAssetDetail";
 import { useViewerMedia } from "./useViewerMedia";
@@ -105,6 +106,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   const [animating, setAnimating] = useState(false);
   const scale = view.scale;
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const infoButtonRef = useRef<HTMLButtonElement | null>(null);
+  useOutsidePress(infoOpen, [sheetRef, infoButtonRef], () => setInfoOpen(false));
   // D59: the library behind is inert while the Viewer is open; focus goes back
   // to the thumbnail it was opened from.
   const openedFromId = useRef(item?.id);
@@ -614,6 +617,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
             <span className="mobile-viewer__slot" aria-hidden />
           )}
           <button
+            ref={infoButtonRef}
             type="button"
             className="mobile-library__glass-button mobile-viewer__bar-button"
             aria-pressed={infoOpen}

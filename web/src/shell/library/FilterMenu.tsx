@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useOutsidePress } from "../useOutsidePress";
 import { Icon, type IconName } from "../icons";
 import { FILTER_OPTIONS, filterValueLabel, type LibraryFilterState } from "./useLibraryFilter";
 
@@ -64,21 +65,7 @@ export default function FilterMenu({
     if (returnFocus) buttonRef.current?.focus();
   }
 
-  useEffect(() => {
-    // The iPhone menu closes through its own backdrop (below), which also
-    // swallows the tap so it cannot reach the grid. The desktop menu keeps
-    // the document listeners below.
-    if (!open || nested) return;
-    function onPointerDown(event: Event) {
-      if (!rootRef.current?.contains(event.target as Node)) close(false);
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("touchstart", onPointerDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("touchstart", onPointerDown);
-    };
-  }, [open, nested]);
+  useOutsidePress(open, [rootRef], () => close(false));
 
   // Focus the first item (or the checked filter) when the menu opens.
   useEffect(() => {
@@ -317,19 +304,6 @@ export default function FilterMenu({
 
   return (
     <div ref={rootRef} className={`filter-menu filter-menu--${variant}`}>
-      {open && nested && (
-        // Covers the whole screen under the popup and the button: a tap
-        // outside closes the menu and goes no further, so it never opens a photo.
-        <div
-          className="filter-menu__backdrop"
-          data-testid="filter-menu-backdrop"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            close(false);
-          }}
-        />
-      )}
       <button
         ref={buttonRef}
         type="button"
