@@ -60,15 +60,27 @@ export default function AppShell() {
       const response = await getMe();
       setMe(response);
       setStatus("authenticated");
+      return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 403 && error.code === "tailnet_identity_not_allowed") {
         setBlocked(true);
-        return;
+        return false;
       }
       setMe(null);
       setStatus("anonymous");
+      return false;
     }
   }, []);
+
+  // #522: sign-in is a fetch, so the page never navigates and Safari only
+  // treats the password form as "submitted" at the next history change (a tab
+  // switch). Push one entry right after a successful sign-in so the Save
+  // Password prompt shows now. Same URL, so a deep link survives; the entry
+  // behind it renders the signed-in app, so Back never shows the sign-in screen.
+  function markSignedIn() {
+    const { pathname, search } = window.location;
+    window.history.pushState({ signedIn: true }, "", pathname + search);
+  }
 
   useEffect(() => {
     (async () => {
@@ -94,7 +106,7 @@ export default function AppShell() {
     try {
       await apiSetupAdmin(username, password, choices);
       await apiLogin(username, password, false, isStandalone() ? "pwa" : "desktop");
-      await refreshMe();
+      if (await refreshMe()) markSignedIn();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         // Someone else's first-run request won the race; this is now a
@@ -130,7 +142,7 @@ export default function AppShell() {
     setLoginError(null);
     try {
       await apiLogin(username, password, rememberMe, isStandalone() ? "pwa" : "desktop");
-      await refreshMe();
+      if (await refreshMe()) markSignedIn();
     } catch (error) {
       reportLoginError(error);
     }
@@ -140,7 +152,7 @@ export default function AppShell() {
     setLoginError(null);
     try {
       await loginWithPasskey(rememberMe, isStandalone() ? "pwa" : "desktop");
-      await refreshMe();
+      if (await refreshMe()) markSignedIn();
     } catch (error) {
       if (!isCancelled(error)) reportLoginError(error);
     }
