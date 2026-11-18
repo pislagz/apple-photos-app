@@ -17,7 +17,7 @@ const css = readFileSync(join(__dirname, "shell.css"), "utf-8");
 const ME_RESPONSE: MeResponse = {
   username: "alice",
   role: "user",
-  libraries: [{ id: 1, display_name: "Family" }],
+  libraries: [{ id: 1, display_name: "Family", utilities: { enabled: true, imports: true, hidden: true } }],
   layout_override: null,
 };
 
@@ -112,7 +112,7 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
     duration: null,
   });
 
-  function setup() {
+  function setup(me: MeResponse = ME_RESPONSE) {
     mockFetch((url) => {
       if (url.startsWith("/api/libraries/1/assets")) {
         return {
@@ -134,13 +134,43 @@ describe("DesktopShell sidebar (#127, #128, #129)", () => {
     });
     render(
       <DesktopShell
-        me={ME_RESPONSE}
+        me={me}
         activeLibraryId={1}
         onActiveLibraryChange={() => {}}
         onLogout={() => {}}
       />,
     );
   }
+
+  const withUtilities = (utilities?: { enabled: boolean; imports: boolean; hidden: boolean }): MeResponse => ({
+    ...ME_RESPONSE,
+    libraries: [{ id: 1, display_name: "Family", utilities }],
+  });
+
+  it("#518: no Utilities group when the library has them off (the default)", async () => {
+    setup(withUtilities());
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/libraries/1/albums", expect.anything()));
+    await screen.findByRole("button", { name: "Library" });
+    const titles = Array.from(document.querySelectorAll(".sidebar__group > summary")).map((el) => el.textContent);
+    expect(titles).not.toContain("Utilities");
+    expect(screen.queryByText("Utilities")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hidden" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Imports" })).toBeNull();
+  });
+
+  it("#518: Imports on and Hidden off shows only Imports", async () => {
+    setup(withUtilities({ enabled: true, imports: true, hidden: false }));
+    await screen.findByText("Utilities");
+    expect(screen.getByRole("button", { name: "Imports" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hidden" })).toBeNull();
+  });
+
+  it("#518: Hidden on and Imports off shows only Hidden", async () => {
+    setup(withUtilities({ enabled: true, imports: false, hidden: true }));
+    await screen.findByText("Utilities");
+    expect(screen.getByRole("button", { name: "Hidden" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Imports" })).toBeNull();
+  });
 
   it("has no Days item: Library, Recently Added, Favorites lead, under sentence-case titles", async () => {
     setup();

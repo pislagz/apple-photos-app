@@ -17,7 +17,7 @@ const css = readFileSync(join(__dirname, "shell.css"), "utf-8");
 const ME_RESPONSE: MeResponse = {
   username: "alice",
   role: "user",
-  libraries: [{ id: 1, display_name: "Family" }],
+  libraries: [{ id: 1, display_name: "Family", utilities: { enabled: true, imports: true, hidden: true } }],
   layout_override: null,
 };
 

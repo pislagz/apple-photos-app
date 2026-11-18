@@ -1175,3 +1175,39 @@ def test_interrupted_index_is_requeued_and_error_cleared(tmp_path):
         )
     finally:
         conn.close()
+
+
+def test_utilities_default_off_and_admin_can_change_them_with_audit(tmp_path):
+    conn, client = _admin_client(tmp_path)
+    try:
+        package_path = build_fixture_library(tmp_path)
+        added = client.post(
+            "/api/admin/libraries", json={"path": str(package_path)}
+        ).json()
+        off = {"enabled": False, "imports": False, "hidden": False}
+        assert added["utilities"] == off
+
+        response = client.put(
+            f"/api/admin/libraries/{added['id']}/utilities",
+            json={"enabled": True, "hidden": True},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["utilities"] == {
+            "enabled": True,
+            "imports": False,
+            "hidden": True,
+        }
+        assert client.get("/api/admin/libraries").json()[0]["utilities"]["hidden"]
+        row = conn.execute(
+            "SELECT actor, detail FROM audit_log WHERE action = 'library.utilities'"
+        ).fetchone()
+        assert row is not None and "hidden=1" in row["detail"]
+        assert (
+            client.put(
+                "/api/admin/libraries/999/utilities", json={"enabled": True}
+            ).status_code
+            == 404
+        )
+    finally:
+        conn.close()

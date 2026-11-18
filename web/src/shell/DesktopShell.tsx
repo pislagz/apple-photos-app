@@ -219,6 +219,11 @@ export default function DesktopShell({
   // Bumped by every sidebar choice so clicking "Library" while already on
   // Library > All Photos remounts it back to Years (#167).
   const [selectNonce, setSelectNonce] = useState(0);
+  // #518: Hidden switched off (or the library changed) while it is open.
+  const hiddenAllowed = me.libraries.find((l) => l.id === activeLibraryId)?.utilities?.hidden === true;
+  useEffect(() => {
+    if (view === "hidden" && !hiddenAllowed) setView("library");
+  }, [view, hiddenAllowed]);
   function selectView(next: "library" | "hidden" | "people" | "map" | "albums") {
     setSelectNonce((n) => n + 1);
     setAlbum(null);
@@ -387,31 +392,39 @@ export default function DesktopShell({
       </li>
     );
   }
-  const utilities = (
-    <SidebarSection title="Utilities">
-      <ul>
-        <li>
-          <button
-            type="button"
-            aria-current={view === "hidden" ? "page" : undefined}
-            className="sidebar__item"
-            onClick={() => view !== "hidden" && setUnlockPrompt(true)}
-          >
-            <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
-            Hidden
-          </button>
-        </li>
-        {UTILITIES.map((item) => (
-          <li key={item.label}>
-            <button type="button" disabled className="sidebar__item">
-              <Icon name={item.icon} className="sidebar__icon" />
-              {item.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </SidebarSection>
-  );
+  // #518: the admin decides per library which Utilities items exist; with
+  // none on, the whole group is absent.
+  const showHidden = activeLibrary?.utilities?.hidden ?? false;
+  const showImports = activeLibrary?.utilities?.imports ?? false;
+  const utilities =
+    showHidden || showImports ? (
+      <SidebarSection title="Utilities">
+        <ul>
+          {showImports &&
+            UTILITIES.map((item) => (
+              <li key={item.label}>
+                <button type="button" disabled className="sidebar__item">
+                  <Icon name={item.icon} className="sidebar__icon" />
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          {showHidden && (
+            <li>
+              <button
+                type="button"
+                aria-current={view === "hidden" ? "page" : undefined}
+                className="sidebar__item"
+                onClick={() => view !== "hidden" && setUnlockPrompt(true)}
+              >
+                <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
+                Hidden
+              </button>
+            </li>
+          )}
+        </ul>
+      </SidebarSection>
+    ) : null;
 
   return (
     <div

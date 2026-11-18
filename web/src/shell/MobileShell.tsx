@@ -81,6 +81,14 @@ export default function MobileShell({
       ? "Nothing here yet. Photos appear once a library has been added."
       : "Your library is being prepared. This will appear when it's ready.";
 
+  // #518: Hidden switched off for this library -> back to More.
+  const hiddenAllowed = me.libraries.find((l) => l.id === activeLibraryId)?.utilities?.hidden === true;
+  const onHiddenRoute = route.tab === "more" && route.screen === "hidden";
+  useEffect(() => {
+    if (onHiddenRoute && !hiddenAllowed) replaceRoute("/more");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onHiddenRoute, hiddenAllowed]);
+
   function renderContent() {
     if (route.tab === "library") return null;
     if (route.tab === "albums") {
@@ -168,6 +176,7 @@ export default function MobileShell({
       );
     }
     // route.screen === "hidden"
+    if (!hiddenAllowed) return null;
     if (!hiddenConfirmed) {
       return (
         <div className="mobile-screen">

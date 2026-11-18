@@ -30,6 +30,7 @@ export default function MoreScreen({
   onLogout: () => void;
   onAvatarChanged?: () => void;
 }) {
+  const utilities = libraries.find((l) => l.id === activeLibraryId)?.utilities ?? { enabled: false, imports: false, hidden: false };
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
@@ -81,15 +82,28 @@ export default function MoreScreen({
             </li>
           ))}
         </ul>
-        <ul className="more-screen__group">
-          <li className="more-screen__group-label">Utilities</li>
-          <li>
-            <button type="button" className="more-screen__item" onClick={() => onNavigate("/hidden")}>
-              <Icon name="hidden" className="more-screen__icon" />
-              Hidden
-            </button>
-          </li>
-        </ul>
+        {/* #518: the admin picks per library which Utilities items exist. */}
+        {(utilities.hidden || utilities.imports) && (
+          <ul className="more-screen__group" aria-label="Utilities">
+            <li className="more-screen__group-label">Utilities</li>
+            {utilities.imports && (
+              <li>
+                <button type="button" className="more-screen__item" disabled>
+                  <Icon name="tray" className="more-screen__icon" />
+                  Imports
+                </button>
+              </li>
+            )}
+            {utilities.hidden && (
+              <li>
+                <button type="button" className="more-screen__item" onClick={() => onNavigate("/hidden")}>
+                  <Icon name="hidden" className="more-screen__icon" />
+                  Hidden
+                </button>
+              </li>
+            )}
+          </ul>
+        )}
         {/* #303: everything the old top-right "..." menu offered. */}
         <ul className="more-screen__group">
           <li className="more-screen__group-label">Account</li>

@@ -13,6 +13,14 @@ export interface LibraryResponse {
   display_name: string;
   path: string;
   created_at: string;
+  // #518: which Utilities items people see in this library. All off by default.
+  utilities?: UtilitiesSettings;
+}
+
+export interface UtilitiesSettings {
+  enabled: boolean;
+  imports: boolean;
+  hidden: boolean;
 }
 
 export interface LibraryWarning {
@@ -120,6 +128,10 @@ export function addScannedLibrary(candidatePath: string, displayName?: string): 
 
 export function addLibrary(path: string, displayName?: string): Promise<LibraryResponse> {
   return mutate<LibraryResponse>("POST", "/api/admin/libraries", { path, display_name: displayName ?? null });
+}
+
+export function setLibraryUtilities(id: number, change: Partial<UtilitiesSettings>): Promise<LibraryResponse> {
+  return mutate<LibraryResponse>("PUT", `/api/admin/libraries/${id}/utilities`, change);
 }
 
 export function renameLibrary(id: number, displayName: string): Promise<LibraryResponse> {

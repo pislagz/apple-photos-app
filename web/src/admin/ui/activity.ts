@@ -42,6 +42,7 @@ const MAP: Record<string, { kind: ActivityKind; say: Describe }> = {
   remove_library: { kind: "library", say: (p) => `${p.who} removed ${lib(p)}` },
   reindex_library: { kind: "library", say: (p) => `${p.who} refreshed ${lib(p)}` },
   "library.check_now": { kind: "library", say: (p) => `${p.who} checked the libraries for changes` },
+  "library.utilities": { kind: "library", say: (p) => `${p.who} changed what Utilities shows for ${lib(p)}` },
   "library.file_missing": { kind: "library", say: (p) => `${p.library ?? "A library"} could not be found` },
   "library.update.applied": { kind: "library", say: (p) => `${p.library ?? "A library"} was updated with new photos` },
   "library.update.failed": { kind: "library", say: (p) => `${p.library ?? "A library"} could not be updated` },

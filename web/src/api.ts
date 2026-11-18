@@ -52,6 +52,9 @@ export type Role = "admin" | "user";
 export interface LibrarySummary {
   id: number;
   display_name: string;
+  // #518: which Utilities items the admin shows for this library (server
+  // already ANDs the items with the section switch). Absent = all off.
+  utilities?: { enabled: boolean; imports: boolean; hidden: boolean };
   // P1.22: the package is missing, still copying, or not valid yet.
   updating?: boolean;
   updating_reason?: string | null;

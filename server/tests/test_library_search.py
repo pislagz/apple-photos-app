@@ -334,6 +334,9 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
             "problem_since",
             "retry_count",
             "retry_after",
+            "utilities_enabled",  # migration 30 (#518)
+            "utilities_imports",
+            "utilities_hidden",
         ):
             db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")  # D36
@@ -530,6 +533,9 @@ def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
             "problem_since",
             "retry_count",
             "retry_after",
+            "utilities_enabled",  # migration 30 (#518)
+            "utilities_imports",
+            "utilities_hidden",
         ):
             db.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         db.execute("DROP TRIGGER assets_fts_delete")

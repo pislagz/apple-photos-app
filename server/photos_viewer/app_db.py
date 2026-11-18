@@ -560,6 +560,14 @@ _MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_audit_log_asset_id ON audit_log(asset_id)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_library_id ON audit_log(library_id)",
     ],
+    # 30 (#518): per-library Utilities visibility, all off for new and
+    # existing libraries. `utilities_enabled` is the section; the item flags
+    # only count while it is on.
+    [
+        "ALTER TABLE libraries ADD COLUMN utilities_enabled INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE libraries ADD COLUMN utilities_imports INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE libraries ADD COLUMN utilities_hidden INTEGER NOT NULL DEFAULT 0",
+    ],
 ]
 
 

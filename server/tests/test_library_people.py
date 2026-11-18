@@ -240,6 +240,9 @@ def test_migration_19_flags_indexed_libraries_for_reindex(tmp_path):
             "problem_since",
             "retry_count",
             "retry_after",
+            "utilities_enabled",  # migration 30 (#518)
+            "utilities_imports",
+            "utilities_hidden",
         ):
             conn.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         conn.execute("DROP TRIGGER assets_fts_delete")  # D36
