@@ -1,5 +1,5 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl } from "./mediaUrls";
+import { assetPageUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
 
 // A single `<a download>` click per file, so the server's audit row always
 // lines up with one explicit user action.
@@ -26,8 +26,46 @@ export async function resolveVersion(libraryId: number, assetId: string): Promis
   }
 }
 
+// Viewer ••• Download (#514): one file, original or edited, as the library shows it.
+export async function downloadSingleAsset(libraryId: number, assetId: string): Promise<void> {
+  const version = await resolveVersion(libraryId, assetId);
+  triggerDownload(originalUrl(libraryId, assetId, version, true));
+}
+
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {
   await navigator.clipboard.writeText(assetPageUrl(libraryId, assetId));
+}
+
+// Copy Photo: the displayed-size JPEG as a PNG, the one image type every
+// browser's clipboard accepts. The blob is a promise so Safari still counts the
+// write as part of the tap.
+export function canCopyImage(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.isSecureContext !== false &&
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function"
+  );
+}
+
+async function previewAsPng(url: string): Promise<Blob> {
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) throw new Error(`copy failed: ${response.status}`);
+  const bitmap = await createImageBitmap(await response.blob());
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("copy failed"))), "image/png"),
+  );
+}
+
+export async function copyAssetImage(libraryId: number, assetId: string): Promise<void> {
+  await navigator.clipboard.write([
+    new ClipboardItem({ "image/png": previewAsPng(previewThumbUrl(libraryId, assetId)) }),
+  ]);
 }
 
 type ShareItem = { id: string; filename: string | null; original_filename?: string | null };

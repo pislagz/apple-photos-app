@@ -1,9 +1,11 @@
 import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { Icon } from "../icons";
+import { Icon, type IconName } from "../icons";
 import TransferHud from "../export/TransferHud";
 import { useExport } from "../export/useExport";
+import { canCopyImage, copyAssetImage, copyAssetLink, downloadSingleAsset } from "./download";
+import { useViewerActions } from "./ViewerActionsContext";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { useOutsidePress } from "../useOutsidePress";
@@ -32,6 +34,10 @@ export interface ViewerProps {
   // #220: scroll the grid behind so this item's tile is on screen; called as
   // paging moves on, so the close zoom has a tile to land on.
   revealItem?: (id: string) => void;
+  // #514: opened from an album, search, person or place rather than All Photos.
+  fromOtherView?: boolean;
+  // #514: the library's "HEIC as JPEG" choice, applied to the menu's Download.
+  downloadAsJpeg?: boolean;
 }
 
 const LONG_PRESS_MS = 450;
@@ -90,7 +96,8 @@ interface Gesture {
 // `items` is that view's own array, so a hidden asset from Library (P1.13)
 // can never appear here), swipe down to dismiss, pinch/double-tap zoom,
 // bottom filmstrip, and an info sheet instead of a permanent panel.
-export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem, fromOtherView }: ViewerProps) {
+  const actions = useViewerActions();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
@@ -440,10 +447,33 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }
 
   if (!item) return null;
-  // The ••• menu (iOS 27 Photos) holds Info only: Share lives in the bottom toolbar (#507).
-  const moreRows: { label: string; icon: "info"; run: () => void }[] = [
+  // The ••• menu (iOS 27 Photos). Share lives in the bottom toolbar (#507).
+  // No Slideshow row: the app has no slideshow yet. No Add to Album, Favorite or
+  // Hide: the library is read-only.
+  const lat = detail?.latitude;
+  const lon = detail?.longitude;
+  const moreRows: { label: string; icon: IconName; run: () => void }[] = [
     { label: "Info", icon: "info", run: () => setInfoOpen(true) },
   ];
+  if (!item.is_video && canCopyImage()) {
+    moreRows.push({ label: "Copy Photo", icon: "copy", run: () => void copyAssetImage(libraryId, item.id).catch(() => {}) });
+  }
+  moreRows.push({ label: "Copy Link", icon: "link", run: () => void copyAssetLink(libraryId, item.id).catch(() => {}) });
+  if (!detail?.original_outside_library) {
+    moreRows.push({
+      label: "Download",
+      icon: "download",
+      run: () => void downloadSingleAsset(libraryId, item.id),
+    });
+  }
+  if (fromOtherView && actions.showInLibrary) {
+    const show = actions.showInLibrary;
+    moreRows.push({ label: "Show in All Photos", icon: "library", run: () => show(item.id) });
+  }
+  if (typeof lat === "number" && typeof lon === "number" && actions.showOnMap) {
+    const show = actions.showOnMap;
+    moreRows.push({ label: "Show on Map", icon: "map", run: () => show(lat, lon) });
+  }
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const isFull = media.showingOriginal || media.wantsOriginal;
   const alt = assetAlt({ ...item, title: detail?.title });

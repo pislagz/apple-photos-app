@@ -18,6 +18,12 @@ export function useDeepLinkOpen(
   onConsumed?: () => void,
 ) {
   const wantedRef = useRef(assetId ?? null);
+  // A later id (Show in All Photos, #514) is a new request on the same grid.
+  const seenRef = useRef(assetId);
+  if (seenRef.current !== assetId) {
+    seenRef.current = assetId;
+    if (assetId) wantedRef.current = assetId;
+  }
 
   useEffect(() => {
     const wanted = wantedRef.current;

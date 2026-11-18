@@ -52,10 +52,13 @@ function pinElement(libraryId: number, cluster: MapCluster, onClick: () => void)
 export default function MapView({
   libraryId,
   onOpenPlace,
+  focus,
 }: {
   libraryId: number;
   // Open the photos inside `bounds` in the ordinary grid.
   onOpenPlace: (bounds: MapBounds) => void;
+  // #514 Show on Map: start centred here instead of fitting every photo.
+  focus?: { latitude: number; longitude: number };
 }) {
   const { config, error: configError, retry: retryConfig } = useMapConfig();
   if (configError) {
@@ -69,18 +72,21 @@ export default function MapView({
     );
   }
   if (!config) return <div className="map-view__state">Loading map…</div>;
-  return <LoadedMap libraryId={libraryId} config={config} onOpenPlace={onOpenPlace} />;
+  return <LoadedMap libraryId={libraryId} config={config} onOpenPlace={onOpenPlace} focus={focus} />;
 }
 
 function LoadedMap({
   libraryId,
   config,
   onOpenPlace,
+  focus,
 }: {
   libraryId: number;
   config: MapConfig;
   onOpenPlace: (bounds: MapBounds) => void;
+  focus?: { latitude: number; longitude: number };
 }) {
+  const focusRef = useRef(focus);
   const container = useRef<HTMLDivElement>(null);
   const openRef = useRef(onOpenPlace);
   openRef.current = onOpenPlace;
@@ -157,7 +163,9 @@ function LoadedMap({
               return;
             }
             const all = overview.clusters.map((c) => c.bounds);
-            map.fitBounds(
+            const at = focusRef.current;
+            if (at) map.jumpTo({ center: [at.longitude, at.latitude], zoom: 15 });
+            else map.fitBounds(
               [
                 [Math.min(...all.map((x) => x.west)), Math.min(...all.map((x) => x.south))],
                 [Math.max(...all.map((x) => x.east)), Math.max(...all.map((x) => x.north))],

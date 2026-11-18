@@ -28,6 +28,9 @@ export default function PlacesScreen({
       </div>
     );
   }
+  // #514: /places?ll=<lat>,<lon> opens the map on one photo's spot.
+  const ll = new URLSearchParams(window.location.search).get("ll")?.split(",").map(Number);
+  const focus = ll && ll.length === 2 && ll.every(Number.isFinite) ? { latitude: ll[0], longitude: ll[1] } : undefined;
   return (
     <div className="mobile-screen">
       <header className="mobile-screen__header">
@@ -39,7 +42,9 @@ export default function PlacesScreen({
       </header>
       <div className="mobile-screen__map">
         <MapView
+          key={ll?.join(",")}
           libraryId={libraryId}
+          focus={focus}
           onOpenPlace={(b) => onNavigate(`/places/${encodeURIComponent(boundsParam(b))}`)}
         />
       </div>

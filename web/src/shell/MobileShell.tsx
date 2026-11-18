@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { type ViewerActions, ViewerActionsContext } from "./viewer/ViewerActionsContext";
 import type { MeResponse } from "../api";
 import { HiddenSession, HiddenUnlock } from "./HiddenUnlock";
 import HiddenView from "./HiddenView";
@@ -64,9 +65,24 @@ export default function MobileShell({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  // #514 Show in All Photos: the Library tab scrolls to this photo and flashes it.
+  const [showAssetId, setShowAssetId] = useState<string | undefined>();
+  const viewerActions = useMemo<ViewerActions>(
+    () => ({
+      showInLibrary: (assetId) => {
+        setShowAssetId(assetId);
+        navigate("/");
+      },
+      showOnMap: (latitude, longitude) => navigate(`/places?ll=${latitude},${longitude}`),
+    }),
+    // navigate only touches state setters and history
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   function navigate(path: string) {
     window.history.pushState(null, "", path);
-    setRoute(parseMobileRoute(path));
+    setRoute(parseMobileRoute(path.split("?")[0]));
     setHiddenConfirmed(false);
   }
 
@@ -201,6 +217,7 @@ export default function MobileShell({
 
   const activeLibrary = me.libraries.find((library) => library.id === activeLibraryId);
   return (
+    <ViewerActionsContext.Provider value={viewerActions}>
     <div className="shell shell--mobile">
       <header className="shell__header">
         <h1 className="sr-only">{TABS.find((tab) => tab.key === route.tab)?.label ?? "Library"}</h1>
@@ -225,6 +242,8 @@ export default function MobileShell({
                 isAdmin={me.role === "admin"}
                 initialAssetId={deepLinkAssetId}
                 onInitialAssetOpened={onDeepLinkConsumed}
+                showAssetId={showAssetId}
+                onShowAssetDone={() => setShowAssetId(undefined)}
               />
             </LibraryNoteFrame>
           ) : (
@@ -251,5 +270,6 @@ export default function MobileShell({
         ))}
       </nav>
     </div>
+    </ViewerActionsContext.Provider>
   );
 }
