@@ -957,12 +957,12 @@ describe("DesktopLibrary", () => {
     });
 
     describe("multi-download (#487)", () => {
-      async function selectTwo(extra?: (url: string) => unknown) {
+      async function selectTwo(extra?: (url: string) => unknown, edited = 1) {
         const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
         const fetchMock = mockFetch((url) => {
           if (url === "/api/libraries/1/summary") return computeSummary(items);
           if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
-          if (url.endsWith("/selection-summary")) return { total_bytes: 2048 };
+          if (url.endsWith("/selection-summary")) return { total_bytes: 2048, edited };
           const result = extra?.(url);
           if (result !== undefined) return result;
           throw new Error(`unexpected request: ${url}`);
@@ -992,26 +992,50 @@ describe("DesktopLibrary", () => {
           fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/zip/ticket")).map((call) => JSON.parse(String((call[1] as RequestInit).body)).format);
         fireEvent.click(screen.getByTitle("Download"));
         await waitFor(() => expect(formats()).toEqual(["jpeg"]));
-        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
         fireEvent.click(screen.getByRole("menuitem", { name: "Download Unmodified Original" }));
         await waitFor(() => expect(formats()).toEqual(["jpeg", "native"]));
       });
 
       it("the ▾ menu holds Download Unmodified Original, and Export to Folder… only with showDirectoryPicker", async () => {
         await selectTwo();
-        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
         const menu = screen.getByRole("menu", { name: "Download options" });
         expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original"]);
         fireEvent.keyDown(window, { key: "Escape" });
         expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
       });
 
+      it("the ▾ is absent when nothing selected is edited: plain Download (#509)", async () => {
+        await selectTwo(undefined, 0);
+        await screen.findByTitle("Download");
+        await act(async () => {});
+        expect(screen.queryByRole("button", { name: "More Download Options" })).toBeNull();
+        expect(screen.getByTestId("download-menu")).toHaveClass("download-menu--plain");
+      });
+
+      it("the ▾ shows once the selection contains an edited photo (#509)", async () => {
+        await selectTwo(undefined, 1);
+        expect(await screen.findByRole("button", { name: "More Download Options" })).toBeEnabled();
+      });
+
+      it("where folders can be picked and nothing is edited, the ▾ holds only Export to Folder… (#509)", async () => {
+        vi.stubGlobal("showDirectoryPicker", vi.fn());
+        await selectTwo(undefined, 0);
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Export to Folder…"]);
+        vi.unstubAllGlobals();
+      });
+
       it("shows Export to Folder… in the ▾ menu where the browser can write to a folder", async () => {
         vi.stubGlobal("showDirectoryPicker", vi.fn(async () => Promise.reject(new DOMException("x", "AbortError"))));
         await selectTwo();
-        fireEvent.click(screen.getByRole("button", { name: "More Download Options" }));
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
         const menu = screen.getByRole("menu", { name: "Download options" });
-        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original", "Export to Folder…"]);
+        await waitFor(() =>
+          expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original", "Export to Folder…"]),
+        );
         fireEvent.click(within(menu).getByRole("menuitem", { name: "Export to Folder…" }));
         expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
         vi.unstubAllGlobals();

@@ -50,6 +50,15 @@ async function stub(page: Page, { share = "ok", folder = false, expired = false 
   );
 }
 
+// The demo library has no edited photos: patch the selection summary the way the
+// server reports one (#509; the server side is covered by pytest).
+async function markEdited(page: Page) {
+  await page.route(/\/selection-summary$/, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), edited: 1 } });
+  });
+}
+
 const shared = (page: Page) => page.evaluate(() => (window as unknown as { __shared: { name: string }[][] }).__shared);
 
 // Records whether a HUD was ever in the DOM, so "no HUD flash" can be asserted.
@@ -255,6 +264,7 @@ test.describe("Mac: Share + Download ▾", () => {
 
   test("Download is one click: 2+ items are one ZIP; ▾ holds Unmodified Original and Export to Folder…", async ({ page }) => {
     await signIn(page);
+    await markEdited(page);
     await stub(page, { folder: true });
     await selectPhotos(page, false, 2);
     const toolbar = page.locator(".desktop-library__bar-right");
@@ -276,6 +286,7 @@ test.describe("Mac: Share + Download ▾", () => {
 
   test("without showDirectoryPicker the ▾ menu has no Export to Folder…", async ({ page }) => {
     await signIn(page);
+    await markEdited(page);
     await stub(page, { folder: false });
     await selectPhotos(page, false, 2);
     await page.locator(".desktop-library__bar-right").getByRole("button", { name: "More Download Options" }).click();
@@ -284,6 +295,7 @@ test.describe("Mac: Share + Download ▾", () => {
 
   test("Export to Folder… saves the files and says where", async ({ page }) => {
     await signIn(page);
+    await markEdited(page);
     await stub(page, { folder: true });
     await selectPhotos(page, false, 2);
     await page.locator(".desktop-library__bar-right").getByRole("button", { name: "More Download Options" }).click();

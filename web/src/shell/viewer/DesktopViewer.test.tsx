@@ -335,13 +335,36 @@ describe("DesktopViewer", () => {
     }
   });
 
+  it("the ▾ only exists for an edited photo: plain Download otherwise (#509)", async () => {
+    for (const has_edited of [true, false]) {
+      const items = [makeItem("a1")];
+      mockDetail({ a1: makeDetail("a1", { has_edited }) });
+      const { unmount } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+      await screen.findByLabelText("Download");
+      await act(async () => {});
+      expect(screen.queryByLabelText("More Download Options") !== null).toBe(has_edited);
+      expect(screen.getByTestId("download-menu").classList.contains("download-menu--plain")).toBe(!has_edited);
+      unmount();
+    }
+  });
+
+  it("where folders can be picked and the photo is not edited, the ▾ holds only Export to Folder… (#509)", async () => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn());
+    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+    render(<DesktopViewer libraryId={1} items={[makeItem("a1")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Download");
+    fireEvent.click(screen.getByLabelText("More Download Options"));
+    expect(screen.getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Export to Folder…"]);
+    vi.unstubAllGlobals();
+  });
+
   it("offers Share only where files can be shared, and Export to Folder… only where a folder can be picked", async () => {
     const items = [makeItem("a1")];
-    mockDetail({ a1: makeDetail("a1") });
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
     const { unmount } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
     await screen.findByLabelText("Download");
     expect(screen.queryByLabelText("Share")).toBeNull();
-    fireEvent.click(screen.getByLabelText("More Download Options"));
+    fireEvent.click(await screen.findByLabelText("More Download Options"));
     expect(screen.queryByRole("menuitem", { name: "Export to Folder…" })).toBeNull();
     unmount();
 

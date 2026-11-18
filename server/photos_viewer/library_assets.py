@@ -809,6 +809,10 @@ class SelectionSummaryResponse(BaseModel):
     date_last: str | None
     # Sum of the recorded original file sizes (assets without one add nothing).
     total_bytes: int
+    # How many selected assets have an edited version (Photos' own edit, the
+    # same test as `has_edited` on the detail route). The Mac Download menu
+    # offers "Download Unmodified Original" only when this is above zero.
+    edited: int
     # The one saved place name every selected asset shares (Photos' own
     # record, as in the single-asset Info row), else null.
     place: str | None
@@ -836,7 +840,7 @@ def selection_summary(
         marks = ",".join("?" * len(chunk))
         rows.extend(
             db.execute(
-                "SELECT hidden, is_video, date_created, original_filesize, "
+                "SELECT hidden, is_video, date_created, original_filesize, path_edited, "
                 "COALESCE(NULLIF(place_address, ''), NULLIF(place, ''), NULLIF(place_offline, '')) AS label "
                 f"FROM assets WHERE library_id = ? AND uuid IN ({marks})",
                 (library["id"], *chunk),
@@ -857,6 +861,7 @@ def selection_summary(
         date_first=min(dates) if dates else None,
         date_last=max(dates) if dates else None,
         total_bytes=sum(row["original_filesize"] or 0 for row in rows),
+        edited=sum(1 for row in rows if row["path_edited"] is not None),
         place=next(iter(labels)) if len(labels) == 1 and None not in labels else None,
     )
 

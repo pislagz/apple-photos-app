@@ -3372,6 +3372,27 @@ html.has-app-height .shell--mobile {
   color: var(--color-label);
 }
 
+/* #509: the Download control (DownloadMenu) keeps the grid toolbar's look in the
+   viewer: label colour, 8px radius, the narrow ▾ hit area. */
+.desktop-viewer__topbar .download-menu .toolbar-button {
+  color: var(--color-label);
+  border-radius: var(--radius-8);
+}
+.desktop-viewer__topbar .download-menu .download-menu__main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.desktop-viewer__topbar .download-menu--plain .download-menu__main {
+  border-radius: var(--radius-8);
+}
+.desktop-viewer__topbar .download-menu .download-menu__chevron {
+  width: var(--space-16);
+  min-width: var(--space-16);
+  aspect-ratio: auto;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
   background: transparent;
   color: var(--accent);
@@ -5901,6 +5922,9 @@ textarea,
 .download-menu__main {
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
+}
+.download-menu--plain .download-menu__main {
+  border-radius: var(--radius-8);
 }
 .download-menu__chevron {
   width: var(--space-16);
