@@ -421,6 +421,13 @@ export const ICONS = {
       [DOC_LINES, "k"],
     ],
   },
+  // Copy: a sheet with a second one peeking out behind it.
+  copy: {
+    parts: [
+      [rr(7.5, 7.5, 9, 9, 2), "s"],
+      ["M12.5 7.5V6.5a2 2 0 0 0-2-2h-5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h1", "s"],
+    ],
+  },
   link: {
     parts: [
       [LINK_A, "s"],

@@ -96,6 +96,7 @@
   --dur-dialog: 250ms; /* modal and alert in, sheet slide */
   --dur-chosen: 100ms; /* menu item chosen flash */
   --ease-menu: ease-out;
+  --dur-locate: 1800ms; /* Show in All Photos tile ring */
   --dur-tint: 150ms; /* tab-bar icon tint, hover badges */
   --ease-tint: ease-out;
   --dur-press: 120ms; /* pressed-state dip */
@@ -406,6 +407,7 @@
     --dur-dialog: 0.01ms;
     --dur-chosen: 0.01ms;
     --dur-tint: 0.01ms;
+    --dur-locate: 0.01ms;
     --dur-press: 0.01ms;
     --shift-menu: 0px;
     --shift-panel: 0px;

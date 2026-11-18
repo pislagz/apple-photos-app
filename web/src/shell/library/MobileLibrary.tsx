@@ -53,6 +53,8 @@ export default function MobileLibrary({
   libraryId,
   initialAssetId,
   onInitialAssetOpened,
+  showAssetId,
+  onShowAssetDone,
   resetSignal = 0,
   album,
   isAdmin = false,
@@ -62,6 +64,9 @@ export default function MobileLibrary({
   isAdmin?: boolean;
   initialAssetId?: string;
   onInitialAssetOpened?: () => void;
+  // #514 Show in All Photos: scroll to this photo and flash its tile, no Viewer.
+  showAssetId?: string;
+  onShowAssetDone?: () => void;
   // Bumped by the shell when the already-active Library tab is tapped again.
   resetSignal?: number;
   // P2.1: an album's id (or `smart:<slug>`). Lists only that album, as one
@@ -220,6 +225,21 @@ export default function MobileLibrary({
     [items, setOpenIndex],
   );
   useDeepLinkOpen(initialAssetId, items, loading, done, loadMore, openFromLink, onInitialAssetOpened);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const showFromViewer = useCallback(
+    (index: number) => {
+      setView("all");
+      setRevealId(items[index]?.id ?? null);
+      setFlashId(items[index]?.id ?? null);
+    },
+    [items],
+  );
+  useDeepLinkOpen(showAssetId, items, loading, done, loadMore, showFromViewer, onShowAssetDone);
+  useEffect(() => {
+    if (!flashId) return;
+    const timer = window.setTimeout(() => setFlashId(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [flashId]);
   const [selectMode, setSelectMode] = useState(false);
   const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -739,6 +759,7 @@ export default function MobileLibrary({
                       key={item.id}
                       className="mobile-library__cell-wrap"
                       data-selected={selectedIds.has(item.id)}
+                      data-located={flashId === item.id ? "true" : undefined}
                       style={{ width: cellSize, height: cellHeight(item) }}
                     >
                       <FadeImage
@@ -831,6 +852,8 @@ export default function MobileLibrary({
           index={openIndex}
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
+          fromOtherView={!!album}
+          downloadAsJpeg={zip.jpeg}
           revealItem={(id) => {
             const row = findRowIndexByAsset(rows, id);
             if (row !== -1) rowVirtualizer.scrollToIndex(row, { align: "auto" });

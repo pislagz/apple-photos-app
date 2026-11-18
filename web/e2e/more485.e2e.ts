@@ -25,8 +25,9 @@ for (const scheme of ["light", "dark"] as const) {
     await more.tap();
     const menu = page.getByRole("menu", { name: "More" });
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem")).toHaveCount(1);
-    await expect(menu).not.toContainText(/share|download/i);
+    // #514 added Copy Link and Download (and more where supported); still no Share.
+    await expect(menu.getByRole("menuitem", { name: "Info" })).toBeVisible();
+    await expect(menu).not.toContainText(/share/i);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/${scheme}-viewer-more-menu.png` });
     await page.getByRole("menuitem", { name: "Info" }).tap();

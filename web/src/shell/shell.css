@@ -6000,3 +6000,18 @@ textarea,
   stroke: var(--accent);
   stroke-linecap: round;
 }
+
+/* #514 Show in All Photos: the tile pulses an accent ring, then settles. */
+.mobile-library__cell-wrap[data-located="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--accent);
+  pointer-events: none;
+  animation: library-locate var(--dur-locate) ease-out forwards;
+}
+
+@keyframes library-locate {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
