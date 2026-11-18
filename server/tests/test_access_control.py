@@ -50,7 +50,7 @@ class World:
         originals = root / "originals"
         originals.mkdir(parents=True)
         self.conn.execute(
-            "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
+            "INSERT INTO libraries (display_name, path, utilities_enabled, utilities_hidden) VALUES (?, ?, 1, 1)",
             (name, str(root)),
         )
         library_id = self.conn.execute(

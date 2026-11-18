@@ -1,12 +1,13 @@
 import { useState } from "react";
 import InfoButton from "../../help/InfoButton";
-import { libraryStatus, reindexLibrary, removeLibrary, renameLibrary, type LibraryResponse, type LibraryStatusResponse } from "../api";
+import { libraryStatus, reindexLibrary, removeLibrary, renameLibrary, setLibraryUtilities, type UtilitiesSettings, type LibraryResponse, type LibraryStatusResponse } from "../api";
 import { photoCount, runSentence, statusKind, statusWord, TRIGGER_WORDS, warningText } from "../libraryStatus";
 import { describeError } from "../sharing";
 import { GroupedList, Row } from "../ui/GroupedList";
 import SavedStatus, { useSaveStatus } from "../ui/SavedStatus";
 import Sheet from "../ui/Sheet";
 import SkeletonRow from "../ui/SkeletonRow";
+import Switch from "../ui/Switch";
 import { formatBytes, formatWhen } from "../ui/format";
 import { IndexBar } from "./IndexBar";
 import PrewarmControls from "./PrewarmControls";
@@ -18,6 +19,49 @@ const INFO_CODES = new Set(["photos_busy", "library_open"]);
 
 function fileName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+const NO_UTILITIES: UtilitiesSettings = { enabled: false, imports: false, hidden: false };
+
+// #518: what the Utilities group shows for this library. Item switches wait
+// for the section switch; they keep their value while it is off.
+function UtilitiesControls({ library }: { library: LibraryResponse }) {
+  const [settings, setSettings] = useState<UtilitiesSettings>(library.utilities ?? NO_UTILITIES);
+  const save = useSaveStatus();
+  function change(patch: Partial<UtilitiesSettings>) {
+    void save.run(async () => {
+      const updated = await setLibraryUtilities(library.id, patch);
+      setSettings(updated.utilities ?? NO_UTILITIES);
+    });
+  }
+  return (
+    <GroupedList
+      heading="Utilities"
+      footer="Choose what people see under Utilities when they open this library. Everything is off until you turn it on."
+    >
+      <Row
+        label="Show Utilities"
+        control={
+          <>
+            <Switch checked={settings.enabled} label="Show Utilities" onChange={(enabled) => change({ enabled })} />
+            <SavedStatus state={save.state} message={save.error} />
+          </>
+        }
+      />
+      <Row
+        label="Imports"
+        control={
+          <Switch checked={settings.imports} label="Imports" disabled={!settings.enabled} onChange={(imports) => change({ imports })} />
+        }
+      />
+      <Row
+        label="Hidden"
+        control={
+          <Switch checked={settings.hidden} label="Hidden" disabled={!settings.enabled} onChange={(hidden) => change({ hidden })} />
+        }
+      />
+    </GroupedList>
+  );
 }
 
 export default function LibraryDetail({
@@ -223,6 +267,8 @@ export default function LibraryDetail({
       <GroupedList heading="Thumbnails" footer="Thumbnails are the small previews people scroll through.">
         <PrewarmControls key={`${library.id}-${status.prewarm?.state}`} libraryId={library.id} initial={status.prewarm} cacheBytes={status.thumb_cache_bytes} />
       </GroupedList>
+
+      <UtilitiesControls key={library.id} library={library} />
 
       <GroupedList heading="Maintenance" footer="Your library files are only read. Nothing in them is changed.">
         <Row

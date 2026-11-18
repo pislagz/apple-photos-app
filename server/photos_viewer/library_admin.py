@@ -65,11 +65,26 @@ class LibraryRenameRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
 
 
+class UtilitiesRequest(BaseModel):
+    """#518: any subset; omitted fields stay as they are."""
+
+    enabled: bool | None = None
+    imports: bool | None = None
+    hidden: bool | None = None
+
+
+class UtilitiesSettings(BaseModel):
+    enabled: bool = False
+    imports: bool = False
+    hidden: bool = False
+
+
 class LibraryResponse(BaseModel):
     id: int
     display_name: str
     path: str
     created_at: str
+    utilities: UtilitiesSettings = UtilitiesSettings()
 
 
 class LibraryWarning(BaseModel):
@@ -374,6 +389,11 @@ def _to_response(row: sqlite3.Row) -> LibraryResponse:
         display_name=row["display_name"],
         path=row["path"],
         created_at=row["created_at"],
+        utilities=UtilitiesSettings(
+            enabled=bool(row["utilities_enabled"]),
+            imports=bool(row["utilities_imports"]),
+            hidden=bool(row["utilities_hidden"]),
+        ),
     )
 
 
@@ -819,6 +839,44 @@ def rename_library(
         actor=admin["username"],
         detail=payload.display_name,
     )
+    return _to_response(_get_library_or_404(db, library_id))
+
+
+@router.put(
+    "/api/admin/libraries/{library_id}/utilities",
+    response_model=LibraryResponse,
+    dependencies=[Depends(session_auth.reject_cross_site_requests)],
+)
+def set_library_utilities(
+    library_id: int,
+    payload: UtilitiesRequest,
+    admin: sqlite3.Row = Depends(session_auth.require_admin),
+    db: sqlite3.Connection = Depends(session_auth.get_db),
+) -> LibraryResponse:
+    """#518: item flags are kept while the section is off, so turning it back
+    on restores them; the readers AND them with the section switch."""
+    _get_library_or_404(db, library_id)
+    changes = {
+        "utilities_enabled": payload.enabled,
+        "utilities_imports": payload.imports,
+        "utilities_hidden": payload.hidden,
+    }
+    changes = {col: int(v) for col, v in changes.items() if v is not None}
+    if changes:
+        sets = ", ".join(f"{col} = ?" for col in changes)
+        db.execute(
+            f"UPDATE libraries SET {sets} WHERE id = ?",
+            (*changes.values(), library_id),
+        )
+        app_db.write_audit_log(
+            db,
+            "library.utilities",
+            library_id=library_id,
+            actor=admin["username"],
+            detail=", ".join(
+                f"{c.removeprefix('utilities_')}={v}" for c, v in changes.items()
+            ),
+        )
     return _to_response(_get_library_or_404(db, library_id))
 
 

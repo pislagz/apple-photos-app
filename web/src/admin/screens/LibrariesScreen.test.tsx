@@ -195,6 +195,29 @@ describe("Library page", () => {
     expect(prompt).not.toHaveBeenCalled();
   });
 
+  it("#518: Utilities switches default off, item switches wait for Show Utilities, and each change is saved", async () => {
+    const fetchMock = api(BASE, {
+      "/api/admin/libraries/1/utilities": { ...LIBRARY, utilities: { enabled: true, imports: false, hidden: false } },
+    });
+    openDetail();
+    await screen.findByText("Size on disk");
+    const show = screen.getByRole("switch", { name: "Show Utilities" });
+    expect(show).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Imports" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Hidden" })).toBeDisabled();
+
+    fireEvent.click(show);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/admin/libraries/1/utilities",
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true }) }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Hidden" })).toBeEnabled());
+    expect(screen.getByRole("switch", { name: "Imports" })).toBeEnabled();
+  });
+
   it("removes a library only after confirming in the sheet", async () => {
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);
