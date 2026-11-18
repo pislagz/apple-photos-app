@@ -1674,8 +1674,7 @@ html.has-app-height .shell--mobile {
   flex: 0 0 var(--sidebar-width, 220px);
   width: var(--sidebar-width, 220px);
   box-sizing: border-box;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   transition:
     flex-basis var(--dur-zoom) var(--ease-zoom),
     width var(--dur-zoom) var(--ease-zoom),
@@ -1811,8 +1810,23 @@ html.has-app-height .shell--mobile {
   transition: none;
 }
 
+/* #513: header fixed, the list scrolls alone, the account footer stays pinned. */
+.sidebar__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .sidebar .account-menu {
-  margin-top: auto;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid transparent;
+}
+
+.sidebar--footer-sep .account-menu {
+  border-top-color: var(--color-hairline);
 }
 
 .shell--desktop .shell__main {
