@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readCredentials } from "./readCredentials";
 import InfoButton from "../help/InfoButton";
 import { passkeyConnectionNote, passkeysSupported } from "../passkeys";
 import type { KeepSignedInMode } from "../api";
@@ -32,8 +33,6 @@ export default function LoginScreen({
   // Shown only when the browser has WebAuthn; sign-in needs no username.
   onPasskey?: (rememberMe: boolean) => void;
 }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const offered = keepSignedIn !== "disabled";
   const [keep, setKeep] = useState(keepSignedIn === "default_on");
   // The admin setting arrives after the first render; follow it until the user touches the box.
@@ -42,8 +41,10 @@ export default function LoginScreen({
     if (!touched) setKeep(keepSignedIn === "default_on");
   }, [keepSignedIn, touched]);
 
-  function handleSubmit(event: React.FormEvent) {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // AutoFill sets values without key events, so read the live fields, not React state.
+    const { username, password } = readCredentials(event.currentTarget);
     onSubmit(username, password, offered && keep);
   }
 
@@ -52,25 +53,26 @@ export default function LoginScreen({
       <div className="login-card">
         <h1>Sign in</h1>
         {error && <p role="alert">{errorText(error)}</p>}
-        <form onSubmit={handleSubmit}>
+        <form method="post" action="" onSubmit={handleSubmit}>
           <label>
             Username
             <input
-              value={username}
+              id="login-username"
+              name="username"
+              type="text"
               autoComplete="username"
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              onChange={(event) => setUsername(event.target.value)}
             />
           </label>
           <label>
             Password
             <input
+              id="login-password"
+              name="password"
               type="password"
-              value={password}
               autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
             />
           </label>
           {offered && (
