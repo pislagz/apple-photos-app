@@ -13,17 +13,18 @@ function setup() {
 
 beforeEach(() => localStorage.clear());
 
-describe("More > Transfer Format (#507)", () => {
-  it("lists Automatic (selected) and Keep Originals, saves the choice, and has no ZIP switch", () => {
+describe("More > Photo Format (#507, #512)", () => {
+  it("lists Most Compatible (JPEG) (selected) and HEIC (Original Format), saves the choice, and has no ZIP switch", () => {
     setup();
-    expect(screen.getByRole("radiogroup", { name: "Transfer Format" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Automatic" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText(/Photos are sent as JPEG, the most compatible format/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "Keep Originals" }));
+    expect(screen.getByRole("radiogroup", { name: "Photo Format" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Most Compatible (JPEG)" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "HEIC (Original Format)" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("For sharing. Edits are always included.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "HEIC (Original Format)" }));
     expect(localStorage.getItem("photos-viewer:transfer-format")).toBe("original");
-    expect(screen.getByRole("radio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText(/Photos are sent as HEIC/)).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "HEIC (Original Format)" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("For sharing. Edits are always included.")).toBeInTheDocument();
+    expect(screen.queryByText("Transfer Format")).toBeNull();
     expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByText("Download as ZIP")).toBeNull();
   });

@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("downloadItem (Mac Download of one item)", () => {
-  it("Automatic downloads a HEIC as JPEG, with the download marker and the edited version", async () => {
+  it("Most Compatible downloads a HEIC as JPEG, with the download marker and the edited version", async () => {
     mockFetch(() => ({ has_edited: true }));
     await downloadItem(1, heic);
     expect(hrefs).toHaveLength(1);
@@ -31,7 +31,7 @@ describe("downloadItem (Mac Download of one item)", () => {
     expect(hrefs[0]).toContain("format=jpeg");
   });
 
-  it("Keep Originals downloads the stored file", async () => {
+  it("HEIC downloads the stored file", async () => {
     setTransferFormat("original");
     mockFetch(() => ({ has_edited: false }));
     await downloadItem(1, heic);
@@ -53,7 +53,7 @@ describe("downloadItem (Mac Download of one item)", () => {
     expect(hrefs.every((href) => !href.includes("format=jpeg"))).toBe(true);
   });
 
-  it("a Live Photo brings its video with Keep Originals, not with Automatic", async () => {
+  it("a Live Photo brings its video with HEIC, not with Automatic", async () => {
     mockFetch(() => ({ has_edited: false }));
     await downloadItem(1, live);
     expect(hrefs).toHaveLength(1);

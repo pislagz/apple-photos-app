@@ -2882,6 +2882,15 @@ html.has-app-height .shell--mobile {
   font-size: var(--font-size-body-sm);
 }
 
+.mac-menu__caption {
+  margin: 0;
+  padding: 2px 12px 6px;
+  max-width: 240px;
+  font-size: var(--font-size-caption);
+  line-height: 1.3;
+  color: var(--color-label-secondary);
+}
+
 .mac-menu__separator {
   height: 1px;
   margin: 5px 4px;
@@ -6154,7 +6163,7 @@ textarea,
   color: var(--color-white);
 }
 
-/* More > Transfer Format: a checkmark list like iOS Settings. */
+/* More > Photo Format: a checkmark list like iOS Settings. */
 .more-screen__item--choice {
   display: flex;
   align-items: center;

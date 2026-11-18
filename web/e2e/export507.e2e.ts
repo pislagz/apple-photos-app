@@ -2,9 +2,9 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 // #507: iPhone = Share only with an iOS-style HUD; Mac = Share + Download with a
 // ▾ menu. navigator.share / showDirectoryPicker are stubbed; originals can be held
-// to look at the HUD. Screenshots go to web/e2e-shots-g507/ (not committed).
+// to look at the HUD. Screenshots go to web/e2e-shots-n512/ (not committed).
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
-const SHOTS = "e2e-shots-g507";
+const SHOTS = "e2e-shots-n512";
 
 async function signIn(page: Page) {
   await page.goto("/");
@@ -176,15 +176,16 @@ test.describe("iPhone: Share only", () => {
     await page.evaluate(() => localStorage.removeItem("photos-viewer:transfer-format"));
   });
 
-  test("More > Transfer Format: Automatic is JPEG, Keep Originals is the stored file", async ({ page }) => {
+  test("More > Photo Format: Automatic is JPEG, Keep Originals is the stored file", async ({ page }) => {
     await signIn(page);
     await stub(page);
     await page.evaluate(() => localStorage.removeItem("photos-viewer:transfer-format"));
     await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "More" }).click();
-    const group = page.getByRole("radiogroup", { name: "Transfer Format" });
-    await expect(group.getByRole("radio", { name: "Automatic" })).toHaveAttribute("aria-checked", "true");
+    const group = page.getByRole("radiogroup", { name: "Photo Format" });
+    await expect(group.getByRole("radio", { name: "Most Compatible (JPEG)" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByText("For sharing. Edits are always included.")).toBeVisible();
     await group.evaluate((el) => el.scrollIntoView({ block: "center" }));
-    await page.screenshot({ path: `${SHOTS}/iphone-light-4-more-transfer-format.png` });
+    await page.screenshot({ path: `${SHOTS}/iphone-light-4-more-photo-format.png` });
     await expect(page.getByRole("switch", { name: "Download as ZIP" })).toHaveCount(0);
 
     const urls: string[] = [];
@@ -198,8 +199,8 @@ test.describe("iPhone: Share only", () => {
 
     await page.getByRole("button", { name: "Cancel" }).click();
     await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "More" }).click();
-    await page.getByRole("radio", { name: "Keep Originals" }).click();
-    await expect(page.getByRole("radio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: "HEIC (Original Format)" }).click();
+    await expect(page.getByRole("radio", { name: "HEIC (Original Format)" })).toHaveAttribute("aria-checked", "true");
     await page.getByRole("navigation", { name: "Primary" }).getByRole("button", { name: "Library" }).click();
     await selectPhotos(page, true, 1);
     await page.getByTestId("select-bar").getByRole("button", { name: "Share", exact: true }).click();
@@ -343,16 +344,17 @@ test.describe("Mac: Share + Download ▾", () => {
     ]);
   });
 
-  test("account menu: Transfer Format", async ({ page }) => {
+  test("account menu: Photo Format", async ({ page }) => {
     await signIn(page);
     await page.evaluate(() => localStorage.removeItem("photos-viewer:transfer-format"));
     await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("menuitem", { name: "Transfer Format" }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Automatic" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("menuitemradio", { name: "Keep Originals" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Photo Format" }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Most Compatible (JPEG)" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menuitemradio", { name: "HEIC (Original Format)" })).toBeVisible();
     await expect(page.getByRole("menuitemcheckbox", { name: "Download as ZIP" })).toHaveCount(0);
-    await page.screenshot({ path: `${SHOTS}/mac-light-3-account-transfer-format.png`, clip: { x: 0, y: 500, width: 520, height: 400 } });
-    await page.getByRole("menuitemradio", { name: "Keep Originals" }).click();
+    await expect(page.getByText("For downloads and shares. Edits are always included — for the unedited photo use Download Unmodified Original.")).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/mac-light-3-account-photo-format.png`, clip: { x: 0, y: 500, width: 520, height: 400 } });
+    await page.getByRole("menuitemradio", { name: "HEIC (Original Format)" }).click();
     expect(await page.evaluate(() => localStorage.getItem("photos-viewer:transfer-format"))).toBe("original");
     await page.evaluate(() => localStorage.removeItem("photos-viewer:transfer-format"));
   });
