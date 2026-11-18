@@ -192,3 +192,14 @@ describe("sidebar label (#470)", () => {
     expect(document.querySelectorAll("[title], svg title")).toHaveLength(0);
   });
 });
+
+describe("stripNativeTooltips (#474)", () => {
+  it("removes title attributes, SVG titles and xlink:title around the pointer", async () => {
+    const { stripNativeTooltips } = await import("./SidebarLabel");
+    document.body.innerHTML = `<aside title="x"><button title="Open"><svg><title>Icon</title></svg><span id="s">Hi</span></button></aside>`;
+    stripNativeTooltips(document.getElementById("s")!);
+    expect(document.querySelector("[title]")).toBeNull();
+    expect(document.querySelector("svg title")).toBeNull();
+    expect(document.querySelector("button")).toHaveTextContent("Hi");
+  });
+});

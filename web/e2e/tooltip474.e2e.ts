@@ -15,7 +15,19 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.locator("[data-asset-id]").first()).toBeVisible();
     const sidebar = page.locator("#app-sidebar");
     // No native tooltip source anywhere in the sidebar.
-    expect(await sidebar.locator("[title], svg title, [aria-describedby]").count()).toBe(0);
+    expect(await sidebar.locator("[title], svg title, [xlink\\:title], abbr, [aria-describedby]").count()).toBe(0);
+    // Ancestors too, up to <html>, and every element's title property.
+    const withTitle = await page.evaluate(() => {
+      const out: string[] = [];
+      for (const el of Array.from(document.querySelectorAll("#app-sidebar, #app-sidebar *"))) {
+        if ((el as HTMLElement).title) out.push(el.tagName);
+        if (el.tagName.toLowerCase() === "title") out.push("svg-title");
+      }
+      for (let el: Element | null = document.querySelector("#app-sidebar"); el; el = el.parentElement)
+        if (el.hasAttribute("title")) out.push(el.tagName);
+      return out;
+    });
+    expect(withTitle).toEqual([]);
     const labels = sidebar.locator(".sidebar__label");
     await expect(labels.first()).toBeVisible();
     // Narrow the sidebar so a name is cut off whatever the demo data holds.
@@ -24,10 +36,12 @@ for (const scheme of ["light", "dark"] as const) {
     const target = all.indexOf(true);
     expect(target).toBeGreaterThanOrEqual(0);
     await labels.nth(target).hover();
-    await expect(page.locator(".sidebar-tooltip")).toHaveCount(1);
+    await page.waitForTimeout(500);
+    await expect(page.locator(".sidebar-tooltip")).toHaveCount(0);
+    await expect(page.locator(".sidebar-tooltip")).toHaveCount(1, { timeout: 2000 });
     await page.waitForTimeout(1500);
     await expect(page.locator(".sidebar-tooltip")).toHaveCount(1);
     expect(await page.locator("[title]:hover, .sidebar-tooltip").count()).toBe(1);
-    await page.screenshot({ path: `e2e-shots-474/hover-${scheme}.png`, clip: { x: 0, y: 0, width: 520, height: 900 } });
+    await page.screenshot({ path: `e2e-shots-n474/hover-${scheme}.png`, clip: { x: 0, y: 0, width: 520, height: 900 } });
   });
 }
