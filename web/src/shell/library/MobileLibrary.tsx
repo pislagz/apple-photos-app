@@ -1,17 +1,15 @@
-import HeicFallbackModal from "./HeicFallbackModal";
 import { CheckBadge, TileOverlays } from "./TileOverlays";
 import MobileGridHeader, { type MobileGridNav } from "./MobileGridHeader";
-import ZipStatus from "./ZipStatus";
 import { Icon } from "../icons";
 import { selectionCountLabel } from "./selectionText";
-import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_TEXT } from "./albumText";
 import LibraryEmptyState from "./LibraryEmptyState";
-import { downloadSingleAsset, shareOrDownloadAssets, shareReadyFiles } from "../viewer/download";
+import TransferHud from "../export/TransferHud";
+import { useExport } from "../export/useExport";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import PeriodCardGrid from "./PeriodCards";
@@ -223,10 +221,6 @@ export default function MobileLibrary({
   const [selectMode, setSelectMode] = useState(false);
   const segmentRef = useSlidingPill<HTMLDivElement>(view, !selectMode && !album);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [sharing, setSharing] = useState(false);
-  // Files already fetched for a share the browser blocked (expired tap); the
-  // next Share tap hands them to the share sheet with no await in between.
-  const [readyFiles, setReadyFiles] = useState<File[] | null>(null);
   const selectBarRef = useRef<HTMLDivElement | null>(null);
   const [selectBarHeight, setSelectBarHeight] = useState(0);
 
@@ -234,7 +228,6 @@ export default function MobileLibrary({
   useSwipeSelect(selectMode && !isTileView, scrollRef, itemOrder, selectedIds, setSelectedIds);
 
   const toggleSelected = useCallback((id: string) => {
-    setReadyFiles(null);
     setSelectedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -246,7 +239,6 @@ export default function MobileLibrary({
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
-    setReadyFiles(null);
   }
 
   // P1.17 iPhone multi-select: tapping a cell in select mode toggles it
@@ -293,38 +285,12 @@ export default function MobileLibrary({
     [view, oldestFirst],
   );
 
-  async function handleShareSelection() {
-    if (readyFiles) {
-      const outcome = await shareReadyFiles(readyFiles).catch(() => null);
-      setReadyFiles(outcome?.status === "ready" ? outcome.files : null);
-      return;
-    }
-    const toShare = items.filter((item) => selectedIds.has(item.id));
-    if (toShare.length === 0) return;
-    setSharing(true);
-    try {
-      const outcome = await shareOrDownloadAssets(
-        libraryId,
-        toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })),
-      );
-      setReadyFiles(outcome.status === "ready" ? outcome.files : null);
-    } finally {
-      setSharing(false);
-    }
-  }
-
-  const zip = useZipDownload(libraryId);
-  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selectedIds), [items, selectedIds]);
-
-  // One selected item downloads as the plain file; 2+ keep the archive flow.
-  async function handleDownloadSelection() {
-    const ids = [...selectedIds];
-    if (ids.length !== 1) {
-      void zip.start(ids, { forceNative: !selectionHasHeicPhoto });
-      return;
-    }
-    const item = items.find((candidate) => candidate.id === ids[0]);
-    await downloadSingleAsset(libraryId, ids[0], { asJpeg: zip.jpeg && selectionHasHeicPhoto && !item?.is_video });
+  const exportFlow = useExport(libraryId);
+  // iPhone is Share only (#507): the system share sheet saves to Photos or
+  // Files, AirDrops, messages. The HUD covers the wait; one item that is
+  // ready fast goes straight to the sheet.
+  function handleShareSelection() {
+    void exportFlow.share(items.filter((item) => selectedIds.has(item.id)));
   }
 
   // The bar's height changes with its caption, progress line and HEIC row, so
@@ -783,47 +749,17 @@ export default function MobileLibrary({
               className="mobile-library__glass-button mobile-library__bar-button"
               aria-label="Share"
               onClick={handleShareSelection}
-              disabled={selectedIds.size === 0 || sharing}
+              disabled={selectedIds.size === 0 || exportFlow.state.phase !== "idle"}
             >
               <Icon name="share" />
             </button>
             <span className="mobile-library__select-count" aria-live="polite">
               {selectionCountLabel(items, selectedIds)}
             </span>
-            <button
-              type="button"
-              className="mobile-library__glass-button mobile-library__bar-button mobile-library__bar-button--end"
-              aria-label="Download"
-              onClick={() => void handleDownloadSelection()}
-              disabled={selectedIds.size === 0 || zip.busy}
-            >
-              <Icon name="download" />
-            </button>
           </div>
-          {selectedIds.size > 0 && zip.state.phase === "idle" && (
-            <p className="mobile-library__select-caption">
-              {selectedIds.size === 1 ? "Downloads the original file." : "Downloads all selected items in a ZIP file."}
-            </p>
-          )}
-          {readyFiles && (
-            <p className="mobile-library__select-caption" role="status">
-              Ready to share. Tap Share again.
-            </p>
-          )}
-          {(selectedIds.size > 0 || zip.state.phase !== "idle") && (
-            <ZipStatus
-              state={zip.state}
-              jpeg={zip.jpeg}
-              onJpegChange={zip.setJpeg}
-              showHeicOption={selectionHasHeicPhoto}
-              variant="row"
-            />
-          )}
         </div>
       )}
-      {zip.heicFallback && (
-        <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
-      )}
+      <TransferHud flow={exportFlow} layout="phone" />
       {openIndex !== null && (
         <MobileViewer
           libraryId={libraryId}

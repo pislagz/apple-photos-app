@@ -267,7 +267,7 @@ describe("DesktopViewer", () => {
     await screen.findAllByText("Unknown place");
   });
 
-  it("downloads the original only on an explicit click, not before", () => {
+  it("downloads the file only on an explicit click, not before", async () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1") });
     let downloadHref = "";
@@ -284,7 +284,7 @@ describe("DesktopViewer", () => {
 
     fireEvent.click(screen.getByLabelText("Download"));
 
-    expect(clickSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     // The explicit Download click carries the audit marker; the zoomed-in
     // `<img>` src the viewer may already be showing never does.
     expect(downloadHref).toContain("download=1");
@@ -292,7 +292,7 @@ describe("DesktopViewer", () => {
     clickSpy.mockRestore();
   });
 
-  it("zooms and downloads the edited version when the asset has one, and offers Download Original", async () => {
+  it("zooms and downloads the edited version when the asset has one; the ▾ menu downloads the unmodified original (#507)", async () => {
     const items = [makeItem("a1")];
     mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
     let downloadHref = "";
@@ -304,28 +304,76 @@ describe("DesktopViewer", () => {
       <DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />,
     );
     const media = () => container.querySelector(".desktop-viewer__media") as HTMLImageElement;
-    await screen.findByLabelText("Download Original");
+    await screen.findByLabelText("Show Original");
 
     fireEvent.doubleClick(media());
     await waitFor(() => expect(media().src).toContain("/original/a1"));
     expect(media().src).toContain("version=edited");
 
     fireEvent.click(screen.getByLabelText("Download"));
-    expect(downloadHref).toContain("version=edited");
+    await waitFor(() => expect(downloadHref).toContain("version=edited"));
 
-    fireEvent.click(screen.getByLabelText("Download Original"));
+    fireEvent.click(screen.getByLabelText("More Download Options"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Download Unmodified Original" }));
+    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
     expect(downloadHref).not.toContain("version=edited");
+    expect(downloadHref).not.toContain("format=jpeg");
     clickSpy.mockRestore();
   });
 
-  it("has no Download Original button when the asset has no edited version", async () => {
-    const items = [makeItem("a1")];
+  it("has exactly one Download button, edited or not (no duplicate icon)", async () => {
+    for (const has_edited of [true, false]) {
+      const items = [makeItem("a1")];
+      mockDetail({ a1: makeDetail("a1", { has_edited }) });
+      const { unmount } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+      await screen.findByLabelText("Download");
+      await act(async () => {});
+      expect(screen.getAllByLabelText("Download")).toHaveLength(1);
+      expect(screen.queryByLabelText("Download Original")).toBeNull();
+      expect(document.querySelectorAll('.desktop-viewer__topbar-right [data-testid="download-menu"]')).toHaveLength(1);
+      unmount();
+    }
+  });
+
+  it("the ▾ only exists for an edited photo: plain Download otherwise (#509)", async () => {
+    for (const has_edited of [true, false]) {
+      const items = [makeItem("a1")];
+      mockDetail({ a1: makeDetail("a1", { has_edited }) });
+      const { unmount } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+      await screen.findByLabelText("Download");
+      await act(async () => {});
+      expect(screen.queryByLabelText("More Download Options") !== null).toBe(has_edited);
+      expect(screen.getByTestId("download-menu").classList.contains("download-menu--plain")).toBe(!has_edited);
+      unmount();
+    }
+  });
+
+  it("where folders can be picked and the photo is not edited, the ▾ holds only Export to Folder… (#509)", async () => {
+    vi.stubGlobal("showDirectoryPicker", vi.fn());
     mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
-
-    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
-
+    render(<DesktopViewer libraryId={1} items={[makeItem("a1")]} index={0} onIndexChange={() => {}} onClose={() => {}} />);
     await screen.findByLabelText("Download");
-    expect(screen.queryByLabelText("Download Original")).toBeNull();
+    fireEvent.click(screen.getByLabelText("More Download Options"));
+    expect(screen.getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Export to Folder…"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("offers Share only where files can be shared, and Export to Folder… only where a folder can be picked", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+    const { unmount } = render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Download");
+    expect(screen.queryByLabelText("Share")).toBeNull();
+    fireEvent.click(await screen.findByLabelText("More Download Options"));
+    expect(screen.queryByRole("menuitem", { name: "Export to Folder…" })).toBeNull();
+    unmount();
+
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
+    vi.stubGlobal("showDirectoryPicker", vi.fn());
+    render(<DesktopViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    await screen.findByLabelText("Share");
+    fireEvent.click(screen.getByLabelText("More Download Options"));
+    expect(screen.getByRole("menuitem", { name: "Export to Folder…" })).toBeInTheDocument();
   });
 
   it("has no edit, delete, or favorite-write controls", () => {

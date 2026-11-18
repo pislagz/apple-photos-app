@@ -345,10 +345,19 @@ describe("DesktopLibrary", () => {
     // The key presses below run synchronously, so the older page (200 + 100
     // items) must already be in state: otherwise focus clamps at the oldest
     // loaded photo and the test races the page fetch.
-    await waitFor(
-      () => expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true),
-      SLOW_WAIT,
-    );
+    // Load the older page the way a user does. The grid opens at the end by
+    // setting scrollTop, which a browser follows with a scroll event but jsdom
+    // does not, so the virtualizer can keep offset 0 while scrollTop is at the
+    // end, and the load-older effect (which refuses to run while the two
+    // disagree) then never runs: stuck on a CI box where that timing differs.
+    // Send the event the browser would, then scroll up to the oldest loaded
+    // rows. Each step changes the offset, so each one re-renders.
+    fireEvent.scroll(grid);
+    grid.scrollTop = 0;
+    fireEvent.scroll(grid);
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("cursor="))).toBe(true);
+    }, SLOW_WAIT);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -804,7 +813,7 @@ describe("DesktopLibrary", () => {
     clickSpy.mockRestore();
   });
 
-  it("right-click's Download Original always requests version=original, bypassing the edited default", async () => {
+  it("right-click's Download Unmodified Original always requests version=original, no JPEG and not the edited default", async () => {
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
       // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
@@ -823,30 +832,53 @@ describe("DesktopLibrary", () => {
     fireEvent.contextMenu(cells(container)[0]);
     const menu = await screen.findByTestId("context-menu");
 
-    fireEvent.click(await within(menu).findByText("Download Original"));
+    fireEvent.click(await within(menu).findByText("Download Unmodified Original"));
     await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     expect(href).toContain("/original/a1");
     expect(href).not.toContain("version=edited");
+    expect(href).not.toContain("format=jpeg");
     clickSpy.mockRestore();
   });
 
-  it("right-click's menu has no Download Original for a photo that was never edited", async () => {
+  it("right-click's menu offers the same set as the viewer: Share…, Download, Download Unmodified Original, Copy Link (#507)", async () => {
+    vi.stubGlobal("navigator", { ...navigator, canShare: () => true, share: vi.fn() });
     const items = [makeItem("a1", "2024-05-10T10:00:00")];
     mockFetch((url) => {
-      // The API is newest first and the Library shows oldest first (#224); reverse so cells()[i] is items[i].
       if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
-      const match = url.match(/^\/api\/libraries\/1\/assets\/([^/?]+)$/);
-      if (match) return mockDetail(match[1], { has_edited: false });
       throw new Error(`unexpected request: ${url}`);
     });
-
     const { container } = render(<DesktopLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.contextMenu(cells(container)[0]);
     const menu = await screen.findByTestId("context-menu");
+    expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual([
+      "Share…",
+      "Download",
+      "Download Unmodified Original",
+      "Copy Link",
+    ]);
+    vi.unstubAllGlobals();
+  });
 
-    await within(menu).findByText("Download");
-    expect(within(menu).queryByText("Download Original")).toBeNull();
+  it("right-click adds Export to Folder… only where showDirectoryPicker exists, and hides Share… without file sharing", async () => {
+    vi.stubGlobal("navigator", { ...navigator, canShare: undefined, share: undefined });
+    vi.stubGlobal("showDirectoryPicker", vi.fn());
+    const items = [makeItem("a1", "2024-05-10T10:00:00")];
+    mockFetch((url) => {
+      if (url.startsWith("/api/libraries/1/assets?")) return { items: [...items].reverse(), next_cursor: null };
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const { container } = render(<DesktopLibrary libraryId={1} />);
+    await screen.findAllByRole("img");
+    fireEvent.contextMenu(cells(container)[0]);
+    const menu = await screen.findByTestId("context-menu");
+    expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual([
+      "Download",
+      "Download Unmodified Original",
+      "Export to Folder…",
+      "Copy Link",
+    ]);
+    vi.unstubAllGlobals();
   });
 
   it("right-click's Copy Link copies an in-app URL, and Escape dismisses the menu", async () => {
@@ -922,6 +954,131 @@ describe("DesktopLibrary", () => {
       fireEvent.click(cell);
       expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
       vi.unstubAllGlobals();
+    });
+
+    describe("multi-download (#487)", () => {
+      async function selectTwo(extra?: (url: string) => unknown, edited = 1) {
+        const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
+        const fetchMock = mockFetch((url) => {
+          if (url === "/api/libraries/1/summary") return computeSummary(items);
+          if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+          if (url.endsWith("/selection-summary")) return { total_bytes: 2048, edited };
+          const result = extra?.(url);
+          if (result !== undefined) return result;
+          throw new Error(`unexpected request: ${url}`);
+        });
+        const { container } = render(<DesktopLibrary libraryId={1} />);
+        await screen.findAllByRole("img");
+        fireEvent.click(cells(container)[0]);
+        fireEvent.click(cells(container)[1], { metaKey: true });
+        return fetchMock;
+      }
+
+      const ticket = (url: string) => (url.endsWith("/zip/ticket") ? { ticket: "t", total_bytes: 10, expires_in: 60, job: null } : undefined);
+
+      it("Download is one click and 2+ items are always one ZIP, with no dialog and no setting (#507)", async () => {
+        const fetchMock = await selectTwo(ticket);
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith("/zip/ticket"))).toBe(true));
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(screen.queryByRole("alertdialog")).toBeNull();
+      });
+
+      it("the ZIP follows Transfer Format: Automatic is JPEG, Keep Originals is native, Unmodified Original is native", async () => {
+        const fetchMock = await selectTwo(ticket);
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        const formats = () =>
+          fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/zip/ticket")).map((call) => JSON.parse(String((call[1] as RequestInit).body)).format);
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(formats()).toEqual(["jpeg"]));
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "Download Unmodified Original" }));
+        await waitFor(() => expect(formats()).toEqual(["jpeg", "native"]));
+      });
+
+      it("the ▾ menu holds Download Unmodified Original, and Export to Folder… only with showDirectoryPicker", async () => {
+        await selectTwo();
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original"]);
+        fireEvent.keyDown(window, { key: "Escape" });
+        expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
+      });
+
+      it("the ▾ is absent when nothing selected is edited: plain Download (#509)", async () => {
+        await selectTwo(undefined, 0);
+        await screen.findByTitle("Download");
+        await act(async () => {});
+        expect(screen.queryByRole("button", { name: "More Download Options" })).toBeNull();
+        expect(screen.getByTestId("download-menu")).toHaveClass("download-menu--plain");
+      });
+
+      it("the ▾ shows once the selection contains an edited photo (#509)", async () => {
+        await selectTwo(undefined, 1);
+        expect(await screen.findByRole("button", { name: "More Download Options" })).toBeEnabled();
+      });
+
+      it("where folders can be picked and nothing is edited, the ▾ holds only Export to Folder… (#509)", async () => {
+        vi.stubGlobal("showDirectoryPicker", vi.fn());
+        await selectTwo(undefined, 0);
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Export to Folder…"]);
+        vi.unstubAllGlobals();
+      });
+
+      it("shows Export to Folder… in the ▾ menu where the browser can write to a folder", async () => {
+        vi.stubGlobal("showDirectoryPicker", vi.fn(async () => Promise.reject(new DOMException("x", "AbortError"))));
+        await selectTwo();
+        fireEvent.click(await screen.findByRole("button", { name: "More Download Options" }));
+        const menu = screen.getByRole("menu", { name: "Download options" });
+        await waitFor(() =>
+          expect(within(menu).getAllByRole("menuitem").map((entry) => entry.textContent)).toEqual(["Download Unmodified Original", "Export to Folder…"]),
+        );
+        fireEvent.click(within(menu).getByRole("menuitem", { name: "Export to Folder…" }));
+        expect(screen.queryByRole("menu", { name: "Download options" })).toBeNull();
+        vi.unstubAllGlobals();
+      });
+
+      it("a failed ZIP shows one line in the toolbar with Try Again that runs it again", async () => {
+        let fail = true;
+        const fetchMock = await selectTwo((url) => {
+          if (url.endsWith("/zip")) return new Response("zip");
+          if (!url.endsWith("/zip/ticket")) return undefined;
+          return fail ? new Response(JSON.stringify({ detail: "Disk full" }), { status: 500 }) : { ticket: "t", total_bytes: 10, expires_in: 60, job: null };
+        });
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+        URL.createObjectURL = vi.fn(() => "blob:x");
+        URL.revokeObjectURL = vi.fn();
+        fireEvent.click(screen.getByTitle("Download"));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Disk full");
+        fail = false;
+        fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
+        await waitFor(() => expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/zip/ticket"))).toHaveLength(2));
+        await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      });
+
+      it("one selected item downloads as a plain file (JPEG under Automatic), not a ZIP", async () => {
+        const items = [makeItem("a1", "2024-05-10T10:00:00")];
+        const fetchMock = mockFetch((url) => {
+          if (url === "/api/libraries/1/summary") return computeSummary(items);
+          if (url.startsWith("/api/libraries/1/assets?")) return { items, next_cursor: null };
+          if (/\/assets\/[^/?]+$/.test(url)) return mockDetail("a1", { has_edited: false });
+          throw new Error(`unexpected request: ${url}`);
+        });
+        const hrefs: string[] = [];
+        vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+          hrefs.push(this.getAttribute("href") ?? "");
+        });
+        const { container } = render(<DesktopLibrary libraryId={1} />);
+        await screen.findAllByRole("img");
+        fireEvent.click(cells(container)[0]);
+        fireEvent.click(screen.getByTitle("Download"));
+        await waitFor(() => expect(hrefs).toHaveLength(1));
+        expect(hrefs[0]).toContain("/original/a1");
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/zip"))).toBe(false);
+      });
     });
 
     it("labels the Filter By button and gives it a tooltip", async () => {

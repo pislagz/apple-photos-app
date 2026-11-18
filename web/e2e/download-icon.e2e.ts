@@ -31,6 +31,7 @@ for (const scheme of ["light", "dark"] as const) {
       const viewer = page.getByTestId("desktop-viewer");
       await expect(viewer).toBeVisible();
       const dl = viewer.getByRole("button", { name: "Download", exact: true });
+      await expect(viewer.getByRole("button", { name: /Download/ })).toHaveCount(2); // Download + its ▾
       await expect(dl.locator("svg")).toBeVisible();
       await page.locator(".desktop-viewer__topbar-right").screenshot({ path: `${OUT}/desktop-${scheme}-viewer.png` });
       await dl.screenshot({ path: `${OUT}/desktop-${scheme}-viewer-icon.png` });
@@ -40,7 +41,7 @@ for (const scheme of ["light", "dark"] as const) {
       await page.screenshot({ path: `${OUT}/desktop-${scheme}-viewer-full.png` });
     });
 
-    test("phone: select bar", async ({ page }, info) => {
+    test("phone: select bar has Share and no Download (#507)", async ({ page }, info) => {
       test.skip(info.project.name === "desktop", "phone only");
       await signIn(page);
       await page.getByRole("tab", { name: "All Photos", exact: true }).click();
@@ -48,28 +49,8 @@ for (const scheme of ["light", "dark"] as const) {
       await page.locator("img.mobile-library__cell").nth(0).click();
       const bar = page.getByTestId("select-bar");
       await expect(bar.locator("svg").last()).toBeVisible();
+      await expect(page.getByRole("button", { name: /Download/ })).toHaveCount(0);
       await bar.screenshot({ path: `${OUT}/${info.project.name}-${scheme}-select-bar.png` });
-      await page.getByRole("button", { name: "Download", exact: true }).screenshot({
-        path: `${OUT}/${info.project.name}-${scheme}-select-icon.png`,
-      });
-    });
-
-    test("phone: viewer Download Original", async ({ page }, info) => {
-      test.skip(info.project.name === "desktop", "phone only");
-      await signIn(page);
-      await page.getByRole("tab", { name: "All Photos", exact: true }).click();
-      // "Download Original" shows only for edited photos; the demo library has none,
-      // so flag the asset detail response as edited.
-      await page.route(/\/api\/libraries\/[^/]+\/assets\/[^/?]+$/, async (route) => {
-        const res = await route.fetch();
-        const body = await res.json();
-        await route.fulfill({ response: res, json: { ...body, has_edited: true } });
-      });
-      await page.locator("img.mobile-library__cell").nth(0).click();
-      const btn = page.getByRole("button", { name: "Download Original" });
-      await expect(btn.locator("svg")).toBeVisible();
-      await btn.screenshot({ path: `${OUT}/${info.project.name}-${scheme}-viewer-icon.png` });
-      await page.screenshot({ path: `${OUT}/${info.project.name}-${scheme}-viewer-full.png` });
     });
   });
 }

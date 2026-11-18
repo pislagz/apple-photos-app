@@ -236,10 +236,6 @@
   padding: 0;
 }
 
-.shell--mobile .mobile-library__select-caption {
-  font-size: var(--font-size-subhead);
-}
-
 /* Pushed grids (album, person, media type): back is a glass capsule with
    the label-coloured chevron, like the other glass bar items. */
 .shell--mobile .mobile-library__back,

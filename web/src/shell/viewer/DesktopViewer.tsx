@@ -2,7 +2,11 @@ import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, us
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
-import { copyAssetLink, downloadVersion } from "./download";
+import { copyAssetLink } from "./download";
+import DownloadMenu from "../export/DownloadMenu";
+import ProgressRing from "../export/ProgressRing";
+import TransferHud from "../export/TransferHud";
+import { useDesktopTransfer } from "../export/useDesktopTransfer";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
 import { useAssetDetailState } from "./useAssetDetail";
@@ -271,14 +275,12 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
     endDragRef.current = end;
   }
 
-  function handleDownload() {
-    if (detail?.original_outside_library) return;
-    downloadVersion(libraryId, item.id, detail?.has_edited ? "edited" : "original");
-  }
+  const transfer = useDesktopTransfer(libraryId);
+  const outside = detail?.original_outside_library;
 
-  function handleDownloadOriginal() {
-    if (detail?.original_outside_library) return;
-    downloadVersion(libraryId, item.id, "original");
+  function handleDownload(unmodified = false) {
+    if (outside) return;
+    transfer.download([item], unmodified ? { unmodified } : { version: detail?.has_edited ? "edited" : "original" });
   }
 
   function handleCopyLink() {
@@ -357,14 +359,25 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             <button type="button" className="toolbar-button" onClick={handleCopyLink} aria-label="Copy Link">
               <Icon name="link" size={16} />
             </button>
-            <button type="button" className="toolbar-button" onClick={handleDownload} aria-label="Download">
-              <Icon name="download" size={16} />
-            </button>
-            {detail?.has_edited && (
-              <button type="button" className="toolbar-button" onClick={handleDownloadOriginal} aria-label="Download Original">
-                <Icon name="download" size={16} />
+            {transfer.caps.share && (
+              <button
+                type="button"
+                className="toolbar-button"
+                onClick={() => void transfer.share([item])}
+                disabled={!!outside || transfer.flow.state.phase !== "idle"}
+                aria-label="Share"
+              >
+                {transfer.shareBusy ? <ProgressRing fraction={null} className="zip-ring" label="Share progress" /> : <Icon name="share" size={16} />}
               </button>
             )}
+            <DownloadMenu
+              disabled={!!outside || transfer.flow.state.phase !== "idle"}
+              hasEdited={!!detail?.has_edited}
+              ring={transfer.downloadBusy ? <ProgressRing fraction={transfer.flowFraction} className="zip-ring" label="Download progress" /> : undefined}
+              onDownload={() => handleDownload()}
+              onDownloadUnmodified={() => handleDownload(true)}
+              onExportToFolder={transfer.caps.folder ? () => void transfer.exportToFolder([item]) : undefined}
+            />
             {detail?.has_edited && (
               <button
                 type="button"
@@ -478,6 +491,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
           )}
         </div>
       )}
+      <TransferHud flow={transfer.flow} layout="desktop" />
     </div>
   );
 }
