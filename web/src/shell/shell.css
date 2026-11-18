@@ -1752,6 +1752,43 @@ html.has-app-height .shell--mobile {
   cursor: default;
 }
 
+/* #470: one line per row. The title truncates with an ellipsis; the full
+   name is in SidebarLabel's tooltip. */
+.sidebar__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* macOS tooltip: small, system font, light or dark with the appearance. */
+.sidebar-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-tooltip);
+  background: var(--material-tooltip);
+  box-shadow: var(--shadow-tooltip);
+  color: var(--color-label);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-footnote);
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  animation: sidebar-tooltip-in var(--dur-tint) var(--ease-tint);
+}
+
+@keyframes sidebar-tooltip-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .sidebar__icon {
   flex: 0 0 auto;
   width: 18px;

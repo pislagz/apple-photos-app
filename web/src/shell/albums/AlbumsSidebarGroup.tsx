@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { AlbumNode } from "../../api";
 import { Icon } from "../icons";
+import SidebarLabel from "../SidebarLabel";
 import type { AlbumsState } from "./useAlbums";
 
 // P2.1: the desktop sidebar's Albums group -- the folder tree as nested
@@ -131,7 +132,7 @@ function AlbumList({
               <summary className="sidebar__item sidebar__item--sub" style={{ paddingLeft: 8 + depth * 12 }}>
                 <Disclosure />
                 <Icon name="folder" className="sidebar__icon" />
-                {node.title}
+                <SidebarLabel text={node.title} />
               </summary>
               <AlbumList
                 nodes={node.children}
@@ -153,23 +154,31 @@ function AlbumList({
               onClick={() => onOpen(node.id, node.title)}
             >
               <span className="sidebar__disclosure-spacer" aria-hidden="true" />
-              {node.cover_id ? (
-                <img
-                  className="sidebar__cover"
-                  src={`/api/libraries/${libraryId}/thumb/${encodeURIComponent(node.cover_id)}?size=grid`}
-                  alt=""
-                  loading="lazy"
-                  width={18}
-                  height={18}
-                />
-              ) : (
-                <Icon name="albums" className="sidebar__icon" filled={currentId === node.id} />
-              )}
-              {node.title}
+              <AlbumCover libraryId={libraryId} coverId={node.cover_id} current={currentId === node.id} />
+              <SidebarLabel text={node.title} />
             </button>
           </li>
         ),
       )}
     </ul>
+  );
+}
+
+// #470: a cover that fails to load (a video the server cannot decode, a thumb
+// gone missing) left an empty 18 px box filled with the placeholder colour,
+// near-black in dark mode. Show the album icon instead.
+function AlbumCover({ libraryId, coverId, current }: { libraryId: number; coverId: string | null; current: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (!coverId || failed) return <Icon name="albums" className="sidebar__icon" filled={current} />;
+  return (
+    <img
+      className="sidebar__cover"
+      src={`/api/libraries/${libraryId}/thumb/${encodeURIComponent(coverId)}?size=grid`}
+      alt=""
+      loading="lazy"
+      width={18}
+      height={18}
+      onError={() => setFailed(true)}
+    />
   );
 }

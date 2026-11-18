@@ -25,6 +25,7 @@ import { effectiveSidebarCollapsed, isNarrow, isSidebarShortcut, sidebarOpen } f
 import { isTypingTarget, shortcutAction } from "./shortcuts";
 import type { AlbumsState } from "./albums/useAlbums";
 import WelcomeScreen from "./WelcomeScreen";
+import SidebarLabel from "./SidebarLabel";
 
 const SIDEBAR_KEY = "photos-viewer.sidebar-collapsed";
 function readSidebarCollapsed(): boolean {
@@ -110,7 +111,7 @@ function MediaTypesGroup({
                 onClick={() => onOpen(id, type.label)}
               >
                 <Icon name={type.icon} className="sidebar__icon" filled={currentId === id} />
-                {type.label}
+                <SidebarLabel text={type.label} />
               </button>
             </li>
           );
@@ -382,7 +383,7 @@ export default function DesktopShell({
           onClick={onClick}
         >
           <Icon name={section.icon} className="sidebar__icon" filled={current} />
-          {section.label}
+          <SidebarLabel text={section.label} />
         </button>
       </li>
     );
@@ -398,14 +399,14 @@ export default function DesktopShell({
             onClick={() => view !== "hidden" && setUnlockPrompt(true)}
           >
             <Icon name="hidden" className="sidebar__icon" filled={view === "hidden"} />
-            Hidden
+            <SidebarLabel text="Hidden" />
           </button>
         </li>
         {UTILITIES.map((item) => (
           <li key={item.label}>
             <button type="button" disabled className="sidebar__item">
               <Icon name={item.icon} className="sidebar__icon" />
-              {item.label}
+              <SidebarLabel text={item.label} />
             </button>
           </li>
         ))}
