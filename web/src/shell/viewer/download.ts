@@ -1,5 +1,5 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
+import { assetPageUrl, originalJpegFallbackUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
 
 // A single `<a download>` click per file, so the server's audit row always
 // lines up with one explicit user action.
@@ -27,9 +27,17 @@ export async function resolveVersion(libraryId: number, assetId: string): Promis
 }
 
 // Viewer ••• Download (#514): one file, original or edited, as the library shows it.
-export async function downloadSingleAsset(libraryId: number, assetId: string): Promise<void> {
+export async function downloadSingleAsset(
+  libraryId: number,
+  assetId: string,
+  options: { asJpeg?: boolean } = {},
+): Promise<void> {
   const version = await resolveVersion(libraryId, assetId);
-  triggerDownload(originalUrl(libraryId, assetId, version, true));
+  triggerDownload(
+    options.asJpeg
+      ? originalJpegFallbackUrl(libraryId, assetId, version, true)
+      : originalUrl(libraryId, assetId, version, true),
+  );
 }
 
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {

@@ -96,7 +96,7 @@ interface Gesture {
 // `items` is that view's own array, so a hidden asset from Library (P1.13)
 // can never appear here), swipe down to dismiss, pinch/double-tap zoom,
 // bottom filmstrip, and an info sheet instead of a permanent panel.
-export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem, fromOtherView }: ViewerProps) {
+export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem, fromOtherView, downloadAsJpeg }: ViewerProps) {
   const actions = useViewerActions();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -463,7 +463,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     moreRows.push({
       label: "Download",
       icon: "download",
-      run: () => void downloadSingleAsset(libraryId, item.id),
+      run: () => void downloadSingleAsset(libraryId, item.id, { asJpeg: !!downloadAsJpeg && !item.is_video }),
     });
   }
   if (fromOtherView && actions.showInLibrary) {

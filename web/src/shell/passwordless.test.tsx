@@ -5,8 +5,11 @@ import type { MeResponse } from "../api";
 
 const BASE: MeResponse = { username: "kid", role: "user", libraries: [], layout_override: null };
 
+// #520 hides Utilities by default; turn Hidden on so only has_password decides.
+const LIBS = [{ id: 1, name: "Library", utilities: { enabled: true, imports: false, hidden: true } }] as unknown as Parameters<typeof MoreScreen>[0]["libraries"];
+
 function renderMore(me: MeResponse) {
-  return render(<MoreScreen me={me} libraries={[]} activeLibraryId={undefined} onActiveLibraryChange={() => {}} onNavigate={() => {}} onLogout={() => {}} />);
+  return render(<MoreScreen me={me} libraries={LIBS} activeLibraryId={1} onActiveLibraryChange={() => {}} onNavigate={() => {}} onLogout={() => {}} />);
 }
 
 describe("passwordless accounts (#519)", () => {

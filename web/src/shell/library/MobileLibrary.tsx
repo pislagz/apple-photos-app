@@ -10,6 +10,8 @@ import { albumMessages, filterEmptyMessages, isWholeLibraryEmpty, LIBRARY_EMPTY_
 import LibraryEmptyState from "./LibraryEmptyState";
 import TransferHud from "../export/TransferHud";
 import { useExport } from "../export/useExport";
+import { formatFor } from "../export/exportModel";
+import { useTransferFormat } from "../export/transferFormat";
 import MobileViewer from "../viewer/MobileViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import PeriodCardGrid from "./PeriodCards";
@@ -306,6 +308,7 @@ export default function MobileLibrary({
   );
 
   const exportFlow = useExport(libraryId);
+  const [transferFormat] = useTransferFormat();
   // iPhone is Share only (#507): the system share sheet saves to Photos or
   // Files, AirDrops, messages. The HUD covers the wait; one item that is
   // ready fast goes straight to the sheet.
@@ -790,7 +793,7 @@ export default function MobileLibrary({
           onIndexChange={setOpenIndex}
           onClose={() => setOpenIndex(null)}
           fromOtherView={!!album}
-          downloadAsJpeg={zip.jpeg}
+          downloadAsJpeg={formatFor(transferFormat) === "jpeg"}
           revealItem={(id) => {
             const row = findRowIndexByAsset(rows, id);
             if (row !== -1) rowVirtualizer.scrollToIndex(row, { align: "auto" });
