@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch } from "./admin/testHelpers";
 import AddLibrarySheet from "./admin/screens/AddLibrarySheet";
@@ -156,5 +156,42 @@ describe("rendered fields (#472)", () => {
   it("Hidden unlock keeps current-password", () => {
     render(<HiddenUnlock variant="desktop" onUnlocked={() => {}} onCancel={() => {}} />);
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "current-password");
+  });
+
+  it("Login is a real post form with stable ids, and submits values set without typing (#511)", () => {
+    const onSubmit = vi.fn();
+    render(<LoginScreen layout="desktop" error={null} onSubmit={onSubmit} />);
+    const user = screen.getByLabelText("Username") as HTMLInputElement;
+    const pass = screen.getByLabelText("Password") as HTMLInputElement;
+    expect(user.closest("form")).toHaveAttribute("method", "post");
+    expect(user).toHaveAttribute("name", "username");
+    expect(pass).toHaveAttribute("name", "password");
+    expect(user.id).toBeTruthy();
+    expect(pass.id).toBeTruthy();
+    for (const el of [user, pass]) {
+      expect(el).not.toHaveAttribute("autocomplete", "off");
+      expect(el).not.toHaveAttribute("data-1p-ignore");
+      expect(el).not.toHaveAttribute("data-form-type");
+    }
+    // AutoFill assigns the value with no key or input events.
+    user.value = "filled-user";
+    pass.value = "filled-pass";
+    fireEvent.submit(user.closest("form")!);
+    expect(onSubmit).toHaveBeenCalledWith("filled-user", "filled-pass", true);
+    // Fields keep their nodes and values across a re-render.
+    expect(screen.getByLabelText("Username")).toBe(user);
+  });
+
+  it("Setup submits values set without typing (#511)", () => {
+    const onSubmit = vi.fn();
+    render(<SetupScreen layout="desktop" error={null} onSubmit={onSubmit} />);
+    const user = screen.getByLabelText("Username") as HTMLInputElement;
+    const pass = screen.getByLabelText("Password") as HTMLInputElement;
+    expect(user).toHaveAttribute("name", "username");
+    expect(pass).toHaveAttribute("name", "password");
+    user.value = "admin";
+    pass.value = "a-long-pass";
+    fireEvent.submit(user.closest("form")!);
+    expect(onSubmit).toHaveBeenCalledWith("admin", "a-long-pass", { osm_consent: false });
   });
 });
