@@ -81,15 +81,17 @@ export default function MoreScreen({
             </li>
           ))}
         </ul>
-        <ul className="more-screen__group">
-          <li className="more-screen__group-label">Utilities</li>
+        {me.has_password !== false && (
+          <ul className="more-screen__group">
+            <li className="more-screen__group-label">Utilities</li>
           <li>
             <button type="button" className="more-screen__item" onClick={() => onNavigate("/hidden")}>
               <Icon name="hidden" className="more-screen__icon" />
               Hidden
             </button>
           </li>
-        </ul>
+          </ul>
+        )}
         {/* #303: everything the old top-right "..." menu offered. */}
         <ul className="more-screen__group">
           <li className="more-screen__group-label">Account</li>
@@ -114,11 +116,17 @@ export default function MoreScreen({
               </button>
             </li>
           )}
+          {me.has_password === false ? (
+            <li>
+              <p className="more-screen__item more-screen__item--static">No password. Ask an admin to set one.</p>
+            </li>
+          ) : (
           <li>
             <button type="button" className="more-screen__item" onClick={() => setChangingPassword(true)}>
               Change password
             </button>
           </li>
+          )}
           <li>
             <button type="button" className="more-screen__item" onClick={() => setManagingPasskeys(true)}>
               Passkeys

@@ -390,6 +390,7 @@ export default function DesktopShell({
   const utilities = (
     <SidebarSection title="Utilities">
       <ul>
+        {me.has_password !== false && (
         <li>
           <button
             type="button"
@@ -401,6 +402,7 @@ export default function DesktopShell({
             Hidden
           </button>
         </li>
+        )}
         {UTILITIES.map((item) => (
           <li key={item.label}>
             <button type="button" disabled className="sidebar__item">

@@ -80,6 +80,8 @@ export interface MeResponse {
   osm_consent?: boolean;
   // #256: set while the user has an avatar; changes with every new one.
   avatar_version?: number | null;
+  // #519: false for a passwordless account (no Hidden, no password change).
+  has_password?: boolean;
 }
 
 export function avatarUrl(username: string, version: number): string {
@@ -146,6 +148,38 @@ export function login(
 ): Promise<AuthUserResponse> {
   return mutate<AuthUserResponse>("POST", "/api/auth/login", {
     username,
+    password,
+    remember_me: rememberMe,
+    client,
+  });
+}
+
+// #519 Family login: the public "Who's watching?" list. 404 while Family login is off.
+export interface Profile {
+  id: number;
+  display_name: string;
+  avatar_url: string | null;
+}
+
+export async function getProfiles(): Promise<Profile[] | null> {
+  try {
+    return (await request<{ profiles: Profile[] }>("/api/auth/profiles")).profiles;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+// An empty password is the first try: 401 `password_required` means ask for
+// one, 403 `passwordless_network` means this profile cannot sign in from here.
+export function profileLogin(
+  userId: number,
+  password: string,
+  rememberMe = false,
+  client: "desktop" | "pwa" = "desktop",
+): Promise<AuthUserResponse> {
+  return mutate<AuthUserResponse>("POST", "/api/auth/profile-login", {
+    user_id: userId,
     password,
     remember_me: rememberMe,
     client,

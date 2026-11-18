@@ -148,6 +148,9 @@ class MeResponse(BaseModel):
     # Set while the user has an avatar; changes with every new one so the
     # browser re-fetches it. The picture is /api/users/{username}/avatar.
     avatar_version: int | None = None
+    # #519: False for a passwordless account -- the UI hides Hidden and the
+    # change-password option (the server refuses both anyway).
+    has_password: bool = True
 
 
 def _updated_note(
@@ -237,6 +240,7 @@ def read_me(
     return MeResponse(
         username=session["username"],
         avatar_version=avatar["avatar_version"] if avatar else None,
+        has_password=session_auth.session_has_password(db, session),
         role=session["role"],
         libraries=[_library_summary(db, row, session["user_id"]) for row in rows],
         layout_override=session["layout_override"],

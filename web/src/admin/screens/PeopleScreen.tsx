@@ -16,12 +16,13 @@ import SavedStatus, { useSaveStatus } from "../ui/SavedStatus";
 import SkeletonRow from "../ui/SkeletonRow";
 import Switch from "../ui/Switch";
 import { formatWhen } from "../ui/format";
-import { AddPersonSheet, ChangePasswordSheet, DeleteUserSheet, InviteSheet, RoleSheet } from "./PeopleSheets";
+import { AddPersonSheet, ChangePasswordSheet,
+  RemovePasswordSheet, DeleteUserSheet, InviteSheet, RoleSheet } from "./PeopleSheets";
 
 type SheetState =
   | { kind: "add" }
   | { kind: "invite" }
-  | { kind: "role" | "password" | "delete"; username: string }
+  | { kind: "role" | "password" | "removePassword" | "delete"; username: string }
   | null;
 
 const ROLE_NAME = { admin: "Administrator", user: "Person" } as const;
@@ -134,6 +135,9 @@ export default function PeopleScreen({
         <RoleSheet user={sheetUser} isSelf={sheetUser.username === currentUsername} onClose={closeSheet} onDone={done} />
       )}
       {sheet?.kind === "password" && sheetUser && <ChangePasswordSheet user={sheetUser} onClose={closeSheet} onDone={done} />}
+      {sheet?.kind === "removePassword" && sheetUser && (
+        <RemovePasswordSheet user={sheetUser} onClose={closeSheet} onDone={done} />
+      )}
       {sheet?.kind === "delete" && sheetUser && (
         <DeleteUserSheet
           user={sheetUser}
@@ -259,6 +263,28 @@ function SignInRow({ user, isSelf, onChanged }: { user: UserResponse; isSelf: bo
   );
 }
 
+function ShowOnProfilesRow({ user, onChanged }: { user: UserResponse; onChanged: () => void }) {
+  const { state, error, run } = useSaveStatus();
+  return (
+    <Row
+      label="Show on “Who’s watching?”"
+      info={<InfoButton helpKey="personShowOnProfiles" name="show on Who's watching" />}
+      control={
+        <>
+          <Switch
+            checked={user.show_on_profiles !== false}
+            label={`Show ${user.username} on Who's watching`}
+            onChange={async (next) => {
+              if (await run(() => updateUser(user.username, { show_on_profiles: next }))) onChanged();
+            }}
+          />
+          <SavedStatus state={state} message={error} />
+        </>
+      }
+    />
+  );
+}
+
 function DetailView({
   matrix,
   user,
@@ -272,7 +298,7 @@ function DetailView({
   isSelf: boolean;
   access: ReturnType<typeof useAccessToggle>;
   onChanged: () => void;
-  onSheet: (kind: "role" | "password" | "delete") => void;
+  onSheet: (kind: "role" | "password" | "removePassword" | "delete") => void;
 }) {
   const assigned = matrix.assignments[String(user.id)] ?? [];
   const [unlocked, setUnlocked] = useState(false);
@@ -295,6 +321,7 @@ function DetailView({
           onClick={() => onSheet("role")}
         />
         <SignInRow user={user} isSelf={isSelf} onChanged={onChanged} />
+        <ShowOnProfilesRow user={user} onChanged={onChanged} />
       </GroupedList>
 
       <GroupedList heading="Libraries" footer="Turn a library on to let this person see its photos. Turning it off asks first.">
@@ -328,11 +355,22 @@ function DetailView({
         <Row
           label={
             <>
-              Change Password… <InfoButton helpKey="personPassword" name="change password" />
+              {user.has_password === false ? "Set Password…" : "Change Password…"}{" "}
+              <InfoButton helpKey="personPassword" name="change password" />
             </>
           }
           onClick={() => onSheet("password")}
         />
+        {user.has_password !== false && (
+          <Row
+            label={
+              <>
+                Remove Password… <InfoButton helpKey="personRemovePassword" name="remove password" />
+              </>
+            }
+            onClick={() => onSheet("removePassword")}
+          />
+        )}
         {showUnlock && (
           <Row
             label={

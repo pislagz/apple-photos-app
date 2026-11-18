@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   getMe,
+  getProfiles,
+  type Profile,
   getSetupStatus,
   type KeepSignedInMode,
   login as apiLogin,
@@ -15,6 +17,7 @@ import { useActiveLibrary } from "./activeLibrary";
 import DesktopShell from "./DesktopShell";
 import { isCancelled, loginWithPasskey } from "../passkeys";
 import LoginScreen, { type LoginError } from "./LoginScreen";
+import ProfilePicker from "./ProfilePicker";
 import MobileShell from "./MobileShell";
 import { parsePhotoPath } from "./route";
 import { PlaceInfoContext } from "./PlaceInfoContext";
@@ -31,6 +34,9 @@ export default function AppShell() {
   const [blocked, setBlocked] = useState(false);
   const [loginError, setLoginError] = useState<LoginError | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  // #519: undefined until loaded, null while Family login is off: the normal sign-in screen.
+  const [profiles, setProfiles] = useState<Profile[] | null | undefined>(undefined);
+  const [otherUser, setOtherUser] = useState(false);
   // Captured once at mount, so a "Copy Link" URL survives a sign-in
   // round-trip (the login screen renders from this same component) and
   // still opens the photo once `me` resolves.
@@ -69,6 +75,13 @@ export default function AppShell() {
       setStatus("anonymous");
     }
   }, []);
+
+  useEffect(() => {
+    if (status !== "anonymous") return;
+    getProfiles()
+      .then((list) => setProfiles(list && list.length > 0 ? list : null))
+      .catch(() => setProfiles(null));
+  }, [status]);
 
   useEffect(() => {
     (async () => {
@@ -152,6 +165,8 @@ export default function AppShell() {
     // see a cached navigation from before this logout.
     navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_CACHE" });
     setMe(null);
+    setOtherUser(false);
+    setProfiles(undefined);
     setStatus("anonymous");
   }
 
@@ -167,8 +182,33 @@ export default function AppShell() {
     return <SetupScreen layout={layout} error={setupError} onSubmit={handleSetup} />;
   }
 
+  if ((status === "anonymous" || me === null) && profiles === undefined) {
+    return null;
+  }
+
+  if ((status === "anonymous" || me === null) && profiles && !otherUser) {
+    return (
+      <ProfilePicker
+        layout={layout}
+        profiles={profiles}
+        keepSignedIn={keepSignedIn}
+        onSignedIn={refreshMe}
+        onOtherUser={() => setOtherUser(true)}
+      />
+    );
+  }
+
   if (status === "anonymous" || me === null) {
-    return <LoginScreen layout={layout} keepSignedIn={keepSignedIn} error={loginError} onSubmit={handleLogin} onPasskey={handlePasskeyLogin} />;
+    return (
+      <LoginScreen
+        layout={layout}
+        keepSignedIn={keepSignedIn}
+        error={loginError}
+        onSubmit={handleLogin}
+        onPasskey={handlePasskeyLogin}
+        onBackToProfiles={profiles ? () => setOtherUser(false) : undefined}
+      />
+    );
   }
 
   const deepLinkAssetId = deepLink && activeLibraryId === deepLink.libraryId ? deepLink.assetId : undefined;

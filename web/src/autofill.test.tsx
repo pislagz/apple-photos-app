@@ -19,6 +19,8 @@ const NOT_TEXT = new Set(["checkbox", "radio", "range", "file", "hidden", "butto
 // file -> credential tokens, in source order.
 const CREDENTIALS: Record<string, string[]> = {
   "shell/LoginScreen.tsx": ["username", "current-password"],
+  // #519: the Family login password step.
+  "shell/ProfilePicker.tsx": ["current-password"],
   "shell/SetupScreen.tsx": ["username", "new-password"],
   "shell/ChangePasswordDialog.tsx": ["current-password", "new-password", "new-password"],
   "shell/PasskeysDialog.tsx": ["current-password"],

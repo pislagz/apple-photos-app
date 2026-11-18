@@ -160,13 +160,29 @@ export interface UserResponse {
   created_at: string;
   // True while too many wrong passwords have locked the account for a while.
   locked?: boolean;
+  // #519 Family login.
+  has_password?: boolean;
+  show_on_profiles?: boolean;
+}
+
+export interface FamilyLoginSettings {
+  enabled: boolean;
+  passwordless_signin: "private" | "anywhere";
+}
+
+export function getFamilyLogin(): Promise<FamilyLoginSettings> {
+  return request<FamilyLoginSettings>("/api/admin/settings/family-login");
+}
+
+export function putFamilyLogin(settings: FamilyLoginSettings): Promise<FamilyLoginSettings> {
+  return mutate<FamilyLoginSettings>("PUT", "/api/admin/settings/family-login", settings);
 }
 
 export function listUsers(): Promise<UserResponse[]> {
   return request<UserResponse[]>("/api/admin/users");
 }
 
-export function createUser(username: string, password: string, role: Role): Promise<UserResponse> {
+export function createUser(username: string, password: string | null, role: Role): Promise<UserResponse> {
   return mutate<UserResponse>("POST", "/api/admin/users", { username, password, role });
 }
 
@@ -174,6 +190,8 @@ export interface UserUpdate {
   role?: Role;
   disabled?: boolean;
   password?: string;
+  remove_password?: boolean;
+  show_on_profiles?: boolean;
 }
 
 export function updateUser(username: string, update: UserUpdate): Promise<UserResponse> {
