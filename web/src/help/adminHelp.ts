@@ -32,6 +32,14 @@ export const HELP = {
     "How long someone stays signed in when the app was added to the iPhone Home Screen. This is usually longer, because typing a password on a phone is a nuisance.",
   sessionRememberMe:
     "How long someone stays signed in when they tick \"Keep me signed in\" at sign-in. Lower it if people share devices.",
+  familyLogin:
+    "Shows a \"Who's watching?\" screen with everyone's picture instead of the username box. People tap their picture and enter their password. Turn it off to go back to typing a username.",
+  passwordlessSignin:
+    "People without a password sign in just by tapping their picture. Only from your home or Tailscale network is the safe choice: from anywhere else they cannot sign in. From anywhere lets them in from any connection that can reach this server.",
+  personShowOnProfiles:
+    "Whether this person appears on the \"Who's watching?\" screen. When off, they sign in through \"Other user…\" by typing their name.",
+  personRemovePassword:
+    "Lets this person sign in without a password. They can only do that from the network you chose in Settings, they can't open Hidden, and only an administrator can give them a password again.",
   keepSignedInMode:
     "Chooses whether the sign-in screen offers \"Keep me signed in\", and whether it starts ticked. Choose Not offered if people share devices.",
   pictureQuality:

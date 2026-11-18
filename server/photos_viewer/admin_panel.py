@@ -38,7 +38,8 @@ _INVITE_LIFETIME_SECONDS = 7 * 24 * 3600
 
 class UserCreateRequest(BaseModel):
     username: session_auth.Username
-    password: session_auth.Password
+    # None creates a passwordless account (#519).
+    password: session_auth.Password | None = None
     role: Literal["admin", "user"] = "user"
 
 
@@ -46,6 +47,15 @@ class UserUpdateRequest(BaseModel):
     role: Literal["admin", "user"] | None = None
     disabled: bool | None = None
     password: session_auth.Password | None = None
+    # #519: True drops the password (the account becomes passwordless).
+    remove_password: bool = False
+    show_on_profiles: bool | None = None
+
+    @model_validator(mode="after")
+    def _password_xor_remove(self) -> UserUpdateRequest:
+        if self.remove_password and self.password is not None:
+            raise ValueError("set a password or remove it, not both")
+        return self
 
 
 class UserResponse(BaseModel):
@@ -56,6 +66,8 @@ class UserResponse(BaseModel):
     created_at: str
     # True while the login lockout (too many wrong passwords) is active.
     locked: bool = False
+    has_password: bool = True
+    show_on_profiles: bool = True
 
 
 def _to_user_response(
@@ -72,6 +84,8 @@ def _to_user_response(
         role=row["role"],
         disabled=bool(row["disabled"]),
         created_at=row["created_at"],
+        has_password=bool(row["password_hash"]),
+        show_on_profiles=bool(row["show_on_profiles"]),
     )
 
 
@@ -123,7 +137,11 @@ def create_user(
     admin: sqlite3.Row = Depends(session_auth.require_admin),
     db: sqlite3.Connection = Depends(session_auth.get_db),
 ) -> UserResponse:
-    password_hash = session_auth.hash_password(payload.password)
+    password_hash = (
+        session_auth.hash_password(payload.password)
+        if payload.password is not None
+        else ""
+    )
     try:
         cursor = db.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
@@ -137,7 +155,8 @@ def create_user(
         "create_user",
         user_id=cursor.lastrowid,
         actor=admin["username"],
-        detail=f"role={payload.role}",
+        detail=f"role={payload.role}"
+        + ("" if payload.password is not None else ",passwordless"),
     )
     return _to_user_response(_get_user_by_username_or_404(db, payload.username), db)
 
@@ -195,12 +214,23 @@ def update_user(
             (int(payload.disabled), target["id"]),
         )
         changed_fields.append("disabled")
-    if payload.password is not None:
+    if payload.show_on_profiles is not None:
+        db.execute(
+            "UPDATE users SET show_on_profiles = ? WHERE id = ?",
+            (int(payload.show_on_profiles), target["id"]),
+        )
+        changed_fields.append("show_on_profiles")
+    if payload.password is not None or payload.remove_password:
+        new_hash = (
+            session_auth.hash_password(payload.password)
+            if payload.password is not None
+            else ""
+        )
         db.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
-            (session_auth.hash_password(payload.password), target["id"]),
+            (new_hash, target["id"]),
         )
-        changed_fields.append("password")
+        changed_fields.append("password" if new_hash else "password_removed")
         # A reset or self-change must invalidate every cookie issued under
         # the old password -- otherwise a stolen or shared session keeps
         # working right through the "fix".

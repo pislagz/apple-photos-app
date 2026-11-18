@@ -22,6 +22,7 @@ from starlette.requests import Request
 
 from . import app_db, libraries, place_names
 from .admin_panel import router as admin_panel_router
+from .family_login import router as family_login_router
 from .library_admin import reset_stale_indexing_state
 from .library_admin import router as library_admin_router
 from .library_albums import router as library_albums_router
@@ -233,6 +234,7 @@ def create_app(web_dist_dir: pathlib.Path | None = None) -> FastAPI:
     app.add_middleware(_SecurityHeadersMiddleware)
     app.include_router(auth_router)
     app.include_router(passkeys_router)
+    app.include_router(family_login_router)
     app.include_router(library_admin_router)
     app.include_router(library_folders_router)
     app.include_router(library_albums_router)

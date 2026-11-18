@@ -67,6 +67,28 @@ afterEach(() => {
 });
 
 describe("SettingsScreen words and (i) buttons", () => {
+  it("#519: Family login switch and the passwordless network choice save to their own endpoint", async () => {
+    let family = { enabled: true, passwordless_signin: "private" };
+    const puts: unknown[] = [];
+    serve({}, (url, init) => {
+      if (url === "/api/admin/settings/family-login") {
+        if (init?.method === "PUT") {
+          family = JSON.parse(String(init.body));
+          puts.push(family);
+        }
+        return family;
+      }
+    });
+    render(<SettingsScreen />);
+    const select = await screen.findByLabelText("Passwordless sign-in");
+    expect(select).toHaveValue("private");
+    fireEvent.change(select, { target: { value: "anywhere" } });
+    await waitFor(() => expect(puts).toEqual([{ enabled: true, passwordless_signin: "anywhere" }]));
+    fireEvent.click(screen.getByRole("switch", { name: "Family login" }));
+    await waitFor(() => expect(puts[1]).toEqual({ enabled: false, passwordless_signin: "anywhere" }));
+    await waitFor(() => expect(screen.queryByLabelText("Passwordless sign-in")).toBeNull());
+  });
+
   it("every row has an (i) with its registered text", async () => {
     serve();
     render(<SettingsScreen />);

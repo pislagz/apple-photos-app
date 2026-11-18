@@ -54,6 +54,7 @@ const MAP: Record<string, { kind: ActivityKind; say: Describe }> = {
   "prewarm.clear_cache": { kind: "library", say: (p) => `${p.who} deleted the prepared thumbnails for ${lib(p)}` },
   set_settings: { kind: "settings", say: (p) => `${p.who} changed settings` },
   set_tailnet_allowlist: { kind: "settings", say: (p) => `${p.who} changed who can open the app` },
+  set_family_login: { kind: "settings", say: (p) => `${p.who} changed the Family login settings` },
   osm_consent_agreed: { kind: "settings", say: (p) => `${p.who} turned on map and place names` },
   osm_consent_withdrawn: { kind: "settings", say: (p) => `${p.who} turned off map and place names` },
   osm_consent_not_now: { kind: "settings", say: (p) => `${p.who} chose not to turn on map and place names yet` },

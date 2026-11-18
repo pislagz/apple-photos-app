@@ -421,7 +421,7 @@ export default function DesktopShell({
   }
   // #518: the admin decides per library which Utilities items exist; with
   // none on, the whole group is absent.
-  const showHidden = activeLibrary?.utilities?.hidden ?? false;
+  const showHidden = (activeLibrary?.utilities?.hidden ?? false) && me.has_password !== false;
   const showImports = activeLibrary?.utilities?.imports ?? false;
   const utilities =
     showHidden || showImports ? (
@@ -429,7 +429,7 @@ export default function DesktopShell({
         <ul>
           {showImports &&
             UTILITIES.map((item) => (
-              <li key=<SidebarLabel text={item.label} />>
+              <li key={item.label}>
                 <button type="button" disabled className="sidebar__item">
                   <Icon name={item.icon} className="sidebar__icon" />
                   <SidebarLabel text={item.label} />

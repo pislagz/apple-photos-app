@@ -356,7 +356,7 @@ export default function MacAccountMenu({
                   removeAvatar().then(() => onAvatarChanged?.(), () => {});
                 }),
               )}
-            {item("Change Password…", act(() => setChangingPassword(true)))}
+            {me.has_password !== false && item("Change Password…", act(() => setChangingPassword(true)))}
             {item("Passkeys…", act(() => setManagingPasskeys(true)))}
             <div role="separator" className="mac-menu__separator" />
             {item("Log Out", act(onLogout))}

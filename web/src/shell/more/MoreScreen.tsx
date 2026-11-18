@@ -85,7 +85,7 @@ export default function MoreScreen({
           ))}
         </ul>
         {/* #518: the admin picks per library which Utilities items exist. */}
-        {(utilities.hidden || utilities.imports) && (
+        {((utilities.hidden && me.has_password !== false) || utilities.imports) && (
           <ul className="more-screen__group" aria-label="Utilities">
             <li className="more-screen__group-label">Utilities</li>
             {utilities.imports && (
@@ -96,7 +96,7 @@ export default function MoreScreen({
                 </button>
               </li>
             )}
-            {utilities.hidden && (
+            {utilities.hidden && me.has_password !== false && (
               <li>
                 <button type="button" className="more-screen__item" onClick={() => onNavigate("/hidden")}>
                   <Icon name="hidden" className="more-screen__icon" />
@@ -155,11 +155,17 @@ export default function MoreScreen({
               </button>
             </li>
           )}
+          {me.has_password === false ? (
+            <li>
+              <p className="more-screen__item more-screen__item--static">No password. Ask an admin to set one.</p>
+            </li>
+          ) : (
           <li>
             <button type="button" className="more-screen__item" onClick={() => setChangingPassword(true)}>
               Change password
             </button>
           </li>
+          )}
           <li>
             <button type="button" className="more-screen__item" onClick={() => setManagingPasskeys(true)}>
               Passkeys

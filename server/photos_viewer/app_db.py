@@ -568,6 +568,12 @@ _MIGRATIONS: list[list[str]] = [
         "ALTER TABLE libraries ADD COLUMN utilities_imports INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE libraries ADD COLUMN utilities_hidden INTEGER NOT NULL DEFAULT 0",
     ],
+    # 31 (#519): Family login. `password_hash = ''` means "no password"
+    # (the column stays NOT NULL so no table rebuild); `show_on_profiles` is
+    # the per-user "Show on Who's watching?" switch.
+    [
+        "ALTER TABLE users ADD COLUMN show_on_profiles INTEGER NOT NULL DEFAULT 1",
+    ],
 ]
 
 

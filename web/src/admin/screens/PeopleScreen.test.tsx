@@ -113,6 +113,53 @@ describe("PeopleScreen", () => {
     expect(prompt).not.toHaveBeenCalled();
   });
 
+  it("#519: hides a person from Who's watching with a switch that saves at once", async () => {
+    const { calls } = setup((url, init) => {
+      if (url === "/api/admin/users/bob" && init?.method === "PATCH") return { ...USER_B, show_on_profiles: false };
+    });
+    await openPerson("bob");
+    const toggle = screen.getByRole("switch", { name: "Show bob on Who's watching" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(calls("PATCH")).toHaveLength(1));
+    expect(JSON.parse(calls("PATCH")[0][1]!.body as string)).toEqual({ show_on_profiles: false });
+  });
+
+  it("#519: removes a password only after confirming, and a passwordless person offers Set Password", async () => {
+    const { calls } = setup((url, init) => {
+      if (url === "/api/admin/users/bob" && init?.method === "PATCH") return { ...USER_B, has_password: false };
+    });
+    await openPerson("bob");
+    fireEvent.click(screen.getByRole("button", { name: /Remove Password/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(calls("PATCH")).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Password" }));
+    await waitFor(() => expect(calls("PATCH")).toHaveLength(1));
+    expect(JSON.parse(calls("PATCH")[0][1]!.body as string)).toEqual({ remove_password: true });
+  });
+
+  it("#519: a passwordless person shows Set Password and no Remove Password", async () => {
+    setup(() => undefined, { ...MATRIX, users: [USER_A, { ...USER_B, has_password: false }] });
+    await openPerson("bob");
+    expect(screen.getByRole("button", { name: /Set Password/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove Password/ })).not.toBeInTheDocument();
+  });
+
+  it("#519: Add Person can create someone without a password", async () => {
+    const { calls } = setup((url, init) => {
+      if (url === "/api/admin/users" && init?.method === "POST") return { ...USER_B, id: 3, username: "kid", has_password: false };
+    });
+    render(<PeopleScreen currentUsername="alice" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Add Person/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "kid" } });
+    fireEvent.click(within(dialog).getByLabelText(/No password/));
+    expect(within(dialog).queryByLabelText("Type it again")).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add Person" }));
+    await waitFor(() => expect(calls("POST")).toHaveLength(1));
+    expect(JSON.parse(calls("POST")[0][1]!.body as string)).toEqual({ username: "kid", password: null, role: "user" });
+  });
+
   it("confirms a delete by name and never uses window.confirm", async () => {
     const confirm = vi.spyOn(window, "confirm");
     const { calls } = setup((url, init) => {

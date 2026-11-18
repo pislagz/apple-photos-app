@@ -6294,3 +6294,244 @@ textarea,
   0%, 60% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+
+/* ---------------------------------------------------------------------- */
+/* #519 Family login: "Who's watching?" profile screen and password step.  */
+/* ---------------------------------------------------------------------- */
+.profiles-screen {
+  padding: var(--space-24) var(--space-16);
+}
+
+.profiles {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-20);
+  color: var(--color-label);
+}
+
+.profiles__title {
+  margin: 0;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-title);
+  text-align: center;
+}
+
+.profiles__grid {
+  list-style: none;
+  margin: var(--space-12) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 28px;
+}
+
+.profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-10);
+  width: 132px;
+  padding: var(--space-8);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-card);
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.profile:disabled {
+  opacity: 0.55;
+}
+
+.profile .profile__avatar,
+.profiles--step .profile__avatar {
+  width: 112px;
+  height: 112px;
+  font-size: var(--font-size-title-large);
+  box-shadow: 0 0 0 3px transparent;
+  transition: box-shadow var(--dur-select) var(--ease-select), transform var(--dur-select) var(--ease-select);
+}
+
+.profile:hover:not(:disabled) .profile__avatar,
+.profile:focus-visible .profile__avatar {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+/* The ring is drawn round the avatar, so the tile itself keeps a transparent
+   outline (still visible in forced-colors mode). */
+.profile:focus-visible {
+  outline: 2px solid transparent;
+}
+
+.profile:active:not(:disabled) .profile__avatar {
+  transform: scale(0.96);
+}
+
+.profile__name {
+  font-size: var(--font-size-body-lg);
+  font-weight: var(--font-weight-medium);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profiles__other,
+.profiles__back {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--font-size-body);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-8);
+  cursor: default;
+}
+
+.profiles__other:focus-visible,
+.profiles__back:focus-visible {
+  outline: 2px solid var(--accent);
+}
+
+.profiles__error {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: var(--font-size-body);
+  text-align: center;
+}
+
+.profiles__note {
+  margin: 0;
+  max-width: 320px;
+  text-align: center;
+  color: var(--color-label-secondary);
+  font-size: var(--font-size-body);
+  line-height: 1.35;
+}
+
+.profiles--step {
+  max-width: 340px;
+}
+
+.profiles--step .profile__avatar--large {
+  width: 128px;
+  height: 128px;
+  font-size: var(--font-size-title-large);
+}
+
+.profiles__form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-12);
+}
+
+.profiles__form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  font-size: var(--font-size-subhead);
+  color: var(--color-label-secondary);
+}
+
+.profiles__form input[type="password"] {
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--color-separator);
+  background: var(--color-card);
+  color: var(--color-label);
+  font-size: var(--font-size-headline);
+}
+
+.profiles__form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.profiles__form label.profiles__keep {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.profiles__submit {
+  background: var(--accent);
+  color: var(--color-white);
+  border: 0;
+  border-radius: var(--radius-8);
+  padding: var(--space-8) var(--space-12);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  cursor: default;
+}
+
+.profiles__submit:disabled {
+  opacity: 0.45;
+}
+
+.login-card__back {
+  display: block;
+  margin: var(--space-12) auto 0;
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: default;
+}
+
+/* iPhone (iOS 27): two columns, round avatars, capsule button. */
+.login-screen--mobile.profiles-screen {
+  align-items: flex-start;
+  padding-top: 72px;
+}
+
+.login-screen--mobile .profiles__title {
+  font-size: var(--font-size-title-large);
+  letter-spacing: var(--tracking-title-large);
+}
+
+.login-screen--mobile .profiles__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-16);
+  width: 100%;
+  max-width: 340px;
+}
+
+.login-screen--mobile .profile {
+  width: 100%;
+  background: var(--color-card);
+  padding: var(--space-16) var(--space-8);
+  border-radius: var(--radius-26);
+}
+
+.login-screen--mobile .profile .profile__avatar {
+  width: 88px;
+  height: 88px;
+  font-size: var(--font-size-title);
+}
+
+.login-screen--mobile .profile:active:not(:disabled) {
+  opacity: 0.7;
+}
+
+.login-screen--mobile .profiles__submit {
+  min-height: 50px;
+  border-radius: var(--radius-pill);
+}
+
+.login-screen--mobile .profiles__form input[type="password"] {
+  min-height: 50px;
+  border-radius: var(--radius-14);
+  border: 0;
+  background: var(--color-card);
+}

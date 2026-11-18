@@ -294,6 +294,7 @@ def test_migration_flags_indexed_libraries_for_reindex(tmp_path):
             conn.execute(f"ALTER TABLE libraries DROP COLUMN {column}")
         for column in ("utilities_enabled", "utilities_imports", "utilities_hidden"):
             conn.execute(f"ALTER TABLE libraries DROP COLUMN {column}")  # #518
+        conn.execute("ALTER TABLE users DROP COLUMN show_on_profiles")  # 31 (#519)
         conn.execute("DROP TRIGGER assets_fts_delete")  # D36
         conn.execute("DROP TABLE assets_fts")
         conn.execute("DROP TABLE folders")

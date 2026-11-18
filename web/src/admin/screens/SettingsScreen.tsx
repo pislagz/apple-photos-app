@@ -3,6 +3,9 @@ import InfoButton from "../../help/InfoButton";
 import type { HelpKey } from "../../help/adminHelp";
 import { MAP_PLACE_NAMES_ANCHOR, MAP_PLACE_NAMES_TEXT } from "../../shell/PlaceInfoContext";
 import {
+  type FamilyLoginSettings,
+  getFamilyLogin,
+  putFamilyLogin,
   ApiError,
   checkLibrariesNow,
   downloadPlaceNames,
@@ -145,6 +148,45 @@ function KeepSignedInRow({ settings, save }: { settings: SettingsResponse; save:
         </select>
       )}
     </SettingRow>
+  );
+}
+
+// #519: its own endpoint (not part of PATCH /settings), so it loads and saves itself.
+function FamilyLoginRows() {
+  const [value, setValue] = useState<FamilyLoginSettings | null>(null);
+  useEffect(() => {
+    getFamilyLogin().then(setValue).catch(() => undefined);
+  }, []);
+  if (value === null) return null;
+  const save = async (next: FamilyLoginSettings) => setValue(await putFamilyLogin(next));
+  return (
+    <>
+      <SwitchRow
+        label="Family login"
+        help="familyLogin"
+        name="Family login"
+        checked={value.enabled}
+        onChange={(enabled) => save({ ...value, enabled })}
+      />
+      {value.enabled && (
+        <SettingRow label="Passwordless sign-in" help="passwordlessSignin" name="passwordless sign-in">
+          {(run) => (
+            <select
+              className="admin-input"
+              aria-label="Passwordless sign-in"
+              value={value.passwordless_signin}
+              onChange={(event) => {
+                const passwordless_signin = event.target.value as FamilyLoginSettings["passwordless_signin"];
+                void run(() => save({ ...value, passwordless_signin }));
+              }}
+            >
+              <option value="private">Only from private networks</option>
+              <option value="anywhere">From anywhere</option>
+            </select>
+          )}
+        </SettingRow>
+      )}
+    </>
   );
 }
 
@@ -364,6 +406,7 @@ export default function SettingsScreen() {
         <ChoiceRow label="On the Home Screen app" help="sessionPwa" name="sign-in time on the Home Screen app" choices={PWA_SESSION} field="session_lifetime_pwa_seconds" kind="seconds" {...choice} />
         <ChoiceRow label={"When “Keep me signed in” is ticked"} help="sessionRememberMe" name="sign-in time with Keep me signed in" choices={REMEMBER_SESSION} field="session_lifetime_remember_me_seconds" kind="seconds" {...choice} />
         <KeepSignedInRow {...choice} />
+        <FamilyLoginRows />
       </GroupedList>
 
       <GroupedList heading="Downloads" footer="Limits on what people can download.">
