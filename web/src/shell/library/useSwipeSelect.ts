@@ -103,12 +103,87 @@ export function useSwipeSelect(
       stop();
     };
 
+    // Mouse and pen (#504): touch events never fire for them. A mouse drag
+    // has nothing to scroll, so any direction selects; a pen keeps the
+    // horizontal-start rule because its vertical drag scrolls like a finger.
+    let pointerId = -1;
+    let pointerType = "mouse";
+    const swallowClick = () => {
+      const eat = (ev: Event) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+      };
+      el.addEventListener("click", eat, { capture: true, once: true });
+      setTimeout(() => el.removeEventListener("click", eat, { capture: true }), 0);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || e.button !== 0 || !e.isPrimary) return;
+      const id = idAt(e.clientX, e.clientY);
+      const index = id === null ? -1 : live.current.order.indexOf(id);
+      if (index === -1) return;
+      pointerId = e.pointerId;
+      pointerType = e.pointerType;
+      point = { x: e.clientX, y: e.clientY };
+      g = {
+        x: e.clientX,
+        y: e.clientY,
+        state: "pending",
+        mode: id !== null && live.current.selectedIds.has(id) ? "deselect" : "select",
+        startIndex: index,
+        base: new Set(live.current.selectedIds),
+        lastIndex: -1,
+      };
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!g || e.pointerId !== pointerId) return;
+      if ((e.buttons & 1) === 0) return stop();
+      point = { x: e.clientX, y: e.clientY };
+      if (g.state === "pending") {
+        const dx = e.clientX - g.x;
+        const dy = e.clientY - g.y;
+        if (Math.hypot(dx, dy) < SLOP) return;
+        g.state = pointerType === "mouse" || isHorizontalStart(dx, dy) ? "swiping" : "scrolling";
+        if (g.state === "swiping") {
+          raf = requestAnimationFrame(tick);
+          window.getSelection()?.removeAllRanges();
+        }
+      }
+      if (g.state !== "swiping") return;
+      e.preventDefault();
+      update();
+    };
+    const onPointerUp = () => {
+      if (g?.state === "swiping") swallowClick();
+      pointerId = -1;
+      stop();
+    };
+    const onPointerCancel = () => {
+      pointerId = -1;
+      stop();
+    };
+    // A native image drag would start before the slop is crossed.
+    const noSelect = (e: Event) => {
+      if (g && pointerId !== -1) e.preventDefault();
+    };
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    el.addEventListener("selectstart", noSelect);
+    el.addEventListener("dragstart", noSelect);
+
     el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchmove", onMove, { passive: false });
     el.addEventListener("touchend", onEnd);
     el.addEventListener("touchcancel", stop);
     return () => {
       stop();
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      el.removeEventListener("selectstart", noSelect);
+      el.removeEventListener("dragstart", noSelect);
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
