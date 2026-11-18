@@ -1,7 +1,5 @@
 import { TileOverlays } from "./TileOverlays";
-import HeicFallbackModal from "./HeicFallbackModal";
 import ZipStatus, { ZipRing } from "./ZipStatus";
-import { selectionHasHeic, useZipDownload } from "./zipDownload";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { createPortal } from "react-dom";
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -14,7 +12,11 @@ import LibraryEmptyState from "./LibraryEmptyState";
 import { Icon } from "../icons";
 import ZoomSlider from "../ZoomSlider";
 import { createPinchSession, listenTrackpadPinch, pinchDirection } from "../trackpadPinch";
-import { canShareFiles, copyAssetLink, downloadAsset, shareAssets, downloadVersion, resolveVersion } from "../viewer/download";
+import { copyAssetLink } from "../viewer/download";
+import DownloadMenu from "../export/DownloadMenu";
+import ProgressRing from "../export/ProgressRing";
+import TransferHud from "../export/TransferHud";
+import { useDesktopTransfer } from "../export/useDesktopTransfer";
 import DesktopViewer from "../viewer/DesktopViewer";
 import { VIEWS, type ViewKey } from "./grouping";
 import {
@@ -70,20 +72,6 @@ const DRAG_THRESHOLD_PX = 4;
 // clicks can't turn it into two single clicks on different elements).
 const DOUBLE_CLICK_MS = 500;
 const DOUBLE_CLICK_SLOP_PX = 6;
-
-// A single selected file downloads directly (a multi-selection goes through
-// the streamed zip, P3.2). This never touches `/original` on its own -- only an explicit
-// click does.
-function downloadSelection(libraryId: number, ids: Iterable<string>) {
-  for (const id of ids) {
-    const link = document.createElement("a");
-    link.href = `/api/libraries/${libraryId}/original/${id}?download=1`;
-    link.download = "";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
-}
 
 // P1.15: the desktop Library grid. Toolbar (Years/Months/All Photos, zoom,
 // download, Info toggle, selection count), a virtualized
@@ -204,11 +192,7 @@ export default function DesktopLibrary({
   const [infoOpen, setInfoOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  // `hasEdited` starts `null` (still resolving) so the menu never shows
-  // "Download Original" for a photo that turns out to have no edited version.
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number; hasEdited: boolean | null } | null>(
-    null,
-  );
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const anchorIdRef = useRef<string | null>(null);
   // Holds the arrow-key target index (counted from the newest end, #224) while it is still past the loaded
   // items, so the reconciliation effect below can catch focus up once
@@ -939,25 +923,13 @@ export default function DesktopLibrary({
     };
   }, [dragActive]);
 
-  const zip = useZipDownload(libraryId);
-  const selectionHasHeicPhoto = useMemo(() => selectionHasHeic(items, selected), [items, selected]);
-  const handleDownload = useCallback(() => {
-    if (selected.size === 0) return;
-    // One file stays a plain download; several become one streamed zip (P3.2).
-    if (selected.size === 1) downloadSelection(libraryId, selected);
-    else void zip.start([...selected], { forceNative: !selectionHasHeicPhoto });
-  }, [libraryId, selected, zip.start, selectionHasHeicPhoto]);
-
-  const shareSupported = canShareFiles();
-  const handleShare = useCallback(async () => {
-    const toShare = items.filter((item) => selected.has(item.id));
-    if (toShare.length === 0) return;
-    try {
-      await shareAssets(libraryId, toShare.map((item) => ({ id: item.id, filename: item.filename, original_filename: item.original_filename })));
-    } catch {
-      // Nothing useful to show; the user can still use Download.
-    }
-  }, [items, selected, libraryId]);
+  const transfer = useDesktopTransfer(libraryId);
+  const { zip, flow: exportFlow } = transfer;
+  const selectedItems = useCallback(() => items.filter((item) => selected.has(item.id)), [items, selected]);
+  const handleDownload = useCallback(() => transfer.download(selectedItems()), [transfer.download, selectedItems]);
+  const handleDownloadUnmodified = useCallback(() => transfer.download(selectedItems(), { unmodified: true }), [transfer.download, selectedItems]);
+  const handleExportToFolder = useCallback(() => void transfer.exportToFolder(selectedItems()), [transfer.exportToFolder, selectedItems]);
+  const handleShare = useCallback(() => void transfer.share(selectedItems()), [transfer.share, selectedItems]);
 
   // Right-click on a single cell (ios17-viewer.png's Download/Copy Link
   // pair, mirrored here per the P1.17 issue's "grid context menu"): picks
@@ -966,12 +938,9 @@ export default function DesktopLibrary({
   const handleCellContextMenu = useCallback(
     (event: React.MouseEvent, id: string) => {
       event.preventDefault();
-      setContextMenu({ id, x: event.clientX, y: event.clientY, hasEdited: null });
-      void resolveVersion(libraryId, id).then((version) => {
-        setContextMenu((current) => (current?.id === id ? { ...current, hasEdited: version === "edited" } : current));
-      });
+      setContextMenu({ id, x: event.clientX, y: event.clientY });
     },
-    [libraryId],
+    [],
   );
 
   useEffect(() => {
@@ -992,6 +961,12 @@ export default function DesktopLibrary({
     };
   }, [contextMenu]);
 
+  function pickContext(action: (item: AssetListItem) => void) {
+    const item = items.find((candidate) => candidate.id === contextMenu?.id);
+    setContextMenu(null);
+    if (item) action(item);
+  }
+
   // A filtered selection or focus would point at items that just left the grid.
   const filterKey = `${filter}|${hide.join(",")}`;
   const lastFilterKey = useRef(filterKey);
@@ -1007,7 +982,7 @@ export default function DesktopLibrary({
   // Esc clears the selection only when nothing layered on top (Viewer, modal,
   // menus) is open -- those own the first Esc.
   const hasSelection = selected.size > 0;
-  const overlayOpen = viewerIndex !== null || contextMenu !== null || zip.heicFallback !== null;
+  const overlayOpen = viewerIndex !== null || contextMenu !== null || exportFlow.state.phase !== "idle";
   useEffect(() => {
     if (!hasSelection || overlayOpen) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -1098,28 +1073,31 @@ export default function DesktopLibrary({
       <div className="desktop-library__bar-right">
         {/* No dead button: sharing needs a secure (https) context, so it is
             hidden where unavailable, like macOS toolbars omit unusable items. */}
-        {shareSupported && (
+        {transfer.caps.share && (
           <button
             type="button"
             className="toolbar-button"
             aria-label="Share"
-            onClick={() => void handleShare()}
-            disabled={selected.size === 0}
+            onClick={handleShare}
+            disabled={selected.size === 0 || exportFlow.state.phase !== "idle"}
             title="Share"
           >
-            <Icon name="share" size={16} />
+            {transfer.shareBusy ? <ProgressRing fraction={transfer.flowFraction} className="zip-ring" label="Share progress" /> : <Icon name="share" size={16} />}
           </button>
         )}
-        <button
-          type="button"
-          className="toolbar-button"
-          onClick={handleDownload}
-          disabled={selected.size === 0 || zip.busy}
-          title="Download"
-        >
-          {zip.state.phase === "downloading" ? <ZipRing state={zip.state} /> : <Icon name="download" size={16} />}
-          <span className="sr-only">Download</span>
-        </button>
+        <DownloadMenu
+          disabled={selected.size === 0 || zip.busy || exportFlow.state.phase !== "idle"}
+          ring={
+            zip.state.phase === "downloading" ? (
+              <ZipRing state={zip.state} />
+            ) : transfer.downloadBusy ? (
+              <ProgressRing fraction={transfer.flowFraction} className="zip-ring" label="Download progress" />
+            ) : undefined
+          }
+          onDownload={handleDownload}
+          onDownloadUnmodified={handleDownloadUnmodified}
+          onExportToFolder={transfer.caps.folder ? handleExportToFolder : undefined}
+        />
         <button
           type="button"
           className="toolbar-button"
@@ -1130,15 +1108,7 @@ export default function DesktopLibrary({
           <Icon name="info" size={16} filled={infoOpen} />
           <span className="sr-only">Info</span>
         </button>
-        {(selected.size > 1 || zip.state.phase !== "idle") && (
-          <ZipStatus
-            variant="toolbar"
-            state={zip.state}
-            jpeg={zip.jpeg}
-            onJpegChange={zip.setJpeg}
-            showHeicOption={selectionHasHeicPhoto}
-          />
-        )}
+        <ZipStatus state={zip.state} onRetry={zip.retry} onDismiss={zip.dismiss} />
         {selected.size > 0 && (
           <button
             type="button"
@@ -1343,9 +1313,7 @@ export default function DesktopLibrary({
           style={{ left: marquee.left, top: marquee.top, width: marquee.width, height: marquee.height }}
         />
       )}
-      {zip.heicFallback && (
-        <HeicFallbackModal files={zip.heicFallback} onDownloadOriginals={zip.downloadOriginals} onClose={zip.dismissHeicFallback} />
-      )}
+      <TransferHud flow={exportFlow} layout="desktop" />
       {viewerIndex !== null && (
         <DesktopViewer
           libraryId={libraryId}
@@ -1365,31 +1333,29 @@ export default function DesktopLibrary({
         <div
           className="desktop-library__context-menu"
           data-testid="context-menu"
+          role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => {
-              void downloadAsset(libraryId, contextMenu.id);
-              setContextMenu(null);
-            }}
-          >
+          {transfer.caps.share && (
+            <button type="button" role="menuitem" onClick={() => pickContext((item) => void transfer.share([item]))}>
+              Share…
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={() => pickContext((item) => transfer.download([item]))}>
             Download
           </button>
-          {contextMenu.hasEdited && (
-            <button
-              type="button"
-              onClick={() => {
-                downloadVersion(libraryId, contextMenu.id, "original");
-                setContextMenu(null);
-              }}
-            >
-              Download Original
+          <button type="button" role="menuitem" onClick={() => pickContext((item) => transfer.download([item], { unmodified: true }))}>
+            Download Unmodified Original
+          </button>
+          {transfer.caps.folder && (
+            <button type="button" role="menuitem" onClick={() => pickContext((item) => void transfer.exportToFolder([item]))}>
+              Export to Folder…
             </button>
           )}
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               void copyAssetLink(libraryId, contextMenu.id);
               setContextMenu(null);

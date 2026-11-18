@@ -18,7 +18,8 @@ test("right toolbar gaps are equal", async ({ page }, testInfo) => {
   await cell.dblclick();
   await expect(page.getByTestId("viewer-title")).toContainText(/ of /);
   await page.mouse.move(700, 500);
-  const buttons = page.locator(".desktop-viewer__topbar-right .toolbar-button");
+  // #507: Download and its ▾ are one control (.download-menu), so the gaps are between controls.
+  const buttons = page.locator(".desktop-viewer__topbar-right > .toolbar-button, .desktop-viewer__topbar-right > .download-menu");
   await expect(buttons.nth(2)).toBeVisible();
   const boxes = await buttons.evaluateAll((els) =>
     els.map((e) => {

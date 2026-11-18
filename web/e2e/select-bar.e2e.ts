@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // #259: the iPhone select bar is laid out like Photos -- Share left, the
-// count centred, Download right -- with 44pt targets throughout.
+// count centred -- with 44pt targets throughout. No Download on the phone (#507).
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 
 async function signIn(page: Page) {
@@ -12,7 +12,7 @@ async function signIn(page: Page) {
   await expect(page.getByLabel("Username")).toHaveCount(0);
 }
 
-test("select bar: Share left, count centred, Download right, 44pt targets", async ({ page }, info) => {
+test("select bar: Share left, count centred, no Download, 44pt targets", async ({ page }, info) => {
   test.skip(info.project.name === "desktop", "phone layout only");
   await signIn(page);
   await page.getByRole("tab", { name: "All Photos", exact: true }).click();
@@ -26,28 +26,20 @@ test("select bar: Share left, count centred, Download right, 44pt targets", asyn
   await page.screenshot({ path: `e2e/screenshots/${info.project.name}-select-bar.png` });
 
   const share = (await page.getByRole("button", { name: "Share" }).boundingBox())!;
-  const download = (await page.getByRole("button", { name: "Download" }).boundingBox())!;
+  await expect(page.getByRole("button", { name: /Download/ })).toHaveCount(0);
   const count = (await bar.locator(".mobile-library__select-count").boundingBox())!;
   const barBox = (await bar.boundingBox())!;
   const viewport = page.viewportSize()!;
 
-  for (const box of [share, download]) {
-    expect(box.width).toBeGreaterThanOrEqual(44);
-    expect(box.height).toBeGreaterThanOrEqual(44);
-  }
+  expect(share.width).toBeGreaterThanOrEqual(44);
+  expect(share.height).toBeGreaterThanOrEqual(44);
   expect(share.x + share.width).toBeLessThanOrEqual(count.x + 1);
-  expect(download.x).toBeGreaterThanOrEqual(count.x + count.width - 1);
   expect(Math.abs(count.x + count.width / 2 - viewport.width / 2)).toBeLessThanOrEqual(2);
   // The bar is anchored to the bottom and at least a full toolbar tall.
   expect(Math.round(barBox.y + barBox.height)).toBeGreaterThanOrEqual(viewport.height - 100);
   expect(barBox.height).toBeGreaterThanOrEqual(49);
 
-  const option = page.getByRole("switch", { name: "HEIC as JPEG" });
-  if (await option.count()) {
-    const box = (await option.locator("xpath=ancestor::label").boundingBox())!;
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.width).toBeGreaterThan(viewport.width * 0.8);
-  }
+  await expect(page.getByRole("switch", { name: "HEIC as JPEG" })).toHaveCount(0);
 });
 
 // #281 F12: the grid's bottom padding follows the bar's full height, so the
@@ -123,21 +115,13 @@ for (const size of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
       await expect(bar).toContainText(/Selected/);
       await page.screenshot({ path: `e2e/screenshots/371/select-${size.width}-${scheme}.png` });
       const share = page.getByRole("button", { name: "Share" });
-      const download = page.getByRole("button", { name: "Download" });
       await expect(share).toHaveClass(/mobile-library__glass-button/);
       const bg = await share.evaluate((el) => getComputedStyle(el).backgroundColor);
-      // #79: inside the floating glass panel the buttons sit on the shared
-      // grey lens, both the same, instead of glass on glass.
-      const downloadBg = await download.evaluate((el) => getComputedStyle(el).backgroundColor);
-      expect(bg).toBe(downloadBg);
       expect(bg).not.toBe("rgba(0, 0, 0, 0)");
       const s = (await share.boundingBox())!;
-      const d = (await download.boundingBox())!;
       const c = (await bar.locator(".mobile-library__select-count").boundingBox())!;
       expect(s.x).toBeLessThan(c.x);
       expect(s.x + s.width).toBeLessThanOrEqual(c.x + 1);
-      expect(d.x).toBeGreaterThanOrEqual(c.x + c.width - 1);
-      expect(d.x + d.width).toBeLessThanOrEqual(size.width);
       expect(s.x).toBeGreaterThanOrEqual(0);
     });
   }

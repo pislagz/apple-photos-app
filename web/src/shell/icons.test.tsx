@@ -49,12 +49,8 @@ describe("icon set", () => {
     const out = walk("src")
       .filter((f) => f.endsWith(".tsx") && !f.endsWith(".test.tsx") && readFileSync(f, "utf8").includes(needle))
       .join("\n");
-    expect(out.split("\n").filter(Boolean).sort()).toEqual([
-      "src/shell/library/DesktopLibrary.tsx",
-      "src/shell/library/MobileLibrary.tsx",
-      "src/shell/viewer/DesktopViewer.tsx",
-      "src/shell/viewer/MobileViewer.tsx",
-    ]);
+    // #507: the Mac Download control is one component; the phone has no Download.
+    expect(out.split("\n").filter(Boolean).sort()).toEqual(["src/shell/export/DownloadMenu.tsx"]);
   });
 
   it("covers every icon name the app uses", () => {

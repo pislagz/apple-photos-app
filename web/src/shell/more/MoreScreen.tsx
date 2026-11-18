@@ -6,6 +6,7 @@ import PasskeysDialog from "../PasskeysDialog";
 import { Icon } from "../icons";
 import LargeTitleScreen from "../LargeTitleScreen";
 import LibrarySwitcher from "../LibrarySwitcher";
+import { TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "../export/transferFormat";
 import { MEDIA_TYPES } from "./mediaTypes";
 
 // #125, tracker R1: the phone "More" tab -- People & Pets, Places, Media
@@ -33,6 +34,7 @@ export default function MoreScreen({
   const [changingPassword, setChangingPassword] = useState(false);
   const [managingPasskeys, setManagingPasskeys] = useState(false);
   const [choosingAvatar, setChoosingAvatar] = useState(false);
+  const [transferFormat, setTransferFormat] = useTransferFormat();
   return (
     <LargeTitleScreen
       title="More"
@@ -90,6 +92,31 @@ export default function MoreScreen({
             </button>
           </li>
         </ul>
+        {/* #507: one format for everything that leaves the app, Apple's wording. */}
+        <ul className="more-screen__group" role="radiogroup" aria-label="Transfer Format">
+          <li className="more-screen__group-label">Transfer Format</li>
+          {TRANSFER_FORMAT_OPTIONS.map((option) => (
+            <li key={option.value}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={option.value === transferFormat}
+                className="more-screen__item more-screen__item--choice"
+                onClick={() => setTransferFormat(option.value)}
+              >
+                <span>{option.label}</span>
+                {option.value === transferFormat && (
+                  <svg className="more-screen__check" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                    <path d="M4.5 10.5 8.5 14.5 15.5 6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="more-screen__switch-note">
+          {TRANSFER_FORMAT_OPTIONS.find((option) => option.value === transferFormat)?.detail} Used when you share photos.
+        </p>
         {/* #303: everything the old top-right "..." menu offered. */}
         <ul className="more-screen__group">
           <li className="more-screen__group-label">Account</li>

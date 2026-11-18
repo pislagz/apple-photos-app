@@ -1120,12 +1120,6 @@ html.has-app-height .shell--mobile {
   opacity: 0.6;
 }
 
-.mobile-library__select-caption {
-  margin: 0 var(--space-8) var(--space-4);
-  font-size: var(--font-size-subhead);
-  color: var(--color-label-secondary);
-  text-align: center;
-}
 
 
 /* Bottom tab bar: translucent, icons + labels, safe-area aware. Light,
@@ -4540,80 +4534,15 @@ html.has-app-height .shell--mobile {
   gap: var(--space-8);
   font-size: var(--font-size-caption);
 }
-.zip-status__option {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-4);
-}
 .zip-status progress {
   width: 120px;
 }
 .zip-status__error {
   color: var(--color-danger-text);
 }
-.zip-status__option,
 .zip-status [role="status"] {
   white-space: nowrap;
 }
-/* iPhone select bar: the HEIC option and the progress line sit on their own
-   full-width rows under the toolbar row, so nothing gets squeezed and the
-   option is a whole-row tap target with a switch, like a Settings row (#259). */
-.zip-status--row {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-4);
-  padding: 0 var(--space-8);
-  font-size: var(--font-size-subhead);
-}
-.zip-status--row:empty {
-  display: none;
-}
-.zip-status--row > [role="status"],
-.zip-status--row > [role="alert"] {
-  text-align: center;
-}
-.zip-status--row progress {
-  width: 100%;
-}
-.zip-status__option--row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-12);
-  min-height: 44px;
-  padding: 0 var(--space-12);
-  border-radius: var(--radius-10);
-  background: var(--color-fill-subtle);
-  font-size: var(--font-size-headline);
-  color: var(--color-label);
-  cursor: default;
-}
-.zip-status__option--row input[role="switch"] {
-  appearance: none;
-  -webkit-appearance: none;
-  flex: 0 0 auto;
-  width: 51px;
-  height: 31px;
-  margin: 0;
-  border-radius: var(--radius-16);
-  background:
-    radial-gradient(circle at 15.5px 50%, var(--color-white) 0 13.5px, transparent 14px),
-    var(--color-fill-strong);
-  cursor: default;
-  transition: background var(--dur-chrome);
-}
-.zip-status__option--row input[role="switch"]:checked {
-  background:
-    radial-gradient(circle at calc(100% - 15.5px) 50%, var(--color-white) 0 13.5px, transparent 14px),
-    var(--accent);
-}
-.zip-status__option--row input[role="switch"]:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-
-/* ---------------------------------------------------------------------- */
 /* P3.4 Polish: focus ring, motion, sidebar collapse                       */
 /* ---------------------------------------------------------------------- */
 
@@ -5021,40 +4950,6 @@ html.has-app-height .shell--mobile {
 }
 
 
-/* D50: HEIC files a JPEG zip could not convert. */
-.heic-fallback {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-16);
-  background: var(--backdrop-material);
-  -webkit-backdrop-filter: var(--blur-material);
-  backdrop-filter: var(--blur-material);
-  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
-}
-.heic-fallback__card {
-  max-width: 420px;
-  width: 100%;
-  padding: var(--space-16);
-  border-radius: var(--radius-popup);
-  background: var(--color-card-raised);
-  color: var(--color-label);
-  box-shadow: var(--shadow-popup);
-  animation: dialog-in var(--dur-dialog) var(--ease-slide);
-  overflow-wrap: anywhere;
-}
-.heic-fallback__card p {
-  margin: 0 0 var(--space-14);
-}
-.heic-fallback__buttons {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--space-8);
-}
 
 /* D41: the Map view with OpenStreetMap tiles switched off. */
 .map-view__off-note {
@@ -6039,4 +5934,301 @@ textarea,
 .zip-ring__value {
   stroke: var(--accent);
   stroke-linecap: round;
+}
+
+/* ---------------------------------------------------------------------- */
+/* #507 Transfer HUD, Mac Download menu, progress ring                     */
+/* ---------------------------------------------------------------------- */
+.progress-ring__track {
+  fill: none;
+  stroke-width: 2.5;
+  stroke: var(--color-separator);
+}
+.progress-ring__value {
+  fill: none;
+  stroke-width: 2.5;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--dur-ring) linear;
+}
+.is-indeterminate {
+  animation: progress-ring-spin var(--dur-ring-spin) linear infinite;
+}
+@keyframes progress-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-indeterminate {
+    animation-duration: var(--dur-ring-spin-slow);
+  }
+}
+.zip-status__retry {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--font-size-caption);
+  padding: 0 var(--space-4);
+  cursor: default;
+}
+
+/* Mac Download button with its ▾ menu: one toolbar control, two hit areas. */
+.download-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.download-menu__main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.download-menu__chevron {
+  width: var(--space-16);
+  min-width: var(--space-16);
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.download-menu__chevron-icon {
+  transform: rotate(90deg);
+}
+.download-menu__popup {
+  position: absolute;
+  top: calc(100% + var(--space-4));
+  right: 0;
+  z-index: 40;
+  min-width: 250px;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--material-popover);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
+  animation: menu-in var(--dur-menu) var(--ease-menu);
+}
+.download-menu__popup button {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: var(--space-5) var(--space-10);
+  border: none;
+  border-radius: var(--radius-8);
+  background: transparent;
+  color: var(--color-label);
+  font: inherit;
+  font-size: var(--font-size-body-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+}
+.download-menu__popup button:hover,
+.download-menu__popup button:focus-visible {
+  background: var(--accent);
+  color: var(--color-white);
+  outline-width: 0;
+}
+
+/* The transfer HUD. Phone: the iOS system HUD -- a blurred rounded panel, SF
+   type (system-ui), a ring, plain tinted text rows, no web buttons. Desktop:
+   a small macOS alert for the cases that need a decision. */
+.transfer-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-20);
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.transfer-hud__card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--color-label);
+  /* Focused by script when it opens; a ring around the whole card means nothing. */
+  outline-width: 0;
+  overflow-wrap: anywhere;
+}
+.transfer-hud__glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.transfer-hud__ring {
+  width: 44px;
+  height: 44px;
+}
+.transfer-hud__ring .progress-ring__track,
+.transfer-hud__ring .progress-ring__value {
+  stroke-width: 2;
+}
+.transfer-hud__glyph--warn,
+.transfer-hud__glyph--ok {
+  font-size: var(--font-size-title-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+}
+.transfer-hud__glyph--warn {
+  color: var(--color-danger-text);
+}
+.transfer-hud__glyph--ok {
+  color: var(--accent);
+}
+.transfer-hud__title {
+  margin: 0;
+  font-weight: var(--font-weight-semibold);
+}
+.transfer-hud__message {
+  margin: 0;
+  color: var(--color-label-secondary);
+}
+.transfer-hud__rows {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+.transfer-hud__row {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: default;
+}
+
+.transfer-hud--phone {
+  background: var(--hud-scrim);
+  animation: backdrop-in var(--dur-hud-scrim) var(--ease-menu);
+  -webkit-tap-highlight-color: transparent;
+}
+.transfer-hud--phone .transfer-hud__card {
+  width: min(270px, 100%);
+  padding: var(--space-20) 0 0;
+  border-radius: var(--radius-24);
+  background: var(--hud-material);
+  -webkit-backdrop-filter: var(--blur-hud);
+  backdrop-filter: var(--blur-hud);
+  box-shadow: var(--hud-shadow);
+  animation: transfer-hud-in var(--dur-hud) var(--ease-slide);
+}
+.transfer-hud--phone .transfer-hud__glyph {
+  margin-bottom: var(--space-10);
+}
+.transfer-hud--phone .transfer-hud__title {
+  padding: 0 var(--space-20);
+  font-size: var(--font-size-headline);
+  line-height: 22px;
+}
+.transfer-hud--phone .transfer-hud__message {
+  padding: var(--space-2) var(--space-20) 0;
+  font-size: var(--font-size-subhead);
+  line-height: 18px;
+}
+.transfer-hud--phone .transfer-hud__rows {
+  margin-top: var(--space-16);
+  border-top: 0.5px solid var(--color-separator);
+}
+.transfer-hud--phone .transfer-hud__row {
+  min-height: 46px;
+  font-size: var(--font-size-headline);
+  font-weight: var(--font-weight-regular, 400);
+}
+.transfer-hud--phone .transfer-hud__row + .transfer-hud__row {
+  border-top: 0.5px solid var(--color-separator);
+}
+.transfer-hud--phone .transfer-hud__row--primary {
+  font-weight: var(--font-weight-semibold);
+}
+.transfer-hud--phone .transfer-hud__row:active {
+  background: var(--hud-row-pressed);
+}
+.transfer-hud--phone .transfer-hud__row:last-child {
+  border-radius: 0 0 var(--radius-24) var(--radius-24);
+}
+.transfer-hud--phone .progress-ring__track {
+  stroke: var(--hud-ring-track);
+}
+@keyframes transfer-hud-in {
+  from {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .transfer-hud--phone .transfer-hud__card {
+    background: var(--hud-material-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.transfer-hud--desktop {
+  background: var(--backdrop-material);
+  -webkit-backdrop-filter: var(--blur-material);
+  backdrop-filter: var(--blur-material);
+  animation: backdrop-in var(--dur-dialog) var(--ease-menu);
+}
+.transfer-hud--desktop .transfer-hud__card {
+  width: min(300px, 100%);
+  padding: var(--space-20) var(--space-20) var(--space-16);
+  border-radius: var(--radius-popup);
+  background: var(--material-popover);
+  box-shadow: var(--shadow-popup), 0 0 0 0.5px var(--color-hairline);
+  animation: dialog-in var(--dur-dialog) var(--ease-slide);
+}
+.transfer-hud--desktop .transfer-hud__glyph {
+  margin-bottom: var(--space-8);
+}
+.transfer-hud--desktop .transfer-hud__title {
+  font-size: var(--font-size-subhead);
+  line-height: 16px;
+}
+.transfer-hud--desktop .transfer-hud__message {
+  margin-top: var(--space-6);
+  font-size: var(--font-size-caption);
+  line-height: 15px;
+}
+.transfer-hud--desktop .transfer-hud__rows {
+  gap: var(--space-8);
+  margin-top: var(--space-16);
+}
+.transfer-hud--desktop .transfer-hud__row {
+  min-height: 22px;
+  border-radius: var(--radius-small);
+  background: var(--color-fill-subtle);
+  color: var(--color-label);
+  font-size: var(--font-size-subhead);
+  box-shadow: var(--shadow-push-button);
+}
+.transfer-hud--desktop .transfer-hud__row--primary {
+  order: -1;
+  background: var(--accent);
+  color: var(--color-white);
+}
+
+/* More > Transfer Format: a checkmark list like iOS Settings. */
+.more-screen__item--choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+}
+.more-screen__check {
+  color: var(--accent);
+}
+.more-screen__switch-note {
+  margin: 0;
+  padding: var(--space-4) var(--space-16) var(--space-8);
+  font-size: var(--font-size-caption);
+  color: var(--color-label-secondary);
+}
+.more-screen__group + .more-screen__switch-note {
+  margin: calc(-1 * var(--space-14)) 0 var(--space-20);
 }

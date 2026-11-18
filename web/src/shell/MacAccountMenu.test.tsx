@@ -38,7 +38,9 @@ describe("MacAccountMenu (#292)", () => {
     for (const name of ["Library", "Change Password…", "Passkeys…", "Log Out"]) {
       expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
-    expect(screen.getAllByRole("separator")).toHaveLength(2);
+    expect(screen.getAllByRole("separator")).toHaveLength(3);
+    expect(screen.getByRole("menuitem", { name: "Transfer Format" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Download as ZIP" })).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Library" }));
   });
 
@@ -172,5 +174,23 @@ describe("MacAccountMenu (#292)", () => {
     fireEvent.error(document.querySelector("img")!);
     expect(document.querySelector("img")).toBeNull();
     expect(trigger()).toHaveTextContent("A");
+  });
+});
+
+describe("MacAccountMenu Transfer Format (#507)", () => {
+  it("offers Automatic and Keep Originals, saves the choice and closes the menu", () => {
+    localStorage.clear();
+    setup();
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Transfer Format" }));
+    expect(screen.getByRole("menuitemradio", { name: "Automatic" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Keep Originals" }));
+    expect(localStorage.getItem("photos-viewer:transfer-format")).toBe("original");
+    expect(screen.queryByRole("menu", { name: "Account" })).toBeNull();
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "Transfer Format" }));
+    expect(screen.getByRole("menuitemradio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "true");
+    localStorage.clear();
   });
 });

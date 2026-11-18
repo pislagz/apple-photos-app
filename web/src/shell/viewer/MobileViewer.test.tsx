@@ -611,31 +611,33 @@ describe("MobileViewer", () => {
     rectSpy.mockRestore();
   });
 
-  it("shows a Download Original action for an edited photo, and downloads the original file", async () => {
-    const items = [makeItem("a1")];
-    mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
-    let href = "";
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      href = this.href;
-    });
-
-    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
-
-    fireEvent.click(await screen.findByLabelText("Download Original"));
-    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
-    expect(href).toContain("/original/a1");
-    expect(href).not.toContain("version=edited");
-    clickSpy.mockRestore();
+  it("has no Download control at all, edited or not: the phone viewer is Share only (#507)", async () => {
+    for (const has_edited of [true, false]) {
+      const items = [makeItem("a1")];
+      mockDetail({ a1: makeDetail("a1", { has_edited }) });
+      const { unmount } = render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+      await screen.findByLabelText("Share");
+      await act(async () => {});
+      expect(screen.queryByLabelText(/Download/)).toBeNull();
+      unmount();
+    }
   });
 
-  it("has no Download Original action for a photo that was never edited", async () => {
+  it("Share hands the one photo to the share sheet in one tap, as JPEG under Automatic", async () => {
     const items = [makeItem("a1")];
-    mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
-
+    const base = mockDetail({ a1: makeDetail("a1", { has_edited: false }) });
+    void base;
+    const share = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, share, canShare: () => true });
+    const realFetch = global.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) =>
+      String(url).includes("/original/") ? new Response("x", { headers: { "content-type": "image/jpeg", "content-disposition": 'attachment; filename="IMG_1.jpg"' } }) : (realFetch as typeof fetch)(url, init),
+    ));
     render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
-
-    await screen.findByLabelText("Share");
-    expect(screen.queryByLabelText("Download Original")).toBeNull();
+    fireEvent.click(await screen.findByLabelText("Share"));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    expect(share.mock.calls[0][0].files).toHaveLength(1);
+    expect(screen.queryByTestId("transfer-hud")).toBeNull();
   });
 
   it("press-and-hold shows the unedited original while held, and reverts on release", async () => {
@@ -643,7 +645,8 @@ describe("MobileViewer", () => {
     mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
 
     render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
-    await screen.findByLabelText("Download Original");
+    await screen.findByLabelText("Share");
+    await act(async () => {});
     const stage = screen.getByTestId("mobile-viewer-stage");
     const media = () => stage.querySelector("img") as HTMLImageElement;
 
@@ -913,8 +916,8 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
 
   it("styles the bottom buttons as the shared glass buttons without duplicating the glass CSS (#394)", async () => {
     setup({ favorite: true }, { has_edited: true });
-    await screen.findByLabelText("Download Original");
-    for (const label of ["Share", "Download Original", "Info"]) {
+    await screen.findByLabelText("Share");
+    for (const label of ["Share", "Info"]) {
       const b = screen.getByLabelText(label);
       expect(b.className).toContain("mobile-library__glass-button");
       expect(b.className).toContain("mobile-viewer__bar-button");
@@ -924,20 +927,15 @@ describe("MobileViewer chrome (#211, #111, #131)", () => {
     expect(css.slice(start, css.indexOf("}", start))).not.toMatch(/background|backdrop-filter/);
   });
 
-  it("the bar has fixed slots in the order Share, Favorite, Download Original, Info", async () => {
+  it("the bar has fixed slots in the order Share, Favorite, empty, Info (no Download, #507)", async () => {
     setup({ favorite: true }, { has_edited: true });
     const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
-    await screen.findByLabelText("Download Original");
+    await screen.findByLabelText("Share");
     expect(row.children).toHaveLength(4);
-    expect([...row.children].map((c) => c.getAttribute("aria-label"))).toEqual([
-      "Share",
-      "Favorite",
-      "Download Original",
-      "Info",
-    ]);
+    expect([...row.children].map((c) => c.getAttribute("aria-label"))).toEqual(["Share", "Favorite", null, "Info"]);
   });
 
-  it("keeps the empty slots when the favourite and the original download are absent", () => {
+  it("keeps the empty slots when the favourite is absent", () => {
     setup();
     const row = document.querySelector(".mobile-viewer__icon-row") as HTMLElement;
     expect(row.children).toHaveLength(4);

@@ -2,7 +2,8 @@ import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, us
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
 import { Icon } from "../icons";
-import { downloadVersion, shareOrDownloadAssets } from "./download";
+import TransferHud from "../export/TransferHud";
+import { useExport } from "../export/useExport";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { useOutsidePress } from "../useOutsidePress";
@@ -109,6 +110,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
     if (video && Number.isFinite(video.duration)) video.currentTime = fraction * video.duration;
   }, []);
 
+  const exportFlow = useExport(libraryId);
   const [infoOpen, setInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
@@ -434,12 +436,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
 
   function handleShare() {
     if (detail?.original_outside_library) return;
-    void shareOrDownloadAssets(libraryId, [{ id: item.id, filename: item.filename, original_filename: item.original_filename }]);
-  }
-
-  function handleDownloadOriginal() {
-    if (detail?.original_outside_library) return;
-    downloadVersion(libraryId, item.id, "original");
+    void exportFlow.share([item]);
   }
 
   if (!item) return null;
@@ -685,18 +682,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           ) : (
             <span className="mobile-viewer__slot" aria-hidden />
           )}
-          {detail?.has_edited ? (
-            <button
-              type="button"
-              className="mobile-library__glass-button mobile-viewer__bar-button"
-              onClick={handleDownloadOriginal}
-              aria-label="Download Original"
-            >
-              <Icon name="download" size={20} />
-            </button>
-          ) : (
-            <span className="mobile-viewer__slot" aria-hidden />
-          )}
+          <span className="mobile-viewer__slot" aria-hidden />
           <button
             ref={infoButtonRef}
             type="button"
@@ -726,6 +712,7 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           )}
         </div>
       )}
+      <TransferHud flow={exportFlow} layout="phone" />
     </div>
   );
 }

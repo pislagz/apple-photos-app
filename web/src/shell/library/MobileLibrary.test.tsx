@@ -25,6 +25,7 @@ function makeItem(id: string, date: string): AssetListItem {
 }
 
 afterEach(() => {
+  localStorage.clear();
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   vi.unstubAllGlobals();
 });
@@ -648,9 +649,10 @@ describe("MobileLibrary", () => {
     expect(screen.queryByTestId("mobile-viewer")).toBeNull();
     expect(screen.getByText("2 Photos Selected")).toBeInTheDocument();
 
+    // One tap on Share: no dialog, the files go straight to the share sheet.
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-    expect(canShare).toHaveBeenCalledTimes(1);
+    expect(canShare).toHaveBeenCalled();
     expect(share.mock.calls[0][0].files).toHaveLength(2);
   });
 
@@ -690,29 +692,8 @@ describe("MobileLibrary", () => {
     expect(container.querySelector('.mobile-library__cell-wrap[data-selected="true"]')).not.toBeNull();
   });
 
-  it("offers HEIC as JPEG only once a HEIC photo is selected (#254)", async () => {
-    const items = [
-      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: false },
-      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: true },
-    ];
-    mockAssets(items);
-
-    render(<MobileLibrary libraryId={1} />);
-    await screen.findAllByRole("img");
-    fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    const images = await screen.findAllByRole("img");
-    fireEvent.click(screen.getByText("Select"));
-    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
-
-    fireEvent.click(image("a1"));
-    expect(screen.getByTestId("zip-status")).toBeInTheDocument();
-    expect(screen.queryByLabelText("HEIC as JPEG")).toBeNull();
-
-    fireEvent.click(image("a2"));
-    expect(screen.getByLabelText("HEIC as JPEG")).toBeInTheDocument();
-  });
-
-  it("lays the select bar out like Photos: Share left, count centred, Download right (#259)", async () => {
+  it("the select bar is Share only: Share left, count centred, no Download, no HEIC switch, no caption (#507)", async () => {
+    localStorage.setItem("photos-viewer:download-as-zip", "1");
     const items = [
       { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
       { ...makeItem("v1", "2024-05-09T10:00:00"), is_video: true },
@@ -727,74 +708,60 @@ describe("MobileLibrary", () => {
 
     const bar = screen.getByTestId("select-bar");
     const row = bar.querySelector(".mobile-library__select-row")!;
-    const [share, count, download] = [...row.children];
+    const [share, count] = [...row.children];
+    expect(row.children).toHaveLength(2);
     expect(share).toBe(screen.getByRole("button", { name: "Share" }));
     expect(count).toHaveTextContent("Select Items");
-    expect(download).toBe(screen.getByRole("button", { name: "Download" }));
-    expect(screen.queryByRole("button", { name: "Zip" })).toBeNull();
     expect(share).toBeDisabled();
-    expect(download).toBeDisabled();
 
     fireEvent.click(image("a1"));
     expect(count).toHaveTextContent("1 Photo Selected");
-    expect(bar).toHaveTextContent("Downloads the original file.");
-    // The HEIC option is a whole-row switch, not a small checkbox.
-    const option = screen.getByRole("switch", { name: "HEIC as JPEG" });
-    expect(option.closest("label")).toHaveClass("zip-status__option--row");
-
     fireEvent.click(image("v1"));
     expect(count).toHaveTextContent("2 Items Selected");
-    expect(bar).toHaveTextContent("Downloads all selected items in a ZIP file.");
     expect(share).toBeEnabled();
-    expect(download).toBeEnabled();
+
+    expect(within(bar).queryByRole("button", { name: /Download/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "HEIC as JPEG" })).toBeNull();
+    expect(screen.queryByTestId("zip-status")).toBeNull();
+    expect(bar).not.toHaveTextContent(/Downloads/);
   });
 
-  it("downloads a single selected item as the plain file, not an archive (#259)", async () => {
-    const items = [
-      { ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true },
-      { ...makeItem("a2", "2024-05-09T10:00:00"), is_heic: false },
-    ];
-    const fetchMock = mockAssets(items);
-    const hrefs: string[] = [];
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      hrefs.push(this.getAttribute("href") ?? "");
+  it("Share of one item downloads nothing and makes no ZIP request; Share is the only way out (#507)", async () => {
+    const items = [{ ...makeItem("a1", "2024-05-10T10:00:00"), is_heic: true }];
+    const fetchMock = mockLibraryFetch(items, (url) => {
+      if (url.startsWith("/api/libraries/1/original/")) return new Response("x", { headers: { "content-type": "image/jpeg" } });
+      if (/\/assets\/[^/?]+$/.test(url)) return { has_edited: false };
+      return undefined;
     });
+    const share = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, share, canShare: () => true });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
     const images = await screen.findAllByRole("img");
     fireEvent.click(screen.getByText("Select"));
-    const image = (id: string) => images.find((img) => img.getAttribute("src")?.includes(`/thumb/${id}?`)) as HTMLImageElement;
-
-    fireEvent.click(image("a1"));
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
-    await waitFor(() => expect(hrefs).toEqual(["/api/libraries/1/original/a1?download=1"]));
-
-    fireEvent.click(screen.getByRole("switch", { name: "HEIC as JPEG" }));
-    fireEvent.click(screen.getByRole("button", { name: "Download" }));
-    await waitFor(() => expect(hrefs).toHaveLength(2));
-    expect(hrefs[1]).toBe("/api/libraries/1/original/a1?format=jpeg&download=1");
-
-    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(urls.some((url) => url.includes("/zip"))).toBe(false);
+    fireEvent.click(images[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    // Automatic: the HEIC goes out as JPEG.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("format=jpeg"))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/zip"))).toBe(false);
+    expect(click).not.toHaveBeenCalled();
     click.mockRestore();
   });
 
-  it("styles the select bar buttons as the shared glass buttons (#371)", async () => {
+  it("styles the select bar's Share as the shared glass button (#371)", async () => {
     mockAssets([makeItem("a1", "2024-05-10T10:00:00")]);
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
     const bar = screen.getByTestId("select-bar");
     const share = within(bar).getByRole("button", { name: "Share" });
-    const download = within(bar).getByRole("button", { name: "Download" });
     expect(share.className).toContain("mobile-library__glass-button");
-    expect(download.className).toContain("mobile-library__glass-button");
-    // Order in the DOM is Share, count, actions.
     const row = bar.querySelector(".mobile-library__select-row")!;
     expect(row.children[0]).toBe(share);
     expect(row.children[1].className).toContain("select-count");
-    expect(row.children[2]).toBe(download);
   });
 
   it("gives every select bar control a 44pt target (#259)", () => {
@@ -806,7 +773,6 @@ describe("MobileLibrary", () => {
     expect(rule(".mobile-library__select-row")).toMatch(/min-height: 49px/);
     expect(rule(".mobile-library__bar-button")).toMatch(/width: 44px/);
     expect(rule(".mobile-library__glass-button")).toMatch(/height: 44px/);
-    expect(rule(".zip-status__option--row")).toMatch(/min-height: 44px/);
   });
 
   it("hides the Years/Months/Days/All Photos pill in Select mode and restores it on Cancel", async () => {
@@ -845,25 +811,27 @@ describe("MobileLibrary", () => {
     expect(screen.getByTestId("header-subtitle")).toHaveTextContent("9 May 2024");
   });
 
-  it("falls back to download links per item when the Web Share API is unavailable", async () => {
+  it("over the share limit the HUD offers Save as ZIP to Files, and no Download button appears anywhere (#507)", async () => {
+    localStorage.setItem("photos-viewer:transfer-format", "original");
     const items = [makeItem("a1", "2024-05-10T10:00:00"), makeItem("a2", "2024-05-09T10:00:00")];
-    mockAssets(items);
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-
+    const fetchMock = mockLibraryFetch(items, (url) => {
+      if (url.endsWith("/selection-summary")) return { count: 2, photos: 2, videos: 0, total_bytes: 400 * 1024 * 1024 };
+      if (url.includes("/zip/ticket")) return { ticket: "t1", total_bytes: 10, expires_in: 60, job: null };
+      return undefined;
+    });
+    vi.stubGlobal("navigator", { ...navigator, share: vi.fn(), canShare: () => true });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     render(<MobileLibrary libraryId={1} />);
     await screen.findAllByRole("img");
     fireEvent.click(screen.getByRole("tab", { name: "All Photos" }));
-    const images = await screen.findAllByRole("img");
+    await screen.findAllByRole("img");
     fireEvent.click(screen.getByText("Select"));
-
-    const a1Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a1?")) as HTMLImageElement;
-    const a2Image = images.find((img) => img.getAttribute("src")?.includes("/thumb/a2?")) as HTMLImageElement;
-    fireEvent.click(a1Image);
-    fireEvent.click(a2Image);
-
+    const images = await screen.findAllByRole("img");
+    for (const img of images) fireEvent.click(img);
+    expect(screen.queryByRole("button", { name: /^Download/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(2));
-    clickSpy.mockRestore();
+    fireEvent.click(await screen.findByRole("button", { name: "Save as ZIP to Files" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/zip/ticket"))).toBe(true));
   });
 });
 
