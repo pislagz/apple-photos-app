@@ -31,7 +31,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 
 test.afterAll(async ({ playwright, baseURL }) => {
   const api = await adminApi(await playwright.request.newContext({ baseURL }));
-  await api.put("/api/admin/settings/family-login", { data: ON });
+  await api.put("/api/admin/settings/family-login", { data: { ...ON, enabled: false } });
   await api.dispose();
 });
 
