@@ -311,6 +311,32 @@ export default function DesktopShell({
     };
   }, [narrow, overlayOpen]);
 
+  // #513: the footer shows a hairline only while list content sits under it.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [underFooter, setUnderFooter] = useState(false);
+  const updateUnderFooter = useCallback(() => {
+    const el = scrollRef.current;
+    if (el) setUnderFooter(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateUnderFooter();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(updateUnderFooter);
+    ro.observe(el);
+    if (el.firstElementChild) for (const c of Array.from(el.children)) ro.observe(c);
+    const mo = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      for (const c of Array.from(el.children)) ro.observe(c);
+      updateUnderFooter();
+    });
+    mo?.observe(el, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo?.disconnect();
+    };
+  }, [updateUnderFooter]);
+
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [resizing, setResizing] = useState(false);
   function commitSidebarWidth(width: number) {
@@ -431,7 +457,7 @@ export default function DesktopShell({
       </button>
       {/* inert while collapsed: the width animates to 0 but the links must
           leave the Tab order and the accessibility tree. */}
-      <aside className="sidebar" id="app-sidebar"
+      <aside className={`sidebar${underFooter ? " sidebar--footer-sep" : ""}`} id="app-sidebar"
         aria-label="Sidebar"
         inert={!isOpen}
         onClick={(event) => {
@@ -439,43 +465,45 @@ export default function DesktopShell({
           if (narrow && (event.target as Element).closest(".sidebar__item:not(:disabled)")) setOverlayOpen(false);
         }}
       >
-        <nav aria-label="Sections">
-          <SidebarSection title="Photos">
-            <ul>{PHOTOS_SECTION.map(renderItem)}</ul>
-          </SidebarSection>
-          <SidebarSection title="Collections">
-            <ul>{COLLECTIONS_SECTION.map(renderItem)}</ul>
-          </SidebarSection>
-        </nav>
-        {activeLibraryId !== undefined && !activeLibrary?.updating ? (
-          <SidebarAlbumData key={activeLibraryId} libraryId={activeLibraryId}>
-            {(state) =>
-              // Hold the groups back until /albums answers (or fails), so the
-              // Media types group does not push them down on first load.
-              !state.albums && !state.error ? null : (
-              <>
-                <MediaTypesGroup state={state} currentId={currentAlbumId} onOpen={openAlbum} />
-                {utilities}
-                <SidebarSection title="Albums">
-                  <AlbumsSidebarGroup
-                    state={state}
-                    libraryId={activeLibraryId}
-                    currentId={currentAlbumId}
-                    onOpen={openAlbum}
-                  />
-                </SidebarSection>
-              </>
-              )
-            }
-          </SidebarAlbumData>
-        ) : (
-          <>
-            {utilities}
-            <SidebarSection title="Albums">
-              <p className="sidebar__note">No albums</p>
+        <div className="sidebar__scroll" ref={scrollRef} onScroll={updateUnderFooter}>
+          <nav aria-label="Sections">
+            <SidebarSection title="Photos">
+              <ul>{PHOTOS_SECTION.map(renderItem)}</ul>
             </SidebarSection>
-          </>
-        )}
+            <SidebarSection title="Collections">
+              <ul>{COLLECTIONS_SECTION.map(renderItem)}</ul>
+            </SidebarSection>
+          </nav>
+          {activeLibraryId !== undefined && !activeLibrary?.updating ? (
+            <SidebarAlbumData key={activeLibraryId} libraryId={activeLibraryId}>
+              {(state) =>
+                // Hold the groups back until /albums answers (or fails), so the
+                // Media types group does not push them down on first load.
+                !state.albums && !state.error ? null : (
+                <>
+                  <MediaTypesGroup state={state} currentId={currentAlbumId} onOpen={openAlbum} />
+                  {utilities}
+                  <SidebarSection title="Albums">
+                    <AlbumsSidebarGroup
+                      state={state}
+                      libraryId={activeLibraryId}
+                      currentId={currentAlbumId}
+                      onOpen={openAlbum}
+                    />
+                  </SidebarSection>
+                </>
+                )
+              }
+            </SidebarAlbumData>
+          ) : (
+            <>
+              {utilities}
+              <SidebarSection title="Albums">
+                <p className="sidebar__note">No albums</p>
+              </SidebarSection>
+            </>
+          )}
+        </div>
         <MacAccountMenu
           onAvatarChanged={onAvatarChanged}
           me={me}

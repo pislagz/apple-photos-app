@@ -57,6 +57,19 @@ describe("DesktopShell layout", () => {
     // floating line under it.
     expect(screen.queryByLabelText("Library switcher")).not.toBeInTheDocument();
     expect(sidebar?.lastElementChild?.querySelector(".account-menu__row-trigger")).not.toBeNull();
+    // #513: the list scrolls in its own box; the footer is a sibling outside it.
+    const scroller = sidebar?.querySelector(".sidebar__scroll");
+    expect(scroller?.querySelector("nav")).not.toBeNull();
+    expect(scroller?.querySelector(".account-menu")).toBeNull();
+    expect(scroller?.nextElementSibling).toBe(sidebar?.querySelector(".account-menu"));
+    // Hairline only while list content sits under the footer.
+    const el = scroller as HTMLElement;
+    const overflow = el.scrollHeight > el.clientHeight;
+    expect(overflow).toBe(true);
+    expect(sidebar?.className).toContain("sidebar--footer-sep");
+    el.scrollTop = el.scrollHeight;
+    fireEvent.scroll(el);
+    await waitFor(() => expect(sidebar?.className).not.toContain("sidebar--footer-sep"));
   });
 
   it("lets a multi-library account pick the active library from the account menu", async () => {
