@@ -1,5 +1,5 @@
 import { getAssetDetail } from "../../api";
-import { assetPageUrl, originalJpegFallbackUrl, originalUrl } from "./mediaUrls";
+import { assetPageUrl, originalJpegFallbackUrl, originalUrl, previewThumbUrl } from "./mediaUrls";
 
 // Phase 1 download is one file at a time (CLAUDE.md), original or edited
 // (P1.17) -- whichever is "the" photo as the library shows it. A single
@@ -54,6 +54,38 @@ export async function downloadSingleAsset(
 
 export async function copyAssetLink(libraryId: number, assetId: string): Promise<void> {
   await navigator.clipboard.writeText(assetPageUrl(libraryId, assetId));
+}
+
+// Copy Photo: the displayed-size JPEG as a PNG, the one image type every
+// browser's clipboard accepts. The blob is a promise so Safari still counts the
+// write as part of the tap.
+export function canCopyImage(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.isSecureContext !== false &&
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function"
+  );
+}
+
+async function previewAsPng(url: string): Promise<Blob> {
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) throw new Error(`copy failed: ${response.status}`);
+  const bitmap = await createImageBitmap(await response.blob());
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("copy failed"))), "image/png"),
+  );
+}
+
+export async function copyAssetImage(libraryId: number, assetId: string): Promise<void> {
+  await navigator.clipboard.write([
+    new ClipboardItem({ "image/png": previewAsPng(previewThumbUrl(libraryId, assetId)) }),
+  ]);
 }
 
 type ShareItem = { id: string; filename: string | null; original_filename?: string | null };

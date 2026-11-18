@@ -5931,6 +5931,48 @@ textarea,
   pointer-events: none;
 }
 
+/* Viewer ••• menu: reuses the iPhone glass menu; the wrapper anchors the card
+   under the button and lifts the button above the closing backdrop. */
+.viewer-more {
+  position: relative;
+}
+
+.viewer-more__button {
+  position: relative;
+  z-index: 1;
+}
+
+.viewer-more .filter-menu__popup {
+  right: 0;
+  z-index: 3;
+}
+
+/* #503: full-viewer catcher under the open ••• menu; the topbar sits above it. */
+.viewer-more__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  touch-action: none;
+}
+
+.mobile-viewer__topbar {
+  position: relative;
+  z-index: 2;
+}
+
+/* While the menu is open the bare topbar (title, gaps) counts as outside. */
+.mobile-viewer__topbar.has-more-open {
+  pointer-events: none;
+}
+
+.mobile-viewer__topbar.has-more-open > * {
+  pointer-events: auto;
+}
+
+.mobile-viewer__topbar.has-more-open .mobile-viewer__title {
+  pointer-events: none;
+}
+
 /* #482: desktop download progress is a ring in the Download button, and the toolbar
    status holds only the HEIC option, so nothing is clipped or reflows the bar. */
 .zip-status--toolbar {
@@ -5957,4 +5999,19 @@ textarea,
 .zip-ring__value {
   stroke: var(--accent);
   stroke-linecap: round;
+}
+
+/* #514 Show in All Photos: the tile pulses an accent ring, then settles. */
+.mobile-library__cell-wrap[data-located="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--accent);
+  pointer-events: none;
+  animation: library-locate var(--dur-locate) ease-out forwards;
+}
+
+@keyframes library-locate {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; }
 }

@@ -1,8 +1,9 @@
 import { type CSSProperties, type TouchEvent, useCallback, useEffect, useRef, useState } from "react";
 import type { AssetListItem } from "../../api";
 import { assetAlt } from "../assetAlt";
-import { Icon } from "../icons";
-import { downloadVersion, shareOrDownloadAssets } from "./download";
+import { Icon, type IconName } from "../icons";
+import { canCopyImage, copyAssetImage, copyAssetLink, downloadSingleAsset, downloadVersion, shareOrDownloadAssets } from "./download";
+import { useViewerActions } from "./ViewerActionsContext";
 import { Filmstrip } from "./Filmstrip";
 import MiniMap from "../map/MiniMap";
 import { InfoRows, OriginalMissingNote, OriginalOutsideNote } from "./InfoRows";
@@ -30,11 +31,31 @@ export interface ViewerProps {
   // #220: scroll the grid behind so this item's tile is on screen; called as
   // paging moves on, so the close zoom has a tile to land on.
   revealItem?: (id: string) => void;
+  // #514: opened from an album, search, person or place rather than All Photos.
+  fromOtherView?: boolean;
+  // #514: the library's "HEIC as JPEG" choice, applied to the menu's Download.
+  downloadAsJpeg?: boolean;
 }
 
 const LONG_PRESS_MS = 450;
 // A tap is a touch that never locked an axis and moved less than this.
 const TAP_SLOP_PX = 10;
+
+// The backdrop unmounts on pointerdown, so the click that ends the same press
+// would land on whatever is underneath. Eat it (#503).
+function swallowNextClick() {
+  const eat = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    done();
+  };
+  const done = () => {
+    window.clearTimeout(timer);
+    window.removeEventListener("click", eat, true);
+  };
+  const timer = window.setTimeout(done, 700);
+  window.addEventListener("click", eat, true);
+}
 
 interface TouchPoint {
   clientX: number;
@@ -72,7 +93,8 @@ interface Gesture {
 // `items` is that view's own array, so a hidden asset from Library (P1.13)
 // can never appear here), swipe down to dismiss, pinch/double-tap zoom,
 // bottom filmstrip, and an info sheet instead of a permanent panel.
-export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem }: ViewerProps) {
+export default function MobileViewer({ libraryId, items, index, onIndexChange, onClose: onCloseNow, revealItem, fromOtherView, downloadAsJpeg }: ViewerProps) {
+  const actions = useViewerActions();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const item = items[index];
@@ -93,6 +115,8 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }, []);
 
   const [infoOpen, setInfoOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
   // Playing video hides the chrome after 2.5 s; pause (or a tap) brings it back.
   const [videoRunning, setVideoRunning] = useState(false);
   const chrome = useChromeVisibility(media.isVideo && media.videoPlaying && videoRunning);
@@ -168,11 +192,16 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }, [item?.id]);
 
   useEffect(() => {
+    if (moreOpen) moreMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [moreOpen]);
+
+  useEffect(() => {
     setView(g.FIT);
     setDrag({ x: 0, y: 0 });
     setPageDx(0);
     setAnimating(false);
     setInfoOpen(false);
+    setMoreOpen(false);
     setVideoRunning(false);
     clearLongPress();
     clearTapTimer();
@@ -417,6 +446,33 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
   }
 
   if (!item) return null;
+  // The ••• menu (iOS 27 Photos). Share lives in the bottom toolbar (#507).
+  // No Slideshow row: the app has no slideshow yet. No Add to Album, Favorite or
+  // Hide: the library is read-only.
+  const lat = detail?.latitude;
+  const lon = detail?.longitude;
+  const moreRows: { label: string; icon: IconName; run: () => void }[] = [
+    { label: "Info", icon: "info", run: () => setInfoOpen(true) },
+  ];
+  if (!item.is_video && canCopyImage()) {
+    moreRows.push({ label: "Copy Photo", icon: "copy", run: () => void copyAssetImage(libraryId, item.id).catch(() => {}) });
+  }
+  moreRows.push({ label: "Copy Link", icon: "link", run: () => void copyAssetLink(libraryId, item.id).catch(() => {}) });
+  if (!detail?.original_outside_library) {
+    moreRows.push({
+      label: "Download",
+      icon: "download",
+      run: () => void downloadSingleAsset(libraryId, item.id, { asJpeg: !!downloadAsJpeg && !item.is_video }),
+    });
+  }
+  if (fromOtherView && actions.showInLibrary) {
+    const show = actions.showInLibrary;
+    moreRows.push({ label: "Show in All Photos", icon: "library", run: () => show(item.id) });
+  }
+  if (typeof lat === "number" && typeof lon === "number" && actions.showOnMap) {
+    const show = actions.showOnMap;
+    moreRows.push({ label: "Show on Map", icon: "map", run: () => show(lat, lon) });
+  }
   const stillSrc = media.showingOriginal ? media.showOriginalSrc : media.wantsOriginal ? media.originalSrc : media.previewSrc;
   const isFull = media.showingOriginal || media.wantsOriginal;
   const alt = assetAlt({ ...item, title: detail?.title });
@@ -470,7 +526,22 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
       ref={rootRef}
       tabIndex={-1}
       style={rootStyle}>
-      <div className="mobile-viewer__topbar">
+      {moreOpen && (
+        // Covers the whole viewer, not just the topbar: the topbar's backdrop-filter
+        // makes it the containing block of any fixed child. Pointer events cover
+        // mouse, touch and pen, and a sibling of the stage keeps the tap off it (#503).
+        <div
+          className="viewer-more__backdrop"
+          data-testid="viewer-more-backdrop"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setMoreOpen(false);
+            swallowNextClick();
+          }}
+        />
+      )}
+      <div className={`mobile-viewer__topbar${moreOpen ? " has-more-open" : ""}`}>
         <button type="button" className="mobile-viewer__icon-button" onClick={onClose} aria-label="Close">
           <Icon name="chevron" size={19} className="mobile-viewer__back-chevron" />
         </button>
@@ -478,9 +549,48 @@ export default function MobileViewer({ libraryId, items, index, onIndexChange, o
           {title.primary && <div className="mobile-viewer__title-primary">{title.primary}</div>}
           {title.secondary && <div className="mobile-viewer__title-secondary">{title.secondary}</div>}
         </div>
-        <button type="button" className="mobile-viewer__icon-button" aria-label="More">
-          <Icon name="more" size={18} />
-        </button>
+        <div className="filter-menu filter-menu--mobile viewer-more">
+          <button
+            type="button"
+            className="mobile-viewer__icon-button viewer-more__button"
+            aria-label="More"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((value) => !value)}
+          >
+            <Icon name="more" size={18} />
+          </button>
+          {moreOpen && (
+            <div
+              role="menu"
+              aria-label="More"
+              className="filter-menu__popup"
+              ref={moreMenuRef}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setMoreOpen(false);
+                }
+              }}
+            >
+              {moreRows.map((row) => (
+                <button
+                  key={row.label}
+                  type="button"
+                  role="menuitem"
+                  className="filter-menu__row filter-menu__row--parent"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    row.run();
+                  }}
+                >
+                  <span className="filter-menu__text">{row.label}</span>
+                  <Icon name={row.icon} size={22} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div
         className="mobile-viewer__stage"

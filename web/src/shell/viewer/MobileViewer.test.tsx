@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { Profiler } from "react";
 import { join } from "node:path";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
 import MobileViewer from "./MobileViewer";
+import { ViewerActionsContext } from "./ViewerActionsContext";
 
 function makeItem(id: string, overrides: Partial<AssetListItem> = {}): AssetListItem {
   return {
@@ -469,6 +470,119 @@ describe("MobileViewer", () => {
     expect(favorite.className).toContain("mobile-viewer__status");
     expect(screen.queryByLabelText(/delete/i)).toBeNull();
     expect(screen.queryByLabelText(/edit/i)).toBeNull();
+  });
+
+  it("tapping the top-right More button opens its menu, and Info from it opens the sheet (#485)", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const menu = screen.getByRole("menu", { name: "More" });
+    // #507: no Share row (it is in the bottom toolbar). #514: no Copy Photo
+    // without clipboard images, no Show rows without context, no Slideshow.
+    expect(within(menu).getAllByRole("menuitem").map((row) => row.textContent)).toEqual(["Info", "Copy Link", "Download"]);
+    expect(menu).not.toHaveTextContent(/share|slideshow|favorite|hide|album/i);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Info" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(await screen.findByTestId("viewer-info-sheet")).toBeInTheDocument();
+  });
+
+  describe("••• menu actions (#514)", () => {
+    function openMenu(props: Partial<React.ComponentProps<typeof MobileViewer>> = {}, actions = {}) {
+      const items = [makeItem("a1")];
+      render(
+        <ViewerActionsContext.Provider value={actions}>
+          <MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} {...props} />
+        </ViewerActionsContext.Provider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      return screen.getByRole("menu", { name: "More" });
+    }
+    const labels = (menu: HTMLElement) => within(menu).getAllByRole("menuitem").map((row) => row.textContent);
+
+    it("Copy Link writes the in-app photo URL", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      mockDetail({ a1: makeDetail("a1") });
+      openMenu();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy Link" }));
+      expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/library/1/photo/a1`);
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    it("Copy Photo shows only where clipboard images work, and writes a PNG item", async () => {
+      mockDetail({ a1: makeDetail("a1") });
+      expect(labels(openMenu())).not.toContain("Copy Photo");
+      cleanup();
+      const write = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("ClipboardItem", class {
+        constructor(public data: Record<string, Promise<unknown>>) {
+          // The image fetch is not under test here.
+          Object.values(data).forEach((promise) => promise.catch(() => {}));
+        }
+      });
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { write } });
+      mockDetail({ a1: makeDetail("a1") });
+      const menu = openMenu();
+      expect(labels(menu)).toEqual(["Info", "Copy Photo", "Copy Link", "Download"]);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Copy Photo" }));
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(Object.keys((write.mock.calls[0][0][0] as { data: object }).data)).toEqual(["image/png"]);
+    });
+
+    it("Download fetches the file, as JPEG when HEIC as JPEG is on", async () => {
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      mockDetail({ a1: makeDetail("a1", { has_edited: true }) });
+      openMenu({ downloadAsJpeg: true });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Download" }));
+      await waitFor(() => expect(click).toHaveBeenCalled());
+      const link = click.mock.contexts[0] as HTMLAnchorElement;
+      expect(link.getAttribute("href")).toContain("/api/libraries/1/original/a1?format=jpeg&version=edited&download=1");
+      click.mockRestore();
+    });
+
+    it("Show in All Photos only appears when opened from another view", () => {
+      mockDetail({ a1: makeDetail("a1") });
+      const showInLibrary = vi.fn();
+      expect(labels(openMenu({}, { showInLibrary }))).not.toContain("Show in All Photos");
+      cleanup();
+      mockDetail({ a1: makeDetail("a1") });
+      openMenu({ fromOtherView: true }, { showInLibrary });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Show in All Photos" }));
+      expect(showInLibrary).toHaveBeenCalledWith("a1");
+    });
+
+    it("Show on Map only appears for a photo with a location", async () => {
+      const showOnMap = vi.fn();
+      mockDetail({ a1: makeDetail("a1", { latitude: 37.5, longitude: -122.25 }) });
+      openMenu({}, { showOnMap });
+      await waitFor(() => expect(screen.getByRole("menuitem", { name: "Show on Map" })).toBeInTheDocument());
+      fireEvent.click(screen.getByRole("menuitem", { name: "Show on Map" }));
+      expect(showOnMap).toHaveBeenCalledWith(37.5, -122.25);
+      cleanup();
+      mockDetail({ a1: makeDetail("a1") });
+      openMenu({}, { showOnMap });
+      await screen.findByText("San Francisco", { exact: false }).catch(() => null);
+      expect(screen.queryByRole("menuitem", { name: "Show on Map" })).toBeNull();
+    });
+  });
+
+  it.each(["mouse", "touch", "pen"])("a %s press outside the open More menu closes it and nothing else (#503)", (pointerType) => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByRole("menu", { name: "More" })).toBeInTheDocument();
+    const stageClick = vi.fn();
+    screen.getByTestId("mobile-viewer").addEventListener("click", stageClick);
+    fireEvent.pointerDown(screen.getByTestId("viewer-more-backdrop"), { pointerType });
+    expect(screen.queryByRole("menu")).toBeNull();
+    // The click that ends the same press is eaten, not delivered underneath.
+    fireEvent.click(screen.getByTestId("mobile-viewer"));
+    expect(stageClick).not.toHaveBeenCalled();
   });
 
   it("opens the info sheet with date, camera, people, albums, and location from the detail route", async () => {
