@@ -571,7 +571,8 @@ export default function MobileLibrary({
                     Select Items
                   </div>
                   <div className="mobile-library__subtitle" data-testid="header-subtitle" aria-live="polite">
-                    <span key={selectedIds.size} className="date-title__text">
+                    {/* #510: no key and no fade class -- the count updates in place. */}
+                    <span data-testid="selected-count">
                       {selectedIds.size > 0 ? `${selectedIds.size} Selected` : "None Selected"}
                     </span>
                   </div>
