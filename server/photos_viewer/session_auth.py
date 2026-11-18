@@ -275,7 +275,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(password_hash: str, password: str) -> bool:
     """True only on an exact match. Never raises -- a malformed stored hash
-    or a mismatched password are both just "not authenticated"."""
+    or a mismatched password are both just "not authenticated". An empty
+    hash is a passwordless account (#519): no password ever matches it."""
+    if not password_hash:
+        return False
     try:
         return _hasher.verify(password_hash, password)
     except VerificationError:
@@ -1254,53 +1257,137 @@ def setup_admin(
     return AuthUserResponse(username=payload.username, role="admin")
 
 
-@router.post(
-    "/api/auth/login",
-    response_model=AuthUserResponse,
-    dependencies=[
-        Depends(reject_cross_site_requests),
-        Depends(_enforce_tailnet_allowlist),
-    ],
+# Passwordless sign-in (#519). Loopback, LAN and Tailscale ranges; anything
+# else is "not a private network". Judged on the direct peer address
+# (`request.client`, which uvicorn rewrites from X-Forwarded-For only for
+# peers in its own `--forwarded-allow-ips` trust list), never on a header.
+FAMILY_LOGIN_SETTING = "family_login"
+PASSWORDLESS_SETTING = "passwordless_signin"
+PASSWORDLESS_MODES = ("private", "anywhere")
+DEFAULT_PASSWORDLESS_MODE = "private"
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network(n)
+    for n in (
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "127.0.0.0/8",
+        "::1/128",
+        "fc00::/7",
+        "100.64.0.0/10",
+        "fd7a:115c:a1e0::/48",
+    )
+]
+
+
+def family_login_enabled(conn: sqlite3.Connection) -> bool:
+    return app_db.get_setting(conn, FAMILY_LOGIN_SETTING) != "0"
+
+
+def passwordless_mode(conn: sqlite3.Connection) -> str:
+    stored = app_db.get_setting(conn, PASSWORDLESS_SETTING)
+    return stored if stored in PASSWORDLESS_MODES else DEFAULT_PASSWORDLESS_MODE
+
+
+def is_private_peer(host: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return any(addr in network for network in _PRIVATE_NETWORKS)
+
+
+def passwordless_block_reason(conn: sqlite3.Connection, request: Request) -> str | None:
+    """None when a passwordless account may sign in from this peer, else
+    `family_login_off` or `network`."""
+    if not family_login_enabled(conn):
+        return "family_login_off"
+    if passwordless_mode(conn) == "private" and not is_private_peer(
+        _client_ip(request)
+    ):
+        return "network"
+    return None
+
+
+PASSWORDLESS_NETWORK_MESSAGE = (
+    "This profile has no password, so it can only sign in from your home or "
+    "Tailscale network. Ask an admin to change this, or sign in on that network."
 )
-def login(
+
+
+def has_password(user: sqlite3.Row) -> bool:
+    return bool(user["password_hash"])
+
+
+def authenticate_and_start_session(
     payload: LoginRequest,
     request: Request,
     response: Response,
-    db: sqlite3.Connection = Depends(get_db),
+    db: sqlite3.Connection,
+    *,
+    user: sqlite3.Row | None,
+    via_profile: bool,
 ) -> AuthUserResponse:
+    """Shared by `/api/auth/login` and the Family login profile sign-in:
+    same lockouts, same Argon2 work for a missing user, same session."""
     _prune_old_login_failures(db)
     peer_ip = _client_ip(request)
     ip_key = _ip_lockout_key(request)
-
-    user = db.execute(
-        "SELECT * FROM users WHERE username = ?", (payload.username,)
-    ).fetchone()
+    username = payload.username
     user_exists = user is not None
 
     if (ip_key is not None and is_ip_locked_out(db, ip_key, peer_ip)) or is_locked_out(
-        db, payload.username, user_exists=user_exists
+        db, username, user_exists=user_exists
     ):
         raise HTTPException(
             status_code=429, detail="too many failed attempts, try again later"
         )
 
+    password_ok = False
     if user is None or user["disabled"]:
         # Always verify against something, even for a missing or disabled
         # user, so the response takes the same time either way and a
         # username can't be inferred from how fast it failed.
         verify_password(_DUMMY_PASSWORD_HASH, payload.password)
-        password_ok = False
+    elif not has_password(user):
+        verify_password(_DUMMY_PASSWORD_HASH, payload.password)
+        if payload.password == "":
+            reason = passwordless_block_reason(db, request)
+            if reason is None:
+                password_ok = True
+            elif via_profile:
+                # The profile is already on the public list, so naming the
+                # reason leaks nothing. The plain form stays a generic 401 so
+                # it can't be used to find passwordless usernames.
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": f"passwordless_{reason}",
+                        "message": PASSWORDLESS_NETWORK_MESSAGE
+                        if reason == "network"
+                        else "Family login is off.",
+                    },
+                )
     else:
+        if via_profile and payload.password == "":
+            # The profile screen asks for the password after a tap; an empty
+            # first try is not a guess, so it is not counted as a failure.
+            raise HTTPException(
+                status_code=401,
+                detail={"code": "password_required", "message": "password required"},
+            )
         password_ok = verify_password(user["password_hash"], payload.password)
 
     if not password_ok:
-        record_login_failure(db, payload.username, user_exists=user_exists)
+        record_login_failure(db, username, user_exists=user_exists)
         if ip_key is not None:
             record_ip_login_failure(db, ip_key, peer_ip)
         raise HTTPException(status_code=401, detail="invalid username or password")
 
-    clear_login_failures(db, payload.username)
-    if _hasher.check_needs_rehash(user["password_hash"]):
+    clear_login_failures(db, username)
+    if user["password_hash"] and _hasher.check_needs_rehash(user["password_hash"]):
         db.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
             (hash_password(payload.password), user["id"]),
@@ -1318,7 +1405,49 @@ def login(
     return AuthUserResponse(username=user["username"], role=user["role"])
 
 
+@router.post(
+    "/api/auth/login",
+    response_model=AuthUserResponse,
+    dependencies=[
+        Depends(reject_cross_site_requests),
+        Depends(_enforce_tailnet_allowlist),
+    ],
+)
+def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: sqlite3.Connection = Depends(get_db),
+) -> AuthUserResponse:
+    user = db.execute(
+        "SELECT * FROM users WHERE username = ?", (payload.username,)
+    ).fetchone()
+    return authenticate_and_start_session(
+        payload, request, response, db, user=user, via_profile=False
+    )
+
+
 HIDDEN_UNLOCK_SECONDS = 300
+
+
+def session_has_password(db: sqlite3.Connection, session: sqlite3.Row) -> bool:
+    row = db.execute(
+        "SELECT password_hash FROM users WHERE id = ?", (session["user_id"],)
+    ).fetchone()
+    return row is not None and bool(row["password_hash"])
+
+
+def _require_own_password(db: sqlite3.Connection, session: sqlite3.Row) -> None:
+    """#519: a passwordless account has no password to confirm or change, and
+    cannot add one itself -- only an admin can."""
+    if not session_has_password(db, session):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "no_password",
+                "message": "This account has no password. Ask an admin to set one.",
+            },
+        )
 
 
 class ReconfirmPasswordRequest(BaseModel):
@@ -1343,6 +1472,7 @@ def reconfirm_password(
     Hidden-unlocked for a short sliding window (see `hidden_is_unlocked`).
     """
     username = session["username"]
+    _require_own_password(db, session)
     _prune_old_login_failures(db)
     if is_locked_out(db, username, user_exists=True):
         raise HTTPException(
@@ -1384,6 +1514,7 @@ def change_password(
     stolen or shared cookie dies with the old password, and the session making
     the request stays signed in."""
     username = session["username"]
+    _require_own_password(db, session)
     _prune_old_login_failures(db)
     if is_locked_out(db, username, user_exists=True):
         raise HTTPException(
@@ -1435,6 +1566,16 @@ def require_hidden_unlocked(session: sqlite3.Row, db: sqlite3.Connection) -> Non
     the window is left: hidden thumbnails/originals also call this (#151),
     and a DB write per image request would serialise a whole grid of
     thumbnail loads on SQLite's write lock."""
+    if not session_has_password(db, session):
+        # #519: Hidden is never available without a password to reconfirm,
+        # whatever the per-library Utilities settings say.
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "hidden_unavailable",
+                "message": "Hidden needs an account with a password",
+            },
+        )
     row = db.execute(
         "SELECT hidden_unlocked_until > datetime('now') AS unlocked,"
         " hidden_unlocked_until < datetime('now', ?) AS stale"

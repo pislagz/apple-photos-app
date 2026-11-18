@@ -51,7 +51,11 @@ export function ChangePasswordSheet({
   }
 
   return (
-    <Sheet title={`Change Password for ${user.username}`} onClose={onClose} actions={[{ label: "Change Password", onClick: save, disabled: !ready }]}>
+    <Sheet
+      title={`${user.has_password === false ? "Set" : "Change"} Password for ${user.username}`}
+      onClose={onClose}
+      actions={[{ label: user.has_password === false ? "Set Password" : "Change Password", onClick: save, disabled: !ready }]}
+    >
       <div className="admin-form">
         <label className="admin-field">
           New password
@@ -79,6 +83,45 @@ export function ChangePasswordSheet({
         </p>
         <SheetError message={error} />
       </div>
+    </Sheet>
+  );
+}
+
+export function RemovePasswordSheet({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: UserResponse;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateUser(user.username, { remove_password: true });
+      onDone();
+    } catch (err) {
+      setError(describeError(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      title={`Remove the password for "${user.username}"?`}
+      onClose={onClose}
+      actions={[{ label: "Remove Password", kind: "destructive", onClick: remove, disabled: busy }]}
+    >
+      <p>
+        {user.username} will be signed out everywhere and can then sign in just by choosing their picture, only from the
+        network set in Settings. They won't be able to open Hidden. Only an administrator can give them a password again.
+      </p>
+      <SheetError message={error} />
     </Sheet>
   );
 }
@@ -189,17 +232,18 @@ export function AddPersonSheet({ onClose, onDone }: { onClose: () => void; onDon
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
+  const [noPassword, setNoPassword] = useState(false);
   const [role, setRole] = useState<Role>("user");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const problem = passwordProblem(password, again);
-  const ready = username.trim() !== "" && password.length >= MIN_PASSWORD && password === again && !busy;
+  const problem = noPassword ? null : passwordProblem(password, again);
+  const ready = username.trim() !== "" && (noPassword || (password.length >= MIN_PASSWORD && password === again)) && !busy;
 
   async function create() {
     setBusy(true);
     setError(null);
     try {
-      await createUser(username.trim(), password, role);
+      await createUser(username.trim(), noPassword ? null : password, role);
       onDone();
     } catch (err) {
       setError(describeError(err));
@@ -220,6 +264,12 @@ export function AddPersonSheet({ onClose, onDone }: { onClose: () => void; onDon
             onChange={(e) => setUsername(e.target.value)}
           />
         </label>
+        <label className="admin-field admin-field--check">
+          <input type="checkbox" checked={noPassword} onChange={(e) => setNoPassword(e.target.checked)} />
+          No password (signs in by choosing their picture)
+        </label>
+        {!noPassword && (
+          <>
         <label className="admin-field">
           Password
           <input
@@ -243,6 +293,8 @@ export function AddPersonSheet({ onClose, onDone }: { onClose: () => void; onDon
         <p className={problem ? "admin-hint admin-hint--error" : "admin-hint"} role={problem ? "alert" : undefined}>
           {problem ?? `At least ${MIN_PASSWORD} characters.`}
         </p>
+          </>
+        )}
         <label className="admin-field">
           Role
           <select className="admin-input" value={role} onChange={(e) => setRole(e.target.value as Role)}>

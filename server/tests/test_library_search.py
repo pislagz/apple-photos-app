@@ -325,6 +325,7 @@ def test_migration_21_flags_indexed_libraries_for_reindex(tmp_path):
         db.execute("ALTER TABLE assets DROP COLUMN original_missing")
         db.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
+        db.execute("ALTER TABLE users DROP COLUMN show_on_profiles")  # 30 (#519)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # migration 27
         for column in (  # migration 28 (#461)
             "indexed_identity",
@@ -521,6 +522,7 @@ def test_migration_25_flags_indexed_libraries_for_reindex(tmp_path):
     db = app_db.connect(tmp_path / "data")
     try:
         db.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
+        db.execute("ALTER TABLE users DROP COLUMN show_on_profiles")  # 30 (#519)
         db.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # 27
         for column in (  # migration 28 (#461)
             "indexed_identity",

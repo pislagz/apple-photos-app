@@ -46,12 +46,14 @@ function AccountMenuItems({
           Remove avatar
         </button>
       )}
+      {me.has_password !== false && (
       <div className="account-menu__row">
         <button type="button" onClick={() => setChangingPassword(true)}>
           Change password
         </button>
         <InfoButton helpKey="changePassword" name="Change password" />
       </div>
+      )}
       <div className="account-menu__row">
         <button type="button" onClick={() => setManagingPasskeys(true)}>
           Passkeys

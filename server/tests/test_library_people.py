@@ -231,6 +231,7 @@ def test_migration_19_flags_indexed_libraries_for_reindex(tmp_path):
         conn.execute("ALTER TABLE assets DROP COLUMN original_missing")
         conn.execute("ALTER TABLE assets DROP COLUMN place_offline")  # D41
         conn.execute("ALTER TABLE users DROP COLUMN avatar_version")  # 26 (#256)
+        conn.execute("ALTER TABLE users DROP COLUMN show_on_profiles")  # 30 (#519)
         conn.execute("ALTER TABLE assets DROP COLUMN is_syndicated")  # migration 27
         for column in (  # migration 28 (#461)
             "indexed_identity",

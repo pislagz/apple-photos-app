@@ -24,6 +24,7 @@ export default function LoginScreen({
   keepSignedIn = "default_on",
   onSubmit,
   onPasskey,
+  onBackToProfiles,
 }: {
   layout: Layout;
   error: LoginError | null;
@@ -31,6 +32,9 @@ export default function LoginScreen({
   onSubmit: (username: string, password: string, rememberMe: boolean) => void;
   // Shown only when the browser has WebAuthn; sign-in needs no username.
   onPasskey?: (rememberMe: boolean) => void;
+  // #519: "Other user…" from the profile screen. A blank password is allowed
+  // there (a passwordless user types only their name); the server decides.
+  onBackToProfiles?: () => void;
 }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -88,6 +92,11 @@ export default function LoginScreen({
           )}
           <button type="submit">Sign in</button>
         </form>
+        {onBackToProfiles && (
+          <button type="button" className="login-card__back" onClick={onBackToProfiles}>
+            Back to profiles
+          </button>
+        )}
         {onPasskey && passkeyConnectionNote() && (
           <p className="login-card__passkey-note">
             <InfoButton helpKey="passkeyLogin" name="logging in with passkeys" label="How to log in using passkeys?" />

@@ -10,6 +10,7 @@ export default defineConfig({
   testDir: ".",
   testMatch: "*.e2e.ts",
   outputDir: "./test-results",
+  globalSetup: "./global-setup.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,

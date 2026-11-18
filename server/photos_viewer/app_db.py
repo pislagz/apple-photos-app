@@ -560,6 +560,12 @@ _MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_audit_log_asset_id ON audit_log(asset_id)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_library_id ON audit_log(library_id)",
     ],
+    # 30 (#519): Family login. `password_hash = ''` means "no password"
+    # (the column stays NOT NULL so no table rebuild); `show_on_profiles` is
+    # the per-user "Show on Who's watching?" switch.
+    [
+        "ALTER TABLE users ADD COLUMN show_on_profiles INTEGER NOT NULL DEFAULT 1",
+    ],
 ]
 
 
