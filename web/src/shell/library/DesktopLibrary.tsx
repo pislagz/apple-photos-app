@@ -243,8 +243,10 @@ export default function DesktopLibrary({
     infoOpen && !multiSelected ? focusedId : null,
   );
   // D21: two or more selected photos get a summary instead of the last-clicked one.
-  const selectionIds = useMemo(() => (infoOpen && multiSelected ? Array.from(selected) : null), [infoOpen, multiSelected, selected]);
+  // The summary also tells the Download menu whether anything selected is edited (#509).
+  const selectionIds = useMemo(() => (selected.size > 0 ? Array.from(selected) : null), [selected]);
   const { summary: selectionSummary, failed: selectionFailed } = useSelectionSummary(libraryId, selectionIds);
+  const selectionHasEdited = (selectionSummary?.edited ?? 0) > 0;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const cellRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -1087,6 +1089,7 @@ export default function DesktopLibrary({
         )}
         <DownloadMenu
           disabled={selected.size === 0 || zip.busy || exportFlow.state.phase !== "idle"}
+          hasEdited={selectionHasEdited}
           ring={
             zip.state.phase === "downloading" ? (
               <ZipRing state={zip.state} />

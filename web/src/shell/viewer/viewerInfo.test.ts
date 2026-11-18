@@ -45,7 +45,7 @@ describe("selection summary rows (D21)", () => {
   });
 
   it("splits photos and videos only when both are present", () => {
-    const base = { date_first: null, date_last: null, total_bytes: 1024, place: null };
+    const base = { date_first: null, date_last: null, total_bytes: 1024, edited: 0, place: null };
     expect(buildSelectionRows({ ...base, count: 3, photos: 2, videos: 1 })[0].value).toBe("3 items (2 photos, 1 video)");
     expect(buildSelectionRows({ ...base, count: 2, photos: 2, videos: 0 })[0].value).toBe("2 photos");
     expect(buildSelectionRows({ ...base, count: 2, photos: 0, videos: 2 })[0].value).toBe("2 videos");

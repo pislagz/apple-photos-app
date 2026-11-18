@@ -6,7 +6,7 @@ import PasskeysDialog from "../PasskeysDialog";
 import { Icon } from "../icons";
 import LargeTitleScreen from "../LargeTitleScreen";
 import LibrarySwitcher from "../LibrarySwitcher";
-import { TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "../export/transferFormat";
+import { PHOTO_FORMAT_FOOTER_IPHONE, PHOTO_FORMAT_LABEL, TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "../export/transferFormat";
 import { MEDIA_TYPES } from "./mediaTypes";
 
 // #125, tracker R1: the phone "More" tab -- People & Pets, Places, Media
@@ -93,8 +93,8 @@ export default function MoreScreen({
           </li>
         </ul>
         {/* #507: one format for everything that leaves the app, Apple's wording. */}
-        <ul className="more-screen__group" role="radiogroup" aria-label="Transfer Format">
-          <li className="more-screen__group-label">Transfer Format</li>
+        <ul className="more-screen__group" role="radiogroup" aria-label={PHOTO_FORMAT_LABEL}>
+          <li className="more-screen__group-label">{PHOTO_FORMAT_LABEL}</li>
           {TRANSFER_FORMAT_OPTIONS.map((option) => (
             <li key={option.value}>
               <button
@@ -115,7 +115,7 @@ export default function MoreScreen({
           ))}
         </ul>
         <p className="more-screen__switch-note">
-          {TRANSFER_FORMAT_OPTIONS.find((option) => option.value === transferFormat)?.detail} Used when you share photos.
+          {PHOTO_FORMAT_FOOTER_IPHONE}
         </p>
         {/* #303: everything the old top-right "..." menu offered. */}
         <ul className="more-screen__group">

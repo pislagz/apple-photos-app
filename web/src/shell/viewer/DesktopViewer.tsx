@@ -397,6 +397,7 @@ export default function DesktopViewer({ libraryId, items, index, onIndexChange, 
             )}
             <DownloadMenu
               disabled={!!outside || transfer.flow.state.phase !== "idle"}
+              hasEdited={!!detail?.has_edited}
               ring={transfer.downloadBusy ? <ProgressRing fraction={transfer.flowFraction} className="zip-ring" label="Download progress" /> : undefined}
               onDownload={() => handleDownload()}
               onDownloadUnmodified={() => handleDownload(true)}

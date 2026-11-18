@@ -410,6 +410,8 @@ export interface SelectionSummary {
   date_first: string | null;
   date_last: string | null;
   total_bytes: number;
+  // How many of them have an edited version.
+  edited: number;
   place: string | null;
 }
 

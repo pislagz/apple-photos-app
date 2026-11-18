@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 
-// "Transfer Format" (#507), Apple's wording: Automatic sends photos as JPEG
-// (most compatible); Keep Originals sends them as stored (HEIC, with the Live
-// Photo video). One setting for Share and Download, per browser.
+// "Photo Format" (#507, renamed #512): only the file format of HEIC photos on
+// Download and Share. Most Compatible converts them to JPEG; HEIC sends them as
+// stored (with the Live Photo video). Videos and JPEGs are never converted and
+// edits are always included. Stored values stay "automatic" / "original".
 export type TransferFormat = "automatic" | "original";
 
 const KEY = "photos-viewer:transfer-format";
@@ -51,6 +52,12 @@ export function useTransferFormat(): [TransferFormat, (value: TransferFormat) =>
 }
 
 export const TRANSFER_FORMAT_OPTIONS: { value: TransferFormat; label: string; detail: string }[] = [
-  { value: "automatic", label: "Automatic", detail: "Photos are sent as JPEG, the most compatible format." },
-  { value: "original", label: "Keep Originals", detail: "Photos are sent as HEIC, with the video of Live Photos." },
+  { value: "automatic", label: "Most Compatible (JPEG)", detail: "HEIC photos are sent as JPEG." },
+  { value: "original", label: "HEIC (Original Format)", detail: "HEIC photos are sent as stored, with the video of Live Photos." },
 ];
+
+export const PHOTO_FORMAT_LABEL = "Photo Format";
+// Mac has Download ▾ > Download Unmodified Original; the iPhone has no Download.
+export const PHOTO_FORMAT_FOOTER_MAC =
+  "For downloads and shares. Edits are always included — for the unedited photo use Download Unmodified Original.";
+export const PHOTO_FORMAT_FOOTER_IPHONE = "For sharing. Edits are always included.";

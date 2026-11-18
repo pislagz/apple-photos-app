@@ -61,6 +61,7 @@ def test_summary_counts_split_dates_size_and_shared_place(tmp_path):
             "date_first": "2024-03-03T10:00:00",
             "date_last": "2024-03-09T10:00:00",
             "total_bytes": 3500,
+            "edited": 0,
             "place": "Zurich",
         }
     finally:
@@ -103,5 +104,24 @@ def test_unknown_id_is_404_and_hidden_needs_the_unlock(tmp_path):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "private, no-store"
         assert client.post(url, json={"asset_ids": []}).status_code == 422
+    finally:
+        conn.close()
+
+
+def test_edited_counts_assets_with_an_edited_version(tmp_path):
+    conn, client, lib = _setup(tmp_path)
+    try:
+        _insert_asset(conn, lib, "plain")
+        _insert_asset(conn, lib, "e1", path_edited="resources/renders/e1.jpeg")
+        _insert_asset(conn, lib, "e2", path_edited="resources/renders/e2.jpeg")
+        url = f"/api/libraries/{lib}/selection-summary"
+        assert client.post(url, json={"asset_ids": ["plain"]}).json()["edited"] == 0
+        assert (
+            client.post(url, json={"asset_ids": ["plain", "e1"]}).json()["edited"] == 1
+        )
+        assert (
+            client.post(url, json={"asset_ids": ["e1", "e2", "plain"]}).json()["edited"]
+            == 2
+        )
     finally:
         conn.close()

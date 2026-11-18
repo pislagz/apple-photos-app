@@ -2922,6 +2922,15 @@ html.has-app-height .shell--mobile {
   font-size: var(--font-size-body-sm);
 }
 
+.mac-menu__caption {
+  margin: 0;
+  padding: 2px 12px 6px;
+  max-width: 240px;
+  font-size: var(--font-size-caption);
+  line-height: 1.3;
+  color: var(--color-label-secondary);
+}
+
 .mac-menu__separator {
   height: 1px;
   margin: 5px 4px;
@@ -3410,6 +3419,27 @@ html.has-app-height .shell--mobile {
 
 .desktop-viewer__topbar .toolbar-button:hover:not(:disabled) {
   color: var(--color-label);
+}
+
+/* #509: the Download control (DownloadMenu) keeps the grid toolbar's look in the
+   viewer: label colour, 8px radius, the narrow ▾ hit area. */
+.desktop-viewer__topbar .download-menu .toolbar-button {
+  color: var(--color-label);
+  border-radius: var(--radius-8);
+}
+.desktop-viewer__topbar .download-menu .download-menu__main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.desktop-viewer__topbar .download-menu--plain .download-menu__main {
+  border-radius: var(--radius-8);
+}
+.desktop-viewer__topbar .download-menu .download-menu__chevron {
+  width: var(--space-16);
+  min-width: var(--space-16);
+  aspect-ratio: auto;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .desktop-viewer__topbar .toolbar-button[aria-pressed="true"] {
@@ -5984,6 +6014,9 @@ textarea,
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
+.download-menu--plain .download-menu__main {
+  border-radius: var(--radius-8);
+}
 .download-menu__chevron {
   width: var(--space-16);
   min-width: var(--space-16);
@@ -6212,7 +6245,7 @@ textarea,
   color: var(--color-white);
 }
 
-/* More > Transfer Format: a checkmark list like iOS Settings. */
+/* More > Photo Format: a checkmark list like iOS Settings. */
 .more-screen__item--choice {
   display: flex;
   align-items: center;

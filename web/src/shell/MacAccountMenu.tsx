@@ -5,7 +5,7 @@ import { type LibrarySummary, type MeResponse, removeAvatar } from "../api";
 import Avatar from "./Avatar";
 import AvatarPicker from "./AvatarPicker";
 import ChangePasswordDialog from "./ChangePasswordDialog";
-import { TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "./export/transferFormat";
+import { PHOTO_FORMAT_FOOTER_MAC, PHOTO_FORMAT_LABEL, TRANSFER_FORMAT_OPTIONS, useTransferFormat } from "./export/transferFormat";
 import PasskeysDialog from "./PasskeysDialog";
 
 type SubmenuKey = "library" | "format";
@@ -336,12 +336,16 @@ export default function MacAccountMenu({
             <div role="separator" className="mac-menu__separator" />
             {submenuParent(
               "format",
-              "Transfer Format",
-              TRANSFER_FORMAT_OPTIONS.map((option) => (
-                <div key={option.value} role="none" className="mac-menu__row">
-                  {item(option.label, act(() => setTransferFormat(option.value)), { role: "menuitemradio", checked: option.value === transferFormat })}
-                </div>
-              )),
+              PHOTO_FORMAT_LABEL,
+              <>
+                {TRANSFER_FORMAT_OPTIONS.map((option) => (
+                  <div key={option.value} role="none" className="mac-menu__row">
+                    {item(option.label, act(() => setTransferFormat(option.value)), { role: "menuitemradio", checked: option.value === transferFormat })}
+                  </div>
+                ))}
+                <div role="separator" className="mac-menu__separator" />
+                <p className="mac-menu__caption">{PHOTO_FORMAT_FOOTER_MAC}</p>
+              </>,
             )}
             <div role="separator" className="mac-menu__separator" />
             {me.libraries.length > 0 && item("Choose Avatar…", act(() => setChoosingAvatar(true)))}

@@ -39,7 +39,7 @@ describe("MacAccountMenu (#292)", () => {
       expect(screen.getByRole("menuitem", { name })).toBeInTheDocument();
     }
     expect(screen.getAllByRole("separator")).toHaveLength(3);
-    expect(screen.getByRole("menuitem", { name: "Transfer Format" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Photo Format" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Download as ZIP" })).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Library" }));
   });
@@ -177,20 +177,23 @@ describe("MacAccountMenu (#292)", () => {
   });
 });
 
-describe("MacAccountMenu Transfer Format (#507)", () => {
-  it("offers Automatic and Keep Originals, saves the choice and closes the menu", () => {
+describe("MacAccountMenu Photo Format (#507, #512)", () => {
+  it("offers Most Compatible (JPEG) and HEIC (Original Format), saves the choice and closes the menu", () => {
     localStorage.clear();
     setup();
     fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("menuitem", { name: "Transfer Format" }));
-    expect(screen.getByRole("menuitemradio", { name: "Automatic" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitemradio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "false");
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Keep Originals" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Photo Format" }));
+    expect(screen.getByRole("menuitemradio", { name: "Most Compatible (JPEG)" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "HEIC (Original Format)" })).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByText("For downloads and shares. Edits are always included — for the unedited photo use Download Unmodified Original."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "HEIC (Original Format)" }));
     expect(localStorage.getItem("photos-viewer:transfer-format")).toBe("original");
     expect(screen.queryByRole("menu", { name: "Account" })).toBeNull();
     fireEvent.click(trigger());
-    fireEvent.click(screen.getByRole("menuitem", { name: "Transfer Format" }));
-    expect(screen.getByRole("menuitemradio", { name: "Keep Originals" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Photo Format" }));
+    expect(screen.getByRole("menuitemradio", { name: "HEIC (Original Format)" })).toHaveAttribute("aria-checked", "true");
     localStorage.clear();
   });
 });
