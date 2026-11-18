@@ -44,7 +44,7 @@ def _create_user(conn, username, *, role="user"):
 
 def _create_library(conn, display_name, *, path):
     conn.execute(
-        "INSERT INTO libraries (display_name, path) VALUES (?, ?)",
+        "INSERT INTO libraries (display_name, path, utilities_enabled, utilities_hidden) VALUES (?, ?, 1, 1)",
         (display_name, str(path)),
     )
     conn.commit()
@@ -102,6 +102,8 @@ def test_me_lists_only_assigned_libraries(tmp_path):
         assigned = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
         _create_library(conn, "L2", path=tmp_path / "L2.photoslibrary")
         _assign(conn, user_id, assigned)
+        conn.execute("UPDATE libraries SET utilities_enabled = 0, utilities_hidden = 0")
+        conn.commit()
         _login(client, "alice")
 
         response = client.get("/api/me")
@@ -114,6 +116,7 @@ def test_me_lists_only_assigned_libraries(tmp_path):
             {
                 "id": assigned,
                 "display_name": "L1",
+                "utilities": {"enabled": False, "imports": False, "hidden": False},
                 "updating": False,
                 "updating_reason": None,
                 "updated_note": None,
@@ -1950,5 +1953,82 @@ def test_filter_menu_kinds_and_hide_toggles(tmp_path):
         assert ids(filter="screenshots", hide="shared") == ["shot"]
         assert client.get(url, params={"hide": "bogus"}).status_code == 422
         assert client.get(url, params={"filter": "bogus"}).status_code == 422
+    finally:
+        conn.close()
+
+
+def test_utilities_are_off_by_default_in_me(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        conn.execute("UPDATE libraries SET utilities_enabled = 0, utilities_hidden = 0")
+        conn.commit()
+        conn.execute("INSERT INTO libraries (display_name, path) VALUES ('L2', 'x')")
+        conn.commit()
+        l2 = conn.execute(
+            "SELECT id FROM libraries WHERE display_name='L2'"
+        ).fetchone()["id"]
+        _assign(conn, user_id, library_id)
+        _assign(conn, user_id, l2)
+        _login(client, "alice")
+
+        libs = {
+            x["id"]: x["utilities"] for x in client.get("/api/me").json()["libraries"]
+        }
+        off = {"enabled": False, "imports": False, "hidden": False}
+        assert libs[library_id] == off
+        assert libs[l2] == off
+    finally:
+        conn.close()
+
+
+def test_hidden_item_flags_are_anded_with_the_section_switch(tmp_path):
+    conn, client = _client(tmp_path)
+    try:
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=tmp_path / "L1.photoslibrary")
+        _assign(conn, user_id, library_id)
+        _login(client, "alice")
+        conn.execute(
+            "UPDATE libraries SET utilities_enabled = 0, utilities_imports = 1, utilities_hidden = 1"
+        )
+        conn.commit()
+        lib = client.get("/api/me").json()["libraries"][0]
+        assert lib["utilities"] == {"enabled": False, "imports": False, "hidden": False}
+
+        conn.execute("UPDATE libraries SET utilities_enabled = 1, utilities_hidden = 0")
+        conn.commit()
+        lib = client.get("/api/me").json()["libraries"][0]
+        assert lib["utilities"] == {"enabled": True, "imports": True, "hidden": False}
+    finally:
+        conn.close()
+
+
+def test_hidden_routes_404_when_hidden_is_off_for_the_library(tmp_path, monkeypatch):
+    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
+    conn, client = _client(tmp_path)
+    try:
+        library_path, file_path = _library_root_with_jpeg(tmp_path)
+        user_id = _create_user(conn, "alice")
+        library_id = _create_library(conn, "L1", path=library_path)
+        _assign(conn, user_id, library_id)
+        _insert_asset(conn, library_id, "a", hidden=1, path_original=str(file_path))
+        _login(client, "alice")
+        _unlock_hidden(client)
+        base = f"/api/libraries/{library_id}"
+        assert client.get(f"{base}/hidden").status_code == 200
+
+        conn.execute("UPDATE libraries SET utilities_hidden = 0")
+        conn.commit()
+        assert client.get(f"{base}/hidden").status_code == 404
+        assert client.get(f"{base}/assets/a").status_code == 404
+        assert client.get(f"{base}/thumb/a").status_code == 404
+        assert client.get(f"{base}/original/a").status_code == 404
+
+        # Section off wins over an item switch that is on.
+        conn.execute("UPDATE libraries SET utilities_hidden = 1, utilities_enabled = 0")
+        conn.commit()
+        assert client.get(f"{base}/hidden").status_code == 404
     finally:
         conn.close()

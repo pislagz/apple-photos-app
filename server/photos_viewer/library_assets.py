@@ -126,9 +126,36 @@ class UpdatedNote(BaseModel):
     finished_at: str | None
 
 
+class UtilitiesVisibility(BaseModel):
+    """#518: which Utilities items the admin shows for this library. Item
+    flags are already ANDed with the section switch."""
+
+    enabled: bool = False
+    imports: bool = False
+    hidden: bool = False
+
+
+def utilities_for(row: sqlite3.Row) -> UtilitiesVisibility:
+    on = bool(row["utilities_enabled"])
+    return UtilitiesVisibility(
+        enabled=on,
+        imports=on and bool(row["utilities_imports"]),
+        hidden=on and bool(row["utilities_hidden"]),
+    )
+
+
+def _require_hidden_visible(db: sqlite3.Connection, library_id: int) -> None:
+    """#518: with Hidden off for the library its hidden assets do not exist
+    for anyone, so list, detail, bytes and selection all answer 404."""
+    row = db.execute("SELECT * FROM libraries WHERE id = ?", (library_id,)).fetchone()
+    if row is None or not utilities_for(row).hidden:
+        raise HTTPException(status_code=404, detail="not found")
+
+
 class LibrarySummary(BaseModel):
     id: int
     display_name: str
+    utilities: UtilitiesVisibility = UtilitiesVisibility()
     # P1.22: "Being updated" -- the library's package is missing, still
     # copying, or not valid yet; its photo routes answer 503 meanwhile.
     updating: bool = False
@@ -189,6 +216,7 @@ def _library_summary(
     return LibrarySummary(
         id=row["id"],
         display_name=row["display_name"],
+        utilities=utilities_for(row),
         updating=updating,
         updating_reason=reason,
         updated_note=note,
@@ -531,6 +559,7 @@ def list_hidden_assets(
     `hidden = 1` -- every other route in this module excludes it. Needs a
     recent `/api/auth/reconfirm-password` (#130); checked after the library
     guard so a foreign library still 404s."""
+    _require_hidden_visible(db, library["id"])
     session_auth.require_hidden_unlocked(session, db)
     return _list_assets(
         db,
@@ -699,6 +728,7 @@ def _get_media_asset_or_404(
     after the lookup so a foreign or unknown id still 404s."""
     asset = _get_asset_or_404(db, library_id, asset_id)
     if asset["hidden"]:
+        _require_hidden_visible(db, library_id)
         session_auth.require_hidden_unlocked(session, db)
     return asset
 
@@ -849,6 +879,7 @@ def selection_summary(
     if len(rows) != len(ids):
         raise HTTPException(status_code=404, detail="not found")
     if any(row["hidden"] for row in rows):
+        _require_hidden_visible(db, library["id"])
         session_auth.require_hidden_unlocked(session, db)
         response.headers["Cache-Control"] = "private, no-store"
     dates = [row["date_created"] for row in rows if row["date_created"]]
