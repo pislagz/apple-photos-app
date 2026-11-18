@@ -5,6 +5,7 @@ import { navigateToZip, requestZipTicket } from "../library/zipDownload";
 import {
   describeExportError,
   ExportAbort,
+  ExportShareError,
   ExportTooLarge,
   openPlanned,
   planFiles,
@@ -118,7 +119,7 @@ export function useExport(libraryId: number) {
             progress();
           });
           if (signal.aborted) return;
-          if (!navigator.canShare({ files })) {
+          if (!canShareNow(files)) {
             finish();
             dispatch({ type: "error", method, items, message: "This browser cannot share these files." });
             return;
@@ -178,7 +179,7 @@ export function useExport(libraryId: number) {
             dispatch({ type: "ready", items: shared, files });
           } else {
             finish();
-            dispatch({ type: "error", method: "share", items: shared, message: describeExportError(error) });
+            dispatch({ type: "error", method: "share", items: shared, message: describeExportError(new ExportShareError(error)) });
           }
         }
       }
@@ -196,7 +197,7 @@ export function useExport(libraryId: number) {
       pending = navigator.share({ files });
     } catch (error) {
       sharing.current = false;
-      dispatch({ type: "error", method: "share", items, message: describeExportError(error) });
+      dispatch({ type: "error", method: "share", items, message: describeExportError(new ExportShareError(error)) });
       return;
     }
     pending.then(
@@ -215,7 +216,7 @@ export function useExport(libraryId: number) {
           dispatch({ type: "hint", hint: "The browser asked for another tap. Tap Share again." });
           return;
         }
-        dispatch({ type: "error", method: "share", items, message: describeExportError(error) });
+        dispatch({ type: "error", method: "share", items, message: describeExportError(new ExportShareError(error)) });
       },
     );
   }, [state, close]);
@@ -232,6 +233,16 @@ export function useExport(libraryId: number) {
   const saveZip = useCallback((items: ExportItem[]) => run("zip", items), [run]);
 
   return { state, share, exportToFolder, saveZip, retry, close, confirmShare, canShare: canShareFiles, canFolder: canPickDirectory };
+}
+
+// `canShare` can itself throw (WebIDL conversion of the file list); that is a
+// share problem, reported as one, never as a dropped connection.
+function canShareNow(files: File[]): boolean {
+  try {
+    return navigator.canShare({ files });
+  } catch (error) {
+    throw new ExportShareError(error);
+  }
 }
 
 async function freeName(folder: DirectoryHandle, wanted: string, taken: Set<string>): Promise<string> {

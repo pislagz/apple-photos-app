@@ -206,6 +206,69 @@ describe("iPhone HUD", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it("a TypeError from navigator.share is not reported as a dropped connection (#508)", async () => {
+    stubServer(10);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    stubShare(async () => {
+      throw new TypeError("Type error");
+    });
+    render(<Harness items={[ITEMS[0]]} />);
+    fireEvent.click(screen.getByText("Start"));
+    expect(await screen.findByText(/would not share these files \(TypeError: Type error\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/connection dropped/)).toBeNull();
+    expect(errors).toHaveBeenCalledWith("[export] failed", expect.any(Error));
+  });
+
+  it("a canShare() that throws is a share problem, not a network one (#508)", async () => {
+    stubServer(10);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const share = stubShare();
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      share,
+      canShare: (data?: ShareData) => {
+        if (data?.files?.[0]?.name === "probe.jpg") return true;
+        throw new TypeError("files is not a sequence");
+      },
+    });
+    render(<Harness items={[ITEMS[0]]} />);
+    fireEvent.click(screen.getByText("Start"));
+    expect(await screen.findByText(/would not share these files \(TypeError: files is not a sequence\)/)).toBeInTheDocument();
+    expect(share).not.toHaveBeenCalled();
+  });
+
+  it("hands canShare and share real File objects with a real MIME type (#508)", async () => {
+    stubServer(10);
+    const share = stubShare();
+    const canShare = vi.fn(() => true);
+    vi.stubGlobal("navigator", { ...navigator, share, canShare });
+    render(<Harness items={[ITEMS[0]]} />);
+    fireEvent.click(screen.getByText("Start"));
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    const files = share.mock.calls[0][0].files as File[];
+    expect(files[0]).toBeInstanceOf(File);
+    expect(files[0].type).toBe("image/heic");
+    const asked = canShare.mock.calls.map((call) => (call as unknown[])[0] as ShareData).find((data) => data.files?.[0]?.name !== "probe.jpg");
+    expect(asked?.files?.[0]).toBeInstanceOf(File);
+  });
+
+  it("a body that dies mid-read is a dropped connection (#508)", async () => {
+    stubServer(10, (url) => {
+      if (!url.includes("/original/")) return undefined;
+      const body = new ReadableStream({
+        pull() {
+          throw new TypeError("network error");
+        },
+      });
+      return new Response(body, { headers: { "content-type": "image/jpeg" } });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    stubShare();
+    render(<Harness items={[ITEMS[0]]} />);
+    fireEvent.click(screen.getByText("Start"));
+    expect(await screen.findByText(/connection dropped/)).toBeInTheDocument();
+  });
+
   it("allows one export at a time", async () => {
     stubServer();
     const share = stubShare(async () => {}, { userActivation: { isActive: false } });
