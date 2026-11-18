@@ -2653,13 +2653,26 @@ html.has-app-height .shell--mobile {
 
 .filter-menu__chevron {
   display: inline-flex;
+  align-items: center;
+  align-self: center;
+  line-height: 0;
+  /* Optical: the glyph box is centred on the row, but the label's cap-height
+     centre sits about a point higher than its line box centre. */
+  position: relative;
+  top: -1px;
   margin-left: auto;
   padding-left: var(--space-10);
   color: var(--color-label-secondary);
 }
 
-/* Points right on a row that opens a card, down on the open card's header. */
-.filter-menu__chevron[data-open="true"] {
+.filter-menu__chevron > svg {
+  display: block;
+}
+
+/* Points right on a row that opens a card, down on the open card's header.
+   Rotate the glyph itself: rotating the span would pivot on its padded box
+   and push the glyph about 5px down and left of the label (#479). */
+.filter-menu__chevron[data-open="true"] > svg {
   transform: rotate(90deg);
 }
 
