@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 // to ../e2e-shots-470/ (not committed); SHOTS_470_PHASE names them.
 const USER = { username: "demo-user", password: "demo-user-pass-1" };
 const SHOTS = "../e2e-shots-470";
-const SHOTS_474 = "e2e-shots-474";
+const SHOTS_474 = "e2e-shots-n474";
 const PHASE = process.env.SHOTS_470_PHASE ?? "after";
 const LONG_ALBUM = "3 - 06.08.1999r. Mazury, rejs po jeziorach z rodziną";
 const LONG_FOLDER = "Kasety VHS przegrane w 2004 roku od cioci Basi";

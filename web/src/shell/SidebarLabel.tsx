@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 // the full name in a small tooltip; a title that fits shows nothing. The
 // tooltip is a portal so the sidebar's overflow does not clip it. The text
 // stays in the row, so the row's accessible name is still the full title.
-export const SIDEBAR_TOOLTIP_DELAY_MS = 600;
+export const SIDEBAR_TOOLTIP_DELAY_MS = 1000; // macOS shows a tooltip after about a second
 const EDGE = 8;
 
 // #474: one tooltip element for the whole sidebar, created on demand and
@@ -25,6 +25,28 @@ function tooltipEl(): HTMLDivElement {
     document.body.appendChild(tipEl);
   }
   return tipEl;
+}
+
+// Safari shows a native tooltip for any title attribute, SVG <title> or
+// xlink:title on the pointer's ancestors. Nothing of ours sets one; this strips
+// any a library or extension adds, keeping the accessible name via aria-label.
+export function stripNativeTooltips(from: Element) {
+  for (let el: Element | null = from; el; el = el.parentElement) {
+    const title = el.getAttribute("title");
+    if (title !== null) {
+      if (!el.hasAttribute("aria-label") && !el.textContent?.trim()) el.setAttribute("aria-label", title);
+      el.removeAttribute("title");
+    }
+    el.removeAttribute("xlink:title");
+    if (el === document.body) break;
+  }
+  from.closest("aside")?.querySelectorAll("svg title, [title], [xlink\\:title]").forEach((t) => {
+    if (t.tagName.toLowerCase() === "title") t.remove();
+    else {
+      t.removeAttribute("title");
+      t.removeAttribute("xlink:title");
+    }
+  });
 }
 
 function showTip(text: string, x: number, y: number) {
@@ -103,6 +125,7 @@ export default function SidebarLabel({ text }: { text: string }) {
         // Touch taps fire compatibility mouse events with no mouseleave.
         if ((event.nativeEvent as PointerEvent).pointerType === "touch") return;
         pointerX.current = event.clientX;
+        stripNativeTooltips(event.currentTarget);
         window.clearTimeout(timer.current);
         timer.current = window.setTimeout(() => {
           timer.current = undefined;
