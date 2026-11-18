@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Profiler } from "react";
 import { join } from "node:path";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetDetailResponse, AssetListItem } from "../../api";
 import { mockFetch } from "../../testHelpers";
@@ -469,6 +469,38 @@ describe("MobileViewer", () => {
     expect(favorite.className).toContain("mobile-viewer__status");
     expect(screen.queryByLabelText(/delete/i)).toBeNull();
     expect(screen.queryByLabelText(/edit/i)).toBeNull();
+  });
+
+  it("tapping the top-right More button opens its menu, and Info from it opens the sheet (#485)", async () => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("menu")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const menu = screen.getByRole("menu", { name: "More" });
+    // #507: no Share or Download rows; Share is only in the bottom toolbar.
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(menu).not.toHaveTextContent(/share|download/i);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Info" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(await screen.findByTestId("viewer-info-sheet")).toBeInTheDocument();
+  });
+
+  it.each(["mouse", "touch", "pen"])("a %s press outside the open More menu closes it and nothing else (#503)", (pointerType) => {
+    const items = [makeItem("a1")];
+    mockDetail({ a1: makeDetail("a1") });
+
+    render(<MobileViewer libraryId={1} items={items} index={0} onIndexChange={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByRole("menu", { name: "More" })).toBeInTheDocument();
+    const stageClick = vi.fn();
+    screen.getByTestId("mobile-viewer").addEventListener("click", stageClick);
+    fireEvent.pointerDown(screen.getByTestId("viewer-more-backdrop"), { pointerType });
+    expect(screen.queryByRole("menu")).toBeNull();
+    // The click that ends the same press is eaten, not delivered underneath.
+    fireEvent.click(screen.getByTestId("mobile-viewer"));
+    expect(stageClick).not.toHaveBeenCalled();
   });
 
   it("opens the info sheet with date, camera, people, albums, and location from the detail route", async () => {
